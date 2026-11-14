@@ -2748,6 +2748,7 @@ async function fleeWild() {
     return;
   }
   if (S.screen === 'battle') S.screen = 'resolving';
+  const prevSig = S.q ? (S.q.text || S.q.answer || '') : '';
   S.flee -= 1;
   renderAll();
   cancelAnimationFrame(S.raf);
@@ -2761,6 +2762,9 @@ async function fleeWild() {
   await delay(430);
   toast(`도망쳤어요! 남은 도망 ${S.flee}번`, 'info', 1000);
   await newEncounter({ keepFlee: true });
+  /* 도망가면 몬스터·문제·타이머가 모두 새로 시작된다 */
+  let guard = 0;
+  while (S.q && (S.q.text || S.q.answer || '') === prevSig && guard < 3) { newQuestion(); guard += 1; }
 }
 
 /* ---------- 전투불능 ---------- */

@@ -687,6 +687,7 @@
     box-shadow:0 3px 0 rgba(70,120,30,.25);transition:transform .08s;
   }
   .opgrid button.wide{grid-column:1 / -1}
+  .oppick-note{margin:7px 2px 0;font-size:clamp(10px,2.7vw,11.5px);font-weight:800;color:#6f8250;line-height:1.5}
   .opgrid button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:var(--gold-d);color:#6a3f00;box-shadow:0 3px 0 rgba(160,100,10,.4)}
   .opgrid button:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(70,120,30,.25)}
   .subpick{margin-top:9px;padding:9px 10px;border-radius:12px;background:#f1ffe1;border:2px dashed #b9dd8b;animation:fade .18s}
@@ -1022,15 +1023,8 @@
         <button data-op="sub">➖ 뺄셈</button>
         <button data-op="mul">✖️ 곱셈</button>
         <button data-op="div">➗ 나눗셈</button>
-        <button data-op="mix" class="wide">🎲 섞어서</button>
       </div>
-      <div class="subpick" id="mixPick" hidden>
-        <p>섞어서 — 어떤 문제를 섞을까요?</p>
-        <div class="mixgrid">
-          <button data-mix="pm">➕ ➖ 덧셈 + 뺄셈만</button>
-          <button data-mix="all">➕ ➖ ✖️ ➗ 사칙연산 다 섞기</button>
-        </div>
-      </div>
+      <p class="oppick-note">여러 개를 함께 고를 수 있어요 (최소 1개) · 고른 연산이 골고루 섞여 나와요</p>
       <h3 class="sect">난이도</h3>
       <div class="diffgrid" id="diffGrid">
         <button data-diff="easy"><b>🌱 1단계 (쉬움)</b><span>한 자릿수 덧·뺄셈 · 쉬운 2~5단 곱셈·나눗셈</span></button>
@@ -1490,16 +1484,29 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'mpb.profiles.v1';
 const DEFAULT_PROFILES = [
-  { id: 'p1', name: '첫째', emoji: '👧', diff: 'mid', op: 'mix', mix: 'all', range: 'all' },
-  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'easy', op: 'mix', mix: 'pm', range: 'all' },
+  { id: 'p1', name: '첫째', emoji: '👧', diff: 'mid', op: 'mix', mix: 'all', ops: ['add', 'sub', 'mul', 'div'], range: 'all' },
+  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'easy', op: 'mix', mix: 'pm', ops: ['add', 'sub'], range: 'all' },
 ];
 const DIFF_KEYS = ['easy', 'mid', 'hard'];
 const OP_KEYS = ['add', 'sub', 'mul', 'div', 'mix'];
 const DIFF_LABEL = { easy: '🌱 1단계', mid: '🌿 2단계', hard: '⚡ 3단계' };
 const OP_LABEL = { add: '➕ 덧셈', sub: '➖ 뺄셈', mul: '✖️ 곱셈', div: '➗ 나눗셈', mix: '🎲 섞어서' };
+const OP_ORDER = ['add', 'sub', 'mul', 'div'];
+/* 예전 설정(op/mix)도 그대로 읽어 준다 */
+function opsOf(p) {
+  if (p && Array.isArray(p.ops)) {
+    const v = p.ops.filter((o) => OP_ORDER.includes(o));
+    if (v.length) return v;
+  }
+  if (p && p.op === 'mix') return p.mix === 'pm' ? ['add', 'sub'] : ['add', 'sub', 'mul', 'div'];
+  if (p && OP_ORDER.includes(p.op)) return [p.op];
+  return ['add', 'sub', 'mul', 'div'];
+}
 function opLabel(p) {
-  if (p.op !== 'mix') return OP_LABEL[p.op] || OP_LABEL.mix;
-  return p.mix === 'all' ? '섞어서(사칙연산)' : '섞어서(덧+뺄)';
+  const ops = opsOf(p);
+  if (ops.length === OP_ORDER.length) return '사칙연산 모두';
+  if (ops.length === 2 && ops.indexOf('add') >= 0 && ops.indexOf('sub') >= 0) return '덧셈+뺄셈';
+  return ops.map((o) => OP_LABEL[o]).join(' · ');
 }
 const EMOJIS = ['👧', '🧒', '👦', '👶', '🐣', '⭐', '🐰', '🦊'];
 
@@ -1519,6 +1526,7 @@ const Profiles = {
             diff: DIFF_KEYS.includes(p.diff) ? p.diff : (p.diff === 'elem' ? 'mid' : 'easy'),
             op: OP_KEYS.includes(p.op) ? p.op : 'mix',
             mix: p.mix === 'pm' ? 'pm' : 'all',
+            ops: Array.isArray(p.ops) ? p.ops.filter((o) => OP_ORDER.includes(o)) : [],
             range: p.range === 'gen1' ? 'gen1' : 'all',
           })),
         };
@@ -1649,6 +1657,7 @@ const S = {
   diff: 'mid',
   op: 'mix',
   mixMode: 'all',
+  ops: ['add', 'sub', 'mul', 'div'],   // 고른 연산(복수 선택)
   wild: null,
   foeHP: 5,
   myHP: 5,
@@ -2046,9 +2055,7 @@ function renderAll() {
 const KIND_OP = { add: '+', sub: '−', mul: '×', div: '÷' };
 
 function pickKind() {
-  const kinds = S.op === 'mix'
-    ? (S.mixMode === 'all' ? ['add', 'sub', 'mul', 'div'] : ['add', 'sub'])
-    : [S.op];
+  const kinds = (S.ops && S.ops.length) ? S.ops : ['add'];
   return pick(kinds);
 }
 
@@ -2462,6 +2469,7 @@ async function fleeWild() {
     return;
   }
   if (S.screen === 'battle') S.screen = 'resolving';
+  const prevSig = S.q ? (S.q.text || S.q.answer || '') : '';
   S.flee -= 1;
   renderAll();
   cancelAnimationFrame(S.raf);
@@ -2474,6 +2482,9 @@ async function fleeWild() {
   await delay(430);
   toast(`도망쳤어요! 남은 도망 ${S.flee}번`, 'info', 1000);
   await newEncounter({ keepFlee: true });
+  /* 도망가면 몬스터·문제·타이머가 모두 새로 시작된다 */
+  let guard = 0;
+  while (S.q && (S.q.text || S.q.answer || '') === prevSig && guard < 3) { newQuestion(); guard += 1; }
 }
 
 /* ---------- 전투불능 ---------- */
@@ -2764,9 +2775,9 @@ function openSettings(pid) {
 function renderSettings() {
   const p = Profiles.get(setTarget) || Profiles.active();
   $('#setOwner').textContent = p.name;
-  $$('#opGrid button').forEach((b) => b.classList.toggle('on', b.dataset.op === p.op));
-  $('#mixPick').hidden = p.op !== 'mix';
-  $$('#mixPick button').forEach((b) => b.classList.toggle('on', b.dataset.mix === p.mix));
+  const ops = opsOf(p);
+  p.ops = ops;
+  $$('#opGrid button').forEach((b) => b.classList.toggle('on', ops.indexOf(b.dataset.op) >= 0));
   $$('#diffGrid button').forEach((b) => b.classList.toggle('on', b.dataset.diff === p.diff));
   $$('#rangeGrid button').forEach((b) => b.classList.toggle('on', (p.range || 'all') === b.dataset.range));
 }
@@ -2782,6 +2793,7 @@ function saveSettings(patch, pid) {
   renderProfileBar();
   if (p.id === Profiles.data.active) {
     S.diff = p.diff;
+    S.ops = opsOf(p);
     S.op = p.op;
     S.mixMode = p.mix;
     S.range = p.range === 'gen1' ? 'gen1' : 'all';
@@ -2886,6 +2898,7 @@ function applyProfile(id, opts) {
   S.diff = p.diff === 'elem' ? 'mid' : (DIFF_KEYS.includes(p.diff) ? p.diff : 'easy');
   S.op = OP_KEYS.includes(p.op) ? p.op : 'mix';
   S.mixMode = p.mix === 'pm' ? 'pm' : 'all';
+  S.ops = opsOf(p);
   S.range = p.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(p.id);
   renderProfileBar();
@@ -2957,18 +2970,20 @@ function bind() {
   $$('#opGrid button').forEach((b) => {
     b.addEventListener('click', () => {
       Sound.ensure(); Sound.click();
-      const p = Profiles.get(setTarget);
+      const p = Profiles.get(setTarget) || Profiles.active();
       const op = b.dataset.op;
-      if (!p || p.op === op) return;
-      saveSettings({ op }, setTarget);
-      toast(OP_LABEL[op] + (op === 'mix' ? ' — 아래에서 골라 주세요' : ' 연산'), 'info', 1100);
-    });
-  });
-  $$('#mixPick button').forEach((b) => {
-    b.addEventListener('click', () => {
-      Sound.ensure(); Sound.click();
-      saveSettings({ mix: b.dataset.mix, op: 'mix' }, setTarget);
-      toast(b.dataset.mix === 'pm' ? '섞어서 — 덧셈+뺄셈' : '섞어서 — 사칙연산 전부', 'info', 1100);
+      if (!OP_ORDER.includes(op)) return;
+      const cur = opsOf(p);
+      const has = cur.indexOf(op) >= 0;
+      let next;
+      if (has) {
+        next = cur.filter((o) => o !== op);
+        if (!next.length) { toast('연산은 하나 이상 골라야 해요', 'bad', 1300); return; }
+      } else {
+        next = OP_ORDER.filter((o) => cur.indexOf(o) >= 0 || o === op);
+      }
+      saveSettings({ ops: next, op: next.length === OP_ORDER.length ? 'mix' : next[0], mix: next.length === 2 && next.indexOf('add') >= 0 && next.indexOf('sub') >= 0 ? 'pm' : 'all' }, setTarget);
+      toast(has ? OP_LABEL[op] + ' 뺐어요' : OP_LABEL[op] + ' 넣었어요', 'info', 1100);
     });
   });
   $$('#diffGrid button').forEach((b) => {
@@ -3075,6 +3090,7 @@ function boot() {
   S.diff = me.diff === 'elem' ? 'mid' : (DIFF_KEYS.includes(me.diff) ? me.diff : 'easy');
   S.op = OP_KEYS.includes(me.op) ? me.op : 'mix';
   S.mixMode = me.mix === 'pm' ? 'pm' : 'all';
+  S.ops = opsOf(me);
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();
