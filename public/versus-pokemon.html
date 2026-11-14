@@ -133,6 +133,21 @@
     background:linear-gradient(180deg,#ff6a3d,#c81f0c);border:2px solid #ffd0b0;
     box-shadow:0 4px 14px rgba(0,0,0,.35);animation:sepop .35s cubic-bezier(.2,1.6,.4,1) both}
   @keyframes sepop{from{opacity:0;transform:translate(-50%,-8px) scale(.7)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+  .finish-blast{position:absolute;z-index:8;pointer-events:none;width:18px;height:18px;border-radius:50%;
+    border:5px solid #fff;box-shadow:0 0 28px #ffd75e,inset 0 0 18px #ffb347;
+    transform:translate(-50%,-50%);animation:blast .8s ease-out forwards}
+  @keyframes blast{0%{opacity:1;transform:translate(-50%,-50%) scale(.3)}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(16)}}
+  .finish-text{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);z-index:9;
+    font-size:clamp(20px,6vw,38px);font-weight:900;color:#fff;white-space:nowrap;
+    text-shadow:0 3px 0 #b03a00,0 0 18px #ffb347;animation:fintext 1.1s ease-out forwards}
+  @keyframes fintext{0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(-8deg)}
+    28%{opacity:1;transform:translate(-50%,-50%) scale(1.18) rotate(3deg)}
+    75%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-62%) scale(1.04)}}
+  .field.shake{animation:fshake .5s ease-in-out}
+  @keyframes fshake{0%,100%{transform:translate(0)}20%{transform:translate(-6px,3px)}
+    40%{transform:translate(5px,-3px)}60%{transform:translate(-4px,2px)}80%{transform:translate(3px,-1px)}}
   .centerflash{position:fixed;inset:0;z-index:50;pointer-events:none;background:#fff;opacity:0}
   .centerflash.go{animation:cflash .5s ease-out}
   @keyframes cflash{0%{opacity:.85}100%{opacity:0}}
@@ -871,10 +886,30 @@
     clearInterval(D.s.p2.timer);
     const loser = other(winner);
     const lf = $('#f' + (loser.pos === 'p1' ? '1' : '2'));
+    const half = lf.parentNode;
+    /* 피니셔 — 마지막 한 방: 폭발 링 + 강타 문구 + 화면 흔들림 */
+    try {
+      const a = lf.getBoundingClientRect();
+      const hb = half.getBoundingClientRect();
+      const blast = document.createElement('span');
+      blast.className = 'finish-blast';
+      blast.style.left = (a.left + a.width / 2 - hb.left) + 'px';
+      blast.style.top = (a.top + a.height / 2 - hb.top) + 'px';
+      half.appendChild(blast);
+      const tx = document.createElement('b');
+      tx.className = 'finish-text';
+      tx.textContent = '💥 피니셔!';
+      half.appendChild(tx);
+      const field = $('#field');
+      field.classList.remove('shake');
+      void field.offsetWidth;
+      field.classList.add('shake');
+      setTimeout(() => field.classList.remove('shake'), 600);
+    } catch (e) { /* */ }
     lf.classList.add('out');
     flashScreen();
     Sfx.fanfare();
-    setTimeout(() => openOver(winner), 900);
+    setTimeout(() => openOver(winner), 1100);
   }
 
   /* ---------- 보상 ---------- */
