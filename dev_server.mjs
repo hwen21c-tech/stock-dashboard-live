@@ -24,6 +24,10 @@ const api = {
   '/api/stock-chart': require('./api/stock-chart.js'),
   '/api/deals-shopping': require('./api/deals-shopping.js'),
   '/api/dart-live': require('./api/dart-live.js'),
+  '/api/index-chart': require('./api/index-chart.js'),
+  '/api/macro-live': require('./api/macro-live.js'),
+  '/api/econ-calendar': require('./api/econ-calendar.js'),
+  '/api/stock-trend': require('./api/stock-trend.js'),
 };
 
 const MIME = {

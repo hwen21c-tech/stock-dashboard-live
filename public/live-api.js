@@ -219,6 +219,24 @@
         target = findTicker(function (l) { return l.indexOf('코스닥') >= 0 && l.indexOf('선물') < 0; });
       }
       if (target && paintTicker(target, price.toFixed(2) + ' ' + pctText(p), p)) applied += 1;
+      // 모달을 열었을 때도 같은 수치가 보이도록 onclick 인자를 실시간 값으로 다시 쓴다
+      if (target && (idx.key === 'KOSPI' || idx.key === 'KOSDAQ')) {
+        var isKospi = idx.key === 'KOSPI';
+        var v1 = price.toFixed(2) + 'pt ' + pctText(p);
+        var v2 = '전일 종가 ' + (num(idx.price - (idx.change || 0)) === null ? '—'
+          : (idx.price - (idx.change || 0)).toFixed(2) + 'pt') +
+          (idx.valueText ? ' · 거래대금 ' + idx.valueText : '');
+        var desc = (idx.status === 'CLOSE' ? '직전 정규장 마감값(네이버 금융) · ' : '네이버 금융 실시간 · ') +
+          '일봉은 /api/index-chart(Yahoo 1년)에서 실제 캔들로 그립니다.';
+        repaintOnclick(
+          target,
+          isKospi ? '코스피 (KOSPI)' : '코스닥 (KOSDAQ)',
+          v1,
+          v2,
+          desc,
+          isKospi ? 'kospi' : 'kosdaq'
+        );
+      }
     }
 
     var futures = payload.futures || [];
@@ -235,6 +253,17 @@
         ft = findTicker(function (l) { return l.indexOf('S&P500') >= 0; });
       }
       if (ft && paintTicker(ft, fPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + pctText(fp), fp)) applied += 1;
+      if (ft && fut.symbol === 'NQ=F') {
+        repaintOnclick(
+          ft,
+          'E-mini 나스닥 100 선물 (CME Globex NQ 최근월물)',
+          fPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'pt ' + pctText(fp),
+          '전일 종가 ' + (num(fut.previousClose) === null ? '—'
+            : num(fut.previousClose).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'pt'),
+          '야후 NQ=F · ' + (fut.asOfKst ? fut.asOfKst + ' KST 기준' : 'CME 최근월물') + ' · 일봉은 /api/index-chart 실데이터',
+          'nasdaq_fut'
+        );
+      }
     }
 
     var fx = payload.fx;
@@ -244,6 +273,20 @@
         var fxp = num(fx.changePct);
         var ft2 = findTicker(function (l) { return l.indexOf('원/달러') >= 0; });
         if (ft2 && paintTicker(ft2, fxPrice.toFixed(2) + '원 ' + pctText(fxp), fxp)) applied += 1;
+        if (ft2) {
+          // 실제 값의 성격(네이버 환율 = 서울 외환시장 고시/최종 체결)으로 배지를 맞춘다 — '야간 NDF' 표기는 근거가 없다
+          setTickerBadge(ft2, fx.source === 'yahoo' ? '야후 KRW=X' : '서울환시 기준');
+          ft2.item.setAttribute('title', '원/달러 환율 · ' + (fx.source === 'yahoo' ? 'Yahoo KRW=X' : '네이버 환율(서울 외환시장)') +
+            (fx.tradedDate ? ' · ' + fx.tradedDate + ' 기준' : '') + ' · NDF는 공개 실시간 API가 없습니다');
+          repaintOnclick(
+            ft2,
+            '원/달러 환율 (서울 외환시장 기준)',
+            fxPrice.toFixed(2) + '원 ' + pctText(fxp),
+            '기준 ' + (fx.tradedDate || '—') + ' · 일봉은 /api/index-chart(KRW=X) 실데이터',
+            '네이버·야후 환율 · NDF 환율은 공개 실시간 API가 없습니다.',
+            'usdkrw'
+          );
+        }
       }
     }
 
@@ -1056,6 +1099,8 @@
         window.modalAllCandles = candles;
         window.modalViewCount = Math.min(60, candles.length);
         window.modalViewOffset = 0;
+        // 종목 차트의 최고/최저는 '원' 단위 (지수 모달의 pt/$ 단위가 남아 있지 않게)
+        if (typeof window.setModalValueUnit === 'function') window.setModalValueUnit('원', 0);
 
         setLinks(body.code);
         hideNotice();
@@ -1437,7 +1482,12 @@
         ? state.deepHtml
         : '<div style="color:#94a3b8; font-size:11.5px;">정시 AI 심층 브리핑 전문을 불러오지 못했습니다. 상단의 ⚡ 실시간 팩트 브리핑을 참고해 주세요.</div>';
 
-      if (bodyEl) bodyEl.innerHTML = skeletonHtml() + deep;
+      // 실시간 팩트(위)와 정시 전문 스냅샷(아래)의 시점이 다르다 — 경계를 화면에 적는다
+      var sep = '<div style="margin:14px 0 8px 0; padding:6px 10px; border-radius:6px; background:rgba(148,163,184,0.10); ' +
+        'border:1px dashed rgba(148,163,184,0.35); font-size:10.5px; color:#cbd5e1; font-weight:800;">' +
+        '▼ 아래는 <span style="color:#fbbf24;">정시 브리핑 전문 스냅샷</span>입니다 — 위의 실시간 팩트와 시점이 달라 지수·선물 방향이 다를 수 있습니다.' +
+        '</div>';
+      if (bodyEl) bodyEl.innerHTML = skeletonHtml() + sep + deep;
       if (titleEl) titleEl.textContent = '⚡ 실시간 브리핑 — 지금 이 순간 팩트 + 정시 심층 전문';
       if (timeEl) timeEl.textContent = '클릭 순간 실시간 팩트 · ' + nowHms() + ' KST';
       if (modal) modal.style.display = 'flex';

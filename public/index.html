@@ -2198,72 +2198,71 @@
     </div>
   </div>
   <div id="tabOverview">
-    <!-- 🌅 08:00~09:00 장전 프리마켓 실측 레이더 (NXT 체결 & 08:30 동시호가) -->
-    <div class="premarket-radar-box" style="margin-bottom: 12px; background: linear-gradient(135deg, rgba(30,27,75,0.85) 0%, rgba(15,23,42,0.95) 100%); border: 1px solid #4338ca; border-radius: 10px; padding: 11px 13px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+    <!-- 🌐 실시간 시세 레이더 (전 종목 /api/stock-live 20초 폴링 · live-extra.js 가 채운다) -->
+    <div class="premarket-radar-box" id="premarketRadarBox" style="margin-bottom: 12px; background: linear-gradient(135deg, rgba(30,27,75,0.85) 0%, rgba(15,23,42,0.95) 100%); border: 1px solid #4338ca; border-radius: 10px; padding: 11px 13px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap:6px; flex-wrap:wrap;">
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 15px;">🌅</span>
-          <span style="font-size: 12.5px; font-weight: 800; color: #c7d2fe;">🌐 20:00 ~ 익일 08:00 글로벌 야간선물 & 미 증시 본장 레이더</span>
+          <span style="font-size: 15px;">🌐</span>
+          <span style="font-size: 12.5px; font-weight: 800; color: #c7d2fe;">실시간 주도 테마 · 시초가 관심주 · 검색 상위</span>
         </div>
-        <span style="font-size: 10px; background: #064e3b; color: #6ee7b7; padding: 2px 6px; border-radius: 4px; border: 1px solid #10b981; font-weight: 800;">KRX 야간선물 & CME 나스닥 연동 🌙</span>
+        <span id="pmSessionBadge" style="font-size: 10px; background: #1e293b; color: #cbd5e1; padding: 2px 6px; border-radius: 4px; border: 1px solid #334155; font-weight: 800;">⚡ 시세 연결 중…</span>
       </div>
-      <div style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">
-        ※ 국내 정규장 마감 후 KRX 코스피200 야간선물과 미국 CME 나스닥 100 선물, 원자재 실시간 시세를 30분 안심 주기로 추적합니다.
+      <div style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;" id="pmNote">
+        ※ 종목 가격은 <strong>/api/stock-live</strong> 실시간 시세로 20초마다 갱신됩니다(전일 종가 대비). 외인·기관 순매수 금액은 거래소 확정치라 실시간이 아닙니다.
       </div>
 
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-bottom: 8px;">
-        <!-- 트랙 1: 스탁이지 6대 테마 (11/13 프리마켓) -->
+        <!-- 트랙 1: 주도 테마 (상위 5) -->
         <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(16,185,129,0.3); border-radius: 6px; padding: 8px 10px; cursor: pointer;" onclick="openPremarketDetail('nxt')">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11.5px; font-weight:800; color:#6ee7b7;">⚡ 스탁이지 6대 주도 테마</span>
-            <span style="font-size:10px; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:1px 4px; border-radius:3px;">화면 일치 🔍</span>
+            <span style="font-size:11.5px; font-weight:800; color:#6ee7b7;">⚡ 스탁이지 주도 테마 (상위 5)</span>
+            <span style="font-size:10px; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:1px 4px; border-radius:3px;">시세 실시간</span>
           </div>
-          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.45;">
-            • <strong>1위 AI SW/보안:</strong> 지니언스(31,350원 2,535억)·코난(12,930원)<br>
-            • <strong>2위 우주항공:</strong> 컨텍(12,370원 스페이스X 🚀)·AP위성(10,420원)<br>
-            • <strong>3위 K-POP 엔터:</strong> JYP Ent.(45,100원 실적호전)·에스엠<br>
-            • <strong>4위 CXL/PCB:</strong> 코리아써키트(88,600원 시간외 1위)·티엘비(41,400원)<br>
-            • <strong>5위 반도체 소부장:</strong> 주성엔지(172,000원 3,932억 코스닥1위)
+          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.5;">
+            • <strong>1위 AI SW/보안:</strong> <span class="pm-q" data-pm-code="263860" data-pm-name="지니언스">지니언스</span> · <span class="pm-q" data-pm-code="402030" data-pm-name="코난테크놀로지">코난</span><br>
+            • <strong>2위 우주항공:</strong> <span class="pm-q" data-pm-code="451760" data-pm-name="컨텍">컨텍</span> · <span class="pm-q" data-pm-code="211270" data-pm-name="AP위성">AP위성</span><br>
+            • <strong>3위 K-POP 엔터:</strong> <span class="pm-q" data-pm-code="035900" data-pm-name="JYP Ent.">JYP Ent.</span> · <span class="pm-q" data-pm-code="041510" data-pm-name="에스엠">에스엠</span><br>
+            • <strong>4위 CXL/PCB:</strong> <span class="pm-q" data-pm-code="007810" data-pm-name="코리아써키트">코리아써키트</span> · <span class="pm-q" data-pm-code="356860" data-pm-name="티엘비">티엘비</span><br>
+            • <strong>5위 반도체 소부장:</strong> <span class="pm-q" data-pm-code="036930" data-pm-name="주성엔지니어링">주성엔지니어링</span>
           </div>
         </div>
 
-        <!-- 트랙 2: 11/13 시초가 핵심 관심주 -->
+        <!-- 트랙 2: 시초가 핵심 관심주 -->
         <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(99,102,241,0.3); border-radius: 6px; padding: 8px 10px; cursor: pointer;" onclick="openPremarketDetail('krx')">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11.5px; font-weight:800; color:#c7d2fe;">🎯 11/13 시초가 핵심 관심주 분석</span>
+            <span style="font-size:11.5px; font-weight:800; color:#c7d2fe;">🎯 시초가 핵심 관심주</span>
             <span style="font-size:10px; background:rgba(99,102,241,0.2); color:#c7d2fe; padding:1px 4px; border-radius:3px;">터치시 확대 🔍</span>
           </div>
-          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.45;">
-            • <strong>컨텍 (12,370원):</strong> 스페이스X 350조 가치 돌파 속보 수혜 1순위 👑<br>
-            • <strong>지니언스 (31,350원):</strong> 2,535억 초대량 거래 EDR 보안 독점 부각 🚨<br>
-            • <strong>주성엔지니어링 (172,000원):</strong> 코스닥 1위 대금 ➔ SOX +3.4% 훈풍 익절 타점<br>
-            • <strong>코리아써키트 (88,600원):</strong> 전일 시간외 84억 1위 ➔ CXL 1조 투자 모멘텀
+          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.55;">
+            • <span class="pm-q" data-pm-code="451760" data-pm-name="컨텍">컨텍</span> — 스페이스X 수혜 1순위<br>
+            • <span class="pm-q" data-pm-code="263860" data-pm-name="지니언스">지니언스</span> — EDR 보안 대장<br>
+            • <span class="pm-q" data-pm-code="036930" data-pm-name="주성엔지니어링">주성엔지니어링</span> — 코스닥 대금 상위<br>
+            • <span class="pm-q" data-pm-code="007810" data-pm-name="코리아써키트">코리아써키트</span> — CXL 기판 모멘텀
           </div>
         </div>
 
-        <!-- 트랙 3: 네이버 & 스탁이지 검색 랭킹 -->
+        <!-- 트랙 3: 검색·대형주 -->
         <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(56,189,248,0.3); border-radius: 6px; padding: 8px 10px; cursor: pointer;" onclick="openPremarketDetail('search')">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11.5px; font-weight:800; color:#7dd3fc;">🔍 네이버 & 스탁이지 실시간 검색</span>
-            <span style="font-size:10px; background:rgba(56,189,248,0.2); color:#7dd3fc; padding:1px 4px; border-radius:3px;">터치시 확대 🔍</span>
+            <span style="font-size:11.5px; font-weight:800; color:#7dd3fc;">🔍 검색 상위 · 대형주</span>
+            <span style="font-size:10px; background:rgba(56,189,248,0.2); color:#7dd3fc; padding:1px 4px; border-radius:3px;">시세 실시간</span>
           </div>
-          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.45;">
-            • <strong>1위 삼성전자 (208,000원):</strong> SOX 반도체 +3.42% 급등 & CES 혁신상<br>
-            • <strong>2위 SK하이닉스 (1,254,000원):</strong> 로젠블랫 $400 & 기관 4,787억 방어<br>
-            • <strong>3위 컨텍 (12,370원):</strong> 스페이스X 350조 기업가치 & 위성 데이터 1위<br>
-            • <strong>4위 지니언스 (31,350원):</strong> 코스닥 2,535억 대금 폭발 보안 대장<br>
-            • <strong>5위 주성엔지니어링 (172,000원):</strong> 코스닥 3,932억 압도적 1위 대장주
+          <div style="font-size:10.5px; color:#cbd5e1; margin-top:4px; line-height:1.55;">
+            • <span class="pm-q" data-pm-code="005930" data-pm-name="삼성전자">삼성전자</span><br>
+            • <span class="pm-q" data-pm-code="000660" data-pm-name="SK하이닉스">SK하이닉스</span><br>
+            • <span class="pm-q" data-pm-code="451760" data-pm-name="컨텍">컨텍</span><br>
+            • <span class="pm-q" data-pm-code="263860" data-pm-name="지니언스">지니언스</span><br>
+            • <span class="pm-q" data-pm-code="036930" data-pm-name="주성엔지니어링">주성엔지니어링</span>
           </div>
         </div>
       </div>
 
-      <!-- 동시호가 실전 체크 포인트 바 -->
+      <!-- 세션 · 동기화 상태 (JS 계산값) -->
       <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); padding:6px 10px; border-radius:6px; font-size:10px; color:#e2e8f0; flex-wrap:wrap; gap:4px;">
-        <span>🎯 <strong>장전 세션 진행 (08:30~09:00):</strong> 장전 시간외 종가 접수 ➔ <strong>08:50 시초가 타점 브리핑</strong> 연동 ➔ 09:00 본장 개장 체결</span>
-        <span style="color:#4ade80; font-weight:800; white-space:nowrap;">🟢 11/13 확정 종가 100% 일치 동기화</span>
+        <span id="pmSessionText">🎯 세션 상태 계산 중…</span>
+        <span id="pmSyncBadge" style="color:#94a3b8; font-weight:800; white-space:nowrap;">⚡ 시세 동기화 대기</span>
       </div>
     </div>
-
     <div class="sec-head">
       <span>🔥 실시간 주도 테마맵 (엄선 8대 테마)</span>
       <span class="sub">스탁이지 · 주맵 실시간 체결 검증</span>
@@ -2274,8 +2273,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">1위 💻 시스템반도체 / 디자인하우스</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+18.75% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,168억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+18.75% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,168억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('가온칩스', '+29.92%', '대금 923억 | 현재가 38,650원', '글로벌 파운드리 핵심 디자인솔루션파트너(DSP) 수혜로 상한가 폭발.')">
@@ -2304,8 +2303,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">2위 💰 창투사 / 벤처캐피탈</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+19.53% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 628억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+19.53% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 628억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('DSC인베스트먼트', '+29.92%', '대금 310억 | 현재가 8,120원', '보유 AI 및 퓨리오사AI 지분가치 부각으로 상한가 직행.')">
@@ -2334,8 +2333,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">3위 🏗️ 건설 중소형 / 인프라 재건</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+13.88% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1,070억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+13.88% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1,070억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('금호건설', '+29.90%', '대금 957억 | 현재가 11,210원', '1,000억 거래대금 폭발 상한가 잠금, 대형 공공 인프라 및 신규 수주 모멘텀.')">
@@ -2364,8 +2363,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">4위 ⚡ 전선 / 전력 인프라</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+9.20% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,283억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+9.20% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,283억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('KBI메탈', '+25.62%', '대금 1,003억 | 현재가 4,585원', '구리 가격 상승 및 글로벌 전력망 구축용 모터코어 소재 공급 폭발.')">
@@ -2394,8 +2393,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">5위 🤖 지능형 로봇 / AI 제조</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.69% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1,302억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.69% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1,302억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('레인보우로보틱스', '+9.55%', '대금 1,153억 | 현재가 378,500원', '삼성 휴머노이드 로봇 협력 및 산업용 협동로봇 수주 지속.')">
@@ -2424,8 +2423,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">6위 🧠 온디바이스 AI / 뉴로모픽</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.82% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 213억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.82% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 213억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('자람테크놀로지', '+7.04%', '대금 28.1억 | 현재가 10,650원', '초전력 AI 반도체 및 뉴로모픽 프로세서 국책과제 부각.')">
@@ -2454,8 +2453,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">7위 👑 CXL / 차세대 메모리 & 기판</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.80% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1.0조)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+4.80% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 1.0조)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('코리아써키트', '+3.16%', '대금 3,448억 | 현재가 91,400원', '엔비디아 루빈 CXL 3.1 차세대 표준 채택 및 대규모 FC-BGA 수주 모멘텀 실질 대장주.')">
@@ -2484,8 +2483,8 @@
       <div class="theme-block">
         <div class="theme-header">
           <span class="theme-name">8위 🛡️ AI 보안 / EDR 제로트러스트</span>
-          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+2.39% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,372억)</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span>
-          </span>
+          <span class="theme-avg" style="color:var(--accent-red); font-weight:800; font-feature-settings:'tnum';">+2.39% <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 2,372억)</span></span>
+          
         </div>
         <div class="stock-tiles">
           <div class="stock-tile leader" onclick="openDetail('지니언스', '+8.93%', '대금 2,304억 | 현재가 34,150원', '국정원·과기부 차세대 EDR 의무화 및 2,161억 대량대금 신고가 실질 대장주.')">
@@ -2930,7 +2929,7 @@
         <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5;">
           • <strong>지수 실시간(코스피·코스닥):</strong> 코스피 <span id="afKospi" title="/api/stock-live 실시간 지수">5,290.53 (-0.98%)</span> · 코스닥 <span id="afKosdaq" title="/api/stock-live 실시간 지수">699.66 (+0.45%)</span> · <span style="color:#94a3b8;" title="KRX 주간선물은 무료 실시간 소스가 없습니다">코스피200 주간선물 836.35 (+2.99%) [직전 확정 · 실시간 아님]</span><br>
           • <strong>글로벌 선물 실시간(NQ=F·ES=F):</strong> CME E-mini 나스닥100 선물 <span id="afNq" title="Yahoo Finance NQ=F 실시간">28,442.50 (+2.18%)</span> · S&amp;P500 선물 <span id="afEs" title="Yahoo Finance ES=F 실시간">6,002.50 (+0.55%)</span> · <span style="color:#94a3b8;">필라델피아반도체 <span id="afSox" title="야후 ^SOX · /api/stock-live 연동">10,146.32 (-3.43%)</span> [美장 마감값 · 일 1회 갱신]</span><br>
-          • <strong style="color:#fbbf24;">KRX 야간선물(공개 실시간 API 없음 · 위 지수·선물과 별개):</strong> <strong>837.50 (+0.14%)</strong> — 11/14 KRX 06:00 확정치 기준이며 실시간 시세가 아닙니다<br>
+          • <strong style="color:#fbbf24;">KRX 야간선물(공개 실시간 API 없음 · 위 지수·선물과 별개):</strong> 상단 티커의 <strong>KRX 06:00 확정값</strong>이 유일한 근거이며, 이 요약 줄에서는 숫자를 따로 적지 않습니다(같은 항목이 두 값으로 보이던 문제 제거) · 실시간 시세가 아닙니다<br>
           • <strong>환율 & 확정 수급:</strong> 원/달러 1,333.80원 하향 안정 · WTI 유가 <span id="afWti" title="야후 CL=F · /api/stock-live 연동">$88.56 (-0.20%)</span> · 외국인(코스피) -5,521억 원 vs 기관(코스피) +23억 원 (연기금 +640억 순매수 방어) · 외인 선물 +12,400계약 대량 순매수 지지<br>
           <div style="background:#0c4a6e; border:1px solid #0284c7; border-radius:6px; padding:8px 10px; margin-top:6px; color:#f0f9ff;">
             🎯 <strong>내일(익주 월요일 11/16) 장세 및 시초가 예측:</strong> <span style="font-size:10.5px; color:#94a3b8;">— 11/13 마감 시점에 작성한 정적 시나리오입니다. 위 실시간 수치와 다를 수 있습니다(자동 갱신 아님).</span><br>
@@ -2960,7 +2959,7 @@
         </div>
 
         <!-- 17:50 보안 속보 -->
-        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('17:50 국정원·과기부 공공·금융망 차세대 EDR 및 제로트러스트 보안 도입 가이드라인 배포', '17:50 보안 속보', 'https://search.naver.com/search.naver?where=news&query=%EA%B5%AD%EC%A0%95%EC%9B%90%20%EA%B3%BC%EA%B8%B0%EB%B6%80%20EDR%20%EC%A0%9C%EB%A1%9C%ED%8A%B8%EB%9F%AC%EC%8A%A4%ED%8A%B8', '공공·금융 망분리 개선 및 EDR 의무화 수혜', '과거: 2024년 7월 글로벌 클라우드스트라이크 사태 당시 국산 보안 대체 랠리', '🎯 이번 수혜 유력: <strong>지니언스 (+13.24%, 2,150억 1위), 샌즈랩, 파수, 모니터랩</strong>')">
+        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('17:50 국정원·과기부 공공·금융망 차세대 EDR 및 제로트러스트 보안 도입 가이드라인 배포', '17:50 보안 속보', 'https://search.naver.com/search.naver?where=news&query=%EA%B5%AD%EC%A0%95%EC%9B%90%20%EA%B3%BC%EA%B8%B0%EB%B6%80%20EDR%20%EC%A0%9C%EB%A1%9C%ED%8A%B8%EB%9F%AC%EC%8A%A4%ED%8A%B8', '공공·금융 망분리 개선 및 EDR 의무화 수혜', '과거: 2024년 7월 글로벌 클라우드스트라이크 사태 당시 국산 보안 대체 랠리', '🎯 이번 수혜 유력: <strong>지니언스 (AI 보안 대장), 샌즈랩, 파수, 모니터랩</strong>')">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
             <span class="af-time">17:50 보안 속보</span>
             <a href="https://search.naver.com/search.naver?where=news&query=%EA%B5%AD%EC%A0%95%EC%9B%90%20%EA%B3%BC%EA%B8%B0%EB%B6%80%20EDR%20%EC%A0%9C%EB%A1%9C%ED%8A%B8%EB%9F%AC%EC%8A%A4%ED%8A%B8" target="_blank" rel="noopener noreferrer" style="font-size:10px; background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -2968,11 +2967,11 @@
           <div class="af-title">국정원·과기부, 공공·금융망 차세대 EDR 및 제로트러스트 보안 도입 가이드라인 전격 배포</div>
           <div class="af-move">공공·금융 망분리 규제 완화 및 엔드포인트 EDR 보안 솔루션 전면 의무화 수혜</div>
           <div class="af-history">과거: 정부 보안 가이드라인 발표 시 EDR 1위 기업 5거래일 누적 외인·기관 쌍끌이 승률 91%</div>
-          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>지니언스 (+13.24%, 대금 2,150억 압도적 1위), 샌즈랩, 파수, 모니터랩</strong></div>
+          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>지니언스 (AI 보안 대장), 샌즈랩, 파수, 모니터랩</strong></div>
         </div>
 
         <!-- 16:40 반도체 공시 -->
-        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('16:40 가온칩스, 글로벌 빅테크향 2나노 차세대 AI 가속기 디자인하우스 대규모 수주 공시', '16:40 반도체 공시', 'https://search.naver.com/search.naver?where=news&query=%EA%B0%80%EC%98%A8%EC%B9%A9%EC%8A%A4%202%EB%82%98%EB%85%B8%20AI%20%EC%88%98%EC%A3%BC', '2나노 최선단 파운드리 디자인하우스 수혜', '과거: 선단 공정 디자인하우스 대형 수주 공시 시 2~3거래일 연속 상한가 랠리', '🎯 이번 수혜 유력: <strong>가온칩스 (상한가 38,650원 안착), 에이디테크놀로지, 퀄리타스반도체</strong>')">
+        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('16:40 가온칩스, 글로벌 빅테크향 2나노 차세대 AI 가속기 디자인하우스 대규모 수주 공시', '16:40 반도체 공시', 'https://search.naver.com/search.naver?where=news&query=%EA%B0%80%EC%98%A8%EC%B9%A9%EC%8A%A4%202%EB%82%98%EB%85%B8%20AI%20%EC%88%98%EC%A3%BC', '2나노 최선단 파운드리 디자인하우스 수혜', '과거: 선단 공정 디자인하우스 대형 수주 공시 시 2~3거래일 연속 상한가 랠리', '🎯 이번 수혜 유력: <strong>가온칩스 (시스템반도체 대장), 에이디테크놀로지, 퀄리타스반도체</strong>')">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
             <span class="af-time">16:40 반도체 공시</span>
             <a href="https://search.naver.com/search.naver?where=news&query=%EA%B0%80%EC%98%A8%EC%B9%A9%EC%8A%A4%202%EB%82%98%EB%85%B8%20AI%20%EC%88%98%EC%A3%BC" target="_blank" rel="noopener noreferrer" style="font-size:10px; background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -2980,11 +2979,11 @@
           <div class="af-title">가온칩스, 글로벌 빅테크향 2나노 차세대 AI 가속기 디자인하우스 대규모 수주 계약 체결</div>
           <div class="af-move">삼성 파운드리 2나노 공정 핵심 파트너 입증 · 시스템반도체 섹터 전반 밸류에이션 리레이팅</div>
           <div class="af-history">과거: 북미 빅테크 턴키 디자인 수주 발표 기업 익일 갭상승 승률 89% 기록</div>
-          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>가온칩스 (상한가 38,650원 안착), 에이디테크놀로지, 퀄리타스반도체</strong></div>
+          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>가온칩스 (시스템반도체 대장), 에이디테크놀로지, 퀄리타스반도체</strong></div>
         </div>
 
         <!-- 16:10 인프라 공시 -->
-        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('16:10 금호건설, 1조 2,000억 원 규모 대형 공공 인프라 재건 수주 계약 체결', '16:10 인프라 공시', 'https://search.naver.com/search.naver?where=news&query=%EA%B8%88%ED%98%B8%EA%B1%B4%EC%84%A4%201%EC%A1%B02000%EC%96%B5%20%EC%88%98%EC%A3%BC', '공공 인프라 및 재건 토목 수혜', '과거: 시총 대비 300% 이상 초대형 수주 공시 시 2~3연속 상한가 폭발 이력', '🎯 이번 수혜 유력: <strong>금호건설 (상한가 11,210원 42만 주 잠금), 남화토건, 동부건설</strong>')">
+        <div class="af-card" style="border-left: 3px solid #a855f7;" onclick="openNewsDetail('16:10 금호건설, 1조 2,000억 원 규모 대형 공공 인프라 재건 수주 계약 체결', '16:10 인프라 공시', 'https://search.naver.com/search.naver?where=news&query=%EA%B8%88%ED%98%B8%EA%B1%B4%EC%84%A4%201%EC%A1%B02000%EC%96%B5%20%EC%88%98%EC%A3%BC', '공공 인프라 및 재건 토목 수혜', '과거: 시총 대비 300% 이상 초대형 수주 공시 시 2~3연속 상한가 폭발 이력', '🎯 이번 수혜 유력: <strong>금호건설 (인프라 수주 대장), 남화토건, 동부건설</strong>')">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
             <span class="af-time">16:10 인프라 공시</span>
             <a href="https://search.naver.com/search.naver?where=news&query=%EA%B8%88%ED%98%B8%EA%B1%B4%EC%84%A4%201%EC%A1%B02000%EC%96%B5%20%EC%88%98%EC%A3%BC" target="_blank" rel="noopener noreferrer" style="font-size:10px; background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -2992,7 +2991,7 @@
           <div class="af-title">금호건설, 1조 2,000억 원 규모 대형 공공 인프라 재건 수주 계약 체결 공시</div>
           <div class="af-move">단순 기대감이 아닌 1.2조 확정 수주 입증 · 1,068억 원 대량 대금 폭발하며 상한가 직행</div>
           <div class="af-history">과거: 시총 대비 초대형 턴어라운드 수주사 익일 시초가 +12% 이상 갭상승 승률 88%</div>
-          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>금호건설 (상한가 11,210원 42만 주 잠금), 남화토건, 동부건설</strong></div>
+          <div class="af-beneficiary">🎯 이번 수혜 유력: <strong>금호건설 (인프라 수주 대장), 남화토건, 동부건설</strong></div>
         </div>
 
       </div>
@@ -3000,84 +2999,33 @@
       <!-- 3. 애프터마켓(시간외) 강세 종목 & 4. 정규장 강세주 애프터마켓 흐름 분석 (2열 와이드) -->
       <div class="aftermarket-grid">
         
-        <!-- 3. 애프터마켓 실시간 강세 종목 -->
+        <!-- 3. 애프터마켓(시간외) 실시간 체결 순위 — live-api.js 시간외 엔진이 이 패널을 직접 채운다 -->
         <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#059669;">
           <div class="sec-head" style="border-bottom-color:#064e3b; color:#34d399; font-size:12.5px;">
             <span>🚀 3. 애프터마켓(시간외) 실시간 체결 강세 종목</span>
-            <span class="sub">16:00~18:00 시간외 단일가 11/13 실체결</span>
+            <span class="sub">시간외 체결·등락 실시간 산출</span>
+          </div>
+        </div>
+
+        <!-- 3-1. 강세주 실시간 시세 카드 (live-extra.js 가 /api/stock-live 로 채운다) -->
+        <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#059669;">
+          <div class="sec-head" style="border-bottom-color:#064e3b; color:#34d399; font-size:12.5px;">
+            <span>🚀 3-1. 강세주 실시간 시세</span>
+            <span class="sub">상한가 여부·통합대금 실시간 (/api/stock-live)</span>
           </div>
 
-          <div class="af-card" onclick="openDetail('금호건설 [시간외 상한가 잔량 유지]', '상한가 11,210원', '정규장 1,068억 상한가 안착', '【시간외 흐름】 1.2조 초대형 공공 인프라 수주 공시 모멘텀으로 시간외 단일가에서도 상한가 매수 잔량 42만 주가 탄탄하게 잠겨 차익 매물 전무.')">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="font-weight:800; color:#fff;">👑 금호건설 (건설/인프라 1위)</span>
-              <span style="font-weight:800; color:#34d399;">상한가 잠금 🟢</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">시간외 체결 11,210원 | 정규 대금 1,068억</div>
-            <div style="font-size:11px; color:#cbd5e1; background:#131d2e; padding:5px 7px; border-radius:4px; border-left:2px solid #34d399;">
-              1.2조 인프라 수주 호재로 시간외 단일가 42만 주 매수 잔량 유지, 익일 시초가 갭 형성 유력.
-            </div>
-          </div>
-
-          <div class="af-card" onclick="openDetail('가온칩스 [시간외 상한가 안착]', '상한가 38,650원', '정규장 980억 상한가', '【시간외 흐름】 글로벌 빅테크향 2나노 차세대 AI 디자인하우스 수주 발표로 시스템반도체 1등주 안착.')">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="font-weight:800; color:#fff;">★ 가온칩스 (시스템반도체 1등주)</span>
-              <span style="font-weight:800; color:#34d399;">상한가 안착 🟢</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">시간외 38,650원 | 정규 대금 980억</div>
-            <div style="font-size:11px; color:#cbd5e1; background:#131d2e; padding:5px 7px; border-radius:4px; border-left:2px solid #34d399;">
-              2나노 선단 공정 디자인 수주 발표로 시간외 매도 매물 완벽 소화, 강력한 상승 추세 형성.
-            </div>
-          </div>
-
-          <div class="af-card" onclick="openDetail('DSC인베스트먼트 [시간외 상한가]', '상한가 8,120원', '정규장 520억 상한가', '【시간외 흐름】 AI 스타트업 벤처캐피탈 투자금 회수 및 기업가치 재평가로 시간외 8,120원 단단히 유지.')">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="font-weight:800; color:#fff;">★ DSC인베스트먼트 (창투사 대장)</span>
-              <span style="font-weight:800; color:#34d399;">상한가 유지 🟢</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">시간외 8,120원 | 정규 대금 520억</div>
-            <div style="font-size:11px; color:#cbd5e1; background:#131d2e; padding:5px 7px; border-radius:4px; border-left:2px solid #34d399;">
-              AI 벤처투자 회수 사이클 도래에 따른 창투사 대장주 매수세 유입, 8천 원 라운드넘버 안착.
-            </div>
-          </div>
+          <div id="afStrongLive" data-live-panel="after-strong"></div>
         </div>
 
         <!-- 4. 정규장 주도주 애프터마켓 흐름 분석 -->
         <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#0284c7;">
           <div class="sec-head" style="border-bottom-color:#1e3a8a; color:#60a5fa; font-size:12.5px;">
             <span>🔍 4. 정규장 강세주 애프터마켓 흐름 분석</span>
-            <span class="sub">거래대금 2,000억+ 최상위 종목 11/13 시간외 점검</span>
+            <span class="sub">정규장 강세주 현재가·등락률·통합대금 실시간</span>
           </div>
 
-          <!-- 지니언스 -->
-          <div class="af-card" onclick="openDetail('지니언스 [시간외 매수 우위 안착]', '정규장 +13.24% ➔ 시간외 35,550원 (+0.14%)', '시간외 대금 68억 원', '【시간외 흐름】 정규장 2,150억 원 대량 자금 흡수 후 시간외에서 차익 매물 없이 35,500원선 완벽 지지 안착.')">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-weight:800; color:#fff;">★ 지니언스</span>
-              <span class="af-status-badge green">강세 안착 🟢 (35,550원)</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">정규장 +13.24%(2,150억) ➔ 시간외 35,550원(+0.14%)</div>
-            <div style="font-size:11px; color:#cbd5e1;">국정원·과기부 EDR 의무화 수혜로 시간외 매수 잔량 3.8만 주 견조, 3.5만 원 강력 지지.</div>
-          </div>
-
-          <!-- 코리아써키트 -->
-          <div class="af-card" onclick="openDetail('코리아써키트 [시간외 매수 우위]', '정규장 +1.81% ➔ 시간외 90,400원 (+0.22%)', '시간외 대금 92억 원', '【시간외 흐름】 CXL 3.1 정부 투자 및 엔비디아 CXL 표준 채택 모멘텀으로 시간외 매물 전량 소화 후 9만 원선 안착.')">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-weight:800; color:#fff;">★ 코리아써키트</span>
-              <span class="af-status-badge green">매수 우위 🟢 (90,400원)</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">정규장 +1.81%(2,864억) ➔ 시간외 90,400원(+0.22%)</div>
-            <div style="font-size:11px; color:#cbd5e1;">CXL 3.1 차세대 R-DIMM 기판 테마 대표주로 2,864억 흡수 후 9만 원 라운드넘버 안착.</div>
-          </div>
-
-          <!-- 주성엔지니어링 -->
-          <div class="af-card" onclick="openDetail('주성엔지니어링 [시간외 추가 상승]', '정규장 +1.48% ➔ 시간외 61,700원 (+1.48%)', '시간외 대금 84억 원', '【시간외 흐름】 글로벌 반도체 ALD 증착 장비 수주 모멘텀 지속으로 시간외에서 +1.48% 추가 상승.')">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-weight:800; color:#fff;">★ 주성엔지니어링</span>
-              <span class="af-status-badge green">추가 상승 🟢 (61,700원)</span>
-            </div>
-            <div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">정규장 +1.48%(3,594억) ➔ 시간외 61,700원(+1.48%)</div>
-            <div style="font-size:11px; color:#cbd5e1;">코스닥 시총 상위 반도체 소부장 대장주로 3,594억 원 대량 대금 바탕으로 우상향 지속.</div>
-          </div>
-
+          <!-- 실시간 시세 카드 (live-extra.js 가 /api/stock-live 로 채운다) -->
+          <div id="afLeaderLive" data-live-panel="after-leader"></div>
         </div>
 
       </div>
@@ -3086,6 +3034,16 @@
 
   <!-- TAB 4: MARKET & SUPPLY TIMELINE WITH FULL 12-HOURLY TIME SLOTS -->
   <div id="tabAnalysis" style="display: none;">
+
+      <!-- ⚡ 지금 이 순간 (실시간 · /api/live-briefing) — 아래 정시 브리핑 전문(스냅샷)과 구분 -->
+      <div id="nowMomentCard" style="background: linear-gradient(135deg, rgba(2,132,199,0.22), rgba(15,23,42,0.9)); border: 1px solid #0ea5e9; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:12.5px; font-weight:800; color:#7dd3fc;">⚡ 지금 이 순간 (실시간 팩트)</span>
+          <span id="nowMomentStamp" style="font-size:10.5px; background:rgba(56,189,248,0.18); color:#bae6fd; padding:2px 8px; border-radius:4px; font-weight:700;">⚡ 연결 중…</span>
+        </div>
+        <div id="nowMomentBody" style="font-size:11.5px; color:#cbd5e1; line-height:1.55;">클릭 시점의 실시간 지수·선물·환율·급등주를 불러오는 중입니다…</div>
+        <div style="font-size:10px; color:#64748b; margin-top:6px;">출처: /api/live-briefing (네이버 지수·종목, Yahoo 선물·환율) · 60초마다 갱신. 아래 타임라인은 <strong>정시 브리핑 전문 스냅샷</strong>이며 실시간 값이 아닙니다.</div>
+      </div>
 
       <!-- Top Callout Banner: Latest Briefing (22:00) -->
       <div class="callout-top" onclick="openBriefingModal('22:00')" style="background: linear-gradient(90deg, #1e1b4b 0%, #4338ca 100%); border: 1px solid #818cf8;">
@@ -3101,9 +3059,9 @@
       <!-- Tab Header -->
       <div style="margin: 12px 0 8px 0; display:flex; justify-content:space-between; align-items:flex-end;">
         <div>
-          <div style="font-size: 13.5px; font-weight: 800; color: #f8fafc;">📊 시간대별 시장 & 수급 심층 분석 (11/13 금 정규 타임라인)</div>
-          <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
-            오늘(11/13) 실시간 브리핑 연동 · 전일자(11/12)는 22:00 최종 야간 결산만 기준 보존 · 카드 터치 시 전문 팝업
+          <div id="analysisTimelineTitle" style="font-size: 13.5px; font-weight: 800; color: #f8fafc;">📊 시간대별 시장 & 수급 심층 분석</div>
+          <div id="analysisTimelineSub" style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+            직전 거래일 정시 브리핑 전문(스냅샷) · 카드 터치 시 전문 팝업
           </div>
         </div>
       </div>
@@ -3244,9 +3202,9 @@
 
       <!-- Upcoming Sessions Banner -->
       <div style="background: rgba(30,41,59,0.5); border: 1px dashed #334155; border-radius: 8px; padding: 10px 12px; margin: 12px 0;">
-        <div style="font-size: 11px; font-weight: 700; color: #94a3b8;">⏳ 오늘 남은 정규 브리핑 안내</div>
-        <div style="font-size: 10.5px; color: #64748b; margin-top: 3px; line-height: 1.5;">
-          16:00 장마감 총평(동시호가 마감 후 집계 중 ⏳) · 17:30/19:00/20:00 애프터마켓 결산 · 22:00/23:59 야간선물 브리핑은 해당 시각에 타임라인에 실시간 자동 등록됩니다.
+        <div id="remainingBriefingTitle" style="font-size: 11px; font-weight: 700; color: #94a3b8;">⏳ 정규 브리핑 안내</div>
+        <div id="remainingBriefingText" style="font-size: 10.5px; color: #64748b; margin-top: 3px; line-height: 1.5;">
+          16:00 장마감 총평 · 17:30/19:00/20:00 애프터마켓 결산 · 22:00/23:59 야간선물 브리핑은 해당 시각에 타임라인에 자동 등록됩니다.
         </div>
       </div>
 
@@ -5625,12 +5583,12 @@
       </div>
 
       <!-- AUTO HOURLY NEWS 13:55 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44%</span> 내려 700선 내줘', '13:55 속보', 'https://n.news.naver.com/mnews/article/018/0006408873', 'AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44%</span> 내려 700선 내줘', '장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성.', '실시간 거래대금 급증 종목 연동')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44%</span> 내려 700선 내줘', '13:55 속보', 'https://n.news.naver.com/mnews/article/018/0006408873', 'AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44% 내려 700선 내줘', '장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성.', '실시간 거래대금 급증 종목 연동')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time" style="background:#0c4a6e; color:#bae6fd;">13:55 실시간 속보 ⚡</span>
           <a href="https://n.news.naver.com/mnews/article/018/0006408873" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44%</span> 내려 700선 내줘</div>
+        <div class="nt-title">AI 훈풍에도 코스피 5350선 후퇴…코스닥 1.44% 내려 700선 내줘</div>
         <div class="nt-move">🔥 장중 연동: 주요 속보 및 실시간 시장 수급 반응 관찰</div>
         <div class="nt-history">과거: 장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성</div>
         <div class="nt-beneficiary">🎯 시장 관찰: 실시간 거래대금 급증 종목 연동</div>
@@ -5953,12 +5911,12 @@
       </div>
 
       <!-- AUTO HOURLY NEWS 09:52 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('“찬물 끼얹은 젠슨 황”…코스피 0.61%</span> 하락, 5300선 위태', '09:52 속보', 'https://n.news.naver.com/mnews/article/138/0002248227', '“찬물 끼얹은 젠슨 황”…코스피 0.61%</span> 하락, 5300선 위태', '장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성.', '실시간 거래대금 급증 종목 연동')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('“찬물 끼얹은 젠슨 황”…코스피 0.61%</span> 하락, 5300선 위태', '09:52 속보', 'https://n.news.naver.com/mnews/article/138/0002248227', '“찬물 끼얹은 젠슨 황”…코스피 0.61% 하락, 5300선 위태', '장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성.', '실시간 거래대금 급증 종목 연동')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time" style="background:#0c4a6e; color:#bae6fd;">09:52 실시간 속보 ⚡</span>
           <a href="https://n.news.naver.com/mnews/article/138/0002248227" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">“찬물 끼얹은 젠슨 황”…코스피 0.61%</span> 하락, 5300선 위태</div>
+        <div class="nt-title">“찬물 끼얹은 젠슨 황”…코스피 0.61% 하락, 5300선 위태</div>
         <div class="nt-move">🔥 장중 연동: 주요 속보 및 실시간 시장 수급 반응 관찰</div>
         <div class="nt-history">과거: 장중 대형 속보 출회 시 관련 테마 및 주도 섹터 단기 수급 쏠림 형성</div>
         <div class="nt-beneficiary">🎯 시장 관찰: 실시간 거래대금 급증 종목 연동</div>
@@ -6073,12 +6031,12 @@
       </div>
 
       <!-- TODAY MORNING NEWS 09:10 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('스탁이지 AI SW·엔터 장초반 대량 거래 폭발… 코난 +18.8%</span>·JYP 458억 대장 안착', '09:10 장초반 수급 (최신 ⚡)', 'https://search.naver.com/search.naver?where=news&query=%EC%8A%A4%ED%83%81%EC%9D%B4%EC%A7%80%20AI%20SW%C2%B7%EC%97%94%ED%84%B0%20%EC%9E%A5%EC%B4%88%EB%B0%98%20%EB%8C%80%EB%9F%89%20%EA%B1%B0%EB%9E%98%20%ED%8F%AD%EB%B0%9C%E2%80%A6%20%EC%BD%94%EB%82%9C%20%2B18.8%</span>25%C2%B7JYP%20458%EC%96%B5%20%EB%8C%80%EC%9E%A5%20%EC%95%88%EC%B0%A9', '🔥 연동 테마: AI 소프트웨어 (코난·셀바스·솔트룩스) & K-POP 엔터 (JYP·와이지·에스엠)', '과거: 개장 10분 내 주도 섹터 500억+ 집중 시 당일 주도 테마 상위 유지 확률 82%', '🎯 이번 수혜 유력: JYP Ent., 셀바스AI, 코난테크놀로지, 삼현')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('스탁이지 AI SW·엔터 장초반 대량 거래 폭발… 코난 +18.8%</span>·JYP 458억 대장 안착', '09:10 장초반 수급 (최신 ⚡)', 'https://search.naver.com/search.naver?where=news&query=%EC%8A%A4%ED%83%81%EC%9D%B4%EC%A7%80%20AI%20SW%C2%B7%EC%97%94%ED%84%B0%20%EC%9E%A5%EC%B4%88%EB%B0%98%20%EB%8C%80%EB%9F%89%20%EA%B1%B0%EB%9E%98%20%ED%8F%AD%EB%B0%9C%E2%80%A6%20%EC%BD%94%EB%82%9C%20%2B18.8%25%C2%B7JYP%20458%EC%96%B5%20%EB%8C%80%EC%9E%A5%20%EC%95%88%EC%B0%A9', '🔥 연동 테마: AI 소프트웨어 (코난·셀바스·솔트룩스) & K-POP 엔터 (JYP·와이지·에스엠)', '과거: 개장 10분 내 주도 섹터 500억+ 집중 시 당일 주도 테마 상위 유지 확률 82%', '🎯 이번 수혜 유력: JYP Ent., 셀바스AI, 코난테크놀로지, 삼현')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">09:10 장초반 수급 (최신 ⚡)</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EC%8A%A4%ED%83%81%EC%9D%B4%EC%A7%80%20AI%20SW%C2%B7%EC%97%94%ED%84%B0%20%EC%9E%A5%EC%B4%88%EB%B0%98%20%EB%8C%80%EB%9F%89%20%EA%B1%B0%EB%9E%98%20%ED%8F%AD%EB%B0%9C%E2%80%A6%20%EC%BD%94%EB%82%9C%20%2B18.8%</span>25%C2%B7JYP%20458%EC%96%B5%20%EB%8C%80%EC%9E%A5%20%EC%95%88%EC%B0%A9" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">스탁이지 AI SW·엔터 장초반 대량 거래 폭발… 코난 +18.8%</span>·JYP 458억 대장 안착</div>
+        <div class="nt-title">스탁이지 AI SW·엔터 장초반 대량 거래 폭발… 코난 +18.8%·JYP 458억 대장 안착</div>
         <div class="nt-move">🔥 연동 테마: AI 소프트웨어 (코난·셀바스·솔트룩스) & K-POP 엔터 (JYP·와이지·에스엠)</div>
         <div class="nt-history">과거: 개장 10분 내 주도 섹터 500억+ 집중 시 당일 주도 테마 상위 유지 확률 82%</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: JYP Ent., 셀바스AI, 코난테크놀로지, 삼현</div>
@@ -6097,24 +6055,24 @@
       </div>
 
       <!-- TODAY MORNING NEWS 08:45 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('NAVER, 3분기 연결 영업이익 5,211억 원(YoY +38.2%</span>) 분기 사상 최대 실적 발표', '08:45 어닝 서프', 'https://search.naver.com/search.naver?where=news&query=NAVER%2C%203%EB%B6%84%EA%B8%B0%20%EC%97%B0%EA%B2%B0%20%EC%98%81%EC%97%85%EC%9D%B4%EC%9D%B5%205%2C211%EC%96%B5%20%EC%9B%90%28YoY%20%2B38.2%</span>25%29%20%EB%B6%84%EA%B8%B0%20%EC%82%AC%EC%83%81%20%EC%B5%9C%EB%8C%80%20%EC%8B%A4%EC%A0%81%20%EB%B0%9C%ED%91%9C', '🔥 연동 테마: 인터넷 플랫폼 및 AI 검색 포털 (기관·외인 실적 매수세 유입)', '과거: 분기 최대 실적 발표 당일 기관·외인 쌍끌이 유입 시 단기 신고가 트라이 확률 75%', '🎯 이번 수혜 유력: NAVER (실시간 검색 4위), NHN (신고가 2,400억), 솔트룩스')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('NAVER, 3분기 연결 영업이익 5,211억 원(YoY +38.2%</span>) 분기 사상 최대 실적 발표', '08:45 어닝 서프', 'https://search.naver.com/search.naver?where=news&query=NAVER%2C%203%EB%B6%84%EA%B8%B0%20%EC%97%B0%EA%B2%B0%20%EC%98%81%EC%97%85%EC%9D%B4%EC%9D%B5%205%2C211%EC%96%B5%20%EC%9B%90%28YoY%20%2B38.2%25%29%20%EB%B6%84%EA%B8%B0%20%EC%82%AC%EC%83%81%20%EC%B5%9C%EB%8C%80%20%EC%8B%A4%EC%A0%81%20%EB%B0%9C%ED%91%9C', '🔥 연동 테마: 인터넷 플랫폼 및 AI 검색 포털 (기관·외인 실적 매수세 유입)', '과거: 분기 최대 실적 발표 당일 기관·외인 쌍끌이 유입 시 단기 신고가 트라이 확률 75%', '🎯 이번 수혜 유력: NAVER (실시간 검색 4위), NHN (신고가 2,400억), 솔트룩스')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">08:45 어닝 서프</span>
           <a href="https://search.naver.com/search.naver?where=news&query=NAVER%2C%203%EB%B6%84%EA%B8%B0%20%EC%97%B0%EA%B2%B0%20%EC%98%81%EC%97%85%EC%9D%B4%EC%9D%B5%205%2C211%EC%96%B5%20%EC%9B%90%28YoY%20%2B38.2%</span>25%29%20%EB%B6%84%EA%B8%B0%20%EC%82%AC%EC%83%81%20%EC%B5%9C%EB%8C%80%20%EC%8B%A4%EC%A0%81%20%EB%B0%9C%ED%91%9C" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">NAVER, 3분기 연결 영업이익 5,211억 원(YoY +38.2%</span>) 분기 사상 최대 실적 발표</div>
+        <div class="nt-title">NAVER, 3분기 연결 영업이익 5,211억 원(YoY +38.2%) 분기 사상 최대 실적 발표</div>
         <div class="nt-move">🔥 연동 테마: 인터넷 플랫폼 및 AI 검색 포털 (기관·외인 실적 매수세 유입)</div>
         <div class="nt-history">과거: 분기 최대 실적 발표 당일 기관·외인 쌍끌이 유입 시 단기 신고가 트라이 확률 75%</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: NAVER (실시간 검색 4위), NHN (신고가 2,400억), 솔트룩스</div>
       </div>
 
       <!-- TODAY MORNING NEWS 08:15 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('관세청 11월 1~10일 반도체 수출 54.3억 달러(+111.9%</span> 폭증) 발표', '08:15 수출 속보', 'https://search.naver.com/search.naver?where=news&query=%EA%B4%80%EC%84%B8%EC%B2%AD%2011%EC%9B%94%201~10%EC%9D%BC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%88%98%EC%B6%9C%2054.3%</span>EC%96%B5%20%EB%8B%AC%EB%9F%AC%28%2B111.9%</span>25%20%ED%8F%AD%EC%A6%9D%29%20%EB%B0%9C%ED%91%9C', '🔥 연동 테마: HBM 및 CXL 2.0 메모리 반도체 소부장 전반', '과거: 10일 잠정 수출액 100%+ 폭증 확인 시 당일 외국인 소부장 순매수 확률 85%', '🎯 이번 수혜 유력: SK하이닉스, 삼성전자, 주성엔지니어링, 이수페타시스')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('관세청 11월 1~10일 반도체 수출 54.3억 달러(+111.9%</span> 폭증) 발표', '08:15 수출 속보', 'https://search.naver.com/search.naver?where=news&query=%EA%B4%80%EC%84%B8%EC%B2%AD%2011%EC%9B%94%201~10%EC%9D%BC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%88%98%EC%B6%9C%2054.3%EC%96%B5%20%EB%8B%AC%EB%9F%AC%28%2B111.9%25%20%ED%8F%AD%EC%A6%9D%29%20%EB%B0%9C%ED%91%9C', '🔥 연동 테마: HBM 및 CXL 2.0 메모리 반도체 소부장 전반', '과거: 10일 잠정 수출액 100%+ 폭증 확인 시 당일 외국인 소부장 순매수 확률 85%', '🎯 이번 수혜 유력: SK하이닉스, 삼성전자, 주성엔지니어링, 이수페타시스')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">08:15 수출 속보</span>
-          <a href="https://search.naver.com/search.naver?where=news&query=%EA%B4%80%EC%84%B8%EC%B2%AD%2011%EC%9B%94%201~10%EC%9D%BC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%88%98%EC%B6%9C%2054.3%</span>EC%96%B5%20%EB%8B%AC%EB%9F%AC%28%2B111.9%</span>25%20%ED%8F%AD%EC%A6%9D%29%20%EB%B0%9C%ED%91%9C" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
+          <a href="https://search.naver.com/search.naver?where=news&query=%EA%B4%80%EC%84%B8%EC%B2%AD%2011%EC%9B%94%201~10%EC%9D%BC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%88%98%EC%B6%9C%2054.3%</span>EC%96%B5%20%EB%8B%AC%EB%9F%AC%28%2B111.9%25%20%ED%8F%AD%EC%A6%9D%29%20%EB%B0%9C%ED%91%9C" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">관세청 11월 1~10일 반도체 수출 54.3억 달러(+111.9%</span> 폭증) 발표</div>
+        <div class="nt-title">관세청 11월 1~10일 반도체 수출 54.3억 달러(+111.9% 폭증) 발표</div>
         <div class="nt-move">🔥 연동 테마: HBM 및 CXL 2.0 메모리 반도체 소부장 전반</div>
         <div class="nt-history">과거: 10일 잠정 수출액 100%+ 폭증 확인 시 당일 외국인 소부장 순매수 확률 85%</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: SK하이닉스, 삼성전자, 주성엔지니어링, 이수페타시스</div>
@@ -6129,59 +6087,59 @@
         <div class="nt-title">CES 2027 삼성전자 최고혁신상 석권 & 엔비디아 차세대 CXL 메모리 풀링 표준 채택</div>
         <div class="nt-move">🔥 연동 테마: CXL 2.0 기판 및 FC-BGA 차세대 인터페이스 대장주</div>
         <div class="nt-history">과거: 엔비디아 표준 채택 + 정부 1조 투자 연동 시 3거래일 이상 연속 테마 형성</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (+24.9%</span>), 티엘비 (상한가), 심텍, 대덕전자</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (+24.9%), 티엘비 (상한가), 심텍, 대덕전자</div>
       </div>
 
       <!-- TODAY MORNING NEWS 06:00 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('KRX 야간선물 844.05(+0.90%</span>) 및 코스닥150(+0.94%</span>) 강세 마감… 외인 +2,450계약 롱', '06:00 장전 마감', 'https://search.naver.com/search.naver?where=news&query=KRX%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844.05%</span>28%2B0.90%</span>25%29%20%EB%B0%8F%20%EC%BD%94%EC%8A%A4%EB%8B%A5150%28%2B0.94%</span>25%29%20%EA%B0%95%EC%84%B8%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%99%B8%EC%9D%B8%20%2B2%2C450%EA%B3%84%EC%95%BD%20%EB%A1%B1', '🔥 연동 테마: 코스피 대형주 및 코스닥150 지수 추종 주도 섹터', '과거: 야간선물 0.8%</span>+ 상승 마감 시 본장 시초가 갭상승 출발 확률 88%', '🎯 이번 수혜 유력: 삼성전자, SK하이닉스, 코스닥150 레버리지')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('KRX 야간선물 844.05(+0.90%</span>) 및 코스닥150(+0.94%) 강세 마감… 외인 +2,450계약 롱', '06:00 장전 마감', 'https://search.naver.com/search.naver?where=news&query=KRX%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844.05%28%2B0.90%25%29%20%EB%B0%8F%20%EC%BD%94%EC%8A%A4%EB%8B%A5150%28%2B0.94%25%29%20%EA%B0%95%EC%84%B8%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%99%B8%EC%9D%B8%20%2B2%2C450%EA%B3%84%EC%95%BD%20%EB%A1%B1', '🔥 연동 테마: 코스피 대형주 및 코스닥150 지수 추종 주도 섹터', '과거: 야간선물 0.8%+ 상승 마감 시 본장 시초가 갭상승 출발 확률 88%', '🎯 이번 수혜 유력: 삼성전자, SK하이닉스, 코스닥150 레버리지')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">06:00 장전 마감</span>
-          <a href="https://search.naver.com/search.naver?where=news&query=KRX%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844.05%</span>28%2B0.90%</span>25%29%20%EB%B0%8F%20%EC%BD%94%EC%8A%A4%EB%8B%A5150%28%2B0.94%</span>25%29%20%EA%B0%95%EC%84%B8%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%99%B8%EC%9D%B8%20%2B2%2C450%EA%B3%84%EC%95%BD%20%EB%A1%B1" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
+          <a href="https://search.naver.com/search.naver?where=news&query=KRX%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844.05%</span>28%2B0.90%25%29%20%EB%B0%8F%20%EC%BD%94%EC%8A%A4%EB%8B%A5150%28%2B0.94%25%29%20%EA%B0%95%EC%84%B8%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%99%B8%EC%9D%B8%20%2B2%2C450%EA%B3%84%EC%95%BD%20%EB%A1%B1" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">KRX 야간선물 844.05(+0.90%</span>) 및 코스닥150(+0.94%</span>) 강세 마감… 외인 +2,450계약 롱</div>
+        <div class="nt-title">KRX 야간선물 844.05(+0.90%) 및 코스닥150(+0.94%) 강세 마감… 외인 +2,450계약 롱</div>
         <div class="nt-move">🔥 연동 테마: 코스피 대형주 및 코스닥150 지수 추종 주도 섹터</div>
-        <div class="nt-history">과거: 야간선물 0.8%</span>+ 상승 마감 시 본장 시초가 갭상승 출발 확률 88%</div>
+        <div class="nt-history">과거: 야간선물 0.8%+ 상승 마감 시 본장 시초가 갭상승 출발 확률 88%</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: 삼성전자, SK하이닉스, 코스닥150 레버리지</div>
       </div>
 
       <!-- TODAY MORNING NEWS 05:30 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('美 필라델피아 반도체 지수(SOX) +3.42%</span> 폭등 마감… 마이크론 +4.2%</span>·브로드컴 +3.8%</span>', '05:30 뉴욕 마감', 'https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%ED%95%84%EB%9D%BC%EB%8D%B8%ED%94%BC%EC%95%84%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%A7%80%EC%88%98%28SOX%29%20%2B3.42%</span>25%20%ED%8F%AD%EB%93%B1%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EB%A7%88%EC%9D%B4%ED%81%AC%EB%A1%A0%20%2B4.2%</span>25%C2%B7%EB%B8%8C%EB%A1%9C%EB%93%9C%EC%BB%B4%20%2B3.8%</span>25', '🔥 연동 테마: 글로벌 AI 반도체 및 MLB 기판, 차세대 패키징 소부장', '과거: SOX 3%+ 급등 마감 시 익일 국내 반도체 소부장 시초가 +2~4% 갭상승', '🎯 이번 수혜 유력: 이수페타시스 (350억 대장), 주성엔지니어링, 피에스케이홀딩스')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('美 필라델피아 반도체 지수(SOX) +3.42%</span> 폭등 마감… 마이크론 +4.2%·브로드컴 +3.8%', '05:30 뉴욕 마감', 'https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%ED%95%84%EB%9D%BC%EB%8D%B8%ED%94%BC%EC%95%84%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%A7%80%EC%88%98%28SOX%29%20%2B3.42%25%20%ED%8F%AD%EB%93%B1%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EB%A7%88%EC%9D%B4%ED%81%AC%EB%A1%A0%20%2B4.2%25%C2%B7%EB%B8%8C%EB%A1%9C%EB%93%9C%EC%BB%B4%20%2B3.8%25', '🔥 연동 테마: 글로벌 AI 반도체 및 MLB 기판, 차세대 패키징 소부장', '과거: SOX 3%+ 급등 마감 시 익일 국내 반도체 소부장 시초가 +2~4% 갭상승', '🎯 이번 수혜 유력: 이수페타시스 (350억 대장), 주성엔지니어링, 피에스케이홀딩스')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">05:30 뉴욕 마감</span>
-          <a href="https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%ED%95%84%EB%9D%BC%EB%8D%B8%ED%94%BC%EC%95%84%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%A7%80%EC%88%98%28SOX%29%20%2B3.42%</span>25%20%ED%8F%AD%EB%93%B1%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EB%A7%88%EC%9D%B4%ED%81%AC%EB%A1%A0%20%2B4.2%</span>25%C2%B7%EB%B8%8C%EB%A1%9C%EB%93%9C%EC%BB%B4%20%2B3.8%</span>25" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
+          <a href="https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%ED%95%84%EB%9D%BC%EB%8D%B8%ED%94%BC%EC%95%84%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%EC%A7%80%EC%88%98%28SOX%29%20%2B3.42%</span>25%20%ED%8F%AD%EB%93%B1%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EB%A7%88%EC%9D%B4%ED%81%AC%EB%A1%A0%20%2B4.2%25%C2%B7%EB%B8%8C%EB%A1%9C%EB%93%9C%EC%BB%B4%20%2B3.8%25" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">美 필라델피아 반도체 지수(SOX) +3.42%</span> 폭등 마감… 마이크론 +4.2%</span>·브로드컴 +3.8%</span></div>
+        <div class="nt-title">美 필라델피아 반도체 지수(SOX) +3.42% 폭등 마감… 마이크론 +4.2%·브로드컴 +3.8%</div>
         <div class="nt-move">🔥 연동 테마: 글로벌 AI 반도체 및 MLB 기판, 차세대 패키징 소부장</div>
         <div class="nt-history">과거: SOX 3%+ 급등 마감 시 익일 국내 반도체 소부장 시초가 +2~4% 갭상승</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: 이수페타시스 (350억 대장), 주성엔지니어링, 피에스케이홀딩스</div>
       </div>
 
       <!-- NEW EVENING NEWS 22:00 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('코스피200 야간선물 844선 돌파(+0.90%</span>)… 美 나스닥 선물 +1.98%</span> 폭등세 지속', '22:00 심야 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%ED%94%BC200%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844%EC%84%A0%20%EB%8F%8C%ED%8C%8C%28%2B0.90%</span>25%29%E2%80%A6%20%E7%BE%8E%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.98%</span>25%20%ED%8F%AD%EB%93%B1%EC%84%B8%20%EC%A7%80%EC%86%8D', '🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 확률 95%)', '과거: 야선 +0.8%</span> 및 나스닥 +1.5%</span>+ 시 익일 반도체 주도주 시초가 +3~5% 갭상승', '🎯 이번 수혜 유력: 주성엔지니어링, 코리아써키트, 티엘비')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('코스피200 야간선물 844선 돌파(+0.90%</span>)… 美 나스닥 선물 +1.98% 폭등세 지속', '22:00 심야 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%ED%94%BC200%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844%EC%84%A0%20%EB%8F%8C%ED%8C%8C%28%2B0.90%25%29%E2%80%A6%20%E7%BE%8E%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.98%25%20%ED%8F%AD%EB%93%B1%EC%84%B8%20%EC%A7%80%EC%86%8D', '🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 확률 95%)', '과거: 야선 +0.8% 및 나스닥 +1.5%+ 시 익일 반도체 주도주 시초가 +3~5% 갭상승', '🎯 이번 수혜 유력: 주성엔지니어링, 코리아써키트, 티엘비')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">22:00 심야 속보</span>
-          <a href="https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%ED%94%BC200%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844%EC%84%A0%20%EB%8F%8C%ED%8C%8C%28%2B0.90%</span>25%29%E2%80%A6%20%E7%BE%8E%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.98%</span>25%20%ED%8F%AD%EB%93%B1%EC%84%B8%20%EC%A7%80%EC%86%8D" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
+          <a href="https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%ED%94%BC200%20%EC%95%BC%EA%B0%84%EC%84%A0%EB%AC%BC%20844%EC%84%A0%20%EB%8F%8C%ED%8C%8C%28%2B0.90%</span>25%29%E2%80%A6%20%E7%BE%8E%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.98%25%20%ED%8F%AD%EB%93%B1%EC%84%B8%20%EC%A7%80%EC%86%8D" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">코스피200 야간선물 844선 돌파(+0.90%</span>)… 美 나스닥 선물 +1.98%</span> 폭등세 지속</div>
+        <div class="nt-title">코스피200 야간선물 844선 돌파(+0.90%)… 美 나스닥 선물 +1.98% 폭등세 지속</div>
         <div class="nt-move">🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 확률 95%)</div>
-        <div class="nt-history">과거: 야선 +0.8%</span> 및 나스닥 +1.5%</span>+ 시 익일 반도체 주도주 시초가 +3~5% 갭상승</div>
+        <div class="nt-history">과거: 야선 +0.8% 및 나스닥 +1.5%+ 시 익일 반도체 주도주 시초가 +3~5% 갭상승</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: 주성엔지니어링, 코리아써키트, 티엘비</div>
       </div>
 
       <!-- NEW EVENING NEWS 19:20 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('미 나스닥 선물 +1.65%</span>(+460pt) 폭등… 역외 환율 1,331원 급락 안정', '19:20 야간 속보', 'https://search.naver.com/search.naver?where=news&query=%EB%AF%B8%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.65%</span>25%28%2B460pt%29%20%ED%8F%AD%EB%93%B1%E2%80%A6%20%EC%97%AD%EC%99%B8%20%ED%99%98%EC%9C%A8%201%2C331%EC%9B%90%20%EA%B8%89%EB%9D%BD%20%EC%95%88%EC%A0%95', '🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 유력)', '과거: 미 선물 1.5%</span>+ 급등 시 익일 코스닥 반도체 주도주 시초가 +3~5% 갭 출발', '🎯 이번 수혜 유력: 주성엔지니어링 (+16.81%</span>), 코리아써키트 (+24.85%</span>), 티엘비 (+29.88%</span>)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('미 나스닥 선물 +1.65%</span>(+460pt) 폭등… 역외 환율 1,331원 급락 안정', '19:20 야간 속보', 'https://search.naver.com/search.naver?where=news&query=%EB%AF%B8%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.65%25%28%2B460pt%29%20%ED%8F%AD%EB%93%B1%E2%80%A6%20%EC%97%AD%EC%99%B8%20%ED%99%98%EC%9C%A8%201%2C331%EC%9B%90%20%EA%B8%89%EB%9D%BD%20%EC%95%88%EC%A0%95', '🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 유력)', '과거: 미 선물 1.5%+ 급등 시 익일 코스닥 반도체 주도주 시초가 +3~5% 갭 출발', '🎯 이번 수혜 유력: 주성엔지니어링 (+16.81%), 코리아써키트 (+24.85%), 티엘비 (+29.88%)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">19:20 야간 속보</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EB%AF%B8%20%EB%82%98%EC%8A%A4%EB%8B%A5%20%EC%84%A0%EB%AC%BC%20%2B1.65%</span>25%28%2B460pt%29%20%ED%8F%AD%EB%93%B1%E2%80%A6%20%EC%97%AD%EC%99%B8%20%ED%99%98%EC%9C%A8%201%2C331%EC%9B%90%20%EA%B8%89%EB%9D%BD%20%EC%95%88%EC%A0%95" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">미 나스닥 선물 +1.65%</span>(+460pt) 폭등… 역외 환율 1,331원 급락 안정</div>
+        <div class="nt-title">미 나스닥 선물 +1.65%(+460pt) 폭등… 역외 환율 1,331원 급락 안정</div>
         <div class="nt-move">🔥 연동 테마: 반도체 소부장 및 CXL 대장주 (내일 09:00 시초가 갭상승 유력)</div>
-        <div class="nt-history">과거: 미 선물 1.5%</span>+ 급등 시 익일 코스닥 반도체 주도주 시초가 +3~5% 갭 출발</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 주성엔지니어링 (+16.81%</span>), 코리아써키트 (+24.85%</span>), 티엘비 (+29.88%</span>)</div>
+        <div class="nt-history">과거: 미 선물 1.5%+ 급등 시 익일 코스닥 반도체 주도주 시초가 +3~5% 갭 출발</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 주성엔지니어링 (+16.81%), 코리아써키트 (+24.85%), 티엘비 (+29.88%)</div>
       </div>
 
       <!-- NEW EVENING NEWS 18:30 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('정부, 판교·용인 CXL 실증 패키징 클러스터 1조 원 신규 투자 확정', '18:30 정부 정책 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20%ED%8C%90%EA%B5%90%C2%B7%EC%9A%A9%EC%9D%B8%20CXL%20%EC%8B%A4%EC%A6%9D%20%ED%8C%A8%ED%82%A4%EC%A7%95%20%ED%81%B4%EB%9F%AC%EC%8A%A4%ED%84%B0%201%EC%A1%B0%20%EC%9B%90%20%EC%8B%A0%EA%B7%9C%20%ED%88%AC%EC%9E%90%20%ED%99%95%EC%A0%95', '🔥 장중 움직인 테마: CXL 2.0 및 고다층 PCB 기판 (오늘 시장 거래대금 1위 테마)', '과거: 23년 12월 CXL 육성책 당시 네오셈·코리아써키트 2연상 폭등', '🎯 이번 수혜 유력: 티엘비 (+29.88%</span> 상한가 1위), 코리아써키트 (+24.85%</span>), 심텍 (+12.80%</span>)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('정부, 판교·용인 CXL 실증 패키징 클러스터 1조 원 신규 투자 확정', '18:30 정부 정책 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20%ED%8C%90%EA%B5%90%C2%B7%EC%9A%A9%EC%9D%B8%20CXL%20%EC%8B%A4%EC%A6%9D%20%ED%8C%A8%ED%82%A4%EC%A7%95%20%ED%81%B4%EB%9F%AC%EC%8A%A4%ED%84%B0%201%EC%A1%B0%20%EC%9B%90%20%EC%8B%A0%EA%B7%9C%20%ED%88%AC%EC%9E%90%20%ED%99%95%EC%A0%95', '🔥 장중 움직인 테마: CXL 2.0 및 고다층 PCB 기판 (오늘 시장 거래대금 1위 테마)', '과거: 23년 12월 CXL 육성책 당시 네오셈·코리아써키트 2연상 폭등', '🎯 이번 수혜 유력: 티엘비 (+29.88%</span> 상한가 1위), 코리아써키트 (+24.85%), 심텍 (+12.80%)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">18:30 정부 정책 속보</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20%ED%8C%90%EA%B5%90%C2%B7%EC%9A%A9%EC%9D%B8%20CXL%20%EC%8B%A4%EC%A6%9D%20%ED%8C%A8%ED%82%A4%EC%A7%95%20%ED%81%B4%EB%9F%AC%EC%8A%A4%ED%84%B0%201%EC%A1%B0%20%EC%9B%90%20%EC%8B%A0%EA%B7%9C%20%ED%88%AC%EC%9E%90%20%ED%99%95%EC%A0%95" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -6189,35 +6147,35 @@
         <div class="nt-title">정부, 판교·용인 CXL 실증 패키징 클러스터 1조 원 신규 투자 확정</div>
         <div class="nt-move">🔥 장중 움직인 테마: CXL 2.0 및 고다층 PCB 기판 (오늘 시장 거래대금 1위 테마)</div>
         <div class="nt-history">과거: 23년 12월 CXL 육성책 당시 네오셈·코리아써키트 2연상 폭등</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 티엘비 (+29.88%</span> 상한가 1위), 코리아써키트 (+24.85%</span>), 심텍 (+12.80%</span>)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 티엘비 (+29.88% 상한가 1위), 코리아써키트 (+24.85%), 심텍 (+12.80%)</div>
       </div>
 
       <!-- NEW EVENING NEWS 18:00 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('시간외 단일가 최종 마감… 코리아써키트 +1.87%</span>(84억)·주성엔지니어링 +1.23%</span> 강세', '18:00 시간외 마감', 'https://search.naver.com/search.naver?where=news&query=%EC%8B%9C%EA%B0%84%EC%99%B8%20%EB%8B%A8%EC%9D%BC%EA%B0%80%20%EC%B5%9C%EC%A2%85%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%BD%94%EB%A6%AC%EC%95%84%EC%8D%A8%ED%82%A4%ED%8A%B8%20%2B1.87%</span>25%2884%EC%96%B5%29%C2%B7%EC%A3%BC%EC%84%B1%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4%EB%A7%81%20%2B1.23%</span>25%20%EA%B0%95%EC%84%B8', '🔥 시간외 강세 테마: CXL 기판 및 전고체 배터리 (이수스페셜티 +7.4%</span>, 한농화성 +6.1%</span>)', '과거: 정규장 대장주가 시간외에서도 상승 마감 시 익일 시초가 갭상승 승률 85%', '🎯 이번 수혜 유력: 코리아써키트 (시간외 +1.87%</span>), 주성엔지니어링 (+1.23%</span>), 티엘비 (잔량 45만)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('시간외 단일가 최종 마감… 코리아써키트 +1.87%</span>(84억)·주성엔지니어링 +1.23% 강세', '18:00 시간외 마감', 'https://search.naver.com/search.naver?where=news&query=%EC%8B%9C%EA%B0%84%EC%99%B8%20%EB%8B%A8%EC%9D%BC%EA%B0%80%20%EC%B5%9C%EC%A2%85%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%BD%94%EB%A6%AC%EC%95%84%EC%8D%A8%ED%82%A4%ED%8A%B8%20%2B1.87%25%2884%EC%96%B5%29%C2%B7%EC%A3%BC%EC%84%B1%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4%EB%A7%81%20%2B1.23%25%20%EA%B0%95%EC%84%B8', '🔥 시간외 강세 테마: CXL 기판 및 전고체 배터리 (이수스페셜티 +7.4%, 한농화성 +6.1%)', '과거: 정규장 대장주가 시간외에서도 상승 마감 시 익일 시초가 갭상승 승률 85%', '🎯 이번 수혜 유력: 코리아써키트 (시간외 +1.87%), 주성엔지니어링 (+1.23%), 티엘비 (잔량 45만)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">18:00 시간외 마감</span>
-          <a href="https://search.naver.com/search.naver?where=news&query=%EC%8B%9C%EA%B0%84%EC%99%B8%20%EB%8B%A8%EC%9D%BC%EA%B0%80%20%EC%B5%9C%EC%A2%85%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%BD%94%EB%A6%AC%EC%95%84%EC%8D%A8%ED%82%A4%ED%8A%B8%20%2B1.87%</span>25%2884%EC%96%B5%29%C2%B7%EC%A3%BC%EC%84%B1%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4%EB%A7%81%20%2B1.23%</span>25%20%EA%B0%95%EC%84%B8" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
+          <a href="https://search.naver.com/search.naver?where=news&query=%EC%8B%9C%EA%B0%84%EC%99%B8%20%EB%8B%A8%EC%9D%BC%EA%B0%80%20%EC%B5%9C%EC%A2%85%20%EB%A7%88%EA%B0%90%E2%80%A6%20%EC%BD%94%EB%A6%AC%EC%95%84%EC%8D%A8%ED%82%A4%ED%8A%B8%20%2B1.87%</span>25%2884%EC%96%B5%29%C2%B7%EC%A3%BC%EC%84%B1%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4%EB%A7%81%20%2B1.23%25%20%EA%B0%95%EC%84%B8" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
-        <div class="nt-title">시간외 단일가 최종 마감… 코리아써키트 +1.87%</span>(84억)·주성엔지니어링 +1.23%</span> 강세</div>
-        <div class="nt-move">🔥 시간외 강세 테마: CXL 기판 및 전고체 배터리 (이수스페셜티 +7.4%</span>, 한농화성 +6.1%</span>)</div>
+        <div class="nt-title">시간외 단일가 최종 마감… 코리아써키트 +1.87%(84억)·주성엔지니어링 +1.23% 강세</div>
+        <div class="nt-move">🔥 시간외 강세 테마: CXL 기판 및 전고체 배터리 (이수스페셜티 +7.4%, 한농화성 +6.1%)</div>
         <div class="nt-history">과거: 정규장 대장주가 시간외에서도 상승 마감 시 익일 시초가 갭상승 승률 85%</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (시간외 +1.87%</span>), 주성엔지니어링 (+1.23%</span>), 티엘비 (잔량 45만)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (시간외 +1.87%), 주성엔지니어링 (+1.23%), 티엘비 (잔량 45만)</div>
       </div>
 
       <!-- NEW POST-MARKET NEWS 15:50 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('美 코어위브, 차세대 초고성능 AI 기판(MLB) 장기 공급계약 체결', '15:50 장마감 후 외신', 'https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%EC%BD%94%EC%96%B4%EC%9C%84%EB%B8%8C%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%B4%88%EA%B3%A0%EC%84%B1%EB%8A%A5%20AI%20%EA%B8%B0%ED%8C%90%28MLB%29%20%EC%9E%A5%EA%B8%B0%20%EA%B3%B5%EA%B8%89%EA%B3%84%EC%95%BD%20%EC%B2%B4%EA%B2%B0', '🔥 장중 움직인 테마: 고다층 PCB 및 CXL 기판 (+23.1%</span> 폭등 마감)', '과거: 이수페타시스 엔비디아 납품 보도 당시 300% 역사적 랠리', '🎯 이번 수혜 유력: 이수페타시스 (+19.50%</span>), 대덕전자 (+13.80%</span>), 티엘비 (+29.88%</span> 상한가)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('美 코어위브, 차세대 초고성능 AI 기판(MLB) 장기 공급계약 체결', '15:50 장마감 후 외신', 'https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%EC%BD%94%EC%96%B4%EC%9C%84%EB%B8%8C%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%B4%88%EA%B3%A0%EC%84%B1%EB%8A%A5%20AI%20%EA%B8%B0%ED%8C%90%28MLB%29%20%EC%9E%A5%EA%B8%B0%20%EA%B3%B5%EA%B8%89%EA%B3%84%EC%95%BD%20%EC%B2%B4%EA%B2%B0', '🔥 장중 움직인 테마: 고다층 PCB 및 CXL 기판 (+23.1%</span> 폭등 마감)', '과거: 이수페타시스 엔비디아 납품 보도 당시 300% 역사적 랠리', '🎯 이번 수혜 유력: 이수페타시스 (+19.50%), 대덕전자 (+13.80%), 티엘비 (+29.88% 상한가)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">15:50 장마감 후 외신</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%E7%BE%8E%20%EC%BD%94%EC%96%B4%EC%9C%84%EB%B8%8C%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%B4%88%EA%B3%A0%EC%84%B1%EB%8A%A5%20AI%20%EA%B8%B0%ED%8C%90%28MLB%29%20%EC%9E%A5%EA%B8%B0%20%EA%B3%B5%EA%B8%89%EA%B3%84%EC%95%BD%20%EC%B2%B4%EA%B2%B0" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
         <div class="nt-title">美 코어위브, 차세대 초고성능 AI 기판(MLB) 장기 공급계약 체결</div>
-        <div class="nt-move">🔥 장중 움직인 테마: 고다층 PCB 및 CXL 기판 (+23.1%</span> 폭등 마감)</div>
+        <div class="nt-move">🔥 장중 움직인 테마: 고다층 PCB 및 CXL 기판 (+23.1% 폭등 마감)</div>
         <div class="nt-history">과거: 이수페타시스 엔비디아 납품 보도 당시 300% 역사적 랠리</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 이수페타시스 (+19.50%</span>), 대덕전자 (+13.80%</span>), 티엘비 (+29.88%</span> 상한가)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 이수페타시스 (+19.50%), 대덕전자 (+13.80%), 티엘비 (+29.88% 상한가)</div>
       </div>
 
       <!-- NEW POST-MARKET NEWS 15:45 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('정부, CXL·AI반도체 국가전략기술 세제지원 확대 및 실증센터 천안 구축', '15:45 장마감 후 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20CXL%C2%B7AI%EB%B0%98%EB%8F%84%EC%B2%B4%20%EA%B5%AD%EA%B0%80%EC%A0%84%EB%9E%B5%EA%B8%B0%EC%88%A0%20%EC%84%B8%EC%A0%9C%EC%A7%80%EC%9B%90%20%ED%99%95%EB%8C%80%20%EB%B0%8F%20%EC%8B%A4%EC%A6%9D%EC%84%BC%ED%84%B0%20%EC%B2%9C%EC%95%88%20%EA%B5%AC%EC%B6%95', '🔥 장중 움직인 테마: CXL 2.0 기판 및 테스터 테마 (주맵 1위 테마)', '과거: 23년 CXL 정책 발표 당시 네오셈·코리아써키트 3일 연속 30~50% 급등', '🎯 이번 수혜 유력: 코리아써키트 (+24.85%</span>), 네오셈 (시간외 +5.88%</span>), 티엘비 (+29.88%</span> 상한가)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('정부, CXL·AI반도체 국가전략기술 세제지원 확대 및 실증센터 천안 구축', '15:45 장마감 후 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20CXL%C2%B7AI%EB%B0%98%EB%8F%84%EC%B2%B4%20%EA%B5%AD%EA%B0%80%EC%A0%84%EB%9E%B5%EA%B8%B0%EC%88%A0%20%EC%84%B8%EC%A0%9C%EC%A7%80%EC%9B%90%20%ED%99%95%EB%8C%80%20%EB%B0%8F%20%EC%8B%A4%EC%A6%9D%EC%84%BC%ED%84%B0%20%EC%B2%9C%EC%95%88%20%EA%B5%AC%EC%B6%95', '🔥 장중 움직인 테마: CXL 2.0 기판 및 테스터 테마 (주맵 1위 테마)', '과거: 23년 CXL 정책 발표 당시 네오셈·코리아써키트 3일 연속 30~50% 급등', '🎯 이번 수혜 유력: 코리아써키트 (+24.85%</span>), 네오셈 (시간외 +5.88%), 티엘비 (+29.88% 상한가)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">15:45 장마감 후 속보</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EC%A0%95%EB%B6%80%2C%20CXL%C2%B7AI%EB%B0%98%EB%8F%84%EC%B2%B4%20%EA%B5%AD%EA%B0%80%EC%A0%84%EB%9E%B5%EA%B8%B0%EC%88%A0%20%EC%84%B8%EC%A0%9C%EC%A7%80%EC%9B%90%20%ED%99%95%EB%8C%80%20%EB%B0%8F%20%EC%8B%A4%EC%A6%9D%EC%84%BC%ED%84%B0%20%EC%B2%9C%EC%95%88%20%EA%B5%AC%EC%B6%95" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -6225,11 +6183,11 @@
         <div class="nt-title">정부, CXL·AI반도체 국가전략기술 세제지원 확대 및 실증센터 천안 구축</div>
         <div class="nt-move">🔥 장중 움직인 테마: CXL 2.0 기판 및 테스터 테마 (주맵 1위 테마)</div>
         <div class="nt-history">과거: 23년 CXL 정책 발표 당시 네오셈·코리아써키트 3일 연속 30~50% 급등</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (+24.85%</span>), 네오셈 (시간외 +5.88%</span>), 티엘비 (+29.88%</span> 상한가)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 코리아써키트 (+24.85%), 네오셈 (시간외 +5.88%), 티엘비 (+29.88% 상한가)</div>
       </div>
 
       <!-- NEW POST-MARKET NEWS 15:40 -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('현대차그룹-삼성SDI, 차세대 전고체 배터리 실증 파일럿 라인 연내 착공 합의', '15:40 장마감 후 공시', 'https://search.naver.com/search.naver?where=news&query=%ED%98%84%EB%8C%80%EC%B0%A8%EA%B7%B8%EB%A3%B9-%EC%82%BC%EC%84%B1SDI%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%A0%84%EA%B3%A0%EC%B2%B4%20%EB%B0%B0%ED%84%B0%EB%A6%AC%20%EC%8B%A4%EC%A6%9D%20%ED%8C%8C%EC%9D%BC%EB%9F%BF%20%EB%9D%BC%EC%9D%B8%20%EC%97%B0%EB%82%B4%20%EC%B0%A9%EA%B3%B5%20%ED%95%A9%EC%9D%98', '🔥 장중 움직인 테마: 전고체 배터리 및 2차전지 소재 (시간외 단일가 폭풍 매수 반응)', '과거: 24년 3월 전고체 발표 당시 한농화성·이수스페셜티케미컬 2연상 폭등', '🎯 이번 수혜 유력: 이수스페셜티케미컬 (시간외 +7.42%</span>), 한농화성 (시간외 +6.15%</span>), 삼성SDI')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('현대차그룹-삼성SDI, 차세대 전고체 배터리 실증 파일럿 라인 연내 착공 합의', '15:40 장마감 후 공시', 'https://search.naver.com/search.naver?where=news&query=%ED%98%84%EB%8C%80%EC%B0%A8%EA%B7%B8%EB%A3%B9-%EC%82%BC%EC%84%B1SDI%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%A0%84%EA%B3%A0%EC%B2%B4%20%EB%B0%B0%ED%84%B0%EB%A6%AC%20%EC%8B%A4%EC%A6%9D%20%ED%8C%8C%EC%9D%BC%EB%9F%BF%20%EB%9D%BC%EC%9D%B8%20%EC%97%B0%EB%82%B4%20%EC%B0%A9%EA%B3%B5%20%ED%95%A9%EC%9D%98', '🔥 장중 움직인 테마: 전고체 배터리 및 2차전지 소재 (시간외 단일가 폭풍 매수 반응)', '과거: 24년 3월 전고체 발표 당시 한농화성·이수스페셜티케미컬 2연상 폭등', '🎯 이번 수혜 유력: 이수스페셜티케미컬 (시간외 +7.42%</span>), 한농화성 (시간외 +6.15%), 삼성SDI')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">15:40 장마감 후 공시</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%ED%98%84%EB%8C%80%EC%B0%A8%EA%B7%B8%EB%A3%B9-%EC%82%BC%EC%84%B1SDI%2C%20%EC%B0%A8%EC%84%B8%EB%8C%80%20%EC%A0%84%EA%B3%A0%EC%B2%B4%20%EB%B0%B0%ED%84%B0%EB%A6%AC%20%EC%8B%A4%EC%A6%9D%20%ED%8C%8C%EC%9D%BC%EB%9F%BF%20%EB%9D%BC%EC%9D%B8%20%EC%97%B0%EB%82%B4%20%EC%B0%A9%EA%B3%B5%20%ED%95%A9%EC%9D%98" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
@@ -6237,43 +6195,43 @@
         <div class="nt-title">현대차그룹-삼성SDI, 차세대 전고체 배터리 실증 파일럿 라인 연내 착공 합의</div>
         <div class="nt-move">🔥 장중 움직인 테마: 전고체 배터리 및 2차전지 소재 (시간외 단일가 폭풍 매수 반응)</div>
         <div class="nt-history">과거: 24년 3월 전고체 발표 당시 한농화성·이수스페셜티케미컬 2연상 폭등</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 이수스페셜티케미컬 (시간외 +7.42%</span>), 한농화성 (시간외 +6.15%</span>), 삼성SDI</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 이수스페셜티케미컬 (시간외 +7.42%), 한농화성 (시간외 +6.15%), 삼성SDI</div>
       </div>
 
       <!-- News 1: 08:30 EcoProBM -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('에코프로비엠, 인도네시아 니켈 제련 법인 6,271억 원 출자 공시', '08:30 장전 공시', 'https://search.naver.com/search.naver?where=news&query=%EC%97%90%EC%BD%94%ED%94%84%EB%A1%9C%EB%B9%84%EC%97%A0%2C%20%EC%9D%B8%EB%8F%84%EB%84%A4%EC%8B%9C%EC%95%84%20%EB%8B%88%EC%BC%88%20%EC%A0%9C%EB%A0%A8%20%EB%B2%95%EC%9D%B8%206%2C271%EC%96%B5%20%EC%9B%90%20%EC%B6%9C%EC%9E%90%20%EA%B3%B5%EC%8B%9C', '🔥 장중 움직인 테마: 2차전지 양극재 & 소재 테마 (+8.5%</span> 급등, 코스닥 사이드카 견인)', '과거: 23년 7월 포스코홀딩스 니켈 투자 공시 당시 소재주 전반 2~3배 랠리', '🎯 이번 수혜 유력: 에코프로비엠 (+10.9%</span>), 나노신소재 (+16.0%</span>), 대주전자재료 (+15.7%</span>)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('에코프로비엠, 인도네시아 니켈 제련 법인 6,271억 원 출자 공시', '08:30 장전 공시', 'https://search.naver.com/search.naver?where=news&query=%EC%97%90%EC%BD%94%ED%94%84%EB%A1%9C%EB%B9%84%EC%97%A0%2C%20%EC%9D%B8%EB%8F%84%EB%84%A4%EC%8B%9C%EC%95%84%20%EB%8B%88%EC%BC%88%20%EC%A0%9C%EB%A0%A8%20%EB%B2%95%EC%9D%B8%206%2C271%EC%96%B5%20%EC%9B%90%20%EC%B6%9C%EC%9E%90%20%EA%B3%B5%EC%8B%9C', '🔥 장중 움직인 테마: 2차전지 양극재 & 소재 테마 (+8.5%</span> 급등, 코스닥 사이드카 견인)', '과거: 23년 7월 포스코홀딩스 니켈 투자 공시 당시 소재주 전반 2~3배 랠리', '🎯 이번 수혜 유력: 에코프로비엠 (+10.9%), 나노신소재 (+16.0%), 대주전자재료 (+15.7%)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">08:30 장전 공시</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EC%97%90%EC%BD%94%ED%94%84%EB%A1%9C%EB%B9%84%EC%97%A0%2C%20%EC%9D%B8%EB%8F%84%EB%84%A4%EC%8B%9C%EC%95%84%20%EB%8B%88%EC%BC%88%20%EC%A0%9C%EB%A0%A8%20%EB%B2%95%EC%9D%B8%206%2C271%EC%96%B5%20%EC%9B%90%20%EC%B6%9C%EC%9E%90%20%EA%B3%B5%EC%8B%9C" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
         <div class="nt-title">에코프로비엠, 인도네시아 니켈 제련 법인 6,271억 원 출자 공시</div>
-        <div class="nt-move">🔥 장중 움직인 테마: 2차전지 양극재 & 소재 테마 (+8.5%</span> 급등, 코스닥 사이드카 견인)</div>
+        <div class="nt-move">🔥 장중 움직인 테마: 2차전지 양극재 & 소재 테마 (+8.5% 급등, 코스닥 사이드카 견인)</div>
         <div class="nt-history">과거: 23년 7월 포스코홀딩스 니켈 투자 공시 당시 소재주 전반 2~3배 랠리</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: 에코프로비엠 (+10.9%</span>), 나노신소재 (+16.0%</span>), 대주전자재료 (+15.7%</span>)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: 에코프로비엠 (+10.9%), 나노신소재 (+16.0%), 대주전자재료 (+15.7%)</div>
       </div>
 
       <!-- News 2: 12:00 Sidecar -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('코스닥 이틀 연속 매수 사이드카 발동… 프로그램 매수호가 정지', '12:00 정오 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%EB%8B%A5%20%EC%9D%B4%ED%8B%80%20%EC%97%B0%EC%86%8D%20%EB%A7%A4%EC%88%98%20%EC%82%AC%EC%9D%B4%EB%93%9C%EC%B9%B4%20%EB%B0%9C%EB%8F%99%E2%80%A6%20%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8%20%EB%A7%A4%EC%88%98%ED%98%B8%EA%B0%80%20%EC%A0%95%EC%A7%80', '🔥 장중 움직인 테마: CXL 기판(+19.6%</span>), 반도체 장비(+10.6%</span>), 정밀 로봇(+13.4%</span>)', '과거: 23년 11월 공매도 금지 당시 이틀 연속 사이드카 발동 후 주도주 30~50% 랠리', '🎯 이번 수혜 유력: 주성엔지니어링 (대금 1위), 코리아써키트 (CXL 1위), 삼현 (로봇 1위)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('코스닥 이틀 연속 매수 사이드카 발동… 프로그램 매수호가 정지', '12:00 정오 속보', 'https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%EB%8B%A5%20%EC%9D%B4%ED%8B%80%20%EC%97%B0%EC%86%8D%20%EB%A7%A4%EC%88%98%20%EC%82%AC%EC%9D%B4%EB%93%9C%EC%B9%B4%20%EB%B0%9C%EB%8F%99%E2%80%A6%20%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8%20%EB%A7%A4%EC%88%98%ED%98%B8%EA%B0%80%20%EC%A0%95%EC%A7%80', '🔥 장중 움직인 테마: CXL 기판(+19.6%</span>), 반도체 장비(+10.6%), 정밀 로봇(+13.4%)', '과거: 23년 11월 공매도 금지 당시 이틀 연속 사이드카 발동 후 주도주 30~50% 랠리', '🎯 이번 수혜 유력: 주성엔지니어링 (대금 1위), 코리아써키트 (CXL 1위), 삼현 (로봇 1위)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">12:00 정오 속보</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EC%BD%94%EC%8A%A4%EB%8B%A5%20%EC%9D%B4%ED%8B%80%20%EC%97%B0%EC%86%8D%20%EB%A7%A4%EC%88%98%20%EC%82%AC%EC%9D%B4%EB%93%9C%EC%B9%B4%20%EB%B0%9C%EB%8F%99%E2%80%A6%20%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%A8%20%EB%A7%A4%EC%88%98%ED%98%B8%EA%B0%80%20%EC%A0%95%EC%A7%80" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
         <div class="nt-title">코스닥 이틀 연속 매수 사이드카 발동… 프로그램 매수호가 정지</div>
-        <div class="nt-move">🔥 장중 움직인 테마: CXL 기판(+19.6%</span>), 반도체 장비(+10.6%</span>), 정밀 로봇(+13.4%</span>)</div>
+        <div class="nt-move">🔥 장중 움직인 테마: CXL 기판(+19.6%), 반도체 장비(+10.6%), 정밀 로봇(+13.4%)</div>
         <div class="nt-history">과거: 23년 11월 공매도 금지 당시 이틀 연속 사이드카 발동 후 주도주 30~50% 랠리</div>
         <div class="nt-beneficiary">🎯 이번 수혜 유력: 주성엔지니어링 (대금 1위), 코리아써키트 (CXL 1위), 삼현 (로봇 1위)</div>
       </div>
 
       <!-- News 3: 13:43 Morgan Stanley -->
-      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('모건스탠리 반도체 하향 보고서 출회… 시장은 4.2조 대금으로 정면 돌파', '13:43 오후 속보', 'https://search.naver.com/search.naver?where=news&query=%EB%AA%A8%EA%B1%B4%EC%8A%A4%ED%83%A0%EB%A6%AC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%ED%95%98%ED%96%A5%20%EB%B3%B4%EA%B3%A0%EC%84%9C%20%EC%B6%9C%ED%9A%8C%E2%80%A6%20%EC%8B%9C%EC%9E%A5%EC%9D%80%204.2%</span>EC%A1%B0%20%EB%8C%80%EA%B8%88%EC%9C%BC%EB%A1%9C%20%EC%A0%95%EB%A9%B4%20%EB%8F%8C%ED%8C%8C', '🔥 장중 움직인 테마: 반도체 대형주 (+4.1%</span>) 및 HBM·MLB 기판 (+16.7%</span>)', '과거: 24년 9월 모건스탠리 겨울 리포트 직후 외인 매수로 역사적 V자 반등', '🎯 이번 수혜 유력: SK하이닉스 (+5.28%</span>), 이수페타시스 (+16.74%</span>), 티에스이 (+22.69%</span>)')">
+      <div class="news-timeline-card" style="border-left-color:#38bdf8;" onclick="openNewsDetail('모건스탠리 반도체 하향 보고서 출회… 시장은 4.2조 대금으로 정면 돌파', '13:43 오후 속보', 'https://search.naver.com/search.naver?where=news&query=%EB%AA%A8%EA%B1%B4%EC%8A%A4%ED%83%A0%EB%A6%AC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%ED%95%98%ED%96%A5%20%EB%B3%B4%EA%B3%A0%EC%84%9C%20%EC%B6%9C%ED%9A%8C%E2%80%A6%20%EC%8B%9C%EC%9E%A5%EC%9D%80%204.2%</span>EC%A1%B0%20%EB%8C%80%EA%B8%88%EC%9C%BC%EB%A1%9C%20%EC%A0%95%EB%A9%B4%20%EB%8F%8C%ED%8C%8C', '🔥 장중 움직인 테마: 반도체 대형주 (+4.1%) 및 HBM·MLB 기판 (+16.7%)', '과거: 24년 9월 모건스탠리 겨울 리포트 직후 외인 매수로 역사적 V자 반등', '🎯 이번 수혜 유력: SK하이닉스 (+5.28%), 이수페타시스 (+16.74%), 티에스이 (+22.69%)')">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
           <span class="nt-time">13:43 오후 속보</span>
           <a href="https://search.naver.com/search.naver?where=news&query=%EB%AA%A8%EA%B1%B4%EC%8A%A4%ED%83%A0%EB%A6%AC%20%EB%B0%98%EB%8F%84%EC%B2%B4%20%ED%95%98%ED%96%A5%20%EB%B3%B4%EA%B3%A0%EC%84%9C%20%EC%B6%9C%ED%9A%8C%E2%80%A6%20%EC%8B%9C%EC%9E%A5%EC%9D%80%204.2%</span>EC%A1%B0%20%EB%8C%80%EA%B8%88%EC%9C%BC%EB%A1%9C%20%EC%A0%95%EB%A9%B4%20%EB%8F%8C%ED%8C%8C" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>
         </div>
         <div class="nt-title">모건스탠리 반도체 하향 보고서 출회… 시장은 4.2조 대금으로 정면 돌파</div>
-        <div class="nt-move">🔥 장중 움직인 테마: 반도체 대형주 (+4.1%</span>) 및 HBM·MLB 기판 (+16.7%</span>)</div>
+        <div class="nt-move">🔥 장중 움직인 테마: 반도체 대형주 (+4.1%) 및 HBM·MLB 기판 (+16.7%)</div>
         <div class="nt-history">과거: 24년 9월 모건스탠리 겨울 리포트 직후 외인 매수로 역사적 V자 반등</div>
-        <div class="nt-beneficiary">🎯 이번 수혜 유력: SK하이닉스 (+5.28%</span>), 이수페타시스 (+16.74%</span>), 티에스이 (+22.69%</span>)</div>
+        <div class="nt-beneficiary">🎯 이번 수혜 유력: SK하이닉스 (+5.28%), 이수페타시스 (+16.74%), 티에스이 (+22.69%)</div>
       </div>
     </div>
   </div>
@@ -6915,19 +6873,19 @@
           <span class="res-val" id="resQty">273 주</span>
         </div>
         <div class="res-item">
-          <span style="color:#fbbf24;">⚡ 신정재 시초가 익절 (+3.0%</span>)</span>
+          <span style="color:#fbbf24;">⚡ 신정재 시초가 익절 (+3.0%</span>)
           <span class="res-val" style="color:#fbbf24;" id="resShinT1">37,650원 (+300,000원)</span>
         </div>
         <div class="res-item">
-          <span style="color:#a855f7;">⚡ 신정재 목표 청산 (+5.0%</span>)</span>
+          <span style="color:#a855f7;">⚡ 신정재 목표 청산 (+5.0%</span>)
           <span class="res-val" style="color:#a855f7;" id="resShinT2">38,380원 (+500,000원)</span>
         </div>
         <div class="res-item">
-          <span style="color:#38bdf8;">🏆 강창권 스윙 1차 익절 (+15.0%</span>)</span>
+          <span style="color:#38bdf8;">🏆 강창권 스윙 1차 익절 (+15.0%</span>)
           <span class="res-val" style="color:#38bdf8;" id="resKangT1">42,030원 (+1,500,000원)</span>
         </div>
         <div class="res-item">
-          <span style="color:#ef4444;">🚨 칼손절 기준가 (-0.8%</span> 이탈)</span>
+          <span style="color:#ef4444;">🚨 칼손절 기준가 (-0.8%</span> 이탈)
           <span class="res-val" style="color:#ef4444;" id="resStop">36,250원 (-80,000원)</span>
         </div>
       </div>
@@ -6940,16 +6898,40 @@
 
 <!-- TAB 7: CALENDAR (2026년 11월 월간 달력 & 주간 확대 줌인 뷰) -->
   <div id="tabCalendar" style="display: none;">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <!-- UPGRADED MACRO IMPACT & SECTOR EVENT PANEL FOR TAB 9 -->
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      <!-- 🌐 실시간 거시·매크로 8종 (/api/macro-live · Yahoo + 네이버 국고채) -->
+      <div id="macroLivePanel" style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.85)); border: 1px solid rgba(56,189,248,0.35); border-radius: 8px; padding: 12px 13px; margin-bottom: 14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:800; color:#38bdf8;">🌐 거시·매크로 8종 실시간</span>
+          <span id="macroLiveStamp" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; padding:2px 8px; border-radius:4px; font-weight:700;">⚡ 연결 중…</span>
+        </div>
+        <div id="macroLiveGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;"></div>
+        <div style="font-size:10px; color:#64748b; margin-top:7px;" id="macroLiveNote">
+          출처: Yahoo Finance(VIX · 미10년 · 달러인덱스 · 금 · 구리 · BTC) · 네이버 국고채(3Y · 10Y) — 무료 공개 API, 키 불필요. 지표마다 '실시간 / 마감 확정'을 함께 표기합니다.
+        </div>
+      </div>
+
+      <!-- 📅 미국 주요 경제 일정 자동 (ForexFactory 주간 JSON) -->
+      <div id="econCalPanel" style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,27,75,0.85)); border: 1px solid rgba(245,158,11,0.35); border-radius: 8px; padding: 12px 13px; margin-bottom: 14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:800; color:#fbbf24;">📅 미국 주요 경제 일정 (자동 연동)</span>
+          <span id="econCalStamp" style="font-size:10.5px; background:rgba(245,158,11,0.16); color:#fde68a; padding:2px 8px; border-radius:4px; font-weight:700;">⚡ 연결 중…</span>
+        </div>
+        <div id="econCalList" style="display:flex; flex-direction:column; gap:5px; font-size:10.5px; color:#cbd5e1;"></div>
+        <div style="font-size:10px; color:#64748b; margin-top:7px;" id="econCalNote">
+          미국 High/Medium 일정을 KST로 변환 · 출처는 위 배지에 표기(ForexFactory 주간 JSON → 응답 실패 시 다른 무료 캘린더로 자동 대체) · 예상치·이전값은 원본 표기 그대로
+        </div>
+      </div>
+
+      <!-- UPGRADED MACRO IMPACT & SECTOR EVENT PANEL FOR TAB 9 -->
       <div style="background: linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8)); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:12px; font-weight:800; color:#38bdf8;">📊 거시경제 지표 임팩트 신호등 & 핵심 섹터 이벤트 관제</span>
           <span style="font-size:10.5px; background:rgba(148,163,184,0.15); color:#cbd5e1; padding:2px 8px; border-radius:4px; font-weight:700;" title="이 패널은 정기 백엔드 반영 시점의 스냅샷이며 자동 실시간 갱신 API가 없습니다">정기 백엔드 반영 기준: 11/14 05:31 (자동 실시간 아님)</span>
         </div>
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
-          <div style="background:rgba(239,68,68,0.08); border-left:3px solid #ef4444; padding:8px 10px; border-radius:4px;">
-            <div style="font-size:11px; font-weight:800; color:#fca5a5;">🔴 [하방 충격 위험] 미국 10월 PPI 발표</div>
-            <div style="font-size:10.5px; color:#cbd5e1; margin-top:3px;">발표 시각: 오늘(금) 22:30 | 예상치 상회 시 국채금리 반등 및 성장주 단기 수급 이탈 주의</div>
+          <div id="macroSignalNextCard" style="background:rgba(239,68,68,0.08); border-left:3px solid #ef4444; padding:8px 10px; border-radius:4px;">
+            <div id="macroSignalNextTitle" style="font-size:11px; font-weight:800; color:#fca5a5;">🔴 [미국 주요 지표] 일정 계산 중…</div>
+            <div id="macroSignalNextNote" style="font-size:10.5px; color:#cbd5e1; margin-top:3px;">경제 일정 캘린더에서 다음 High/Medium 이벤트를 자동으로 표시합니다.</div>
           </div>
           <div style="background:rgba(234,179,8,0.08); border-left:3px solid #eab308; padding:8px 10px; border-radius:4px;">
             <div style="font-size:11px; font-weight:800; color:#fde047;">🟡 [변동성 주의] 금요 주간결산 동시호가</div>
@@ -6964,18 +6946,18 @@
       <!-- /UPGRADED MACRO IMPACT & SECTOR EVENT PANEL FOR TAB 9 -->
     <div class="panel-box gold" style="border-color:#b45309;">
       <div class="sec-head" style="border-bottom-color:#78350f; color:#fbbf24;">
-        <span>📅 2026년 11월 주요 증시 일정 & 주간 확대 뷰</span>
+        <span id="calPanelTitle">📅 2026년 11월 주요 증시 일정 & 주간 확대 뷰</span>
         <span class="sub">날짜나 주차를 터치하면 하단에 상세 일정이 크게 확대됩니다</span>
       </div>
 
       <!-- MONTHLY CALENDAR WRAPPER -->
       <div class="cal-wrapper">
         <div class="cal-header">
-          <span class="cal-title">🗓️ 2026년 11월 (November 2026)</span>
+          <span class="cal-title" id="calTitle">🗓️ 2026년 11월 (November 2026)</span>
           <span class="cal-month-nav">⭐ 오늘: 11월 14일(토) · 주말 휴장 (미 10월 PPI 발표는 11/13 금 22:30)</span>
         </div>
 
-        <div class="cal-grid">
+        <div class="cal-grid" id="calGrid">
           <div class="cal-day-head sun">일</div>
           <div class="cal-day-head">월</div>
           <div class="cal-day-head">화</div>
@@ -7140,19 +7122,19 @@
           <div style="font-size:12px; font-weight:800; color:#38bdf8; margin-bottom:8px;">📊 실시간 글로벌 매크로 & 야간 파생 시장 크로스체크</div>
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px; font-size:11.5px;">
             <div style="background:#111827; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">
-              <span style="color:#94a3b8;">🌙 KRX 코스피200 야간선물:</span> <strong style="color:#f43f5e; font-size:13px;">844.05pt (+0.90%</span> ▲)</strong><br>
+              <span style="color:#94a3b8;">🌙 KRX 코스피200 야간선물:</span> <strong style="color:#f43f5e; font-size:13px;">844.05pt (+0.90% ▲)</strong><br>
               <span style="font-size:10px; color:#4ade80;">외인 +2,450계약 폭풍 순매수 (주간 +12,400계약 롱베팅 지속)</span>
             </div>
             <div style="background:#111827; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">
-              <span style="color:#94a3b8;">🇺🇸 CME E-mini 나스닥 100 선물:</span> <strong style="color:#f43f5e; font-size:13px;">28,387.75 (+1.98%</span> ▲ 폭등 🚀)</strong><br>
-              <span style="font-size:10px; color:#38bdf8;">S&P 500 선물: 6,882.20 (+0.78%</span> ▲ 강세 안착)</span>
+              <span style="color:#94a3b8;">🇺🇸 CME E-mini 나스닥 100 선물:</span> <strong style="color:#f43f5e; font-size:13px;">28,387.75 (+1.98% ▲ 폭등 🚀)</strong><br>
+              <span style="font-size:10px; color:#38bdf8;">S&P 500 선물: 6,882.20 (+0.78%</span> ▲ 강세 안착)
             </div>
             <div style="background:#111827; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">
               <span style="color:#94a3b8;">💻 필라델피아 반도체 (SOX):</span> <strong style="color:#f43f5e; font-size:13px;"><span id="mfSox" title="야후 ^SOX · 일 1회 갱신">10,146.32 (-3.43%)</span></strong><br>
               <span style="font-size:10px; color:#fbbf24;">美 정규장 마감 확정값 (장마감 후 1일 1회 갱신)</span>
             </div>
             <div style="background:#111827; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.08);">
-              <span style="color:#94a3b8;">🛡️ VIX / 환율 / 유가:</span> <strong style="color:#4ade80; font-size:13px;">VIX 18.42 (-5.34%</span> ▼)</strong><br>
+              <span style="color:#94a3b8;">🛡️ VIX / 환율 / 유가:</span> <strong style="color:#4ade80; font-size:13px;">VIX 18.42 (-5.34% ▼)</strong><br>
               <span style="font-size:10px; color:#38bdf8;">NDF 환율 1,334.20원 (-9.64원 급락) · WTI <span id="mfWti" title="야후 CL=F · NYMEX 연동">$88.56 (-0.20%)</span></span>
             </div>
           </div>
@@ -7162,9 +7144,9 @@
         <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
           <div style="font-size:12px; font-weight:800; color:#c084fc; margin-bottom:6px;">🚀 미국 실시간 빅테크 & 반도체 주도주 동향</div>
           <div style="font-size:11.5px; color:#cbd5e1; line-height:1.55;">
-            • <strong style="color:#38bdf8;">엔비디아 (NVDA +3.4%</span> 급등):</strong> 차세대 서버용 CXL 2.0 메모리 풀링 표준 채택 공식화로 AI 서버 인프라 병목 해소 기대감 반영.<br>
-            • <strong style="color:#38bdf8;">마이크론 (MU +4.2%</span> 폭등):</strong> 차세대 HBM 및 고부가 CXL 메모리 모듈 양산 수주 모멘텀으로 신고가 랠리.<br>
-            • <strong style="color:#e2e8f0;">테슬라(+2.6%</span>), MSFT(+1.8%</span>), 애플(+1.2%</span>):</strong> 기술주 전반으로 글로벌 기관 롱바스켓 자금 유입 가속.
+            • <strong style="color:#38bdf8;">엔비디아 (NVDA +3.4% 급등):</strong> 차세대 서버용 CXL 2.0 메모리 풀링 표준 채택 공식화로 AI 서버 인프라 병목 해소 기대감 반영.<br>
+            • <strong style="color:#38bdf8;">마이크론 (MU +4.2% 폭등):</strong> 차세대 HBM 및 고부가 CXL 메모리 모듈 양산 수주 모멘텀으로 신고가 랠리.<br>
+            • <strong style="color:#e2e8f0;">테슬라(+2.6%), MSFT(+1.8%), 애플(+1.2%):</strong> 기술주 전반으로 글로벌 기관 롱바스켓 자금 유입 가속.
           </div>
         </div>
 
@@ -7181,7 +7163,7 @@
         <div style="background:#06281e; border:1px solid #10b981; border-radius:8px; padding:12px 14px; margin-bottom:12px;">
           <div style="font-size:12px; font-weight:800; color:#34d399; margin-bottom:6px;">🎯 익일 09:00 국내 증시 시초가 예측 및 만쥬 종베 실전 타점</div>
           <div style="font-size:11.5px; color:#cbd5e1; line-height:1.55;">
-            • <strong>시초가 갭상승 확률:</strong> 코스피200 야간선물 844선 안착과 나스닥 선물 +1.98%</span> 폭등으로 내일 09:00 코스피·코스닥 <strong style="color:#fef08a;">+1.5~2.0%</span> 이상 시초가 갭상승 출발 확률 98% 확정적</strong>.<br>
+            • <strong>시초가 갭상승 확률:</strong> 코스피200 야간선물 844선 안착과 나스닥 선물 +1.98% 폭등으로 내일 09:00 코스피·코스닥 <strong style="color:#fef08a;">+1.5~2.0% 이상 시초가 갭상승 출발 확률 98% 확정적</strong>.<br>
             • <strong>만쥬 종베 1순위 주성엔지니어링 (173,000원 종가):</strong> 내일 시초가 +3~5% 갭상승 유력. <strong>09:00~09:05 구간에서 보유 물량의 50% 분할 익절 확정</strong> 후 잔여 물량은 시초가 지지 여부 보며 38,000원 돌파 추종.<br>
             • <strong>만쥬 종베 2순위 코리아써키트 (21,350원 종가):</strong> 시간외 84억 폭발 + CXL 1조 수혜로 시초가 강한 갭 예상. 22,200~22,800원 1차 목표가 분할 청산 원칙 준수.
           </div>
@@ -7242,11 +7224,11 @@
       </div>
       <div class="modal-body">
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-          <span style="color: #94a3b8;">지표 / 등락률</span>
+          <span style="color: #94a3b8;">현재 지수 / 등락률</span>
           <span id="modalVal1" style="font-weight: 800; color: #fef08a;">-</span>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-          <span style="color: #94a3b8;">거래대금 / 기준</span>
+          <span style="color: #94a3b8;">전일 종가 · 1년 범위</span>
           <span id="modalVal2" style="font-weight: 800; color: #38bdf8;">-</span>
         </div>
         <!-- 종목 바로가기 (실시간 종목코드로 연동 — live-api.js 가 갱신) -->
@@ -7300,8 +7282,8 @@
 
           <!-- CHART META INFO -->
           <div id="modalChartMeta" style="display: flex; justify-content: space-between; font-size: 10.5px; color: #94a3b8; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 4px;">
-            <span>최고가: <strong id="modalChartHigh" style="color:#f43f5e;">-</strong></span>
-            <span>최저가: <strong id="modalChartLow" style="color:#38bdf8;">-</strong></span>
+            <span>구간 최고가: <strong id="modalChartHigh" style="color:#f43f5e;">-</strong></span>
+            <span>구간 최저가: <strong id="modalChartLow" style="color:#38bdf8;">-</strong></span>
             <span>추세 진단: <strong id="modalChartTrend" style="color:#4ade80;">상승 추세 돌파 🎯</strong></span>
           </div>
         </div>
@@ -9866,102 +9848,7 @@ function openDetail(title, v1, v2, desc) {
         setTimeout(function() {
           try {
             window.RnZone.selectStockByCode(identifier);
-          
-        // 4. Past History Market Analysis & Material Scale & Rise Probability
-        var probBadge = document.getElementById('modalProbBadge');
-        var matScale = document.getElementById('modalMaterialScale');
-        var histStat = document.getElementById('modalHistoricalStat');
-        var nextStrat = document.getElementById('modalNextDayStrategy');
-
-        if (probBadge && matScale && histStat && nextStrat) {
-          var t = title || '';
-          var d = desc || '';
-          if (t.indexOf('컨텍') !== -1 || d.indexOf('컨텍') !== -1) {
-            probBadge.className = 'krx-warn';
-            probBadge.style.background = 'rgba(244,63,94,0.2)';
-            probBadge.style.color = '#f43f5e';
-            probBadge.innerHTML = '익일 상승확률 92% 🚀 (초강력)';
-            matScale.innerHTML = '<span style="color:#f43f5e; font-weight:800;">최상 (A+)</span> · 스페이스X 비상장 기업가치 350조 돌파 및 국내 위성 지상국 수주 독점 파트너십 (단발성 아닌 연쇄 수주)';
-            histStat.innerHTML = '과거 스타링크 국내 추진 및 스페이스X 대형 수주 당시 대장주 익일 <strong>시초가 평균 +5.8%~+9.2% 갭상승</strong> 및 3거래일 누적 평균 +38% 랠리 형성 (통계 승률 92%).';
-            nextStrat.innerHTML = '익일 09:02 시초가 갭 형성 시 13,000~13,500원선에서 <strong>50% 분할 익절</strong>, 잔여 50%는 12,000원 손절선 잡고 전고점 돌파 추세 홀딩.';
-          } else if (t.indexOf('AP위성') !== -1 || d.indexOf('AP위성') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 85% 🔥';
-            probBadge.style.background = 'rgba(245,158,11,0.2)';
-            probBadge.style.color = '#fbbf24';
-            matScale.innerHTML = '<span style="color:#fbbf24; font-weight:800;">상 (A)</span> · 한국형 위성항법(KPS) 및 위성통신 단말기 700억 대량 대금 폭발 (우주항공 2등 실질 대장)';
-            histStat.innerHTML = '1등주 상한가 다음 날 2등주로 유동성 확산되며 익일 장중 고가 <strong>평균 +8~14% 추가 분출</strong> 통계 확인 (승률 85%).';
-            nextStrat.innerHTML = '10,000원 핵심 라운드넘버 지지 확인 후 시초가 추종, 11,500원 저항대에서 분할 매도.';
-          } else if (t.indexOf('지니언스') !== -1 || d.indexOf('지니언스') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 88% 🔥';
-            probBadge.style.background = 'rgba(244,63,94,0.2)';
-            probBadge.style.color = '#f43f5e';
-            matScale.innerHTML = '<span style="color:#f43f5e; font-weight:800;">최상 (A+)</span> · EDR 제로트러스트 글로벌 인증 및 공급 폭증 (2,200억 초대량거래 실질 대장)';
-            histStat.innerHTML = '역대 2,000억 이상 대금 터진 보안 대장주 익일 <strong>시초가 평균 +4.2% 갭상승</strong> 및 거래대금 연속 유입 확률 88%.';
-            nextStrat.innerHTML = '31,500원선 지지선 유지 시 익일 33,500원 신고가 돌파 시도 관찰 후 분할 대응.';
-          } else if (t.indexOf('코난테크놀로지') !== -1 || d.indexOf('코난테크놀로지') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 89% 🚀';
-            probBadge.style.background = 'rgba(244,63,94,0.2)';
-            probBadge.style.color = '#f43f5e';
-            matScale.innerHTML = '<span style="color:#f43f5e; font-weight:800;">상 (A)</span> · 생성형 AI 검색 및 공공/기업 LLM 수주 가속 100억+ 진성 상한가 안착';
-            histStat.innerHTML = '거래대금 100억+ 진성 상한가 종목 익일 <strong>시초가 갭상승 확률 89%</strong> (평균 +4.5~7.0% 출발).';
-            nextStrat.innerHTML = '익일 09:05 이전 시초가 갭에 50% 분할 익절, 상한가(12,930원) 이탈 시 전량 청산.';
-          } else if (t.indexOf('JYP') !== -1 || d.indexOf('JYP') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 82% 🟢';
-            probBadge.style.background = 'rgba(16,185,129,0.2)';
-            probBadge.style.color = '#34d399';
-            matScale.innerHTML = '<span style="color:#34d399; font-weight:800;">상 (A)</span> · 스트레이키즈 글로벌 스타디움 월드투어 전석 매진 및 4Q 실적 서프라이즈 (2,800억 수급)';
-            histStat.innerHTML = '대형 엔터주 2,500억 이상 기관/외인 쌍끌이 유입 후 3~5거래일 추세 랠리 형성 확률 82%.';
-            nextStrat.innerHTML = '45,000원선 지지력 확인 후 48,000원 전고점 돌파 목표 스윙 추세 홀딩.';
-          } else if (t.indexOf('티엘비') !== -1 || t.indexOf('코리아써키트') !== -1 || t.indexOf('심텍') !== -1 || d.indexOf('CXL') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 84% 🔥';
-            probBadge.style.background = 'rgba(245,158,11,0.2)';
-            probBadge.style.color = '#fbbf24';
-            matScale.innerHTML = '<span style="color:#fbbf24; font-weight:800;">상 (A)</span> · 정부 1조 CXL 클러스터 투자 및 엔비디아 CXL 2.0 표준 채택 (하반기 반도체 최대 화두)';
-            histStat.innerHTML = 'CXL 인터페이스 표준화 국면에서 소부장 핵심 기판주 2~3일 연속 외인 롱바스켓 매수 유입 확률 84%.';
-            nextStrat.innerHTML = '시초가 갭상승 시 50% 분할 익절, 5일선 지지 유지 시 전고점 돌파 추종.';
-          } else if (t.indexOf('주성엔지니어링') !== -1 || d.indexOf('주성엔지니어링') !== -1) {
-            probBadge.innerHTML = '익일 상승확률 81% 🟢';
-            probBadge.style.background = 'rgba(16,185,129,0.2)';
-            probBadge.style.color = '#34d399';
-            matScale.innerHTML = '<span style="color:#34d399; font-weight:800;">상 (A)</span> · 코스닥 1위 대금 3,750억 유입 및 옵션만기 168,000원 지지선 성공적 방어';
-            histStat.innerHTML = '코스닥 대금 1위 거래대금 폭발주 다음 날 저가 매수세 유입 반등 확률 81%.';
-            nextStrat.innerHTML = '168,000원 손절선 엄수, 175,000원 저항선 회복 시 분할 청산.';
-          } else {
-            // General calculation
-            var chg = parseFloat(v1) || 0;
-            if (chg >= 25) {
-              probBadge.innerHTML = '익일 상승확률 88% 🚀';
-              probBadge.style.background = 'rgba(244,63,94,0.2)';
-              probBadge.style.color = '#f43f5e';
-              matScale.innerHTML = '<span style="color:#f43f5e; font-weight:800;">최상 (A+)</span> · 장중 상한가 안착에 따른 강력한 시장 매수 잔량 집중 모멘텀';
-              histStat.innerHTML = '상한가 안착 종목 익일 시초가 평균 +5.2% 갭상승 통계 (승률 88%).';
-              nextStrat.innerHTML = '익일 09:05 이내 시초가 갭에 50% 분할 익절, 시초가 하회 시 전량 정리.';
-            } else if (chg >= 10) {
-              probBadge.innerHTML = '익일 상승확률 80% 🔥';
-              probBadge.style.background = 'rgba(245,158,11,0.2)';
-              probBadge.style.color = '#fbbf24';
-              matScale.innerHTML = '<span style="color:#fbbf24; font-weight:800;">상 (A)</span> · 당일 주도 테마 대장주 자금 집중 및 전고점 돌파 양봉';
-              histStat.innerHTML = '대량 거래대금 동반 10%+ 급등 종목 익일 장중 고가 평균 +6.5% 추가 상승 (승률 80%).';
-              nextStrat.innerHTML = '장초반 5분 눌림목 지지 확인 후 분할 매도 대응.';
-            } else if (chg > 0) {
-              probBadge.innerHTML = '익일 상승확률 72% 🟢';
-              probBadge.style.background = 'rgba(16,185,129,0.2)';
-              probBadge.style.color = '#34d399';
-              matScale.innerHTML = '<span style="color:#34d399; font-weight:800;">보통 (B+)</span> · 섹터 동반 상승 및 추세 유지';
-              histStat.innerHTML = '테마 동조화 지속 시 익일 상방 탄력 72% 유지.';
-              nextStrat.innerHTML = '핵심 이동평균선(5일/20일선) 지지선 이탈 여부 점검.';
-            } else {
-              probBadge.innerHTML = '익일 반등확률 60% 🟡';
-              probBadge.style.background = 'rgba(245,158,11,0.15)';
-              probBadge.style.color = '#fbbf24';
-              matScale.innerHTML = '<span style="color:#94a3b8;">중립 (C)</span> · 단기 차익 실현 및 매물 소화 국면';
-              histStat.innerHTML = '과거 지지선 도달 시 기술적 반등 확률 60%.';
-              nextStrat.innerHTML = '하단 지지선 터치 전 추격 매수 자제 및 관망.';
-            }
-          }
-        }
-
-      } catch(e) { console.error(e); }
+          } catch(e) { console.error(e); }
         }, 80);
       } else if (tabKey === 'jongbe' && window.Jongbe) {
         setTimeout(function() {
@@ -10284,52 +10171,10 @@ function openDetail(title, v1, v2, desc) {
     // ==========================================
     // UNIVERSAL MODAL CHART ENGINE (STOCKS & INDICES)
     // ==========================================
-    var cachedIndexSeries = {
-      'kospi': { name: '코스피', base: 5120, trend: 1.05, cur: 5375.36, unit: 'pt', high: '5,382.10', low: '5,080.40' },
-      'kosdaq': { name: '코스닥', base: 645, trend: 1.09, cur: 705.10, unit: 'pt', high: '708.20', low: '638.50' },
-      'kospi200_day': { name: '코스피200 주간선물', base: 805, trend: 1.04, cur: 836.35, unit: 'pt', high: '838.00', low: '802.10' },
-      'kospi200_night': { name: '코스피200 야간선물', base: 820, trend: 1.03, cur: 844.05, unit: 'pt', high: '845.50', low: '818.00' },
-      'kosdaq150_night': { name: '코스닥150 야간선물', base: 1120, trend: 1.055, cur: 1181.80, unit: 'pt', high: '1,185.00', low: '1,110.00' },
-      'nasdaq_fut': { name: 'E-mini 나스닥 100 선물', base: 27400, trend: 1.036, cur: 28387.75, unit: 'pt', high: '28,410.00', low: '27,320.00' },
-      'sox': { name: '필라델피아 반도체 지수', base: 9650, trend: 1.036, cur: 9998.33, unit: 'pt', high: '10,020.00', low: '9,580.00' },
-      'wti': { name: 'WTI 원유 선물', base: 84.5, trend: 1.034, cur: 87.36, unit: '$', high: '$88.50', low: '$83.20' },
-      'usdkrw': { name: '원/달러 환율', base: 1355, trend: 0.984, cur: 1334.20, unit: '원', high: '1,362.50원', low: '1,332.00원' },
-      'kospi_frg': { name: '코스피 외인 누적수급', base: 2000, trend: 1.8, cur: 6550, unit: '억', high: '+6,550억', low: '-1,200억' },
-      'kosdaq_inst': { name: '코스닥 기관 누적수급', base: 500, trend: 2.5, cur: 2649, unit: '억', high: '+2,649억', low: '-450억' },
-      'frg_fut': { name: '외인 선물 누적계약', base: 3000, trend: 2.2, cur: 12400, unit: '계약', high: '+12,400계약', low: '+1,500계약' },
-      'sidecar': { name: '사이드카 지수 궤적', base: 650, trend: 1.085, cur: 705.10, unit: 'pt', high: '708.20', low: '640.00' }
-    };
+    // [정리 2026-11-14] cachedIndexSeries(어제 고정값)와 generateCandlesForSeries(Math.sin 합성 캔들)를 제거했다.
+    //  지수·선물 모달은 이제 /api/index-chart 의 실제 일봉(Yahoo 1년)만 그린다.
+    //  공개 일봉 API 가 없는 항목(KRX 주간·야간선물 등)은 차트 대신 정직 안내를 띄운다.
 
-    function generateCandlesForSeries(series) {
-      var candles = [];
-      var curVal = series.base;
-      var totalDays = 30;
-      var step = (series.cur - series.base) / (totalDays - 1);
-
-      for (var i = 0; i < totalDays; i++) {
-        var baseP = series.base + step * i;
-        var noise = (Math.sin(i * 0.8) + (Math.random() - 0.48) * 0.8) * (series.base * 0.015);
-        var closeP = Math.round((baseP + noise) * 100) / 100;
-        if (i === totalDays - 1) closeP = series.cur;
-
-        var openP = i === 0 ? series.base : candles[i - 1].close;
-        var highP = Math.max(openP, closeP) + Math.abs(noise * 0.7);
-        var lowP = Math.min(openP, closeP) - Math.abs(noise * 0.7);
-        var vol = Math.floor(1000 + Math.random() * 3000 + (i > 25 ? 2500 : 0));
-
-        candles.push({
-          open: openP,
-          high: highP,
-          low: lowP,
-          close: closeP,
-          vol: vol
-        });
-      }
-      return candles;
-    }
-
-    
-    
     window.stockCodes = {
   "코난테크놀로지": "402030",
   "지니언스": "263860",
@@ -10407,6 +10252,20 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
     var modalViewOffset = 0;
     var modalCurrentTitle = '';
     var modalCurrentKey = null;
+    // 모달 차트 값 단위 — 지수 pt / 유가 $ / 환율 원 / 종목 원 (최고가에 '원'을 붙이던 오표기 방지)
+    var modalUnit = '원';
+    var modalDigits = 0;
+    function modalFmtVal(v) {
+      if (typeof v !== 'number' || !isFinite(v)) return '—';
+      var d = modalDigits || 0;
+      var txt = v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+      return modalUnit === '$' ? '$' + txt : txt + (modalUnit || '');
+    }
+    function setModalValueUnit(unit, digits) {
+      modalUnit = unit || '';
+      modalDigits = typeof digits === 'number' ? digits : 0;
+    }
+    window.setModalValueUnit = setModalValueUnit;
 
     function setModalPeriod(count) {
       if (!modalAllCandles || modalAllCandles.length === 0) return;
@@ -10491,9 +10350,9 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         if (candles[k].high > maxC) maxC = candles[k].high;
         if (candles[k].low < minC) minC = candles[k].low;
       }
-      var isPrice = maxC >= 500;
-      document.getElementById('modalChartHigh').innerText = isPrice ? Math.round(maxC).toLocaleString() + '원' : maxC.toFixed(1);
-      document.getElementById('modalChartLow').innerText = isPrice ? Math.round(minC).toLocaleString() + '원' : minC.toFixed(1);
+      // 단위는 화면이 아는 값(주식 원 / 지수 pt / 유가 $ / 환율 원)을 그대로 쓴다.
+      document.getElementById('modalChartHigh').innerText = modalFmtVal(maxC);
+      document.getElementById('modalChartLow').innerText = modalFmtVal(minC);
 
       // Background
       ctx.fillStyle = '#070c14';
@@ -10786,6 +10645,11 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         }
       }
 
+      setModalValueUnit('원', 0);
+      modalClearNotice();
+      var titleTxtEl = document.getElementById('modalChartTitleTxt');
+      if (titleTxtEl) titleTxtEl.textContent = '📊 1~2년 실시간 캔들 & 추세선 차트';
+
       if (matchedName && db[matchedName] && db[matchedName].length > 0) {
         var rawList = db[matchedName];
         modalAllCandles = rawList.map(function(item) {
@@ -10800,28 +10664,14 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         });
         document.getElementById('modalChartTrend').innerText = modalAllCandles[modalAllCandles.length - 1].close >= modalAllCandles[0].close ? '500거래일 대세 우상향 🎯' : '중기 눌림목 지지 반등';
       } else {
-        // Fallback: 500-day smooth trajectory
-        var sInfo = cachedIndexSeries[seriesKey];
-        if (!sInfo) {
-          var defBase = title.indexOf('원') !== -1 ? 30000 : 1000;
-          sInfo = { base: defBase * 0.7, cur: defBase, high: defBase * 1.15, low: defBase * 0.65 };
-        }
-        var candles500 = [];
-        var totalDays = 500;
-        var step = (sInfo.cur - sInfo.base) / (totalDays - 1);
-        for (var i = 0; i < totalDays; i++) {
-          var baseP = sInfo.base + step * i;
-          var noise = (Math.sin(i * 0.25) + Math.cos(i * 0.1)) * (sInfo.base * 0.03) + (Math.random() - 0.48) * (sInfo.base * 0.01);
-          var closeP = Math.round((baseP + noise) * 100) / 100;
-          if (i === totalDays - 1) closeP = sInfo.cur;
-          var openP = i === 0 ? sInfo.base : candles500[i - 1].close;
-          var highP = Math.max(openP, closeP) + Math.abs(noise * 0.5);
-          var lowP = Math.min(openP, closeP) - Math.abs(noise * 0.5);
-          var vol = Math.floor(1000 + Math.random() * 4000);
-          candles500.push({ open: openP, high: highP, low: lowP, close: closeP, vol: vol });
-        }
-        modalAllCandles = candles500;
-        document.getElementById('modalChartTrend').innerText = '500거래일 대세 상승 돌파 🎯';
+        // 일봉 DB에도 없고 실시간 소스도 없을 때 — 합성(Math.sin) 캔들로 대신 그리지 않는다.
+        modalNotice(
+          '<div style="max-width:92%;">' +
+          '<div style="font-size:12.5px; font-weight:800; color:#fbbf24; margin-bottom:5px;">🚫 일봉 데이터 없음 — 합성 차트를 그리지 않습니다</div>' +
+          '<div style="font-size:11px; color:#cbd5e1; line-height:1.5;">내장 일봉 DB에서 이 항목을 찾지 못했고, 무료 공개 일봉 소스도 없습니다.</div>' +
+          '</div>', '#fbbf24'
+        );
+        return;
       }
 
       setupModalCanvasInteraction();
@@ -10900,12 +10750,186 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
     }
     window.openSupplyChart = openSupplyChart;
 
+    // ==========================================
+    // 지수·선물 모달 실데이터 엔진  (/api/index-chart · Yahoo 1년 일봉)
+    //   · 합성 캔들을 만들지 않는다. 공개 일봉 API 가 없으면 '없음'을 그대로 표기한다.
+    // ==========================================
+    var MODAL_LIVE_KEYS = {
+      kospi: 1, kosdaq: 1, kospi200_spot: 1, sox: 1, wti: 1, usdkrw: 1,
+      nasdaq_fut: 1, sp500_fut: 1, vix: 1, us10y: 1, dxy: 1, gold: 1, copper: 1, btc: 1
+    };
+    var modalIndexReqId = 0;
+
+    function modalPctColor(p) {
+      if (typeof p !== 'number' || !isFinite(p)) return '#cbd5e1';
+      return p > 0 ? '#f43f5e' : p < 0 ? '#38bdf8' : '#cbd5e1';
+    }
+    function modalNumText(v, digits) {
+      if (typeof v !== 'number' || !isFinite(v)) return '—';
+      return v.toLocaleString('en-US', { minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0 });
+    }
+    function modalPriceText(value, unit, digits) {
+      if (typeof value !== 'number' || !isFinite(value)) return '—';
+      var txt = modalNumText(value, digits || 0);
+      return unit === '$' ? '$' + txt : txt + (unit || '');
+    }
+
+    // 차트 자리에 안내만 띄운다 (가짜 차트 금지)
+    function modalNotice(html, color) {
+      var wrap = document.getElementById('modalCandleCanvasWrap');
+      if (!wrap) return;
+      var el = document.getElementById('modalChartNotice');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'modalChartNotice';
+        el.style.cssText = 'position:absolute; inset:0; display:flex; align-items:center; justify-content:center; ' +
+          'text-align:center; font-size:12px; font-weight:800; padding:10px; background:rgba(7,12,20,0.92); border-radius:6px; z-index:3;';
+        wrap.appendChild(el);
+      }
+      el.style.color = color || '#94a3b8';
+      el.innerHTML = html;
+      el.style.display = 'flex';
+      modalAllCandles = [];
+      var canvas = document.getElementById('modalChartCanvas');
+      if (canvas) {
+        try {
+          var ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        } catch (e) { /* noop */ }
+      }
+      var meta = document.getElementById('modalChartMeta');
+      if (meta) meta.style.display = 'none';
+      var bar = document.getElementById('modalPeriodBar');
+      if (bar) bar.style.display = 'none';
+      var cnt = document.getElementById('modalChartZoomCount');
+      if (cnt) cnt.textContent = '—';
+    }
+
+    function modalClearNotice() {
+      var el = document.getElementById('modalChartNotice');
+      if (el) el.style.display = 'none';
+      var meta = document.getElementById('modalChartMeta');
+      if (meta) meta.style.display = 'flex';
+      var bar = document.getElementById('modalPeriodBar');
+      if (bar) bar.style.display = 'flex';
+    }
+    window.modalNotice = modalNotice;
+    window.modalClearNotice = modalClearNotice;
+
+    function loadIndexModalLive(key, title, v1, v2, desc) {
+      modalIndexReqId += 1;
+      var reqId = modalIndexReqId;
+      if (!key) { renderUniversalModalChart(null, title); return; }
+      fetch('/api/index-chart?key=' + encodeURIComponent(key), { cache: 'no-store' })
+        .then(function (res) { return res.json(); })
+        .then(function (j) {
+          if (reqId !== modalIndexReqId) return;   // 그 사이 다른 모달을 열었으면 버린다
+          if (!j || j.ok !== true) {
+            var why = j && j.reason === 'no_public_daily' ? '공개 일봉 API 없음'
+              : j && j.reason === 'upstream_empty' ? '일봉 응답 없음' : '일봉 데이터 없음';
+            // 상단 시세는 호출 시점의 값(확정치)을 그대로 둔다
+            document.getElementById('modalVal1').innerText = v1;
+            document.getElementById('modalVal2').innerText = v2;
+            document.getElementById('modalDesc').innerHTML = desc || '';
+            modalNotice(
+              '<div style="max-width:92%;">' +
+              '<div style="font-size:13px; font-weight:800; color:#fbbf24; margin-bottom:6px;">🚫 ' + why + ' — 차트를 그리지 않습니다</div>' +
+              '<div style="font-size:11px; color:#cbd5e1; line-height:1.5;">' + (j && j.message ? j.message : '이 항목은 무료 공개 일봉 소스가 없습니다.') + '</div>' +
+              '<div style="font-size:10.5px; color:#94a3b8; margin-top:6px;">가짜(합성) 캔들로 대신 그리지 않는 것이 이 화면의 원칙입니다. 상단 시세(확정치)만 유효합니다.</div>' +
+              '</div>', '#fbbf24'
+            );
+            return;
+          }
+          applyIndexModalLive(j);
+        })
+        .catch(function (err) {
+          if (reqId !== modalIndexReqId) return;
+          document.getElementById('modalVal1').innerText = v1;
+          document.getElementById('modalVal2').innerText = v2;
+          modalNotice(
+            '<div style="max-width:92%;">' +
+            '<div style="font-size:12.5px; font-weight:800; color:#fca5a5; margin-bottom:5px;">⚠️ 실시간 일봉 호출 실패</div>' +
+            '<div style="font-size:10.5px; color:#94a3b8;">' + String((err && err.message) || err) + '</div>' +
+            '</div>', '#fca5a5'
+          );
+        });
+    }
+
+    function applyIndexModalLive(j) {
+      var q = j.quote || {};
+      var unit = j.unit || 'pt';
+      var digits = typeof j.digits === 'number' ? j.digits : 2;
+      var pct = (typeof q.changePct === 'number') ? q.changePct : null;
+      var sign = pct === null ? '' : (pct > 0 ? '+' : '');
+      var val1 = document.getElementById('modalVal1');
+      if (val1) {
+        val1.innerHTML = '<span style="color:' + modalPctColor(pct) + ';">' +
+          modalPriceText(q.price, unit, digits) + ' (' + sign + (pct === null ? '—' : pct.toFixed(2)) + '%)</span>' +
+          '<span style="font-size:10px; color:#94a3b8; margin-left:6px; font-weight:700;">' + (q.basis || '') + '</span>';
+      }
+      var val2 = document.getElementById('modalVal2');
+      if (val2) {
+        val2.innerHTML = '전일 종가 ' + modalPriceText(q.previousClose, unit, digits) +
+          ' · 1년 최고 ' + modalPriceText(j.range && j.range.high, unit, digits) +
+          ' / 최저 ' + modalPriceText(j.range && j.range.low, unit, digits) +
+          ' <span style="font-size:10px; color:#94a3b8;">(' + ((j.range && j.range.from) || '') + ' ~ ' +
+          ((j.range && j.range.to) || '') + ' · 일봉 ' + ((j.range && j.range.count) || 0) + '개)</span>';
+      }
+      var descEl = document.getElementById('modalDesc');
+      if (descEl) {
+        descEl.innerHTML = '출처: ' + (j.sourceNote || 'Yahoo Finance 일봉') +
+          (q.asOfKst ? ' · 기준 ' + q.asOfKst + ' KST' : '') +
+          '<br>실제 일봉(시가·고가·저가·종가)만 표시합니다. 합성·추정 캔들은 쓰지 않습니다.';
+      }
+      renderIndexLiveCandles(j);
+    }
+
+    function renderIndexLiveCandles(j) {
+      modalClearNotice();
+      modalUnit = (j.unit === '$') ? '$' : (j.unit || '');
+      modalDigits = typeof j.digits === 'number' ? j.digits : 2;
+      modalAllCandles = (j.candles || []).map(function (c) {
+        return { date: c.date, open: c.o, high: c.h, low: c.l, close: c.c, vol: c.v };
+      });
+      if (!modalAllCandles.length) {
+        modalNotice('일봉 데이터가 비어 있습니다.', '#fbbf24');
+        return;
+      }
+      modalCurrentKey = j.key;
+      modalCurrentTitle = j.name;
+      modalViewCount = Math.min(60, modalAllCandles.length);
+      modalViewOffset = 0;
+      var tt = document.getElementById('modalChartTitleTxt');
+      if (tt) tt.textContent = '📊 ' + (j.name || '') + ' 1년 일봉 (실데이터 · ' + (j.symbol || '') + ')';
+      // 60일선 대비 — 실측 계산만 표기한다
+      var closes = modalAllCandles.map(function (c) { return c.close; });
+      var n = Math.min(60, closes.length);
+      var sma = 0;
+      for (var i = closes.length - n; i < closes.length; i += 1) sma += closes[i];
+      sma = n ? sma / n : 0;
+      var last = closes[closes.length - 1];
+      var diff = sma ? ((last - sma) / sma) * 100 : 0;
+      var trendEl = document.getElementById('modalChartTrend');
+      if (trendEl) {
+        trendEl.textContent = n + '일선 대비 ' + (diff >= 0 ? '+' : '') + diff.toFixed(2) + '% (실측)';
+        trendEl.style.color = diff >= 0 ? '#f43f5e' : '#38bdf8';
+      }
+      setupModalCanvasInteraction();
+      drawModalCandles();
+    }
+    window.renderIndexLiveCandles = renderIndexLiveCandles;
+    window.loadIndexModalLive = loadIndexModalLive;
+
     function openIndexChart(title, v1, v2, desc, key) {
       try {
+        var knownLive = !!MODAL_LIVE_KEYS[key];
         document.getElementById('modalTitle').innerText = title;
-        document.getElementById('modalVal1').innerText = v1;
-        document.getElementById('modalVal2').innerText = v2;
-        document.getElementById('modalDesc').innerHTML = desc;
+        // 실제 일봉을 받아올 수 있는 항목은 '불러오는 중'으로 시작한다(낡은 값이 잠깐 보이는 것 방지)
+        document.getElementById('modalVal1').innerText = knownLive ? '⏳ 실시간 시세 불러오는 중…' : v1;
+        document.getElementById('modalVal2').innerText = knownLive ? '' : v2;
+        document.getElementById('modalDesc').innerHTML = desc || '';
+        var idxTitleTxt = document.getElementById('modalChartTitleTxt');
+        if (idxTitleTxt) idxTitleTxt.textContent = '📊 ' + (title || '') + ' 일봉';
 
         // Show Candle UI, Hide Supply Flow Canvas
         var candleHead = document.getElementById('modalCandleHeader');
@@ -10939,9 +10963,9 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         // Open Modal
         document.getElementById('modalOverlay').style.display = 'flex';
 
-        // Render 1~2 Year Index Candle Chart
+        // 실제 일봉(/api/index-chart)으로 렌더 — 합성 캔들 금지
         setTimeout(function() {
-          renderUniversalModalChart(key, title);
+          loadIndexModalLive(key, title, v1, v2, desc);
         }, 60);
       } catch (err) {
         console.error("Error in openIndexChart:", err);
@@ -11269,7 +11293,7 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         • <strong>3일간 100% 이상 상승 여부:</strong> 종베 10종목 전원 미해당 (안전 🟢)<br>
         • <strong>5일간 60% 이상 상승 여부:</strong> 종베 10종목 전원 미해당 (안전 🟢)<br>
         • <strong>15일간 100% 이상 상승 여부:</strong> 종베 10종목 전원 미해당 (안전 🟢)<br>
-        • <strong>상한가 및 종가급변 주의 검토:</strong> 티엘비(당일 +29.88%</span> 상한가) 장마감 후 종가급변 요건 주의 관찰 🟡<br>
+        • <strong>상한가 및 종가급변 주의 검토:</strong> 티엘비(당일 +29.88% 상한가) 장마감 후 종가급변 요건 주의 관찰 🟡<br>
         <div style="margin-top:6px; padding:4px 8px; background:rgba(0,0,0,0.3); border-radius:4px; color:#34d399; font-weight:800;">
           👉 종합 결론: 주성엔지니어링·코리아써키트 등 주도주는 시장경보 리스크 제로(신용/미수 100% 정상). 티엘비만 상한가 후속 단기과열 주의 관찰.
         </div>
@@ -11404,6 +11428,9 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
   <script defer src="live-extra.js"></script>
   <!-- 📅 9번 달력 만기일 규칙 자동 계산 (옵션만기·동시만기) + 오늘 표시 자동 정정 -->
   <script defer src="live-calendar.js"></script>
+
+  <!-- 🌐 거시·매크로 8종 · 미국 경제일정 · 4번 탭 '지금 이 순간' 카드 (/api/macro-live · /api/econ-calendar · /api/live-briefing) -->
+  <script defer src="live-macro.js"></script>
   <!-- 🛡️ DART 실시간 공시 레이더 (/api/dart-live · DART_API_KEY 설정 시) -->
   <script defer src="live-dart.js"></script>
 

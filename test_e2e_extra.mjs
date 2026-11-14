@@ -231,7 +231,9 @@ const sum = await page.evaluate(() => {
       const i = t.indexOf('KRX 야간선물(공개 실시간 API 없음');
       return i >= 0 ? t.slice(i, i + 130) : null;
     })(),
-    nightValueKept: Boolean(tab && /837\.50/.test(tab.textContent)),
+    // 야간선물은 공개 실시간 소스가 없어, 요약 줄에서 숫자를 따로 적지 않고 상단 티커(KRX 06:00 확정)를 가리킨다.
+    //  → '같은 항목이 두 값' 문제를 없앤 대신, 근거(티커) 안내 문구가 있는지로 검사한다.
+    nightValueKept: Boolean(tab && /상단 티커의 KRX 06:00 확정값/.test(tab.textContent)),
     afSpansHaveNight: ['afKospi', 'afKosdaq', 'afNq', 'afEs'].some((id) => {
       const el = document.getElementById(id);
       return Boolean(el && /837\.50/.test(el.textContent));
@@ -244,7 +246,7 @@ check('요약 문장 코스피·코스닥·NQ=F·ES=F 실시간 표기',
   ['kospi', 'kosdaq', 'nq', 'es'].every((k) => /\d[\d,]*\.\d{2} \([-+]?\d+\.\d{2}%\)/.test(sum[k] || '')),
   `코스피 ${sum.kospi} · 코스닥 ${sum.kosdaq} · NQ ${sum.nq} · ES ${sum.es}`);
 check('지수·선물 span 4개가 실시간 갱신 표시(data-live=1)', sum.liveAttr.every((v) => v === '1'), sum.liveAttr.join(','));
-check('KRX 야간선물은 실시간이 아님을 분리 표기', sum.hasNightText && !sum.hasFakeNight && sum.nightValueKept && !sum.afSpansHaveNight, sum.night);
+check('KRX 야간선물은 실시간이 아님을 분리 표기(같은 항목 두 값 제거 · 티커 근거 안내)', sum.hasNightText && !sum.hasFakeNight && sum.nightValueKept && !sum.afSpansHaveNight, sum.night);
 
 /* ---------- 4-1) 상단 WTI 유가 · 필라델피아 반도체(SOX) 실시간 연동 ---------- */
 const macroReady = await page.waitForFunction(
@@ -382,17 +384,227 @@ const supply = await page.evaluate(() => {
       code: (c.querySelector('.ssc-price') || {}).getAttribute
         ? c.querySelector('.ssc-price').getAttribute('data-live-code') : null,
       net: Array.from(c.querySelectorAll('.s-badge')).map((b) => b.textContent.trim()).join(' / '),
+      desc: (c.querySelector('.ssc-desc') || {}).textContent || '',
+      tracker: (c.querySelector('.supply-tracker-box') || {}).textContent
+        ? c.querySelector('.supply-tracker-box').textContent.replace(/\s+/g, ' ').trim() : null,
     })),
+    heads: Array.from(tab.querySelectorAll('.sec-head span:first-child')).map((el) => el.textContent.trim()),
+    tabText: tab.textContent || '',
     stamp: (document.getElementById('supplyLiveStamp') || {}).textContent || '',
   };
 });
 check('2번 수급 카드 현재가·등락률 실시간 갱신', supplyWait, supply.cards.slice(0, 3).map((c) => `${c.name} ${c.price}`).join(' | '));
 check('수급 카드에 6자리 종목코드 매핑', supply.cards.filter((c) => /^\d{6}$/.test(c.code || '')).length >= 12,
   Array.from(new Set(supply.cards.map((c) => c.code).filter(Boolean))).join(','));
-check('외인·기관 순매수 금액은 확정치 그대로 유지(실시간 아님)',
-  /외인 \+7,449억/.test(supply.cards[0].net) && /KRX 장마감 확정치/.test(supply.stamp),
-  `${supply.cards[0].name}: ${supply.cards[0].net}`);
+check('외인·기관 순매수 금액이 최신 확정치(bizdate)로 자동 반영',
+  /외인 [-+][\d,]+억/.test(supply.cards[0].net) && /기관 [-+][\d,]+억|외인 [-+][\d,]+억/.test(supply.cards[1].net) &&
+    /거래소 확정치\(\d{1,2}\/\d{1,2}/.test(supply.stamp) && !/실시간 관제/.test(supply.heads.join(' ')),
+  `${supply.cards[0].name}: ${supply.cards[0].net} / ${supply.cards[1].name}: ${supply.cards[1].net}`);
+check('수급 카드 설명문도 확정치 문장으로 교체(옛 금액 잔재 없음)',
+  supply.cards.every((c) => !c.desc || /확정 수급\(\d{1,2}\/\d{1,2}/.test(c.desc)),
+  (supply.cards[0].desc || '').slice(0, 90));
+check('시간대별 수급 트래커 자리에 실제 확정 4거래일 흐름', !/장중 실시간 추적 중/.test(supply.tabText) &&
+  supply.cards.some((c) => c.tracker && /최근 4거래일 확정 순매수/.test(c.tracker)),
+  (supply.cards.find((c) => c.tracker) || {}).tracker);
 await page.screenshot({ path: SHOT('supply') });
+
+/* ---------- 5-1) 1번 실시간 레이더 (프리마켓 박스 대체) ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="overview"]');
+  if (btn) btn.click();
+});
+await sleep(1200);
+const radar = await page.evaluate(() => {
+  const box = document.getElementById('premarketRadarBox');
+  if (!box) return { mounted: false };
+  const spans = Array.from(box.querySelectorAll('[data-pm-code]'));
+  const txt = box.textContent || '';
+  return {
+    mounted: true,
+    spans: spans.length,
+    live: spans.filter((x) => x.getAttribute('data-live') === '1').length,
+    withPrice: spans.filter((x) => /\d{1,3}(,\d{3})*원/.test(x.textContent || '')).length,
+    session: (document.getElementById('pmSessionText') || {}).textContent || '',
+    sync: (document.getElementById('pmSyncBadge') || {}).textContent || '',
+    staleSox: /SOX \+3\.42% 급등/.test(txt),
+    staleSession: /장전 세션 진행/.test(txt),
+    staleExact: /100% 일치 동기화/.test(txt),
+    staleMinute: /30분 안심 주기/.test(txt),
+  };
+});
+check('1번 실시간 레이더 — 종목 전부 실시간 시세로 채워짐', radar.mounted && radar.spans >= 12 && radar.live === radar.spans && radar.withPrice === radar.spans,
+  `${radar.live}/${radar.spans}칸 실시간 · 예: ${radar.withPrice}칸에 가격`);
+check('1번 레이더 — 낡은 문구(SOX +3.42%·장전 세션·100% 일치·30분 주기) 소거',
+  radar.mounted && !radar.staleSox && !radar.staleSession && !radar.staleExact && !radar.staleMinute);
+check('1번 레이더 — 세션 상태·동기화 시각을 실제 값으로 표기',
+  /(주말 휴장|정규장 진행 중|시간외|장전|장 마감)/.test(radar.session) && /\d{2}:\d{2}:\d{2} 시세 동기화/.test(radar.sync),
+  `${radar.session} || ${radar.sync}`);
+await page.screenshot({ path: SHOT('radar') });
+
+/* ---------- 5-2) 3번 탭 강세주 실시간 카드 (정적 af-card 대체) ---------- */
+const afLive = await page.evaluate(() => {
+  const read = (id) => {
+    const host = document.getElementById(id);
+    if (!host) return { mounted: false };
+    const cards = Array.from(host.querySelectorAll('.af-card'));
+    return {
+      mounted: true,
+      count: cards.length,
+      live: cards.filter((c) => c.getAttribute('data-live') === '1').length,
+      withPrice: cards.filter((c) => /\d{1,3}(,\d{3})*원/.test(c.textContent || '')).length,
+      stale: cards.filter((c) => /61,700원|35,550원|90,400원|11,210원 고정/.test(c.textContent || '')).length,
+    };
+  };
+  const tab = document.getElementById('tabAftermarket');
+  return {
+    strong: read('afStrongLive'),
+    leader: read('afLeaderLive'),
+    tabHasStale: /주성엔지니어링 \[시간외 추가 상승\]/.test(tab.textContent || ''),
+  };
+});
+check('3번 강세주 카드 — 정적 카드 대신 실시간 시세 카드로 렌더',
+  afLive.strong.mounted && afLive.strong.count === 3 && afLive.strong.live === 3 &&
+    afLive.leader.mounted && afLive.leader.count === 3 && afLive.leader.live === 3,
+  `강세 ${afLive.strong.count}장 / 정규장 ${afLive.leader.count}장 (실시간 ${afLive.strong.live + afLive.leader.live})`);
+check('3번 강세주 카드 — 모든 카드에 실제 가격·등락률 표기', afLive.strong.withPrice === 3 && afLive.leader.withPrice === 3,
+  `강세 ${afLive.strong.withPrice}/3 · 정규장 ${afLive.leader.withPrice}/3`);
+check('3번 탭 정적 af-card 잔재 제거(주성엔지니어링 61,700원 등)', !afLive.tabHasStale && afLive.strong.stale === 0 && afLive.leader.stale === 0);
+
+/* ---------- 5-3) 9번 거시 8종 + 미국 경제일정 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="calendar"]');
+  if (btn) btn.click();
+});
+const macroLiveReady = await page.waitForFunction(
+  () => {
+    const grid = document.getElementById('macroLiveGrid');
+    return !!grid && grid.querySelectorAll('[data-macro-key]').length >= 8;
+  },
+  { timeout: 60000 },
+).then(() => true).catch(() => false);
+const macroLiveState = await page.evaluate(() => {
+  const grid = document.getElementById('macroLiveGrid');
+  const cards = grid ? Array.from(grid.querySelectorAll('[data-macro-key]')) : [];
+  const econ = document.getElementById('econCalList');
+  const rows = econ ? Array.from(econ.children) : [];
+  return {
+    keys: cards.map((c) => c.getAttribute('data-macro-key')),
+    texts: cards.map((c) => (c.textContent || '').replace(/\s+/g, ' ').trim()),
+    stamp: (document.getElementById('macroLiveStamp') || {}).textContent || '',
+    econRows: rows.length,
+    econStamp: (document.getElementById('econCalStamp') || {}).textContent || '',
+    econHasKst: rows.some((r) => /\d{1,2}\/\d{1,2}\((일|월|화|수|목|금|토)\) \d{2}:\d{2} KST/.test(r.textContent || '')),
+    signalNote: (document.getElementById('macroSignalNextNote') || {}).textContent || '',
+    staleToday: /오늘\(금\)/.test(document.body.textContent || ''),
+  };
+});
+check('9번 거시 8종 — 8지표 실시간 렌더(vix·us10y·dxy·gold·copper·btc·kr3y·kr10y)',
+  macroLiveReady && macroLiveState.keys.length === 8 && macroLiveState.texts.every((t) => /\d/.test(t)),
+  macroLiveState.keys.join(','));
+check('9번 거시 8종 — 실시간/마감 확정 구분 + 조회 시각 표기', /(● 실시간|○ 확정)/.test(macroLiveState.texts[0]) && /\d{2}:\d{2} 조회/.test(macroLiveState.stamp),
+  `${macroLiveState.texts[0]} || ${macroLiveState.stamp}`);
+check('9번 미국 경제일정 — KST 시각으로 자동 렌더', macroLiveState.econRows >= 3 && macroLiveState.econHasKst, `${macroLiveState.econRows}건 · ${macroLiveState.econStamp}`);
+check('9번 신호등 카드 — "오늘(금)" 고정 요일 대신 실제 발표 시각', !macroLiveState.staleToday && /발표 시각: \d{1,2}\/\d{1,2}\((일|월|화|수|목|금|토)\)/.test(macroLiveState.signalNote),
+  macroLiveState.signalNote.slice(0, 110));
+await page.screenshot({ path: SHOT('macro_calendar') });
+
+/* ---------- 5-4) 4번 탭 '지금 이 순간' 카드 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="analysis"]');
+  if (btn) btn.click();
+});
+const nowReady = await page.waitForFunction(
+  () => {
+    const el = document.getElementById('nowMomentBody');
+    return !!el && el.getAttribute('data-live') === '1';
+  },
+  { timeout: 60000 },
+).then(() => true).catch(() => false);
+const nowCard = await page.evaluate(() => ({
+  stamp: (document.getElementById('nowMomentStamp') || {}).textContent || '',
+  body: (document.getElementById('nowMomentBody') || {}).textContent || '',
+  title: (document.getElementById('analysisTimelineTitle') || {}).textContent || '',
+  sub: (document.getElementById('analysisTimelineSub') || {}).textContent || '',
+  remaining: (document.getElementById('remainingBriefingText') || {}).textContent || '',
+}));
+check('4번 "지금 이 순간" 카드 — 실시간 팩트 렌더', nowReady && /코스피/.test(nowCard.body) && /기준일/.test(nowCard.body),
+  nowCard.body.replace(/\s+/g, ' ').slice(0, 120));
+check('4번 카드와 정시 전문 구분 표기', /정시 브리핑 전문 스냅샷/.test(nowCard.sub) && /지금 이 순간/.test(nowCard.sub),
+  nowCard.sub.slice(0, 100));
+check('4번 타임라인 제목·남은 브리핑 안내의 날짜/요일 자동 계산',
+  /\(\d{1,2}\/\d{1,2}\((일|월|화|수|목|금|토)\) 정시 타임라인\)/.test(nowCard.title) &&
+    /(주말 휴장|정규 브리핑)/.test(nowCard.remaining) && !/오늘\(11\/13\)/.test(nowCard.remaining),
+  `${nowCard.title} || ${nowCard.remaining.slice(0, 80)}`);
+await page.screenshot({ path: SHOT('now_card') });
+
+/* ---------- 5-5) 지수 모달 실데이터 / 공개 API 없음 정직 표기 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="overview"]');
+  if (btn) btn.click();
+  const ov = document.getElementById('modalOverlay');
+  if (ov) ov.style.display = 'none';
+});
+await sleep(600);
+await page.evaluate(() => {
+  const items = Array.from(document.querySelectorAll('.ticker-item'));
+  const t = items.find((i) => /코스피/.test((i.querySelector('.label') || {}).textContent || '') && !/선물/.test(i.textContent || ''));
+  if (t) t.click();
+});
+const modalReady = await page.waitForFunction(
+  () => {
+    const el = document.getElementById('modalVal1');
+    return !!el && /pt/.test(el.textContent || '');
+  },
+  { timeout: 40000 },
+).then(() => true).catch(() => false);
+const idxModal = await page.evaluate(() => ({
+  v1: (document.getElementById('modalVal1') || {}).textContent || '',
+  v2: (document.getElementById('modalVal2') || {}).textContent || '',
+  high: (document.getElementById('modalChartHigh') || {}).textContent || '',
+  low: (document.getElementById('modalChartLow') || {}).textContent || '',
+  trend: (document.getElementById('modalChartTrend') || {}).textContent || '',
+  chartTitle: (document.getElementById('modalChartTitleTxt') || {}).textContent || '',
+  candles: window.modalAllCandles ? window.modalAllCandles.length : 0,
+  noticeShown: (() => { const el = document.getElementById('modalChartNotice'); return el ? el.style.display : null; })(),
+}));
+check('지수 모달 — 실제 일봉 캔들로 렌더(합성 500봉 아님)', modalReady && idxModal.candles > 200 && /실데이터/.test(idxModal.chartTitle),
+  `${idxModal.candles}봉 · ${idxModal.chartTitle}`);
+check('지수 모달 — 상단 시세·등락률이 실제 값과 일치(pt 단위)', /5,290|5,2\d\d/.test(idxModal.v1) && /\(-0\.\d{2}%\)|\(\+0\.\d{2}%\)/.test(idxModal.v1),
+  idxModal.v1);
+check('지수 모달 — 최고/최저가 단위가 pt (원 오표기 제거)', /pt$/.test(idxModal.high.trim()) && /pt$/.test(idxModal.low.trim()) && /1년 최고/.test(idxModal.v2),
+  `${idxModal.high} / ${idxModal.low}`);
+check('지수 모달 — 추세 진단이 실측 계산(60일선 대비)', /60일선 대비 [-+]?\d+\.\d{2}% \(실측\)/.test(idxModal.trend), idxModal.trend);
+await page.screenshot({ path: SHOT('index_modal') });
+
+// 공개 일봉 API 가 없는 KRX 야간선물 — 차트를 그리지 않고 정직 안내
+await page.evaluate(() => {
+  const ov = document.getElementById('modalOverlay');
+  if (ov) ov.style.display = 'none';
+});
+await sleep(400);
+await page.evaluate(() => {
+  const items = Array.from(document.querySelectorAll('.ticker-item'));
+  const t = items.find((i) => /야간선물\(코스피\)/.test((i.querySelector('.label') || {}).textContent || ''));
+  if (t) t.click();
+});
+const nightReady = await page.waitForFunction(
+  () => {
+    const el = document.getElementById('modalChartNotice');
+    return !!el && el.style.display !== 'none' && /공개 일봉 API 없음/.test(el.textContent || '');
+  },
+  { timeout: 40000 },
+).then(() => true).catch(() => false);
+const nightModal = await page.evaluate(() => ({
+  notice: (document.getElementById('modalChartNotice') || {}).textContent || '',
+  candles: window.modalAllCandles ? window.modalAllCandles.length : 0,
+  v1: (document.getElementById('modalVal1') || {}).textContent || '',
+}));
+check('KRX 야간선물 모달 — 합성 차트 대신 "공개 일봉 API 없음" 정직 안내', nightReady && nightModal.candles === 0 && /공개 일봉 API 없음/.test(nightModal.notice),
+  `캔들 ${nightModal.candles} · ${nightModal.notice.replace(/\s+/g, ' ').slice(0, 80)}`);
+await page.evaluate(() => {
+  const ov = document.getElementById('modalOverlay');
+  if (ov) ov.style.display = 'none';
+});
 
 /* ---------- 6) 정직 라벨(9번 달력·8번 DART) ---------- */
 // DART 는 키 설정 여부에 따라 화면 문구가 달라진다(실시간 조회 / 정적 스캔) — 먼저 모드를 확인한다

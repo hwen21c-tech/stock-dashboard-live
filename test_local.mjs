@@ -21,6 +21,10 @@ const handlers = {
   'live-briefing': require('./api/live-briefing.js'),
   'tabs-live': require('./api/tabs-live.js'),
   'dart-live': require('./api/dart-live.js'),
+  'index-chart': require('./api/index-chart.js'),
+  'macro-live': require('./api/macro-live.js'),
+  'econ-calendar': require('./api/econ-calendar.js'),
+  'stock-trend': require('./api/stock-trend.js'),
 };
 
 function makeReq(urlPath, method = 'GET') {
@@ -809,7 +813,7 @@ calOk &= check('live-calendar.js 로드(순수 계산 export)', Boolean(cal && t
 {
   const htmlCal = readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
   calOk &= check('index.html 에 live-calendar.js 로드', /<script defer src="live-calendar\.js"><\/script>/.test(htmlCal));
-  calOk &= check('달력 월 제목(연·월) 존재 — 월을 읽어 규칙 계산', /class="cal-title">[^<]*\d{4}년\s*\d{1,2}월/.test(htmlCal));
+  calOk &= check('달력 월 제목(연·월) 존재 — 월을 읽어 규칙 계산', /class="cal-title"[^>]*>[^<]*\d{4}년\s*\d{1,2}월/.test(htmlCal));
   calOk &= check('11월 만기 배지 = 둘째 목요일(11/12) 칸에 있음', /<span class="cal-date-num">12<\/span>\s*<span class="cal-badge opt"[^>]*>옵션만기 \(종료\)<\/span>/.test(htmlCal));
   calOk &= check(
     '"오늘" 강조가 실제 오늘(11/14) 칸에 있음',
@@ -905,6 +909,130 @@ summary.dartLive = {
   fallbackReason: handlers['dart-live'] ? 'DART_API_KEY_NOT_SET (키 없을 때)' : null,
   interestCount: handlers['dart-live'].INTEREST ? handlers['dart-live'].INTEREST.length : null,
 };
+
+/* ============================================================
+ *  지수 실차트 · 거시 8종 · 미국 경제일정 · 종목별 확정 수급
+ *    · /api/index-chart : 합성 캔들 금지 · 공개 API 없으면 정직하게 no_public_daily
+ *    · /api/macro-live  : VIX·미10Y·DXY·금·구리·BTC + 국고3Y·10Y (8종)
+ *    · /api/econ-calendar : 미국 High/Medium 일정 (KST 변환 · 출처 자동 대체)
+ *    · /api/stock-trend : 종목별 일별 확정 수급(bizdate) + 금액 환산
+ * ============================================================ */
+console.log('\n▶ [16] 지수 실차트 · 거시 8종 · 미국 경제일정 · 확정 수급');
+let dataOk = true;
+{
+  /* 16-1) 지수 일봉 실데이터 */
+  const kospi = await call('index-chart', '/api/index-chart?key=kospi');
+  const k = kospi.json || {};
+  dataOk &= check('지수 일봉(코스피) — Yahoo ^KS11 실데이터 수신', kospi.status === 200 && k.ok === true && k.symbol === '^KS11' && (k.candles || []).length >= 200,
+    `${(k.candles || []).length}봉 · ${k.range && k.range.from} ~ ${k.range && k.range.to}`);
+  dataOk &= check('지수 일봉 — 마지막 캔들 종가가 상단 시세와 일치', Math.abs((k.candles || [{}]).slice(-1)[0].c - k.quote.price) < 0.02,
+    `캔들 종가 ${(k.candles || [{}]).slice(-1)[0].c} / 시세 ${k.quote && k.quote.price} (${k.quote && k.quote.changePct}%)`);
+  dataOk &= check('지수 단위는 pt·소수 2자리 (최고가에 "원"을 붙이던 오표기 제거)', k.unit === 'pt' && k.digits === 2 && k.quote.sessionOpen === false,
+    `unit=${k.unit} digits=${k.digits} basis=${k.quote && k.quote.basis}`);
+  const night = await call('index-chart', '/api/index-chart?key=kospi200_night');
+  dataOk &= check('공개 일봉 API 없는 항목(KRX 야간선물) — no_public_daily + 캔들 0개',
+    night.status === 200 && night.json.ok === false && night.json.reason === 'no_public_daily' && (night.json.candles || []).length === 0,
+    night.json.message);
+  const fx = await call('index-chart', '/api/index-chart?key=usdkrw');
+  dataOk &= check('환율 일봉(원/달러) — KRW=X · 원 단위', fx.json.ok === true && fx.json.symbol === 'KRW=X' && fx.json.unit === '원',
+    `${fx.json.quote && fx.json.quote.price}원`);
+
+  /* 16-2) 거시 8종 */
+  const mac = await call('macro-live', '/api/macro-live');
+  const m = mac.json || {};
+  const keys = (m.items || []).map((i) => i.key);
+  const wantKeys = ['vix', 'us10y', 'dxy', 'gold', 'copper', 'btc', 'kr3y', 'kr10y'];
+  dataOk &= check('거시 8종 — VIX·미10Y·달러인덱스·금·구리·BTC·국고3Y·국고10Y 모두 수신',
+    mac.status === 200 && m.ok === true && wantKeys.every((key) => keys.indexOf(key) >= 0) && m.items.length === 8,
+    (m.items || []).map((i) => `${i.name} ${i.value}${i.unit}`).join(' · '));
+  dataOk &= check('거시 8종 — 값·단위·기준시각 함께 제공(가짜 값 없음)',
+    (m.items || []).every((i) => i.ok !== true || (typeof i.value === 'number' && i.basis && i.digits !== undefined)),
+    (m.items || []).filter((i) => i.ok).length + '/8 정상');
+
+  /* 16-3) 미국 경제일정 */
+  const ec = await call('econ-calendar', '/api/econ-calendar?fresh=1');
+  const e = ec.json || {};
+  dataOk &= check('미국 경제일정 — 소스 자동 확보(FF JSON → TradingView 대체)', ec.status === 200 && e.ok === true && Boolean(e.source) && e.counts.total > 0,
+    `source=${e.source} (${e.sourceLabel}) · ${e.counts.total}건 (High ${e.counts.high})`);
+  dataOk &= check('미국 경제일정 — KST 시각·요일 표기 + 예상/이전값', (e.items || []).length > 0 &&
+    /^\d{1,2}\/\d{1,2}\((일|월|화|수|목|금|토)\) \d{2}:\d{2}$/.test(e.items[0].dateLabel) &&
+    typeof e.items[0].forecast === 'string' && e.items[0].country === 'USD',
+    (e.items || []).slice(0, 2).map((i) => `${i.dateLabel} ${i.title} (${i.impact})`).join(' / '));
+  dataOk &= check('미국 경제일정 — "다음 일정"은 High 우선으로 선택', !e.next || e.next.impact === 'High' || e.counts.high === 0,
+    e.next ? `${e.next.dateLabel} ${e.next.title} (${e.next.impact})` : '없음');
+
+  /* 16-4) 종목별 확정 수급 */
+  const tr = await call('stock-trend', '/api/stock-trend?codes=005930,000660');
+  const t = tr.json || {};
+  const sam = (t.stocks || []).find((x) => x.code === '005930');
+  dataOk &= check('종목별 확정 수급 — 최신 bizdate 와 주수·금액 동시 제공', tr.status === 200 && t.ok === true &&
+    /^\d{4}-\d{2}-\d{2}$/.test(t.basisDate) && sam && sam.latest && typeof sam.latest.foreignAmount === 'number',
+    `기준일 ${t.basisDate}(${t.basisLabel}) · 삼성전자 외인 ${sam.latest.foreignQty}주/${sam.latest.foreignAmount}억`);
+  dataOk &= check('확정 수급 금액 = 주수 × 종가 ÷ 1억 (환산식 일치)',
+    Math.abs(sam.latest.foreignAmount - Math.round((sam.latest.foreignQty * sam.latest.close) / 1e8)) === 0,
+    `${sam.latest.foreignQty} × ${sam.latest.close} = ${sam.latest.foreignAmount}억`);
+  dataOk &= check('확정 수급 — 10영업일 흐름을 라벨과 함께 반환(트래커용)', (sam.rows || []).length >= 5 &&
+    sam.rows.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.iso) && typeof r.foreignAmount === 'number'),
+    (sam.rows || []).slice(0, 4).map((r) => `${r.label} ${r.foreignAmount}억`).join(' → '));
+}
+
+/* 16-5) 프론트 순수 계산 (live-extra · live-macro · live-calendar) */
+{
+  const le = require('./public/live-extra.js');
+  dataOk &= check('억원 표기(부호·반올림) — signedEok', le.signedEok(-4566) === '-4,566억' && le.signedEok(17) === '+17억' && le.signedEok(0) === '0억',
+    `${le.signedEok(-4566)} / ${le.signedEok(17)} / ${le.signedEok(0)}`);
+  dataOk &= check('수급 배지 문구는 외인/기관 구분', le.trendBadgeText('foreign', { foreignAmount: 17 }) === '외인 +17억' &&
+    le.trendBadgeText('organ', { organAmount: -687 }) === '기관 -687억',
+    `${le.trendBadgeText('foreign', { foreignAmount: 17 })} / ${le.trendBadgeText('organ', { organAmount: -687 })}`);
+  const sat = new Date('2026-11-14T03:00:00Z');   // 토요일 12:00 KST
+  const mon = new Date('2026-11-16T01:00:00Z');   // 월요일 10:00 KST
+  dataOk &= check('세션 문구 — 주말/정규장 자동 판정', /주말 휴장/.test(le.sessionText(sat)) && /정규장 진행 중/.test(le.sessionText(mon)),
+    `${le.sessionText(sat)} / ${le.sessionText(mon)}`);
+  dataOk &= check('레이더 종목 표기 = 이름 가격(등락률)', le.pmQuoteText('지니언스', { price: 34150, changePct: 8.93 }) === '지니언스 34,150원 (+8.93%)',
+    le.pmQuoteText('지니언스', { price: 34150, changePct: 8.93 }));
+
+  const lm = require('./public/live-macro.js');
+  dataOk &= check('거시 값 표기 — %/달러/포인트 단위 구분',
+    lm.macroValueText({ value: 5.154, digits: 3, unit: '%' }) === '5.154%' &&
+    lm.macroValueText({ value: 3886.3, digits: 1, unit: '$' }) === '$3,886.3' &&
+    lm.macroValueText({ value: 19.3, digits: 2, unit: 'pt' }) === '19.30 pt',
+    [lm.macroValueText({ value: 5.154, digits: 3, unit: '%' }), lm.macroValueText({ value: 3886.3, digits: 1, unit: '$' })].join(' / '));
+  dataOk &= check('날짜 표기 M/D(요일) 자동 계산', lm.mdLabel('2026-11-13') === '11/13(금)' && lm.mdLabel('2026-11-16') === '11/16(월)',
+    `${lm.mdLabel('2026-11-13')} / ${lm.mdLabel('2026-11-16')}`);
+
+  const cal = require('./public/live-calendar.js');
+  const dec = cal.buildMonthCells(2026, 12);
+  const decReal = dec.filter((c) => !c.other);
+  dataOk &= check('12월 그리드 자동 생성 — 31칸 + 첫 칸 요일 계산(12/1 화)', decReal.length === 31 && decReal[0].iso === '2026-12-01' && decReal[30].iso === '2026-12-31',
+    `실제 ${decReal.length}칸 · ${decReal[0].iso} ~ ${decReal[30].iso} · 전체 ${dec.length}칸`);
+  dataOk &= check('그리드가 7열 배수(주 단위)로 정렬됨', dec.length % 7 === 0 && cal.firstWeekday(2026, 12) === 2,
+    `${dec.length}칸 · 12/1 요일 index ${cal.firstWeekday(2026, 12)}(화=2)`);
+  dataOk &= check('칸 HTML — 실제 날짜(data-cal-date) 부여', /data-cal-date="2026-12-01"/.test(cal.cellsToHtml(dec)) &&
+    /class="cal-cell other-month"/.test(cal.cellsToHtml(dec)),
+    '2026-12-01 셀 포함 · 앞 빈칸 other-month');
+}
+
+/* 16-6) index.html 정적 결선 — 가짜 잔재가 없어야 한다 */
+{
+  const html = readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+  dataOk &= check('합성 지수 캔들 생성기(cachedIndexSeries·Math.sin) 완전 제거',
+    !/var cachedIndexSeries\s*=\s*\{/.test(html) && !/function generateCandlesForSeries/.test(html) && !/Math\.sin\(i \* 0\.(8|25)\)/.test(html));
+  dataOk &= check('모달 안내: 공개 일봉 API 없음 문구 연결', /loadIndexModalLive/.test(html) && /공개 일봉 API 없음/.test(html) && /modalChartNotice/.test(html));
+  dataOk &= check('1번 실시간 레이더 컨테이너 + 20초 폴링 표기', /id="premarketRadarBox"/.test(html) && /data-pm-code="263860"/.test(html) && !/30분 안심 주기로 추적/.test(html));
+  dataOk &= check('1번 레이더 낡은 문구(SOX +3.42% 급등·장전 세션 진행·100% 일치) 제거',
+    !/SOX \+3\.42% 급등/.test(html) && !/장전 세션 진행 \(08:30~09:00\)/.test(html) && !/확정 종가 100% 일치 동기화/.test(html));
+  dataOk &= check('3번 정적 af-card 잔재 제거 → 실시간 컨테이너', /id="afStrongLive"/.test(html) && /id="afLeaderLive"/.test(html) &&
+    !/주성엔지니어링 \[시간외 추가 상승\]/.test(html) && !/정규장 \+1\.48% ➔ 시간외 61,700원/.test(html));
+  dataOk &= check('9번 거시 8종·경제일정 패널 결선', /id="macroLiveGrid"/.test(html) && /id="econCalList"/.test(html) && /live-macro\.js/.test(html));
+  dataOk &= check('4번 탭 "지금 이 순간" 카드 결선', /id="nowMomentCard"/.test(html) && /id="nowMomentBody"/.test(html));
+  dataOk &= check('"오늘(금)" 같은 고정 요일 문구 제거', !/오늘\(금\)/.test(html) && !/발표 시각: 오늘\(/.test(html));
+  dataOk &= check('죽은 코드(navigateToSignalStock 내부 확률 블록) 제거',
+    /function navigateToSignalStock\(tabKey, identifier\)/.test(html) &&
+      !/selectStockByCode\(identifier\);\s*\n\s*\n\s*\/\/ 4\. Past History/.test(html) &&
+      !/modalProbBadge[\s\S]{0,2000}selectStockByCode\(identifier\)[\s\S]{0,2000}modalProbBadge/.test(html));
+  dataOk &= check('테마 헤더 중복 </span> 제거(고아 닫는 태그 0)', !/\(합산 [\d,]+억\)<\/span>(?:<\/span>){2,}/.test(html));
+}
+summary.marketData = { ok: dataOk };
 
 /* -------------------------------- 결과 저장 -------------------------------- */const total = results.length;
 const passed = results.filter((r) => r.ok).length;

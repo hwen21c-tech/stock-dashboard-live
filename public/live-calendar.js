@@ -7,6 +7,8 @@
  *
  *  하는 일
  *   1) 달력 칸마다 실제 날짜(data-cal-date)를 붙인다 (월 제목에서 연·월을 읽는다)
+ *      · 화면의 월 제목이 이번 달과 다르면(예: 11월 고정 → 12월) 그리드를 이번 달로 다시 그린다
+ *        — 12월이 되어도 '오늘' 강조·만기 배지가 정상 동작하도록 (2026-11-14 추가)
  *   2) '오늘' 칸 강조를 실제 오늘(KST)로 옮긴다 — 날짜가 바뀌어도 굳지 않는다
  *   3) 만기일 칸에 옵션만기 / ★선물·옵션 동시만기 배지를 붙이고 (종료 · D-DAY · D-N) 상태를 계산
  *   4) 다가오는 만기일 3건을 규칙과 함께 보여준다
@@ -102,6 +104,127 @@
     return m[1] + '/' + m[2] + '/' + m[3];
   }
 
+  /* ------------------------------ 월 그리드 ------------------------------ */
+
+  var EN_MONTH = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function daysInMonth(year, month) {
+    return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+
+  /** 그 달 1일의 요일 (0=일 … 6=토) */
+  function firstWeekday(year, month) {
+    return new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  }
+
+  /**
+   * 이번 달 그리드 HTML — 앞뒤 빈 칸은 'other-month' 로 채워 7열을 맞춘다.
+   * 값 비교가 아니라 계산으로만 만든다(가짜 일정 배지를 새로 만들지 않는다).
+   */
+  function buildMonthCells(year, month) {
+    var lead = firstWeekday(year, month);
+    var total = daysInMonth(year, month);
+    var prevMonth = month - 1 < 1 ? 12 : month - 1;
+    var prevYear = month - 1 < 1 ? year - 1 : year;
+    var prevDays = daysInMonth(prevYear, prevMonth);
+    var cells = [];
+    var week = 1;
+    var i;
+
+    for (i = lead - 1; i >= 0; i -= 1) {
+      cells.push({ other: true, day: prevDays - i, week: week });
+      if ((cells.length % 7) === 0) week += 1;
+    }
+    for (i = 1; i <= total; i += 1) {
+      var wd = (lead + i - 1) % 7;
+      cells.push({
+        other: false,
+        day: i,
+        week: week,
+        weekday: wd,
+        iso: year + '-' + pad2(month) + '-' + pad2(i),
+      });
+      if ((cells.length % 7) === 0) week += 1;
+    }
+    // 마지막 주를 7칸으로 채운다
+    var tail = 1;
+    while (cells.length % 7 !== 0) {
+      cells.push({ other: true, day: tail, week: week });
+      tail += 1;
+    }
+    return cells;
+  }
+
+  function cellsToHtml(cells) {
+    return cells
+      .map(function (c) {
+        if (c.other) {
+          return '<div class="cal-cell other-month" onclick="selectCalWeek(' + c.week + ')">' +
+            '<span class="cal-date-num">' + c.day + '</span></div>';
+        }
+        var color = c.weekday === 0 ? ' style="color:#f87171;"' : c.weekday === 6 ? ' style="color:#60a5fa;"' : '';
+        return '<div class="cal-cell" data-cal-date="' + c.iso + '" onclick="selectCalWeek(' + c.week + ')">' +
+          '<span class="cal-date-num"' + color + '>' + c.day + '</span></div>';
+      })
+      .join('');
+  }
+
+  /**
+   * 화면 달력이 이번 달이 아니면 이번 달로 다시 그린다.
+   *  · 정적 그리드가 이미 이번 달이면 아무것도 바꾸지 않는다(기존 표시 유지).
+   *  · 주간 확대 뷰는 11월 정적 자료라 다른 달에서는 숨기고 그 사실을 알린다.
+   */
+  function ensureMonth(doc, today) {
+    if (!doc) return 0;
+    var grid = doc.querySelector('#tabCalendar .cal-grid');
+    var titleEl = doc.querySelector('#tabCalendar .cal-title');
+    if (!grid || !titleEl) return 0;
+    var t = today || kstToday();
+    var y = Number(t.date.slice(0, 4));
+    var m = Number(t.date.slice(5, 7));
+    var stamp = y + '-' + pad2(m);
+    if (grid.getAttribute('data-cal-month') === stamp) return 0;
+
+    var base = readBaseMonth(doc);
+    if (base && base.year === y && base.month === m) {
+      grid.setAttribute('data-cal-month', stamp);
+      return 0;
+    }
+
+    var cells = buildMonthCells(y, m);
+    grid.innerHTML = cellsToHtml(cells);
+    grid.setAttribute('data-cal-month', stamp);
+    grid.setAttribute('data-live', '1');
+
+    var title = '🗓️ ' + y + '년 ' + m + '월 (' + EN_MONTH[m - 1] + ' ' + y + ')';
+    if (titleEl.textContent !== title) titleEl.textContent = title;
+    var panelTitle = doc.getElementById('calPanelTitle');
+    if (panelTitle) {
+      var pt = '📅 ' + y + '년 ' + m + '월 주요 증시 일정 & 주간 확대 뷰';
+      if (panelTitle.textContent !== pt) panelTitle.textContent = pt;
+    }
+
+    // 주간 확대 뷰(정적 11월 자료)는 다른 달에서 숨긴다
+    var zoom = doc.getElementById('weeklyZoomContainer');
+    if (zoom) {
+      zoom.style.display = 'none';
+      var note = doc.getElementById('calMonthNote');
+      if (!note && zoom.parentNode) {
+        note = doc.createElement('div');
+        note.id = 'calMonthNote';
+        note.style.cssText = 'font-size:10.5px; color:#94a3b8; background:rgba(148,163,184,0.08); ' +
+          'border:1px dashed rgba(148,163,184,0.3); border-radius:6px; padding:7px 9px; margin-top:8px; line-height:1.5;';
+        zoom.parentNode.insertBefore(note, zoom);
+      }
+      if (note) {
+        note.textContent = '※ 주간 확대 뷰(주차별 상세 일정)는 11월 정적 자료라 ' + m + '월에는 표시하지 않습니다. ' +
+          '만기일(둘째 목요일)과 오늘 위치는 계산값으로 정상 표시됩니다.';
+      }
+    }
+    return 1;
+  }
+
   /* -------------------------------- DOM 반영 -------------------------------- */
 
   function kstToday() {
@@ -158,6 +281,9 @@
 
   function applyCalendar(doc, today) {
     if (!doc) return 0;
+    var t0 = today || kstToday();
+    // 달을 넘겼으면 먼저 이번 달 그리드로 다시 그린다
+    var remade = ensureMonth(doc, t0);
     var grid = doc.querySelector('#tabCalendar .cal-grid');
     if (!grid) return 0;
     var base = readBaseMonth(doc);
@@ -166,7 +292,7 @@
     var cells = Array.prototype.slice.call(grid.querySelectorAll('.cal-cell'));
     if (!cells.length) return 0;
 
-    var applied = 0;
+    var applied = remade ? 1 : 0;
 
     // 1) 칸마다 실제 날짜 (시작 = 그 달 1일)
     cells.forEach(function (cell, i) {
@@ -309,6 +435,13 @@
     readBaseMonth: readBaseMonth,
     applyCalendar: applyCalendar,
     kstToday: kstToday,
+    // 2026-11-14 추가: 월 자동 전환
+    daysInMonth: daysInMonth,
+    firstWeekday: firstWeekday,
+    buildMonthCells: buildMonthCells,
+    cellsToHtml: cellsToHtml,
+    ensureMonth: ensureMonth,
+    EN_MONTH: EN_MONTH,
   };
 
   root.LiveCalendar = api;
