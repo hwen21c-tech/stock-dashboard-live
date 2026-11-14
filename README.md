@@ -19,7 +19,7 @@ api/deals-shopping.js      네이버 쇼핑 최저가 Top 5
 lib/http.js                fetch 타임아웃 · EUC-KR 디코딩 · 숫자/금액 파싱 공용 유틸
 vercel.json                /api/* 함수 + public/ 정적 서빙 설정
 dev_server.mjs             Vercel 없이 로컬에서 그대로 띄우는 개발용 서버
-test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응답, 40개 항목)
+test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응답, 41개 항목)
 ```
 
 ## 화면 구성
@@ -83,7 +83,7 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 
 ```bash
 npm run check                 # 모든 서버·프론트 JS 구문 검사
-node test_local.mjs           # 실제 네이버·야후 응답으로 40개 항목 검증
+node test_local.mjs           # 실제 네이버·야후 응답으로 41개 항목 검증
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)
 ```
 

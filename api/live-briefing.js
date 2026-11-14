@@ -465,9 +465,12 @@ module.exports = async function handler(req, res) {
 
   /* ---- 데이터 기준일 ---- */
   const tradingDate = (fx && fx.tradedDate) || null;
+  const tradingDateLabel = tradingDate
+    ? `${tradingDate}(${WEEKDAY_KO[kstParts(new Date(`${tradingDate}T00:00:00+09:00`)).wd] || ''})`
+    : null;
   const dataBasis = {
     tradingDate,
-    tradingDateLabel: tradingDate ? `${tradingDate}(${'일월화수목금토'[new Date(tradingDate + 'T00:00:00+09:00').getDay()]})` : null,
+    tradingDateLabel,
     naverMarketStatus: naverStatus,
     naverSession: sessionHint,
     fxTradedDate: fx ? fx.tradedDate || fx.asOfKst || null : null,

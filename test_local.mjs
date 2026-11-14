@@ -229,6 +229,14 @@ lbOk &= check('선물 NQ=F·ES=F', Boolean(lb.json && (lb.json.futures || []).le
 lbOk &= check('원/달러 환율', Boolean(lb.json && lb.json.fx && lb.json.fx.price > 0), lb.json && lb.json.fx ? `${nf(lb.json.fx.price)}원 (${nf(lb.json.fx.changePct)}%) ${lb.json.fx.source}` : '없음');
 lbOk &= check('급등·거래대금 상위 1~6종목', Boolean(lb.json && (lb.json.topMovers || []).length > 0 && lb.json.topMovers.length <= 6), (lb.json && (lb.json.topMovers || []).map((s) => `${s.tag}:${s.name} ${nf(s.price)} (${nf(s.changePct)}%) ${s.valueText}`).join(' / ')) || '');
 lbOk &= check('최신 뉴스 5건 + n.news 링크', Boolean(lb.json && (lb.json.news || []).length === 5 && lb.json.news.every((n) => n.title && /^https:\/\/n\.news\.naver\.com\//.test(n.url || ''))), (lb.json && (lb.json.news || []).map((n) => `${n.time} ${n.title.slice(0, 20)}`).join(' / ')) || '');
+{
+  const td = lb.json && lb.json.dataBasis && lb.json.dataBasis.tradingDate;
+  const wdKo = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
+  const expect = td
+    ? `${td}(${wdKo[new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', weekday: 'short' }).format(new Date(`${td}T00:00:00+09:00`))]})`
+    : null;
+  lbOk &= check('기준일 요일(KST 정확)', Boolean(td) && lb.json.dataBasis.tradingDateLabel === expect, `${td} → ${lb.json && lb.json.dataBasis && lb.json.dataBasis.tradingDateLabel} (기대 ${expect})`);
+}
 lbOk &= check('headline 팩트 요약', Boolean(lb.json && typeof lb.json.headline === 'string' && lb.json.headline.length > 20), lb.json && lb.json.headline);
 const lbCache = await call('live-briefing', '/api/live-briefing');
 lbOk &= check('Cache-Control = s-maxage=15, swr=30', /s-maxage=15/.test(lbCache.headers['cache-control'] || '') && /stale-while-revalidate=30/.test(lbCache.headers['cache-control'] || ''), lbCache.headers['cache-control']);
