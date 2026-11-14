@@ -13,3 +13,6 @@ rn_live_*.png
 probe_*.png
 e2e_extra_results.json
 tabs135_e2e_results.json
+verify_live_*.png
+verify_live_*.json
+final_*.png
