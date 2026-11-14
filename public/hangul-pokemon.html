@@ -202,6 +202,8 @@
     box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 1px 1px rgba(0,0,0,.14);
   }
   .tyb b.frm{background:linear-gradient(180deg,#7d8f4a,#4f6128);font-size:clamp(7px,1.85vw,9px)}
+  .tyb b.tag-new{background:linear-gradient(180deg,#ffe98a,#f5b600);color:#5b3c00;text-shadow:none}
+  .tyb b.tag-old{background:linear-gradient(180deg,#eaf3ff,#c5dcf7);color:#2a5590;text-shadow:none}
   .tyb b.lg{
     background:linear-gradient(180deg,#ffe089,#e39a12);color:#4a2a00;text-shadow:none;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 1px 1px rgba(0,0,0,.18)
@@ -1923,7 +1925,11 @@ function setWildImages(p) {
   $('#foeName').textContent = shown;
   const types = p.types || [];
   const rank = p.myth ? '<b class="my">🌟 환상</b>' : (p.leg ? '<b class="lg">👑 전설</b>' : '');
-  $('#foeTypes').innerHTML = rank + (p.tag ? `<b class="frm">${esc(p.tag)}</b>` : '') + types.map((t) => `<b class="t-${t}">${t}</b>`).join('');
+  /* 도감에 있는지 한눈에 — ✨ NEW(미포획) / 📘 잡음(N) */
+  const owned = !!(S.dex && S.dex.ids && S.dex.ids.has(p.id));
+  const owns = owned ? ((S.dex.counts && S.dex.counts[p.id]) || 1) : 0;
+  const mark = owned ? `<b class="tag-old">📘 잡음(${owns})</b>` : '<b class="tag-new">✨ NEW</b>';
+  $('#foeTypes').innerHTML = mark + rank + (p.tag ? `<b class="frm">${esc(p.tag)}</b>` : '') + types.map((t) => `<b class="t-${t}">${t}</b>`).join('');
   $('#foeTypes').setAttribute('aria-label', `${p.myth ? '환상, ' : p.leg ? '전설, ' : ''}${p.tag ? p.tag + ' ' : ''}타입 ${types.join(', ')}`);
   $('#foeLv').textContent = 'Lv.' + p.level;
   $('#hint').textContent = `야생 ${shown}${josa(shown, '이', '가')} 나타났다!`;
@@ -1995,14 +2001,24 @@ function wildPool() {
 const recentWild = [];
 /* 전설·환상은 3% 정도만 — 균등 랜덤(9%대)이면 너무 흔해진다 */
 const LEGEND_RATE = 0.03;
+/* 이미 잡은 몬스터도 20% 정도는 다시 나온다(미포획 우선 + 재등장 섞기) */
+const RECATCH_RATE = 0.2;
 function pickWild(excludeId) {
   const all = wildPool();
   const plain = all.filter((p) => !p.leg && !p.myth);
   const rare = all.filter((p) => p.leg || p.myth);
   const wantRare = rare.length > 0 && Math.random() < LEGEND_RATE;
   const base = (wantRare ? rare : plain).length ? (wantRare ? rare : plain) : all;
-  let pool = base.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
-  if (pool.length < 5) pool = base.filter((p) => p.id !== excludeId);
+  const caught = (S.dex && S.dex.ids) ? S.dex.ids : new Set();
+  const uncaught = base.filter((p) => !caught.has(p.id));
+  const owned = base.filter((p) => caught.has(p.id));
+  let prefer = base;
+  if (uncaught.length && owned.length) prefer = Math.random() < RECATCH_RATE ? owned : uncaught;
+  else if (uncaught.length) prefer = uncaught;
+  else if (owned.length) prefer = owned;
+  let pool = prefer.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
+  if (pool.length < 5) pool = prefer.filter((p) => p.id !== excludeId);
+  if (!pool.length) pool = prefer;
   if (!pool.length) pool = base;
   if (!pool.length) pool = all;
   const p = pick(pool);
