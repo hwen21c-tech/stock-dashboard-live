@@ -1733,6 +1733,11 @@
         }).join(', ') + '. 장중 100억 돌파 시 즉시 자동 편입됩니다.<br>';
     }
     note += '※ 거래대금은 통합(KRX+NXT·시간외 포함) 기준입니다.';
+    if (data.excludedPreferredCount) {
+      note += '<br>※ 우선주 ' + data.excludedPreferredCount + '종목(' +
+        (data.excludedPreferred || []).map(function (s) { return esc(s.name); }).join(', ') +
+        ')은 수급·호가 구조가 달라 상한가·임박 판정에서 제외합니다.';
+    }
 
     var host = panel.querySelector('#tabsLiveUpper');
     if (!host) {

@@ -318,6 +318,15 @@ check('52주 신고가 당일 고가 확보', (tlHigh.byValue || []).length > 0 
     Array.isArray(ex) && ex.every((s) => s.code && s.name && isPreferredStock(s)),
     ex.length ? ex.map((s) => `${s.name}(${s.code})`).join(', ') : '이번 응답엔 우선주 편입 0건(정상)',
   );
+  {
+    const upPref = [].concat(
+      tlUpper.confirmed || [],
+      tlUpper.near || [],
+      tlUpper.watch || [],
+    ).filter((s) => isPreferredStock(s));
+    check('상한가·임박·관찰 목록에도 우선주 없음', upPref.length === 0,
+      upPref.length ? `노출: ${upPref.map((s) => s.name).join(',')}` : `우선주 제외 ${tlUpper.excludedPreferredCount || 0}건 (금호건설우 등)`);
+  }
   check(
     '52주 신고가 종목 수 = 보통주만 집계',
     typeof tlHigh.stockCount === 'number' &&

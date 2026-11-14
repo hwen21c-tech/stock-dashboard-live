@@ -489,16 +489,19 @@ function collectUpperCandidates(lists) {
   const seen = new Set();
   const c25 = [];
   const cWatch = [];
+  const preferred = [];
   lists.forEach((l) => {
     (l.items || []).forEach((it) => {
       if (it.kind !== 'stock' || !it.code || seen.has(it.code)) return;
       seen.add(it.code);
       if (typeof it.changePct !== 'number') return;
+      // 우선주(금호건설우 등)는 일반 보통주와 수급·호가 구조가 달라 상한가·임박 판정에서 제외한다
+      if (isPreferredStock(it)) { preferred.push({ code: it.code, name: it.name, market: it.market, changePct: it.changePct }); return; }
       if (it.changePct >= PCT_MIN) c25.push(it);
       else if (it.changePct >= WATCH_PCT_MIN) cWatch.push(it);
     });
   });
-  return { c25, cWatch };
+  return { c25, cWatch, preferred };
 }
 
 function buildUpperLimit(cand) {
@@ -544,6 +547,8 @@ function buildUpperLimit(cand) {
     near: near.slice(0, NEAR_LIMIT_MAX),
     watch: watch.slice(0, WATCH_MAX),
     excluded: excluded.slice(0, 8),
+    excludedPreferred: (cand.preferred || []).slice(0, 6),
+    excludedPreferredCount: (cand.preferred || []).length,
     counts: {
       confirmed: confirmed.length,
       near: near.length,
@@ -555,6 +560,7 @@ function buildUpperLimit(cand) {
       valueMinText: formatKoreanMoney(VALUE_MIN),
       pctMin: PCT_MIN,
       valueBasis: '통합(KRX+NXT) — 통합 값이 없으면 정규장',
+      preferred: '우선주는 상한가·임박 판정에서 제외',
     },
   };
 }
