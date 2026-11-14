@@ -931,6 +931,15 @@
       }
     }
 
+    // 1번 탭 수급 스트립 — 시장 전체 투자자별 수급은 공개 API 가 없다(기준일만 명시)
+    var stripNote = document.getElementById('supplyStripNote');
+    if (stripNote) {
+      var ntxt = '투자자별 수급(코스피 외인·기관·외인선물)은 거래소 확정치(' + (basisLabel || '—') +
+        ') 기준이며, 시장 전체 시간대별 시계열은 무료 공개 API가 없어 자동 갱신하지 않습니다.';
+      if (stripNote.textContent.replace(/\s+/g, ' ').trim() !== ntxt) stripNote.textContent = ntxt;
+      stripNote.setAttribute('data-live', '1');
+    }
+
     var stampEl = document.getElementById('supplyLiveStamp');
     if (stampEl) {
       var txt = '⚡ 현재가·등락률 실시간(/api/stock-live) · 외인·기관·개인 수급은 거래소 확정치(' +

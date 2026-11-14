@@ -408,6 +408,15 @@ check('시간대별 수급 트래커 자리에 실제 확정 4거래일 흐름',
   (supply.cards.find((c) => c.tracker) || {}).tracker);
 await page.screenshot({ path: SHOT('supply') });
 
+/* ---------- 5-0) 1번 수급 스트립 기준일 표기 (시장 전체 수급은 공개 API 없음) ---------- */
+const stripNote = await page.evaluate(() => {
+  const el = document.getElementById('supplyStripNote');
+  return el ? { text: el.textContent.replace(/\s+/g, ' ').trim(), live: el.getAttribute('data-live') } : null;
+});
+check('1번 수급 스트립에 확정 기준일·자동 갱신 불가를 명시',
+  Boolean(stripNote) && /거래소 확정치\(\d{1,2}\/\d{1,2}/.test(stripNote.text) && /공개 API가 없어 자동 갱신하지 않습니다/.test(stripNote.text),
+  stripNote && stripNote.text.slice(0, 110));
+
 /* ---------- 5-1) 1번 실시간 레이더 (프리마켓 박스 대체) ---------- */
 await page.evaluate(() => {
   const btn = document.querySelector('.tab-btn[data-view="overview"]');
