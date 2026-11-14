@@ -105,13 +105,30 @@
   .pcard .top{display:flex;align-items:center;gap:5px;min-width:0}
   .pcard .who{font-size:clamp(9px,2.4vw,11px);font-weight:800;letter-spacing:.02em;color:#6b7a3a;flex:0 0 auto}
   .pcard .nm{
-    flex:1 1 auto;min-width:0;font-weight:900;
+    flex:0 1 auto;min-width:0;font-weight:900;
     font-size:clamp(13px,3.9vw,19px);line-height:1.1;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .pcard .lv{
-    flex:0 0 auto;font-size:clamp(9px,2.5vw,11px);font-weight:800;color:#fff;
+    flex:0 0 auto;margin-left:auto;font-size:clamp(9px,2.5vw,11px);font-weight:800;color:#fff;
     background:#3a2a12;border-radius:8px;padding:1px 6px;letter-spacing:.02em;
+  }
+  /* 이름 옆 타입 뱃지 (상대 HUD) */
+  .tyb{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+  .tyb b{
+    font-size:clamp(8px,2.15vw,10.5px);font-weight:900;color:#fff;line-height:1.5;
+    padding:0 5px;border-radius:999px;white-space:nowrap;letter-spacing:-.01em;
+    text-shadow:0 1px 1px rgba(0,0,0,.28);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 1px 1px rgba(0,0,0,.14);
+  }
+  /* 좁은 화면: 이름·타입 뱃지·Lv가 한 줄에 넘치지 않도록 간격을 좁힌다 */
+  @media (max-width:430px){
+    .pcard{padding:5px 7px 6px}
+    .pcard .top{gap:3px}
+    .pcard .who{font-size:8.5px;letter-spacing:0}
+    .pcard .nm{font-size:clamp(12.5px,3.6vw,19px)}
+    .tyb{gap:2px}
+    .tyb b{font-size:clamp(7px,1.9vw,9.5px);padding:0 3px}
   }
   .hp{display:flex;align-items:center;gap:3px}
   .hp .cap{font-size:clamp(8px,2.2vw,10px);font-weight:900;color:#6b7a3a;margin-right:2px}
@@ -410,8 +427,8 @@
     font-size:clamp(8px,2.3vw,9.5px);font-weight:900;color:#59702f;max-width:100%;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 2px
   }
-  .dexcell .ty{display:flex;gap:2px;margin-top:1px}
-  .dexcell .ty b{font-size:7px;font-weight:900;color:#fff;border-radius:4px;padding:0 3px;line-height:1.5;white-space:nowrap}
+  .dexcell .ty{display:flex;gap:2px;margin-top:1px;justify-content:center;max-width:100%}
+  .dexcell .ty b{font-size:7px;font-weight:900;color:#fff;border-radius:999px;padding:0 3.5px;line-height:1.5;white-space:nowrap;letter-spacing:-.01em}
   .dexcell.un{background:#e6ecdc;border-color:#d3dcc4}
   .dexcell.un img{filter:brightness(0) opacity(.26)}
   .dexcell.un .dt{color:#a8b39a}
@@ -565,6 +582,7 @@
       <div class="top">
         <span class="who">야생</span>
         <span class="nm" id="foeName">???</span>
+        <span class="tyb" id="foeTypes"></span>
         <span class="lv" id="foeLv">Lv.5</span>
       </div>
       <div class="hp" id="foeHp"></div>
@@ -1078,6 +1096,9 @@ function setWildImages(p) {
   art.src = ART(p.id);
   spr.src = SPR(p.id);
   $('#foeName').textContent = p.name;
+  const types = p.types || [];
+  $('#foeTypes').innerHTML = types.map((t) => `<b class="t-${t}">${t}</b>`).join('');
+  $('#foeTypes').setAttribute('aria-label', types.length ? `타입 ${types.join(', ')}` : '');
   $('#foeLv').textContent = 'Lv.' + p.level;
   $('#hint').textContent = `야생 ${p.name}${josa(p.name, '이', '가')} 나타났다!`;
 }
@@ -1566,7 +1587,7 @@ function dexCell(p, caught) {
     <img loading="lazy" decoding="async" data-src="${SPR(p.id)}" alt="">
     <span class="dn">#${num}</span>
     <span class="dt">${caught ? p.name : '???'}</span>
-    ${caught ? `<span class="ty">${p.types.map((t) => `<b class="t-${t}" style="font-size:6.5px">${t}</b>`).join('')}</span>` : ''}
+    ${caught ? `<span class="ty">${p.types.map((t) => `<b class="t-${t}">${t}</b>`).join('')}</span>` : ''}
   `;
   cell.title = caught ? `${p.name} — ${p.genus} / ${p.types.join('·')}` : `#${num} 아직 잡지 못했어요`;
   return cell;
