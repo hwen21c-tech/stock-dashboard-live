@@ -18,6 +18,7 @@ const handlers = {
   'stock-live': require('./api/stock-live.js'),
   'stock-chart': require('./api/stock-chart.js'),
   'deals-shopping': require('./api/deals-shopping.js'),
+  'live-briefing': require('./api/live-briefing.js'),
 };
 
 function makeReq(urlPath, method = 'GET') {
@@ -213,6 +214,39 @@ summary.dealsShopping = {
   message: shop.json && shop.json.message,
   searchUrl: shop.json && shop.json.searchUrl,
   envKeysPresent: Boolean(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET),
+};
+
+/* ---------------------------- 4) live-briefing ---------------------------- */
+console.log('\n▶ [7] /api/live-briefing?fresh=1 (⚡ 클릭 순간 실시간 브리핑)');
+const lb = await call('live-briefing', '/api/live-briefing?fresh=1');
+let lbOk = true;
+lbOk &= check('HTTP 200', lb.status === 200, `status=${lb.status} (${lb.ms}ms)`);
+lbOk &= check('ok:true + 부분 실패 0건', lb.json && lb.json.ok === true && (lb.json.errors || []).length === 0, (lb.json && (lb.json.errors || []).join(' · ')) || 'none');
+lbOk &= check('generatedAtKst HH:MM:SS', /^\d{2}:\d{2}:\d{2}$/.test((lb.json && lb.json.generatedAtKst) || ''), lb.json && lb.json.generatedAtKst);
+lbOk &= check('marketPhase 판정', Boolean(lb.json && lb.json.marketPhase), lb.json ? `${lb.json.marketPhase} — ${lb.json.marketPhaseLabel}` : '');
+lbOk &= check('코스피·코스닥 지수 + 거래대금', Boolean(lb.json && (lb.json.indices || []).length === 2 && lb.json.indices.every((i) => i.price > 0 && i.valueText)), (lb.json && (lb.json.indices || []).map((i) => `${i.name} ${nf(i.price)} (${nf(i.changePct)}%) ${i.valueText}`).join(' / ')) || '');
+lbOk &= check('선물 NQ=F·ES=F', Boolean(lb.json && (lb.json.futures || []).length === 2), (lb.json && (lb.json.futures || []).map((f) => `${f.symbol} ${nf(f.price)} (${nf(f.changePct)}%)`).join(' / ')) || '');
+lbOk &= check('원/달러 환율', Boolean(lb.json && lb.json.fx && lb.json.fx.price > 0), lb.json && lb.json.fx ? `${nf(lb.json.fx.price)}원 (${nf(lb.json.fx.changePct)}%) ${lb.json.fx.source}` : '없음');
+lbOk &= check('급등·거래대금 상위 1~6종목', Boolean(lb.json && (lb.json.topMovers || []).length > 0 && lb.json.topMovers.length <= 6), (lb.json && (lb.json.topMovers || []).map((s) => `${s.tag}:${s.name} ${nf(s.price)} (${nf(s.changePct)}%) ${s.valueText}`).join(' / ')) || '');
+lbOk &= check('최신 뉴스 5건 + n.news 링크', Boolean(lb.json && (lb.json.news || []).length === 5 && lb.json.news.every((n) => n.title && /^https:\/\/n\.news\.naver\.com\//.test(n.url || ''))), (lb.json && (lb.json.news || []).map((n) => `${n.time} ${n.title.slice(0, 20)}`).join(' / ')) || '');
+lbOk &= check('headline 팩트 요약', Boolean(lb.json && typeof lb.json.headline === 'string' && lb.json.headline.length > 20), lb.json && lb.json.headline);
+const lbCache = await call('live-briefing', '/api/live-briefing');
+lbOk &= check('Cache-Control = s-maxage=15, swr=30', /s-maxage=15/.test(lbCache.headers['cache-control'] || '') && /stale-while-revalidate=30/.test(lbCache.headers['cache-control'] || ''), lbCache.headers['cache-control']);
+lbOk &= check('메모리 캐시 HIT (동일 인스턴스 연속 호출)', lbCache.headers['x-cache'] === 'HIT-memory' || lbCache.ms < lb.ms, `x-cache=${lbCache.headers['x-cache']}, ${lbCache.ms}ms`);
+summary.liveBriefing = {
+  status: lb.status,
+  ms: lb.ms,
+  generatedAtKst: lb.json && lb.json.generatedAtKst,
+  marketPhase: lb.json && lb.json.marketPhase,
+  marketPhaseLabel: lb.json && lb.json.marketPhaseLabel,
+  headline: lb.json && lb.json.headline,
+  indices: (lb.json && lb.json.indices) || [],
+  futures: (lb.json && lb.json.futures) || [],
+  fx: lb.json && lb.json.fx,
+  topMovers: (lb.json && lb.json.topMovers) || [],
+  news: (lb.json && lb.json.news) || [],
+  dataBasis: lb.json && lb.json.dataBasis,
+  errors: (lb.json && lb.json.errors) || [],
 };
 
 /* -------------------------------- 결과 저장 -------------------------------- */

@@ -13,12 +13,13 @@ public/sw.js               PWA 서비스워커 (network-first, 캐시 없음)
 public/manifest.json       PWA 매니페스트
 public/downloads/          앱 아이콘 192/512
 api/stock-live.js          지수·환율·해외선물·종목 현재가
+api/live-briefing.js       ⚡ 클릭 순간 실시간 팩트 브리핑 (지수·선물·환율·급등/대금 상위·최신 뉴스)
 api/stock-chart.js         종목명/코드 → 60거래일 일봉 + RN 지지/저항
 api/deals-shopping.js      네이버 쇼핑 최저가 Top 5
 lib/http.js                fetch 타임아웃 · EUC-KR 디코딩 · 숫자/금액 파싱 공용 유틸
 vercel.json                /api/* 함수 + public/ 정적 서빙 설정
 dev_server.mjs             Vercel 없이 로컬에서 그대로 띄우는 개발용 서버
-test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응답, 28개 항목)
+test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응답, 40개 항목)
 ```
 
 ## 화면 구성
@@ -39,6 +40,13 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 - **RN존 탭 상단 🔎 실시간 종목 조회**: 종목명/6자리 코드 입력 → `/api/stock-chart` 로
   **60거래일 일봉 캔들 + RN 지지/저항 + 1차/2차 타점·목표가**를 즉시 계산해 목록 맨 앞에 추가하고 차트를 그립니다.
 - **API 가 죽어도 화면은 그대로**: 실패 시 내장(정적) 데이터를 유지하고 배지만 `⚠️ API 연결 실패 · 내장 데이터 유지` 로 바뀝니다.
+- **`⚡ 실시간 브리핑` 버튼 = 클릭 순간 실시간 팩트 브리핑**
+  버튼을 누른 그 순간 `/api/live-briefing` 이 **코스피·코스닥 지수/거래대금 · 원/달러 · 나스닥100(NQ=F)·S&P500(ES=F) 선물 ·
+  실시간 급등/거래대금 상위 6종목 · 최신 증시 뉴스 5건**을 병렬 수집해 모달 최상단
+  **`⚡ 지금 이 순간 실시간 팩트 브리핑 (HH:MM:SS)`** 섹션으로 즉시 렌더합니다. 모달 안의
+  **`🔄 방금 시점으로 다시 브리핑`** 버튼은 `?fresh=1` 로 캐시를 건너뛰고 다시 받아옵니다.
+  그 아래에는 기존 **정시(평일 14회) AI 심층 브리핑 전문**이 그대로 보존됩니다(시점이 다른 스냅샷임을 명시).
+  수치·뉴스는 확인된 응답값만 표시하고, 없는 값은 `—` 로 두며 코멘트·전망 문장을 지어내지 않습니다.
 
 ### 2) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
 `🔎 여행·키즈 맞춤 검색기` · `✈️ 국내&해외 여행 특가(11건)` · `🎪 키즈카페·박물관(11건)`
@@ -56,6 +64,7 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 | `GET /api/stock-chart?q=지니언스` | 종목명 → 코드 자동 해석 후 60거래일 일봉 + RN 지지/저항 5단계 | `s-maxage=60, swr=300` |
 | `GET /api/stock-chart?code=005930` | 코드 직접 지정 | 동일 |
 | `GET /api/deals-shopping?q=돼지고기 국내산 1kg` | 네이버 쇼핑 최저가순 Top 5 | `s-maxage=300, swr=600` |
+| `GET /api/live-briefing` | 클릭 순간 실시간 팩트 브리핑 — 지수·선물·환율·급등/거래대금 상위 6종목·최신 뉴스 5건 + `marketPhase`/`headline` 구조화 JSON | `s-maxage=15, swr=30` (`?fresh=1` → 5/10) |
 
 옵션: `stock-live?codes=005930,000660`(종목 지정), `?fresh=1`(메모리 캐시 무시),
 `stock-chart?count=120`(봉 수 20~200), `deals-shopping?sort=asc|sim|date|dsc`.
@@ -64,6 +73,8 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 - 지수·국내종목: `polling.finance.naver.com/api/realtime` (키 불필요)
 - 환율: `m.stock.naver.com/front-api/marketIndex/prices` → 실패 시 Yahoo `KRW=X`
 - 해외선물: Yahoo `query1.finance.yahoo.com/v8/finance/chart/{NQ=F,ES=F}`
+- 급등·거래대금 상위: `stock.naver.com/api/domestic/market/stock/default?orderType=up|priceTop` (KRX·KOSPI+KOSDAQ)
+- 증시 뉴스: `stock.naver.com/api/domestic/news/list` → 실패 시 `.../news/search?query=증시`
 - 일봉: `fchart.stock.naver.com/sise.nhn` (EUC-KR 디코딩)
 - 종목명 검색: `ac.finance.naver.com/ac` → `m.stock.naver.com/front-api/search` → 내장 별칭표
 - 쇼핑: `openapi.naver.com/v1/search/shop.json` (**NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 필요**)
@@ -72,7 +83,7 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 
 ```bash
 npm run check                 # 모든 서버·프론트 JS 구문 검사
-node test_local.mjs           # 실제 네이버·야후 응답으로 28개 항목 검증
+node test_local.mjs           # 실제 네이버·야후 응답으로 40개 항목 검증
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)
 ```
 

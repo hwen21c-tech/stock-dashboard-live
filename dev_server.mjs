@@ -19,6 +19,7 @@ const PORT = Number(process.env.PORT || 8787);
 
 const api = {
   '/api/stock-live': require('./api/stock-live.js'),
+  '/api/live-briefing': require('./api/live-briefing.js'),
   '/api/stock-chart': require('./api/stock-chart.js'),
   '/api/deals-shopping': require('./api/deals-shopping.js'),
 };

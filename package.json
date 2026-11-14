@@ -9,6 +9,6 @@
   "scripts": {
     "test": "node test_local.mjs",
     "dev": "node dev_server.mjs",
-    "check": "node --check api/stock-live.js && node --check api/stock-chart.js && node --check api/deals-shopping.js && node --check lib/http.js && node --check public/live-api.js && node --check public/deals-shopping.js && node --check dev_server.mjs"
+    "check": "node --check api/stock-live.js && node --check api/live-briefing.js && node --check api/stock-chart.js && node --check api/deals-shopping.js && node --check lib/http.js && node --check public/live-api.js && node --check public/deals-shopping.js && node --check dev_server.mjs"
   }
 }
