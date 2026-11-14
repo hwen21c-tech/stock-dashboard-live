@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <title>포켓몬 배틀 월드</title>
 <meta name="theme-color" content="#3aa62b">
@@ -64,6 +65,8 @@
   .dexhead b{font-size:clamp(12px,3.2vw,14px);letter-spacing:-.02em}
   .dexhead span{font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
   .kids{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  @media (min-width:600px){ .kids{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:599px){ .kid.guest{grid-column:1 / -1} }
   .kid{display:flex;align-items:center;gap:9px;background:#fffdf3;border:1.6px solid #e2eecd;
     border-radius:14px;padding:9px 10px}
   .kid .av{width:38px;height:38px;flex:0 0 38px;border-radius:12px;display:grid;place-items:center;
@@ -133,11 +136,28 @@
     background:rgba(255,255,255,.6);border-radius:12px;padding:8px 12px}
   .foot small{font-size:10px;color:#51703a;font-weight:800}
   .tip{margin-top:12px;font-size:clamp(10px,2.6vw,11px);font-weight:900;color:#4b7429}
+  /* 2탄: 트레이너 뱃지 · 오늘의 미션 */
+  .kid .rk{display:inline-block;margin-top:3px;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;
+    color:#6b4212;background:linear-gradient(180deg,#fff8d8,#ffe9a8);border:1.4px solid #e8c25a;
+    border-radius:999px;padding:0 7px;line-height:1.6}
+  .missionbox{margin:12px auto 0;background:rgba(255,255,255,.86);border:2px solid #cbe79f;border-radius:18px;
+    padding:11px 12px 10px;box-shadow:0 6px 16px rgba(40,90,20,.14);max-width:720px}
+  .missionbox .dexhead{margin-bottom:6px}
+  .missionrow{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:12px;
+    background:linear-gradient(180deg,#fffdf3,#f4fbe8);border:1.6px solid #e2eecd;margin-top:6px}
+  .missionrow .mname{flex:0 0 auto;font-size:clamp(10.5px,2.8vw,12px);font-weight:900;color:#33501a;
+    max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .missionrow .mchips{display:flex;gap:4px;flex:1 1 auto;min-width:0}
+  .missionrow .mchip{flex:1 1 0;text-align:center;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;
+    color:#8a8a7a;background:#f0f0e8;border:1.4px solid #dcdcd0;border-radius:999px;padding:1px 0;white-space:nowrap}
+  .missionrow .mchip.done{color:#14561a;background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a}
+  .missionrow .mdone{flex:0 0 auto;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7a4a00}
   @media (max-width:360px){
     .wrap{padding-left:12px;padding-right:12px}
     .game .ico{width:48px;height:48px;flex-basis:48px;font-size:25px}
   }
 </style>
+<script src="/pokemon-lock.js"></script>
 </head>
 <body>
 <div class="sky">
@@ -180,6 +200,7 @@
         <span class="txt">
           <span class="nm" data-name>첫째</span>
           <span class="ct" data-count>잡은 0마리</span>
+          <span class="rk" data-rank>🌱 초보</span>
           <span class="bar"><i data-bar></i></span>
         </span>
       </div>
@@ -188,10 +209,29 @@
         <span class="txt">
           <span class="nm" data-name>둘째</span>
           <span class="ct" data-count>잡은 0마리</span>
+          <span class="rk" data-rank>🌱 초보</span>
+          <span class="bar"><i data-bar></i></span>
+        </span>
+      </div>
+      <div class="kid guest" id="kidP3">
+        <span class="av" data-emoji>🧪</span>
+        <span class="txt">
+          <span class="nm" data-name>게스트</span>
+          <span class="ct" data-count>잡은 0마리</span>
+          <span class="rk" data-rank>🌱 초보</span>
           <span class="bar"><i data-bar></i></span>
         </span>
       </div>
     </div>
+  </section>
+
+  <section class="missionbox" aria-label="오늘의 미션" data-mission-row>
+    <div class="dexhead">
+      <b>🎯 오늘의 미션</b>
+      <span>세 게임에서 각각 1마리씩 잡으면 보상!</span>
+    </div>
+    <div id="missionRows"></div>
+    <p class="tip" style="margin:7px 0 0;text-align:center">보상 🎁 전설 확률 UP (오늘) · 슈퍼볼 ×2 · 하이퍼볼 ×1</p>
   </section>
 
   <nav class="games" aria-label="게임 선택">
@@ -246,7 +286,7 @@
   const SHARED_PREFIX = 'pkm.shared.dex.v1.';
   const MIGRATED_KEY = 'pkm.shared.dex.v1.migrated';
   const PROFILE_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
-  const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2' }, hangul: { p1: 'p2', p2: 'p1' }, english: { p1: 'p1', p2: 'p2' } };
+  const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2', p3: 'guest' }, hangul: { p1: 'p2', p2: 'p1', p3: 'guest' }, english: { p1: 'p1', p2: 'p2', p3: 'guest' } };
   const LEGACY = [
     { key: 'mpb.dex.v2.p1', game: 'math', id: 'p1' },
     { key: 'mpb.dex.v2.p2', game: 'math', id: 'p2' },
@@ -261,6 +301,7 @@
   function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* */ } }
   function slotFromName(name) {
     const n = String(name || '');
+    if (/게스트|guest|테스트/i.test(n)) return 'guest';
     if (/첫째|아린/.test(n)) return 'p1';
     if (/둘째/.test(n)) return 'p2';
     return '';
@@ -318,15 +359,15 @@
   }
 
   function setName(slot, fallback, emoji) {
-    const mathP = profileOf('math', slot === 'p1' ? 'p1' : 'p2');
-    const hgP = profileOf('hangul', slot === 'p1' ? 'p2' : 'p1');
-    const enP = profileOf('english', slot === 'p1' ? 'p1' : 'p2');
+    const mathP = profileOf('math', slot === 'p1' ? 'p1' : slot === 'p2' ? 'p2' : 'p3');
+    const hgP = profileOf('hangul', slot === 'p1' ? 'p2' : slot === 'p2' ? 'p1' : 'p3');
+    const enP = profileOf('english', slot === 'p1' ? 'p1' : slot === 'p2' ? 'p2' : 'p3');
     const pickP = mathP || enP || hgP || null;
     return { name: (pickP && pickP.name) || fallback, emoji: (pickP && pickP.emoji) || emoji };
   }
 
   function paint(total) {
-    [['p1', 'kidP1', '첫째', '👧'], ['p2', 'kidP2', '둘째', '🧒']].forEach(([slot, boxId, fbName, fbEmoji]) => {
+    [['p1', 'kidP1', '첫째', '👧'], ['p2', 'kidP2', '둘째', '🧒'], ['guest', 'kidP3', '게스트', '🧪']].forEach(([slot, boxId, fbName, fbEmoji]) => {
       const box = document.getElementById(boxId);
       if (!box) return;
       const dex = readSlot(slot);
@@ -406,6 +447,76 @@
   }
   const closeBtn = document.getElementById('ruleClose');
   if (closeBtn) closeBtn.addEventListener('click', closeRule);
+})();
+
+/* ---------- 2탄: 트레이너 뱃지 · 오늘의 미션 ---------- */
+(function () {
+  'use strict';
+  const SHARED_PREFIX = 'pkm.shared.dex.v1.';
+  const PROF_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
+  const ls = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const j = (k, d) => { try { const v = ls(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+  function slotFromName(name) {
+    const n = String(name || '');
+    if (/게스트|guest|테스트/i.test(n)) return 'guest';
+    if (/첫째|아린/.test(n)) return 'p1';
+    if (/둘째/.test(n)) return 'p2';
+    return '';
+  }
+  function screenSlot(slot) {
+    const order = [['math', slot === 'p1' ? 'p1' : 'p2'], ['english', slot === 'p1' ? 'p1' : 'p2'], ['hangul', slot === 'p1' ? 'p2' : 'p1']];
+    for (const pair of order) {
+      const o = j(PROF_KEYS[pair[0]], null);
+      const p = (o && Array.isArray(o.list) ? o.list : []).find((x) => x && x.id === pair[1]);
+      if (p && p.name) return slotFromName(p.name) || slot;
+    }
+    return slot;
+  }
+  function rankOf(n) {
+    if (n >= 100) return '👑 마스터';
+    if (n >= 30) return '🥇 골드';
+    if (n >= 10) return '🥈 실버';
+    return '🌱 초보';
+  }
+  function today() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function paintRanks() {
+    [['p1', 'kidP1'], ['p2', 'kidP2'], ['guest', 'kidP3']].forEach((pair) => {
+      const box = document.getElementById(pair[1]);
+      if (!box) return;
+      const dex = j(SHARED_PREFIX + pair[0], { ids: [] });
+      const n = Array.isArray(dex.ids) ? dex.ids.length : 0;
+      const el = box.querySelector('[data-rank]');
+      if (el) el.textContent = rankOf(n);
+    });
+  }
+  function paintMission() {
+    const host = document.getElementById('missionRows');
+    if (!host) return;
+    const row = (slot, fallback) => {
+      const real = screenSlot(slot);
+      const m = j('pkm.mission.v1.' + real, null);
+      const ok = m && m.date === today() ? (m.done || {}) : {};
+      const done = ['math', 'hangul', 'english'].every((g) => ok[g]);
+      const box = document.getElementById('kidP' + slot.slice(1));
+      const nmEl = box ? box.querySelector('[data-name]') : null;
+      const nm = (nmEl && nmEl.textContent) || fallback;
+      return '<div class="missionrow" data-kid="' + slot + '">'
+        + '<span class="mname">' + nm + '</span>'
+        + '<span class="mchips">'
+        + '<span class="mchip' + (ok.math ? ' done' : '') + '">⚡ 산수 ' + (ok.math ? '✅' : '·') + '</span>'
+        + '<span class="mchip' + (ok.hangul ? ' done' : '') + '">📖 한글 ' + (ok.hangul ? '✅' : '·') + '</span>'
+        + '<span class="mchip' + (ok.english ? ' done' : '') + '">🔤 영어 ' + (ok.english ? '✅' : '·') + '</span>'
+        + '</span>'
+        + '<span class="mdone">' + (done ? '🎉 완료' : '') + '</span>'
+        + '</div>';
+    };
+    host.innerHTML = row('p1', '첫째') + row('p2', '둘째') + row('guest', '게스트');
+  }
+  try { paintRanks(); paintMission(); } catch (e) { /* */ }
+  window.addEventListener('pageshow', () => { try { paintRanks(); paintMission(); } catch (e) { /* */ } });
 })();
 </script>
 </body>
