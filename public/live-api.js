@@ -154,7 +154,9 @@
       map[s.code] = {
         price: num(s.price),
         changePct: num(s.changePct),
-        valueText: s.valueText || null
+        // 카드의 거래대금은 통합(KRX+NXT·시간외 포함) 기준을 우선한다
+        valueText: s.valueIntegText || s.valueText || null,
+        valueBasis: s.valueBasis || null
       };
     });
     if (window.RnZone && typeof window.RnZone.refreshLivePrices === 'function' && Object.keys(map).length) {
@@ -681,7 +683,7 @@
           .then(function (j) {
             if (!j || j.ok !== true) return;
             var map = {};
-            (j.stocks || []).forEach(function (s) { if (s && s.code) map[s.code] = { price: num(s.price), changePct: num(s.changePct), valueText: s.valueText || null }; });
+            (j.stocks || []).forEach(function (s) { if (s && s.code) map[s.code] = { price: num(s.price), changePct: num(s.changePct), valueText: s.valueIntegText || s.valueText || null }; });
             if (Object.keys(map).length && typeof window.RnZone.refreshLivePrices === 'function') window.RnZone.refreshLivePrices(map);
           })
           .catch(function () { /* 대금은 없어도 조회 결과는 그대로 유지 */ });

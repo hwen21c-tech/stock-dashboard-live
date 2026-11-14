@@ -98,6 +98,11 @@ function parseStock(d) {
   const change = parseNum(d.compareToPreviousClosePriceRaw) ?? parseNum(d.compareToPreviousClosePrice);
   const changePct = parseNum(d.fluctuationsRatioRaw) ?? parseNum(d.fluctuationsRatio);
   const valueRaw = parseNum(d.accumulatedTradingValueRaw) ?? parseKoreanMoney(d.accumulatedTradingValue);
+  // 통합(KRX+NXT·시간외 포함) 대금 — 화면 표시(테마·상한가·만쥬·RN존)는 이 값을 쓴다
+  const integ = d.integratedPriceInfo || null;
+  const over = d.overMarketPriceInfo || null;
+  const valueInteg = integ ? parseNum(integ.accumulatedTradingValueRaw) : null;
+  const valueAfter = over ? parseNum(over.accumulatedTradingValueRaw) : null;
   const sign = d.compareToPreviousPrice && d.compareToPreviousPrice.name; // RISING / FALLING / UNCHANGED
   return {
     code: d.itemCode,
@@ -113,6 +118,13 @@ function parseStock(d) {
     volume: parseNum(d.accumulatedTradingVolumeRaw) ?? parseNum(d.accumulatedTradingVolume),
     value: valueRaw,
     valueText: formatKoreanMoney(valueRaw) || d.accumulatedTradingValue || null,
+    valueRegular: valueRaw,
+    valueRegularText: formatKoreanMoney(valueRaw) || d.accumulatedTradingValue || null,
+    valueInteg,
+    valueIntegText: valueInteg !== null ? formatKoreanMoney(valueInteg) : null,
+    valueAfter,
+    valueAfterText: valueAfter !== null ? formatKoreanMoney(valueAfter) : null,
+    valueBasis: valueInteg !== null ? '통합(KRX+NXT)' : '정규장',
     marketStatus: d.marketStatus || null,
     tradedAt: d.localTradedAt || null,
     tradedAtKst: kstLabel(d.localTradedAt),

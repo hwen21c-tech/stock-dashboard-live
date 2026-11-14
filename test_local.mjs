@@ -119,6 +119,14 @@ liveOk &= check(
   Boolean(samsung && samsung.price > 0 && samsung.valueText),
   samsung ? `${nf(samsung.price)}원 ${nf(samsung.changePct)}% / 대금 ${samsung.valueText}` : '없음',
 );
+{
+  const withInteg = stocks.filter((s) => typeof s.valueInteg === 'number');
+  liveOk &= check(
+    '통합 대금(KRX+NXT) 필드 제공 · 통합≥정규장',
+    withInteg.length > 0 && withInteg.every((s) => s.valueInteg >= (s.valueRegular || 0)),
+    withInteg.slice(0, 4).map((s) => `${s.name} 통합 ${s.valueIntegText} / 정규 ${s.valueRegularText} (${s.valueBasis})`).join(' · ') || '통합 값 없음',
+  );
+}
 
 summary.stockLive = {
   ...summary.stockLive,
