@@ -10517,15 +10517,19 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
         ctx.stroke();
       }
 
-      // Current Price Highlight Tag
-      var lastC = candles[numBars - 1].close;
+      // Current Price Highlight Tag — 마지막 봉의 방향색(상승=빨강·하락=파랑)으로 그린다
+      var lastCand = candles[numBars - 1];
+      var lastC = lastCand.close;
       var lastY = 10 + chartH * (1 - (lastC - minP) / pRange);
-      ctx.fillStyle = '#f43f5e';
+      var lastUp = lastC >= lastCand.open;
+      ctx.fillStyle = lastUp ? '#f43f5e' : '#38bdf8';
       ctx.fillRect(chartW + 2, lastY - 8, padR - 4, 16);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'left';
-      var tagStr = lastC >= 1000 ? Math.round(lastC).toLocaleString() : lastC.toFixed(1);
+      var tagStr = modalUnit === '$'
+        ? '$' + lastC.toFixed(2)
+        : (lastC >= 1000 ? Math.round(lastC).toLocaleString() : lastC.toFixed(modalDigits ? Math.min(modalDigits, 2) : 1));
       ctx.fillText(tagStr, chartW + 4, lastY + 3);
     }
     window.drawModalCandles = drawModalCandles;
