@@ -1,0 +1,154 @@
+/* ============================================================
+   포켓몬 배틀 월드 — 배경 일러스트(art) 로더
+   ─ /art/*.webp 를 미리 받아 성공한 뒤에만 data-art 를 붙인다.
+     → 그림이 아직 없거나 실패하면 기존 CSS 그라데이션 배경이 그대로 남는다(폴백).
+   ─ 배틀 무대(.pb2-bg[data-theme]) · 마을(.meadow[data-tod]) 둘 다 담당.
+   ============================================================ */
+(function () {
+  'use strict';
+  if (window.POK_ART && window.POK_ART.version) return;
+
+  var BASE = '/art/';
+
+  /* 타입 테마 → 그림 파일 (power=전기·강철 밤하늘은 '밤' 그림을 쓴다) */
+  var BATTLE = {
+    forest: 'battle-forest',
+    lake: 'battle-lake',
+    volcano: 'battle-volcano',
+    power: 'battle-night',
+    ruins: 'battle-ruins',
+    canyon: 'battle-canyon',
+    sky: 'battle-sky',
+  };
+  var VILLAGE = { day: 'village-day', sunset: 'village-sunset', night: 'village-night' };
+
+  var state = {};   /* src → 'loading' | 'ok' | 'fail' */
+  var queue = {};   /* src → [callback] */
+
+  function srcBattle(key) { var n = BATTLE[key]; return n ? BASE + n + '.webp' : ''; }
+  function srcVillage(tod) { var n = VILLAGE[tod]; return n ? BASE + n + '.webp' : ''; }
+
+  function flush(src, ok) {
+    state[src] = ok ? 'ok' : 'fail';
+    var list = queue[src] || [];
+    delete queue[src];
+    for (var i = 0; i < list.length; i += 1) {
+      try { list[i](ok); } catch (e) { /* */ }
+    }
+  }
+
+  /* 그림이 준비되면 cb(true). 실패/없음은 cb(false) — 한 번만 받는다. */
+  function ensure(src, cb) {
+    if (!src) { cb(false); return; }
+    var st = state[src];
+    if (st === 'ok') { cb(true); return; }
+    if (st === 'fail') { cb(false); return; }
+    if (st === 'loading') { (queue[src] = queue[src] || []).push(cb); return; }
+    state[src] = 'loading';
+    queue[src] = [cb];
+    var im = new Image();
+    im.decoding = 'async';
+    im.onload = function () { flush(src, true); };
+    im.onerror = function () { flush(src, false); };
+    try { im.src = src; } catch (e) { flush(src, false); }
+  }
+
+  /* 배틀 무대 한 칸에 지금 테마의 그림을 입힌다 */
+  function battle(el) {
+    if (!el || !el.dataset) return;
+    var key = el.dataset.theme;
+    if (!key) return;
+    var src = srcBattle(key);
+    if (!src) { el.removeAttribute('data-art'); return; }
+    el.setAttribute('data-art-pending', key);
+    ensure(src, function (ok) {
+      if (!el.isConnected) return;
+      el.removeAttribute('data-art-pending');
+      if (ok && el.dataset.theme === key) el.setAttribute('data-art', key);
+      else if (!ok) el.removeAttribute('data-art');
+      /* 그림이 늦게 도착했는데 그새 테마가 바뀐 경우 다시 계산 */
+      if (ok && el.dataset.theme && el.dataset.theme !== key) battle(el);
+    });
+  }
+
+  /* 마을 풀밭 한 칸에 지금 시간대의 그림을 입힌다 */
+  function village(el) {
+    if (!el || !el.dataset) return;
+    var tod = el.dataset.tod;
+    if (!tod) return;
+    var src = srcVillage(tod);
+    if (!src) { el.removeAttribute('data-art'); return; }
+    ensure(src, function (ok) {
+      if (!el.isConnected) return;
+      if (ok && el.dataset.tod === tod) el.setAttribute('data-art', tod);
+      else if (!ok) el.removeAttribute('data-art');
+      if (ok && el.dataset.tod && el.dataset.tod !== tod) village(el);
+    });
+  }
+
+  function sweep() {
+    var i;
+    var bgs = document.querySelectorAll('.pb2-bg[data-theme]');
+    for (i = 0; i < bgs.length; i += 1) battle(bgs[i]);
+    var mv = document.querySelectorAll('.meadow[data-tod]');
+    for (i = 0; i < mv.length; i += 1) village(mv[i]);
+  }
+
+  /* 테마·시간대가 바뀌면(2인 대결·마을 자동 하늘) 그 무대의 그림도 따라 바뀐다 */
+  function watch() {
+    if (!window.MutationObserver) return;
+    var mo = new MutationObserver(function (list) {
+      for (var i = 0; i < list.length; i += 1) {
+        var t = list[i].target;
+        if (!t || !t.dataset || !t.classList) continue;
+        if (t.classList.contains('pb2-bg')) battle(t);
+        else if (t.classList.contains('meadow')) village(t);
+      }
+    });
+    mo.observe(document.documentElement, {
+      attributes: true, subtree: true, attributeFilter: ['data-theme', 'data-tod'],
+    });
+  }
+
+  /* 화면에 지금 필요한 그림이 뜬 다음, 남는 그림은 한가할 때 미리 받아 둔다 */
+  function preloadSoon() {
+    var go = function () {
+      var keys = Object.keys(BATTLE).concat(Object.keys(VILLAGE));
+      var list = keys.map(function (k) {
+        return BATTLE[k] ? srcBattle(k) : srcVillage(k);
+      }).filter(Boolean);
+      var i = 0;
+      var step = function () {
+        if (i >= list.length) return;
+        ensure(list[i], function () {
+          i += 1;
+          if (window.requestIdleCallback) requestIdleCallback(step, { timeout: 2500 });
+          else setTimeout(step, 400);
+        });
+      };
+      step();
+    };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 });
+    else setTimeout(go, 1800);
+  }
+
+  window.POK_ART = {
+    version: 1,
+    srcBattle: srcBattle,
+    srcVillage: srcVillage,
+    battle: battle,
+    village: village,
+    sweep: sweep,
+    ensure: ensure,
+    state: function () { return Object.assign({}, state); },
+    keys: function () { return { battle: Object.keys(BATTLE), village: Object.keys(VILLAGE) }; },
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { sweep(); watch(); preloadSoon(); });
+  } else {
+    sweep();
+    watch();
+    preloadSoon();
+  }
+})();

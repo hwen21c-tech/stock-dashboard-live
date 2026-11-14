@@ -751,3 +751,98 @@
   #app .controls .qtext{font-size:clamp(17px,4.8vw,28px)}
   #app .controls .choice{min-height:40px}
 }
+
+/* ============================================================
+   10. 생성 일러스트 배경 — 타입별 배틀 무대
+   ─ /art/*.webp 를 받아 두고 성공한 뒤에만 [data-art] 가 붙는다(pokemon-art.js).
+     그림이 없거나 실패하면 위의 CSS 그라데이션 풍경이 그대로 폴백으로 남는다.
+   ============================================================ */
+.pb2-bg{background-repeat:no-repeat;background-size:cover;background-position:50% 56%}
+.pb2-bg[data-theme="forest"]{background-image:url("/art/battle-forest.webp")}
+.pb2-bg[data-theme="lake"]{background-image:url("/art/battle-lake.webp")}
+.pb2-bg[data-theme="volcano"]{background-image:url("/art/battle-volcano.webp")}
+.pb2-bg[data-theme="power"]{background-image:url("/art/battle-night.webp")}
+.pb2-bg[data-theme="ruins"]{background-image:url("/art/battle-ruins.webp")}
+.pb2-bg[data-theme="canyon"]{background-image:url("/art/battle-canyon.webp")}
+.pb2-bg[data-theme="sky"]{background-image:url("/art/battle-sky.webp")}
+/* 그림이 뜨면 위에 덮여 있던 CSS 풍경층(하늘·산·물결)은 끈다 */
+.pb2-bg[data-art] .pb2-sky{background:none !important}
+.pb2-bg[data-art] .pb2-far,
+.pb2-bg[data-art] .pb2-mid{display:none}
+.pb2-bg[data-art] .pb2-ground{height:34%;
+  background:linear-gradient(180deg,transparent 44%,rgba(10,26,8,.42) 100%)}
+/* 소프트 비네팅 + 위쪽 빛 — 포켓몬·글자가 배경에 묻히지 않게 */
+.pb2-bg[data-art]::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(118% 92% at 50% 40%,transparent 44%,rgba(8,20,6,.30) 100%),
+    linear-gradient(180deg,rgba(255,255,255,.14),transparent 22%)}
+/* 그림 위에서 파트너 발판은 은은하게만 (그림 속 땅과 어우러지도록) */
+.stage:has(.pb2-bg[data-art]) .pb2-partner::before{opacity:.55;
+  box-shadow:0 0 0 2px rgba(255,255,255,.22),0 7px 16px rgba(20,60,10,.18)}
+.stage:has(.pb2-bg[data-art]) .pb2-partner::after{opacity:.7}
+.stage:has(.pb2-bg[data-art]) .hint{background:rgba(10,26,20,.5)}
+
+/* ============================================================
+   11. ✨ 타격 · 포획 이펙트 강화
+   ============================================================ */
+/* 파티클(점·별) */
+.pb2-pt{position:fixed;left:0;top:0;z-index:61;pointer-events:none;border-radius:50%;
+  will-change:transform,opacity;mix-blend-mode:screen}
+.pb2-pt.star{border-radius:0;mix-blend-mode:normal;
+  clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%)}
+/* 충격파 링 */
+.pb2-ring{position:fixed;left:0;top:0;z-index:60;pointer-events:none;border-radius:50%;
+  border-style:solid;background:none;will-change:transform,opacity;mix-blend-mode:screen}
+/* 명중 섬광 */
+.pb2-spark{position:fixed;left:0;top:0;z-index:60;pointer-events:none;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,246,190,.5) 42%,rgba(255,220,120,0) 72%);
+  will-change:transform,opacity;mix-blend-mode:screen}
+/* 데미지 -1 팝업 */
+.pb2-dmg{position:fixed;z-index:63;pointer-events:none;font-weight:900;letter-spacing:-.02em;
+  color:#fff;font-size:clamp(22px,6vw,40px);transform:translate(-50%,-50%);
+  -webkit-text-stroke:0.08em rgba(40,12,0,.6);
+  text-shadow:0 3px 9px rgba(0,0,0,.5),0 0 16px rgba(255,220,120,.75);
+  animation:pb2dmg .95s cubic-bezier(.2,1.5,.4,1) forwards}
+@keyframes pb2dmg{
+  0%{opacity:0;transform:translate(-50%,-34%) scale(.35) rotate(-9deg)}
+  20%{opacity:1;transform:translate(-50%,-62%) scale(1.2) rotate(3deg)}
+  44%{transform:translate(-50%,-70%) scale(1) rotate(0)}
+  100%{opacity:0;transform:translate(-50%,-132%) scale(.9)}}
+.pb2-dmg.hurt{color:#ffd6c8;-webkit-text-stroke:0.08em rgba(70,0,0,.6);
+  text-shadow:0 3px 9px rgba(0,0,0,.55),0 0 16px rgba(255,120,80,.8)}
+/* 효과 굉장했다! 띠 */
+.pb2-strong{position:fixed;z-index:64;pointer-events:none;transform:translate(-50%,-50%);
+  font-weight:900;font-size:clamp(11px,3.2vw,17px);white-space:nowrap;color:#fff;letter-spacing:-.02em;
+  padding:3px 12px;border-radius:999px;border:2px solid #fff6d6;
+  background:linear-gradient(180deg,#ff9a3c,#e6331a);
+  box-shadow:0 4px 14px rgba(120,20,0,.5),0 0 22px rgba(255,180,60,.75);
+  animation:pb2strong 1.2s cubic-bezier(.2,1.5,.4,1) forwards}
+@keyframes pb2strong{
+  0%{opacity:0;transform:translate(-50%,-26%) scale(.5)}
+  16%{opacity:1;transform:translate(-50%,-50%) scale(1.14)}
+  30%{transform:translate(-50%,-50%) scale(1)}
+  76%{opacity:1}
+  100%{opacity:0;transform:translate(-50%,-80%) scale(.95)}}
+/* 피격 —더 세게 흔들리고 눌렸다 튀어오른다 */
+.wildwrap.pb2-impact{animation:pb2impact .64s cubic-bezier(.36,.07,.19,.97) both}
+@keyframes pb2impact{
+  0%{filter:brightness(4.2) saturate(0);transform:translate(0,0) scale(1.07)}
+  10%{filter:brightness(1.1) saturate(.5);transform:translate(-9px,4px) scale(.94,1.06)}
+  22%{filter:brightness(3.2) saturate(.1);transform:translate(9px,-3px) scale(1.05,.95)}
+  36%{filter:none;transform:translate(-7px,2px) scale(.99,1.01)}
+  52%{transform:translate(6px,-1px)}
+  68%{transform:translate(-3px,1px)}
+  100%{filter:none;transform:none}}
+/* 화면 흔들림(강화) — 정답 타격 · 포획 성공 순간 */
+.pb2-quake{animation:pb2quake .52s cubic-bezier(.36,.07,.19,.97) both}
+@keyframes pb2quake{
+  0%{transform:translate(0,0)}
+  12%{transform:translate(-5px,3px) rotate(-.25deg)}
+  26%{transform:translate(6px,-4px) rotate(.3deg)}
+  42%{transform:translate(-4px,2px) rotate(-.16deg)}
+  58%{transform:translate(3px,-1px)}
+  74%{transform:translate(-2px,1px)}
+  100%{transform:none}}
+/* 포획 성공 — 황금 별빛 폭발 */
+.pb2-catchburst{position:fixed;left:0;top:0;z-index:62;pointer-events:none;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(255,255,255,.98),rgba(255,236,140,.7) 38%,rgba(255,180,60,0) 72%);
+  will-change:transform,opacity;mix-blend-mode:screen}

@@ -266,6 +266,7 @@
       bg.innerHTML = '<i class="pb2-sky"></i><i class="pb2-far"></i><i class="pb2-mid"></i>'
         + '<i class="pb2-ground"></i><i class="pb2-motes" id="pb2Motes"></i>';
       stage.insertBefore(bg, stage.firstChild);
+      try { if (window.POK_ART) window.POK_ART.battle(bg); } catch (e) { /* */ }
 
       const banner = document.createElement('div');
       banner.className = 'pb2-banner';
@@ -451,6 +452,7 @@
       stage.classList.toggle('pb2-themed', key !== 'forest');
       bg.setAttribute('aria-label', THEME_NAME[key] + ' 배경');
       UI.motes(key);
+      try { if (window.POK_ART) window.POK_ART.battle(bg); } catch (e) { /* */ }
     },
 
     motes(key) {
@@ -808,7 +810,7 @@
       ], { duration: dur, easing: 'cubic-bezier(.3,.05,.5,1)' }).finished
         .then(() => {
           el.remove();
-          try { burst(x1, y1, o.strong ? 22 : 14, o.strong ? 120 : 80); } catch (e) { /* */ }
+          try { burst(x1, y1, o.strong ? 22 : 14, o.strong ? 120 : 80, { el: atk.k }); } catch (e) { /* */ }
           if (o.onHit) { try { o.onHit(); } catch (e) { /* */ } }
         })
         .catch(() => el.remove());
@@ -884,6 +886,240 @@
       });
     }, 230);
   }
+
+  /* ---------- 8-2. ✨ 타격·포획 이펙트 강화 ----------
+     페이지(산수·한글·영어)의 burst()/hitWild()/shakeScreen() 을 갈아끼워
+     세 과목 모두 같은 연출을 쓰게 된다. 그림이 없어도 그대로 동작한다. */
+  const FX_PAL = {
+    water: ['#e8fdff', '#7fe0ff', '#2196f3', '#ffffff'],
+    ice: ['#ffffff', '#d9f7ff', '#8fe4ff', '#bfe9ff'],
+    fire: ['#fff9c4', '#ffd166', '#ff7f2a', '#ff3d00'],
+    elec: ['#fffde0', '#ffe873', '#ffc400', '#ffffff'],
+    grass: ['#f2ffd0', '#b6f07a', '#4caf50', '#2e7d32'],
+    psychic: ['#ffe3ff', '#f7a8ff', '#c04de0', '#ffffff'],
+    ghost: ['#f0d8ff', '#b98cff', '#7b2fff', '#4a0a7a'],
+    dark: ['#ded0ff', '#9a7bff', '#5a1fa8', '#1b0b2e'],
+    rock: ['#f7ecc9', '#d9bd82', '#a87c3c', '#6d4a1c'],
+    ground: ['#f7e6c0', '#e0c48a', '#b07f2f', '#7a5520'],
+    flying: ['#ffffff', '#d8f0ff', '#9ad8ff', '#5aa8d8'],
+    fairy: ['#ffe6f2', '#ffb3d9', '#ff5fa2', '#c2185b'],
+    dragon: ['#ece2ff', '#c9a8ff', '#7a4dff', '#3a1f8a'],
+    steel: ['#ffffff', '#e2e8f0', '#a8b4c4', '#6b7787'],
+    fight: ['#ffe3cf', '#ff9a6b', '#e5493a', '#8a1a10'],
+    normal: ['#ffffff', '#fff3c4', '#ffd166', '#c9a227'],
+    bug: ['#f6ffd8', '#c8ee7a', '#8bc34a', '#4f8a1f'],
+    poison: ['#fbe0ff', '#e2a8ff', '#a040a0', '#5a0a5a'],
+    gold: ['#ffffff', '#fff6c4', '#ffd166', '#ffab00'],
+  };
+  /* 별 모양이 더 잘 어울리는 타입 */
+  const FX_STARRY = { fire: 1, elec: 1, dragon: 1, steel: 1, fairy: 1, psychic: 1, gold: 1 };
+  const FX_RAINBOW = ['#ffffff', '#fff6c4', '#ffd166', '#ff9ad0', '#9be8ff', '#c6f78a', '#ffb86b'];
+
+  const FX = {
+    layer() { return q('#fx') || document.body; },
+
+    keyOf() {
+      try { return (atkOf(partnerType()).k) || 'normal'; } catch (e) { return 'normal'; }
+    },
+
+    palOf(key) { return FX_PAL[key] || FX_PAL.normal; },
+
+    /* 작은 조각 하나를 날려 보낸다 */
+    dot(host, x, y, pal, n, spread, starry) {
+      const p = document.createElement('span');
+      const star = starry && Math.random() < 0.62;
+      p.className = 'pb2-pt' + (star ? ' star' : '');
+      const size = star ? 9 + Math.random() * 13 : 5 + Math.random() * 10;
+      const c = pal[n % pal.length];
+      p.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
+        + 'width:' + size.toFixed(1) + 'px;height:' + size.toFixed(1) + 'px;'
+        + 'background:' + c + ';box-shadow:0 0 ' + (5 + size * 0.55).toFixed(0) + 'px ' + c;
+      host.appendChild(p);
+      const ang = (Math.PI * 2 * n) / Math.max(1, spread) + Math.random() * 0.8;
+      const dist = spread * (0.45 + Math.random() * 0.95);
+      const dx = Math.cos(ang) * dist;
+      const dy = Math.sin(ang) * dist * 0.86 - spread * 0.16;
+      const rot = Math.random() * 720 - 360;
+      const dur = 520 + Math.random() * 560;
+      try {
+        p.animate([
+          { transform: 'translate(-50%,-50%) scale(.35) rotate(0deg)', opacity: 0 },
+          { transform: 'translate(calc(-50% + ' + (dx * 0.34).toFixed(1) + 'px), calc(-50% + ' + (dy * 0.34).toFixed(1) + 'px)) scale(1.06) rotate(' + (rot * 0.4).toFixed(0) + 'deg)', opacity: 1, offset: 0.26 },
+          { transform: 'translate(calc(-50% + ' + dx.toFixed(1) + 'px), calc(-50% + ' + (dy + 16).toFixed(1) + 'px)) scale(.22) rotate(' + rot.toFixed(0) + 'deg)', opacity: 0 },
+        ], { duration: dur, easing: 'cubic-bezier(.15,.6,.3,1)' }).finished
+          .then(() => p.remove()).catch(() => p.remove());
+      } catch (e) { p.remove(); }
+    },
+
+    ring(x, y, color, from, to, dur) {
+      const r = document.createElement('span');
+      r.className = 'pb2-ring';
+      r.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
+        + 'width:' + (from * 2).toFixed(1) + 'px;height:' + (from * 2).toFixed(1) + 'px;'
+        + 'margin:' + (-from).toFixed(1) + 'px 0 0 ' + (-from).toFixed(1) + 'px;'
+        + 'border-width:' + Math.max(2, from * 0.22).toFixed(1) + 'px;border-color:' + color;
+      this.layer().appendChild(r);
+      const sc = Math.max(0.1, to / Math.max(1, from));
+      try {
+        r.animate([
+          { transform: 'scale(.32)', opacity: 0.95 },
+          { transform: 'scale(' + sc.toFixed(2) + ')', opacity: 0 },
+        ], { duration: dur || 620, easing: 'cubic-bezier(.1,.7,.3,1)' }).finished
+          .then(() => r.remove()).catch(() => r.remove());
+      } catch (e) { r.remove(); }
+    },
+
+    spark(x, y, size) {
+      const s = document.createElement('span');
+      s.className = 'pb2-spark';
+      const w = size || 120;
+      s.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
+        + 'width:' + w + 'px;height:' + w + 'px;margin:' + (-w / 2) + 'px 0 0 ' + (-w / 2) + 'px';
+      this.layer().appendChild(s);
+      try {
+        s.animate([
+          { transform: 'scale(.25)', opacity: 0 },
+          { transform: 'scale(.9)', opacity: 1, offset: 0.22 },
+          { transform: 'scale(1.35)', opacity: 0 },
+        ], { duration: 300, easing: 'ease-out' }).finished
+          .then(() => s.remove()).catch(() => s.remove());
+      } catch (e) { s.remove(); }
+    },
+
+    /* 데미지 숫자(-1) 팝업 */
+    dmg(x, y, text, hurt) {
+      const d = document.createElement('span');
+      d.className = 'pb2-dmg' + (hurt ? ' hurt' : '');
+      d.textContent = text || '−1';
+      d.style.left = x.toFixed(1) + 'px';
+      d.style.top = y.toFixed(1) + 'px';
+      this.layer().appendChild(d);
+      setTimeout(() => d.remove(), 1000);
+      return d;
+    },
+
+    /* 효과 굉장했다! 띠 */
+    strong(x, y, text) {
+      const b = document.createElement('span');
+      b.className = 'pb2-strong';
+      b.textContent = text || '효과 굉장했다!';
+      b.style.left = x.toFixed(1) + 'px';
+      b.style.top = y.toFixed(1) + 'px';
+      this.layer().appendChild(b);
+      setTimeout(() => b.remove(), 1250);
+      return b;
+    },
+
+    quake(strength) {
+      const targets = [q('#app'), q('#stage'), q('.stage'), q('#vs')].filter(Boolean);
+      targets.forEach((el) => {
+        el.classList.remove('pb2-quake');
+        void el.offsetWidth;
+        el.classList.add('pb2-quake');
+        setTimeout(() => el.classList.remove('pb2-quake'), 560);
+      });
+      void strength;
+    },
+
+    /* 페이지의 burst(x,y,n,spread) 를 대신하는 본체 */
+    burst(x, y, n, spread, opts) {
+      const o = opts || {};
+      const count = Math.max(4, Math.min(64, Math.round(n === undefined ? 18 : n)));
+      const sp = Math.max(24, spread === undefined ? 110 : spread);
+      const capture = !o.small && count >= 30;
+      const key = o.el || this.keyOf();
+      const pal = o.pal || (capture ? FX_RAINBOW : this.palOf(key));
+      const starry = capture || !!FX_STARRY[key];
+      const host = this.layer();
+      for (let i = 0; i < count; i += 1) this.dot(host, x, y, pal, i, sp, starry);
+      if (!o.small) {
+        this.ring(x, y, pal[2] || '#ffffff', 12, sp * 1.15, 620);
+        if (count >= 14) this.ring(x, y, '#ffffff', 8, sp * 1.7, 720);
+        this.spark(x, y, Math.round(sp * 0.85));
+      }
+      if (capture) {
+        /* 포획 성공 — 황금·무지개 별빛 폭발 + 찰칵 */
+        this.ring(x, y, '#ffd166', 18, sp * 2.2, 820);
+        for (let i = 0; i < 22; i += 1) this.dot(host, x, y, FX_RAINBOW, i, sp * 1.7, true);
+        const c = document.createElement('span');
+        c.className = 'pb2-catchburst';
+        const w = sp * 1.6;
+        c.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;width:' + w.toFixed(0) + 'px;height:' + w.toFixed(0) + 'px;margin:' + (-w / 2).toFixed(0) + 'px 0 0 ' + (-w / 2).toFixed(0) + 'px';
+        host.appendChild(c);
+        try {
+          c.animate([{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1)', opacity: 1, offset: 0.3 }, { transform: 'scale(1.5)', opacity: 0 }],
+            { duration: 780, easing: 'ease-out' }).finished.then(() => c.remove()).catch(() => c.remove());
+        } catch (e) { c.remove(); }
+        this.dmg(x, y - Math.max(44, sp * 0.5), '찰칵!', false);
+      }
+    },
+
+    /* 페이지의 hitWild() 를 대신하는 본체 — 피격 흔들림 + -1 + 효과 굉장했다! */
+    hitWild() {
+      const w = q('#wildWrap');
+      if (!w) return;
+      w.classList.remove('pb2-impact');
+      void w.offsetWidth;
+      w.classList.add('pb2-impact');
+      setTimeout(() => w.classList.remove('pb2-impact'), 680);
+      const r = w.getBoundingClientRect();
+      const cx = r.left + r.width * 0.5;
+      const cy = r.top + r.height * 0.5;
+      let strong = false;
+      try { strong = !!superHit(); } catch (e) { strong = false; }
+      this.dmg(cx + r.width * 0.18, cy - r.height * 0.22, '−1', false);
+      if (strong) this.strong(cx, cy - r.height * 0.52);
+      this.quake(strong ? 2 : 1);
+    },
+
+    /* 페이지 전역 함수 갈아끼우기 */
+    attach() {
+      const self = this;
+      const wrapBurst = window.burst;
+      if (typeof wrapBurst === 'function' && !wrapBurst.__pb2fx) {
+        const fn = function (x, y, n, spread, opts) {
+          try { self.burst(x, y, n, spread, opts); } catch (e) { warn('burst', e); }
+        };
+        fn.__pb2fx = true;
+        window.burst = fn;
+      }
+      const origHit = window.hitWild;
+      if (typeof origHit === 'function' && !origHit.__pb2fx) {
+        const fn = function () { try { self.hitWild(); } catch (e) { warn('hitWild', e); } };
+        fn.__pb2fx = true;
+        window.hitWild = fn;
+      }
+      const origShake = window.shakeScreen;
+      if (typeof origShake === 'function' && !origShake.__pb2fx) {
+        const fn = function () {
+          try { self.quake(2); } catch (e) { /* */ }
+          return origShake.apply(this, arguments);
+        };
+        fn.__pb2fx = true;
+        window.shakeScreen = fn;
+      }
+      /* 몬스터볼이 흔들릴 때마다(1·2·3) 공 주변에 작은 스파크 */
+      try {
+        const snd = window.Sound;
+        if (snd && typeof snd.shake === 'function' && !snd.shake.__pb2fx) {
+          const orig = snd.shake;
+          const fn = function () {
+            const out = orig.apply(snd, arguments);
+            try {
+              const flyer = document.querySelector('.captureflyer');
+              if (flyer) {
+                const r = flyer.getBoundingClientRect();
+                self.burst(r.left + r.width / 2, r.top + r.height / 2, 6, 40, { pal: FX_PAL.gold, small: true });
+              }
+            } catch (e) { /* */ }
+            return out;
+          };
+          fn.__pb2fx = true;
+          snd.shake = fn;
+        }
+      } catch (e) { /* */ }
+    },
+  };
 
   /* ---------- 9. 정답/오답 처리 ---------- */
   function snapshotQuestion() {
@@ -2323,6 +2559,7 @@
     TimeoutHook.attach();
     SpawnHook.attach();
     CaptureHook.attach();
+    try { FX.attach(); } catch (e) { warn('fx', e); }
     DexHook.attach();
     TimerHook.confirm();
     loadEvoMap();
@@ -2397,6 +2634,14 @@
     openReview() { Review.open(); },
     reviewState() { return PB.rv; },
     markMission(g) { return Mission.mark(g || GAME); },
+    /* 6탄 검증용 — 배경 아트·이펙트 */
+    art: () => (q('#pb2Bg') ? q('#pb2Bg').dataset.art || '' : ''),
+    fx: {
+      burst(x, y, n, spread, opts) { FX.burst(x, y, n, spread, opts); },
+      hit() { FX.hitWild(); },
+      palette: (t) => FX.palOf(atkOf(t || '노말').k),
+      alive() { return q('#fx') ? q('#fx').childElementCount : -1; },
+    },
     settingsConfirm() { const b = q('#pb2SetConfirm'); if (b) b.click(); },
     /* 3탄 검증용 */
     bossMode: () => bossMode(),

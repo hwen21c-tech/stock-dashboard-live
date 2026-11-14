@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="./pokemon-battle2.css">
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-3rd.js"></script>
+<script src="/pokemon-art.js"></script>
 <style>
   :root{
     --grass1:#d9f7b0; --grass2:#a8e86b; --grass3:#57bd2f; --deep:#20591a;
@@ -125,15 +126,20 @@
   .fighter.out img{animation:vsout .9s ease-in forwards}
   @keyframes vsout{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.25) translateY(30px) rotate(24deg)}}
   .dmgpop{position:absolute;left:50%;top:24%;transform:translateX(-50%);z-index:6;
-    font-size:clamp(15px,4.6vw,24px);font-weight:900;color:#ff3b1f;text-shadow:0 2px 0 #fff,0 0 10px rgba(255,120,80,.8);
-    animation:dmgpop .9s ease-out forwards;pointer-events:none}
-  @keyframes dmgpop{0%{opacity:0;transform:translate(-50%,10px) scale(.6)}
-    35%{opacity:1;transform:translate(-50%,-6px) scale(1.15)}100%{opacity:0;transform:translate(-50%,-34px) scale(1)}}
+    font-size:clamp(22px,6.4vw,38px);font-weight:900;color:#fff;letter-spacing:-.02em;
+    -webkit-text-stroke:0.08em rgba(70,12,0,.62);
+    text-shadow:0 3px 9px rgba(0,0,0,.45),0 0 16px rgba(255,214,120,.85);
+    animation:dmgpop .98s cubic-bezier(.2,1.5,.4,1) forwards;pointer-events:none}
+  @keyframes dmgpop{0%{opacity:0;transform:translate(-50%,14px) scale(.35) rotate(-9deg)}
+    22%{opacity:1;transform:translate(-50%,-8px) scale(1.22) rotate(3deg)}
+    46%{transform:translate(-50%,-14px) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-46px) scale(.9)}}
   .sebanner{position:absolute;left:50%;top:9%;transform:translateX(-50%);z-index:7;white-space:nowrap;
-    font-size:clamp(10px,2.9vw,14px);font-weight:900;color:#fff;padding:3px 11px;border-radius:999px;
-    background:linear-gradient(180deg,#ff6a3d,#c81f0c);border:2px solid #ffd0b0;
-    box-shadow:0 4px 14px rgba(0,0,0,.35);animation:sepop .35s cubic-bezier(.2,1.6,.4,1) both}
-  @keyframes sepop{from{opacity:0;transform:translate(-50%,-8px) scale(.7)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+    font-size:clamp(11px,3.1vw,15px);font-weight:900;color:#fff;padding:3px 12px;border-radius:999px;letter-spacing:-.02em;
+    background:linear-gradient(180deg,#ff9a3c,#e6331a);border:2px solid #fff6d6;
+    box-shadow:0 4px 14px rgba(120,20,0,.5),0 0 22px rgba(255,180,60,.75);
+    animation:sepop .42s cubic-bezier(.2,1.7,.4,1) both}
+  @keyframes sepop{from{opacity:0;transform:translate(-50%,-10px) scale(.6)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
   .finish-blast{position:absolute;z-index:8;pointer-events:none;width:18px;height:18px;border-radius:50%;
     border:5px solid #fff;box-shadow:0 0 28px #ffd75e,inset 0 0 18px #ffb347;
     transform:translate(-50%,-50%);animation:blast .8s ease-out forwards}
@@ -1329,6 +1335,81 @@
     });
   }
 
+  /* 타격 파티클 — 산수·한글·영어와 같은 공용 CSS(.pb2-pt/.pb2-ring/.pb2-spark)를 쓴다 */
+  const FXPAL = {
+    '물': ['#e8fdff', '#7fe0ff', '#2196f3', '#ffffff'],
+    '불꽃': ['#fff9c4', '#ffd166', '#ff7f2a', '#ff3d00'],
+    '전기': ['#fffde0', '#ffe873', '#ffc400', '#ffffff'],
+    '풀': ['#f2ffd0', '#b6f07a', '#4caf50', '#2e7d32'],
+    '얼음': ['#ffffff', '#d9f7ff', '#8fe4ff', '#bfe9ff'],
+    '에스퍼': ['#ffe3ff', '#f7a8ff', '#c04de0', '#ffffff'],
+    '고스트': ['#f0d8ff', '#b98cff', '#7b2fff', '#4a0a7a'],
+    '악': ['#ded0ff', '#9a7bff', '#5a1fa8', '#1b0b2e'],
+    '바위': ['#f7ecc9', '#d9bd82', '#a87c3c', '#6d4a1c'],
+    '땅': ['#f7e6c0', '#e0c48a', '#b07f2f', '#7a5520'],
+    '비행': ['#ffffff', '#d8f0ff', '#9ad8ff', '#5aa8d8'],
+    '페어리': ['#ffe6f2', '#ffb3d9', '#ff5fa2', '#c2185b'],
+    '드래곤': ['#ece2ff', '#c9a8ff', '#7a4dff', '#3a1f8a'],
+    '강철': ['#ffffff', '#e2e8f0', '#a8b4c4', '#6b7787'],
+    '격투': ['#ffe3cf', '#ff9a6b', '#e5493a', '#8a1a10'],
+    '벌레': ['#f6ffd8', '#c8ee7a', '#8bc34a', '#4f8a1f'],
+    '독': ['#fbe0ff', '#e2a8ff', '#a040a0', '#5a0a5a'],
+    '노말': ['#ffffff', '#fff3c4', '#ffd166', '#c9a227'],
+  };
+  const FXPAL_STAR = { '불꽃': 1, '전기': 1, '드래곤': 1, '강철': 1, '페어리': 1, '에스퍼': 1 };
+  function sparkBurst(x, y, type, strong) {
+    const host = el2('fx');
+    if (!host) return;
+    const pal = FXPAL[type] || FXPAL['노말'];
+    const n = strong ? 24 : 14;
+    const spread = strong ? 122 : 80;
+    for (let i = 0; i < n; i += 1) {
+      const p = document.createElement('div');
+      const star = !!FXPAL_STAR[type] && Math.random() < 0.6;
+      p.className = 'pb2-pt' + (star ? ' star' : '');
+      const size = star ? 9 + Math.random() * 12 : 5 + Math.random() * 9;
+      const c = pal[i % pal.length];
+      p.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
+        + 'width:' + size.toFixed(1) + 'px;height:' + size.toFixed(1) + 'px;background:' + c
+        + ';box-shadow:0 0 ' + (5 + size * 0.5).toFixed(0) + 'px ' + c;
+      host.appendChild(p);
+      const ang = (Math.PI * 2 * i) / n + Math.random() * 0.8;
+      const dist = spread * (0.45 + Math.random() * 0.9);
+      const dx = Math.cos(ang) * dist;
+      const dy = Math.sin(ang) * dist * 0.86 - spread * 0.16;
+      try {
+        p.animate([
+          { transform: 'translate(-50%,-50%) scale(.35)', opacity: 0 },
+          { transform: 'translate(calc(-50% + ' + (dx * 0.34).toFixed(1) + 'px), calc(-50% + ' + (dy * 0.34).toFixed(1) + 'px)) scale(1.05)', opacity: 1, offset: 0.26 },
+          { transform: 'translate(calc(-50% + ' + dx.toFixed(1) + 'px), calc(-50% + ' + (dy + 16).toFixed(1) + 'px)) scale(.22)', opacity: 0 },
+        ], { duration: 520 + Math.random() * 520, easing: 'cubic-bezier(.15,.6,.3,1)' }).finished
+          .then(() => p.remove()).catch(() => p.remove());
+      } catch (e) { p.remove(); }
+    }
+    /* 충격파 링 + 섬광 */
+    const ring = document.createElement('div');
+    ring.className = 'pb2-ring';
+    const from = 12;
+    ring.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
+      + 'width:' + from * 2 + 'px;height:' + from * 2 + 'px;margin:' + (-from) + 'px 0 0 ' + (-from) + 'px;'
+      + 'border-width:4px;border-color:' + pal[2];
+    host.appendChild(ring);
+    const sc = Math.max(0.2, spread * (strong ? 1.5 : 1.1) / from);
+    try {
+      ring.animate([{ transform: 'scale(.3)', opacity: 0.95 }, { transform: 'scale(' + sc.toFixed(2) + ')', opacity: 0 }],
+        { duration: 640, easing: 'cubic-bezier(.1,.7,.3,1)' }).finished.then(() => ring.remove()).catch(() => ring.remove());
+    } catch (e) { ring.remove(); }
+    const sp = document.createElement('div');
+    sp.className = 'pb2-spark';
+    const w = Math.round(spread * 0.9);
+    sp.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;width:' + w + 'px;height:' + w + 'px;margin:' + (-w / 2) + 'px 0 0 ' + (-w / 2) + 'px';
+    host.appendChild(sp);
+    try {
+      sp.animate([{ transform: 'scale(.25)', opacity: 0 }, { transform: 'scale(.9)', opacity: 1, offset: 0.22 }, { transform: 'scale(1.35)', opacity: 0 }],
+        { duration: 300, easing: 'ease-out' }).finished.then(() => sp.remove()).catch(() => sp.remove());
+    } catch (e) { sp.remove(); }
+  }
+
   function strike(att, def, strong, done) {
     const fromEl = el2('f' + num(att.pos));
     const toEl = el2('f' + num(def.pos));
@@ -1363,6 +1444,17 @@
     setTimeout(() => {
       if (!D.on) return;
       def.hp = Math.max(0, def.hp - dmg);
+      /* 명중 순간 — 타입 컬러 파티클 · 충격파 · 섬광 (강타면 피격 무대가 흔들린다) */
+      try {
+        const ib = toEl.getBoundingClientRect();
+        sparkBurst(ib.left + ib.width / 2, ib.top + ib.height * 0.5, type, strong);
+      } catch (e) { /* */ }
+      if (strong) {
+        toEl.classList.remove('pb2-quake');
+        void toEl.offsetWidth;
+        toEl.classList.add('pb2-quake');
+        setTimeout(() => toEl.classList.remove('pb2-quake'), 560);
+      }
       popDmg(def, dmg, strong);
       flashHurt(def);
       if (strong) flashScreen();

@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v1';
+const VERSION = PREFIX + 'v2';
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -17,11 +17,24 @@ const SHELL = [
   '/pokemon-battle2.css',
   '/pokemon-battle2.js',
   '/pokemon-3rd.js',
+  '/pokemon-art.js',
+  '/pokemon-props.js',
   '/pokemon-lock.js',
   '/pokemon-db.json',
   '/hangul-bank.json',
   '/english-bank.json',
-  '/evo-map.json'
+  '/evo-map.json',
+  /* 배경 일러스트 — 첫 설치 때 미리 받아 두어 오프라인에서도 그림이 나온다 */
+  '/art/battle-forest.webp',
+  '/art/battle-lake.webp',
+  '/art/battle-volcano.webp',
+  '/art/battle-night.webp',
+  '/art/battle-ruins.webp',
+  '/art/battle-canyon.webp',
+  '/art/battle-sky.webp',
+  '/art/village-day.webp',
+  '/art/village-sunset.webp',
+  '/art/village-night.webp'
 ];
 
 self.addEventListener('install', (event) => {
