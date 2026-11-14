@@ -29,8 +29,7 @@ const api = {
   '/api/econ-calendar': require('./api/econ-calendar.js'),
   '/api/stock-trend': require('./api/stock-trend.js'),
   '/api/tts': require('./api/tts.js'),
-  '/api/youtube-summary': require('./api/youtube-summary.js'),
-  '/api/content-generate': require('./api/content-generate.js'),
+  '/api/content-studio': require('./api/content-studio.js'),
 };
 
 const MIME = {

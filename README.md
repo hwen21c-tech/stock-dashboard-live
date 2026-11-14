@@ -23,8 +23,7 @@ lib/news-impact.js         뉴스 제목·요약 키워드 → 영향도·테마
 api/live-briefing.js       ⚡ 클릭 순간 실시간 팩트 브리핑 (지수·선물·환율·급등/대금 상위·최신 뉴스)
 api/stock-chart.js         종목명/코드 → 60거래일 일봉 + RN 지지/저항
 api/deals-shopping.js      네이버 쇼핑 최저가 Top 5
-api/youtube-summary.js     유튜브 메타(oEmbed)+자막(Piped/워치페이지) 수집 → 요약·블로그·쇼츠 (자막 없으면 정직하게 안내)
-api/content-generate.js    서버에서 바로 원고 생성(자동 스케줄용) — mode=stock|deals|topic
+api/content-studio.js      ✍️ 콘텐츠 스튜디오 API — ?url=유튜브요약(oEmbed+Piped 자막) / ?mode=stock|deals|topic 서버 원고 생성
 lib/http.js                fetch 타임아웃 · EUC-KR 디코딩 · 숫자/금액 파싱 공용 유틸
 vercel.json                /api/* 함수 + public/ 정적 서빙 설정
 dev_server.mjs             Vercel 없이 로컬에서 그대로 띄우는 개발용 서버

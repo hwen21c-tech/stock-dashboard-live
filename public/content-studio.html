@@ -625,7 +625,7 @@
     $('btnVideo').innerHTML = '<span class="spin"></span> 확인 중…';
     setStatus('videoStatus', '⏳ 영상 정보·자막을 확인하는 중…');
     $('pasteBox').classList.add('hidden');
-    getJson('/api/youtube-summary?url=' + encodeURIComponent(url), 25000)
+    getJson('/api/content-studio?url=' + encodeURIComponent(url), 25000)
       .then(function (r) {
         var d = r.data || {};
         if (!r.ok || !d.ok) {

@@ -1,6 +1,26 @@
 'use strict';
 
 /**
+ * ✍️ 콘텐츠 스튜디오 API (Vercel Hobby 서버리스 함수 12개 제한 때문에 한 파일로 통합)
+ *
+ * 1) 유튜브 요약   GET  /api/content-studio?url=<유튜브 URL>
+ *                  POST /api/content-studio  { url, transcript }
+ *    - URL → videoId 추출 (watch / youtu.be / shorts / embed / live)
+ *    - 메타(제목·채널·썸네일·길이) = oEmbed(항상) + Piped · 워치페이지(가능하면)
+ *    - 자막 = Piped 자막 / 워치페이지 captionTracks (한국어 우선)
+ *    - 자막이 있으면 ① 5줄 요약 ② 블로그 정리글 ③ 쇼츠 리액션 대본 생성
+ *    - 자막을 못 얻으면 요약을 지어내지 않고 이유 + 붙여넣기 안내만 돌려준다
+ *
+ * 2) 원고 생성     GET  /api/content-studio?mode=stock|deals|topic&keyword=..
+ *    - 서버에서 바로 원고를 만들어 주는 통로 (평일 15:45 자동 스케줄 등 무인 호출용)
+ *    - format=md 이면 블로그 markdown 전문도 포함
+ */
+
+const ENGINE = require('../public/content-engine.js');
+
+'use strict';
+
+/**
  * GET  /api/youtube-summary?url=<유튜브 URL>&lang=ko
  * POST /api/youtube-summary  { url, transcript }   ← 자막을 직접 붙여넣은 경우
  *
@@ -15,8 +35,6 @@
  *  - YouTube 는 데이터센터 IP(서버)에 "봇 확인" 차단을 자주 걸기 때문에 자막 추출은 실패할 수 있고,
  *    그때는 클라이언트가 '자막 붙여넣기'로 같은 결과를 만든다(같은 엔진).
  */
-
-const ENGINE = require('../public/content-engine.js');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const PIPED_HOSTS = [
@@ -365,6 +383,60 @@ async function buildResponse(url, injectedTranscript) {
   };
 }
 
+
+/** 같은 프로젝트의 서버리스 핸들러를 그대로 호출해 JSON 을 받아온다 */
+function callHandler(handler, req) {
+  return new Promise(function (resolve, reject) {
+    const chunks = [];
+    const fakeRes = {
+      statusCode: 200,
+      headers: {},
+      setHeader: function (k, v) { this.headers[k] = v; },
+      write: function (c) { chunks.push(Buffer.from(c)); },
+      end: function (c) {
+        if (c) chunks.push(Buffer.from(c));
+        const text = Buffer.concat(chunks).toString('utf8');
+        try { resolve(JSON.parse(text)); } catch (e) { resolve(null); }
+      }
+    };
+    const fakeReq = { method: 'GET', url: req.url || '/api', headers: {} };
+    Promise.resolve(handler(fakeReq, fakeRes)).catch(reject);
+  });
+}
+
+function parseDealsHtml(html) {
+  const grabVar = function (name) {
+    const re = new RegExp('var\\s+' + name + '\\s*=\\s*(\\[[\\s\\S]*?\\]);');
+    const m = html.match(re);
+    if (!m) return [];
+    try { return JSON.parse(m[1]); } catch (e) { return []; }
+  };
+  const grabMeta = function () {
+    const re = new RegExp('var\\s+DEALS_SCAN_META\\s*=\\s*(\\{[\\s\\S]*?\\});');
+    const m = html.match(re);
+    if (!m) return {};
+    try { return JSON.parse(m[1]); } catch (e) { return {}; }
+  };
+  return { travelDeals: grabVar('travelDeals'), kidsDeals: grabVar('kidsDeals'), meta: grabMeta() };
+}
+
+
+function parseDealsHtml(html) {
+  const grabVar = function (name) {
+    const re = new RegExp('var\\s+' + name + '\\s*=\\s*(\\[[\\s\\S]*?\\]);');
+    const m = html.match(re);
+    if (!m) return [];
+    try { return JSON.parse(m[1]); } catch (e) { return []; }
+  };
+  const grabMeta = function () {
+    const re = new RegExp('var\\s+DEALS_SCAN_META\\s*=\\s*(\\{[\\s\\S]*?\\});');
+    const m = html.match(re);
+    if (!m) return {};
+    try { return JSON.parse(m[1]); } catch (e) { return {}; }
+  };
+  return { travelDeals: grabVar('travelDeals'), kidsDeals: grabVar('kidsDeals'), meta: grabMeta() };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -373,29 +445,109 @@ module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.end();
   }
-  try {
-    let url = '';
-    let transcript = '';
-    if (req.method === 'POST') {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const raw = Buffer.concat(chunks).toString('utf8');
-      let body = {};
-      try { body = JSON.parse(raw || '{}'); } catch (e) { body = {}; }
-      url = body.url || body.videoUrl || '';
-      transcript = body.transcript || '';
-    } else if (req.method === 'GET') {
-      const u = new URL(req.url, 'http://localhost');
-      url = u.searchParams.get('url') || u.searchParams.get('v') || '';
-      transcript = u.searchParams.get('transcript') || '';
-    } else {
-      return sendJson(res, 405, { ok: false, reason: 'method_not_allowed' });
-    }
-    if (!url) return sendJson(res, 400, { ok: false, reason: 'missing_url', message: 'url 파라미터가 필요합니다.' });
 
-    const out = await buildResponse(url, transcript);
-    return sendJson(res, out.code, out.body, out.cache);
+  const parsedUrl = new URL(req.url || '/api/content-studio', 'http://localhost');
+  const wantsGenerate = parsedUrl.searchParams.has('mode') &&
+    !parsedUrl.searchParams.has('url') && !parsedUrl.searchParams.has('v');
+
+  try {
+    if (wantsGenerate) return await handleGenerate(req, res, parsedUrl);
+    return await handleYoutube(req, res);
   } catch (e) {
     return sendJson(res, 500, { ok: false, reason: 'server_error', message: String((e && e.message) || e) });
   }
 };
+
+/* ============================================================
+ * 2) 원고 생성 (mode=stock|deals|topic)
+ * ============================================================ */
+async function handleGenerate(req, res, parsedUrl) {
+  if (req.method !== 'GET') return sendJson(res, 405, { ok: false, reason: 'method_not_allowed' });
+  const mode = String(parsedUrl.searchParams.get('mode') || 'stock').toLowerCase();
+  const withMd = parsedUrl.searchParams.get('format') === 'md';
+
+  let content = null;
+  if (mode === 'stock') {
+    const [live, tabs] = await Promise.all([
+      callHandler(require('./stock-live.js'), { url: '/api/stock-live' }),
+      callHandler(require('./tabs-live.js'), { url: '/api/tabs-live' })
+    ]);
+    if (!live || !tabs || !live.ok || !tabs.ok) {
+      return sendJson(res, 502, { ok: false, reason: 'upstream_failed', message: 'stock-live 또는 tabs-live 응답 실패' });
+    }
+    content = ENGINE.buildFromStocks({ live: live, tabs: tabs });
+  } else if (mode === 'deals') {
+    const host = req.headers.host || process.env.VERCEL_URL || 'stock-dashboard-live-6frm.vercel.app';
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(String(host));
+    const proto = isLocal ? 'http' : (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+    const r = await fetch(`${proto}://${host}/deals.html`, { headers: { 'Cache-Control': 'no-cache' } });
+    const html = await r.text();
+    const deals = parseDealsHtml(html);
+    if (!deals.travelDeals.length && !deals.kidsDeals.length) {
+      return sendJson(res, 502, { ok: false, reason: 'no_deals_data' });
+    }
+    content = ENGINE.buildFromDeals({ deals: deals });
+  } else if (mode === 'topic') {
+    content = ENGINE.buildFromTopic({
+      keyword: parsedUrl.searchParams.get('keyword') || '',
+      memo: parsedUrl.searchParams.get('memo') || '',
+      template: parsedUrl.searchParams.get('template') || 'info'
+    });
+    if (!content) return sendJson(res, 400, { ok: false, reason: 'missing_keyword' });
+  } else {
+    return sendJson(res, 400, {
+      ok: false, reason: 'unknown_mode', modes: ['stock', 'deals', 'topic'],
+      hint: '유튜브 요약은 ?url=<유튜브 주소> 로 호출하세요.'
+    });
+  }
+
+  const body = {
+    ok: true,
+    mode: mode,
+    generatedAt: content.generatedAt,
+    headline: content.headline,
+    subline: content.subline,
+    source: content.source,
+    summary: content.summary,
+    facts: content.facts,
+    notices: content.notices,
+    blog: {
+      titles: content.blog.titles,
+      metaDesc: content.blog.metaDesc,
+      sections: content.blog.sections,
+      cta: content.blog.cta,
+      tags: content.blog.tags,
+      markdown: withMd ? content.blog.markdown : undefined,
+      markdownLength: content.blog.markdown.length
+    },
+    shorts: content.shorts
+  };
+  return sendJson(res, 200, body, 'public, s-maxage=60, stale-while-revalidate=120');
+}
+
+/* ============================================================
+ * 1) 유튜브 요약 — 원래 핸들러 본문
+ * ============================================================ */
+async function handleYoutube(req, res) {
+  let url = '';
+  let transcript = '';
+  if (req.method === 'POST') {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let body = {};
+    try { body = JSON.parse(raw || '{}'); } catch (e) { body = {}; }
+    url = body.url || body.videoUrl || '';
+    transcript = body.transcript || '';
+  } else if (req.method === 'GET') {
+    const u = new URL(req.url, 'http://localhost');
+    url = u.searchParams.get('url') || u.searchParams.get('v') || '';
+    transcript = u.searchParams.get('transcript') || '';
+  } else {
+    return sendJson(res, 405, { ok: false, reason: 'method_not_allowed' });
+  }
+  if (!url) return sendJson(res, 400, { ok: false, reason: 'missing_url', message: 'url 파라미터가 필요합니다.' });
+
+  const out = await buildResponse(url, transcript);
+  return sendJson(res, out.code, out.body, out.cache);
+}
