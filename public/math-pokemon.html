@@ -125,8 +125,8 @@
   .hp i.pop{transform:scaleY(1.6)}
   .diffrow{display:flex;gap:4px}
   .diffrow button{
-    flex:1 1 0;min-width:0;padding:2px 4px;border-radius:8px;
-    font-size:clamp(9px,2.5vw,11px);font-weight:900;line-height:1.5;
+    flex:1 1 0;min-width:0;padding:2px 3px;border-radius:8px;
+    font-size:clamp(9px,2.5vw,11.5px);font-weight:900;line-height:1.5;
     background:#e8edd8;color:#6b7a3a;border:1.5px solid #c9d6ad;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     transition:.15s;
@@ -430,6 +430,48 @@
   .rules .k{font-weight:900;color:#8a5a00;background:#fff3c4;border-radius:5px;padding:0 4px}
   .rules .note{margin-top:12px;font-size:11px;color:#7d8a63}
 
+  /* ===== 설정 (연산·난이도) ===== */
+  .sect{margin:14px 0 7px;font-size:clamp(12.5px,3.5vw,14.5px);color:#2f6a1c;font-weight:900}
+  .sect:first-child{margin-top:0}
+  .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .opgrid button{
+    display:flex;align-items:center;justify-content:center;gap:5px;padding:11px 6px;border-radius:12px;
+    font-weight:900;font-size:clamp(12px,3.4vw,14px);
+    background:linear-gradient(180deg,#fff,#f1ffe1);border:2px solid #cfe79a;color:#33511c;
+    box-shadow:0 3px 0 rgba(70,120,30,.25);transition:transform .08s;
+  }
+  .opgrid button.wide{grid-column:1 / -1}
+  .opgrid button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:var(--gold-d);color:#6a3f00;box-shadow:0 3px 0 rgba(160,100,10,.4)}
+  .opgrid button:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(70,120,30,.25)}
+  .subpick{margin-top:9px;padding:9px 10px;border-radius:12px;background:#f1ffe1;border:2px dashed #b9dd8b;animation:fade .18s}
+  .subpick p{margin:0 0 7px;font-size:clamp(10px,2.9vw,11.5px);font-weight:900;color:#5c7a34}
+  .mixgrid{display:grid;gap:6px}
+  .mixgrid button{
+    padding:10px 8px;border-radius:10px;font-weight:900;font-size:clamp(11.5px,3.2vw,13px);
+    background:#fff;border:2px solid #cfe79a;color:#3b5a22;box-shadow:0 2px 0 rgba(70,120,30,.18)
+  }
+  .mixgrid button.on{background:linear-gradient(180deg,#dcf9b6,#8fe05a);border-color:#5fae2a;color:#1d4a06;box-shadow:0 2px 0 #5fae2a}
+  .diffgrid{display:grid;gap:7px}
+  .diffgrid button{
+    display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:9px 11px;
+    border-radius:12px;background:linear-gradient(180deg,#fff,#f1ffe1);border:2px solid #cfe79a;
+    color:#33511c;box-shadow:0 3px 0 rgba(70,120,30,.22)
+  }
+  .diffgrid button b{font-size:clamp(12.5px,3.5vw,14px)}
+  .diffgrid button span{font-size:clamp(9.5px,2.7vw,11px);font-weight:700;color:#6f8250}
+  .diffgrid button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:var(--gold-d);color:#6a3f00}
+  .diffgrid button.on span{color:#8a5f12}
+  .setnote{margin:13px 0 0;font-size:10px;color:#93a17c;text-align:center;font-weight:700}
+
+  .sheet-foot{padding:9px 12px calc(10px + env(safe-area-inset-bottom));border-top:2px solid #e6f1cc;background:#f4ffdf;display:flex;justify-content:center;flex:0 0 auto}
+  .dangerbtn{
+    padding:8px 14px;border-radius:10px;font-weight:900;font-size:clamp(11px,3vw,12.5px);
+    background:#fff3f1;border:2px solid #f3b6ae;color:#c0392b;box-shadow:0 2px 0 #f0d0cb
+  }
+  .dangerbtn:active{transform:translateY(2px);box-shadow:none}
+  .btnrow button.danger{background:linear-gradient(180deg,#ff8a80,#e5493a);border-color:#c0342a;color:#fff;box-shadow:0 3px 0 #a02a20}
+  #resetModal{z-index:70}
+
   /* catch / faint */
   .sheet.res{width:min(420px,100%);align-items:center;text-align:center;overflow:hidden}
   .res .body{padding:16px 16px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;width:100%}
@@ -502,6 +544,7 @@
       <span class="caret">▼</span>
     </button>
     <span class="pstat" id="chipDex">📕 0</span>
+    <button class="icobtn" id="setBtn" aria-label="연산·난이도 설정" style="width:34px;height:32px;border-radius:10px;font-size:15px">⚙️</button>
     <button class="icobtn" id="muteBtn" aria-label="소리 켜기/끄기" style="width:34px;height:32px;border-radius:10px;font-size:15px">🔊</button>
   </div>
 
@@ -513,8 +556,9 @@
       </div>
       <div class="hp" id="myHp"></div>
       <div class="diffrow">
-        <button data-diff="kinder">🌱 킨더</button>
-        <button data-diff="elem">⚡ 초등</button>
+        <button data-diff="easy">🌱1단계</button>
+        <button data-diff="mid">🌿2단계</button>
+        <button data-diff="hard">⚡3단계</button>
       </div>
     </div>
     <div class="pcard">
@@ -606,7 +650,7 @@
       <p>도감은 친구마다 따로 저장돼요</p>
     </div>
     <div class="plist" id="startList"></div>
-    <div class="selfoot">✏️ 연필을 눌러 이름을 바꿀 수 있어요 · 이모지를 누르면 캐릭터가 바뀜!</div>
+    <div class="selfoot">✏️ 이름 바꾸기 · ⚙️ 연산·난이도 바꾸기 · 이모지를 누르면 캐릭터 변경</div>
   </div>
 </div>
 
@@ -618,7 +662,7 @@
       <button class="x" data-close="profileModal">✕</button>
     </div>
     <div class="plist" id="profileList"></div>
-    <div class="selfoot">지금 고른 친구의 도감과 난이도로 이어서 놀아요</div>
+    <div class="selfoot">지금 고른 친구의 도감·연산·난이도로 이어서 놀아요 · ⚙️로 바꾸기</div>
   </div>
 </div>
 
@@ -633,6 +677,9 @@
     <div class="sheet-body">
       <div class="dexgrid" id="dexGrid"></div>
       <p class="note" style="font-size:10.5px;color:#8b9673;text-align:center;margin:10px 0 0">몬스터를 잡으면 여기에 컬러로 기록됩니다. (친구별로 이 기기에 자동 저장)</p>
+    </div>
+    <div class="sheet-foot">
+      <button class="dangerbtn" id="dexResetBtn">🗑️ 도감 초기화</button>
     </div>
   </div>
 </div>
@@ -654,10 +701,13 @@
           <li>맞히면 상대 HP 1칸 ↓, 틀리면 내 HP 1칸 ↓.</li>
           <li>내 HP 0칸이 되면 몬스터가 도망가요. 다시 도전!</li>
         </ul>
-        <h3>🌱 난이도</h3>
+        <h3>🌱 난이도 · 🎲 연산</h3>
         <ul>
-          <li><b>킨더</b>: 한 자릿수 덧셈·뺄셈</li>
-          <li><b>초등</b>: 두 자릿수 덧셈·뺄셈 + 구구단</li>
+          <li><b>1단계</b>: 한 자릿수 덧·뺄셈, 쉬운 2~5단 곱셈·나눗셈</li>
+          <li><b>2단계</b>: 두 자릿수 ±, 2~9단 구구단·나눗셈</li>
+          <li><b>3단계</b>: 받아올림/내림 있는 두~세 자릿수, 두 자리×한 자리</li>
+          <li>연산은 <b>덧셈·뺄셈·곱셈·나눗셈·섞어서</b> 중 고를 수 있어요. 섞어서는 <b>덧+뺄만</b> / <b>사칙연산 다</b>로 나뉘어요. (나눗셈은 딱 떨어지는 문제만)</li>
+          <li>바꾸는 곳: 맨 위 <b>⚙️</b> 또는 이름 버튼 안의 ⚙️ / 1·2·3단계 알약 버튼</li>
         </ul>
         <h3>🎒 왼쪽 메뉴</h3>
         <ul>
@@ -666,10 +716,61 @@
           <li><b>도망간다</b>: 다른 야생 몬스터 만나기</li>
         </ul>
         <h3>👧 친구마다 따로</h3>
-        <p>맨 위 <b>이름 버튼</b>을 누르면 놀이 친구를 바꿀 수 있어요. 친구마다 <b>도감이 따로</b> 쌓이고, 처음 난이도도 따로 기억해요. (첫째=초등, 둘째=킨더)</p>
+        <p>맨 위 <b>이름 버튼</b>을 누르면 놀이 친구를 바꿀 수 있어요. 친구마다 <b>도감·연산·난이도가 따로</b> 저장됩니다. (첫째=2단계·섞어서, 둘째=1단계·섞어서)</p>
+        <h3>🗑️ 도감 초기화</h3>
+        <p>도감 화면 맨 아래 <b>도감 초기화</b>를 누르면 한 번 더 물어본 뒤 그 친구의 도감만 지워요.</p>
         <h3>⌨️ 키보드</h3>
         <p>보기 번호 <span class="k">1 2 3 4</span> 키로도 답을 고를 수 있어요.</p>
         <p class="note">몬스터 그림과 이름은 PokéAPI의 공개 데이터(한국어 이름)를 사용합니다. 가족이 함께 즐기는 비공식 팬 게임입니다.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 설정: 연산·난이도 -->
+<div class="modal" id="settingsModal" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>⚙️ <span id="setOwner">첫째</span> 설정</h2>
+      <button class="x" data-close="settingsModal">✕</button>
+    </div>
+    <div class="sheet-body">
+      <h3 class="sect">어떤 계산을 연습할까요?</h3>
+      <div class="opgrid" id="opGrid">
+        <button data-op="add">➕ 덧셈</button>
+        <button data-op="sub">➖ 뺄셈</button>
+        <button data-op="mul">✖️ 곱셈</button>
+        <button data-op="div">➗ 나눗셈</button>
+        <button data-op="mix" class="wide">🎲 섞어서</button>
+      </div>
+      <div class="subpick" id="mixPick" hidden>
+        <p>섞어서 — 어떤 문제를 섞을까요?</p>
+        <div class="mixgrid">
+          <button data-mix="pm">➕ ➖ 덧셈 + 뺄셈만</button>
+          <button data-mix="all">➕ ➖ ✖️ ➗ 사칙연산 다 섞기</button>
+        </div>
+      </div>
+      <h3 class="sect">난이도</h3>
+      <div class="diffgrid" id="diffGrid">
+        <button data-diff="easy"><b>🌱 1단계 (쉬움)</b><span>한 자릿수 덧·뺄셈 · 쉬운 2~5단 곱셈·나눗셈</span></button>
+        <button data-diff="mid"><b>🌿 2단계 (보통)</b><span>두 자릿수 ± · 2~9단 구구단·나눗셈</span></button>
+        <button data-diff="hard"><b>⚡ 3단계 (도전)</b><span>받아올림/내림 두~세 자릿수 · 두 자리×한 자리</span></button>
+      </div>
+      <p class="setnote">바꾸면 바로 다음 문제부터 적용돼요. 친구마다 따로 저장됩니다.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 도감 초기화 확인 -->
+<div class="modal" id="resetModal" hidden>
+  <div class="sheet res" style="width:min(400px,100%)">
+    <div class="body">
+      <div class="bigimg" style="width:min(88px,26vw)"><span style="font-size:50px;line-height:1">🧹</span></div>
+      <h2 id="resetTitle">정말 첫째의 도감을 초기화할까요?</h2>
+      <p class="sub" id="resetDesc">잡은 0마리가 모두 사라집니다.</p>
+      <div class="btnrow">
+        <button id="resetCancel">취소</button>
+        <button class="danger" id="resetConfirm">초기화</button>
       </div>
     </div>
   </div>
@@ -804,9 +905,17 @@ const Sound = {
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'mpb.profiles.v1';
 const DEFAULT_PROFILES = [
-  { id: 'p1', name: '첫째', emoji: '👧', diff: 'elem' },
-  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'kinder' },
+  { id: 'p1', name: '첫째', emoji: '👧', diff: 'mid', op: 'mix', mix: 'all' },
+  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'easy', op: 'mix', mix: 'pm' },
 ];
+const DIFF_KEYS = ['easy', 'mid', 'hard'];
+const OP_KEYS = ['add', 'sub', 'mul', 'div', 'mix'];
+const DIFF_LABEL = { easy: '🌱 1단계', mid: '🌿 2단계', hard: '⚡ 3단계' };
+const OP_LABEL = { add: '➕ 덧셈', sub: '➖ 뺄셈', mul: '✖️ 곱셈', div: '➗ 나눗셈', mix: '🎲 섞어서' };
+function opLabel(p) {
+  if (p.op !== 'mix') return OP_LABEL[p.op] || OP_LABEL.mix;
+  return p.mix === 'all' ? '섞어서(사칙연산)' : '섞어서(덧+뺄)';
+}
 const EMOJIS = ['👧', '🧒', '👦', '👶', '🐣', '⭐', '🐰', '🦊'];
 
 const Profiles = {
@@ -822,7 +931,9 @@ const Profiles = {
             id: p.id || 'p' + (i + 1),
             name: (p.name || '친구').slice(0, 8),
             emoji: p.emoji || (i === 0 ? '👧' : '🧒'),
-            diff: p.diff === 'elem' ? 'elem' : 'kinder',
+            diff: DIFF_KEYS.includes(p.diff) ? p.diff : (p.diff === 'elem' ? 'mid' : 'easy'),
+            op: OP_KEYS.includes(p.op) ? p.op : 'mix',
+            mix: p.mix === 'pm' ? 'pm' : 'all',
           })),
         };
         if (!this.get(this.data.active)) this.data.active = this.data.list[0].id;
@@ -872,7 +983,9 @@ const Profiles = {
 const S = {
   screen: 'battle',     // battle | resolving | capturing | caught | fainted
   paused: true,
-  diff: 'elem',
+  diff: 'mid',
+  op: 'mix',
+  mixMode: 'all',
   wild: null,
   foeHP: 5,
   myHP: 5,
@@ -1026,42 +1139,76 @@ function renderAll() {
 }
 
 /* ---------- 문제 ---------- */
-function makeQuestion() {
-  let a, b, op, ans, text;
-  if (S.diff === 'kinder') {
-    if (Math.random() < 0.55) {
-      a = rand(1, 9); b = rand(1, 9); op = '+'; ans = a + b;
-    } else {
-      a = rand(2, 9); b = rand(1, a); op = '−'; ans = a - b;
-    }
+const KIND_OP = { add: '+', sub: '−', mul: '×', div: '÷' };
+
+function pickKind() {
+  const kinds = S.op === 'mix'
+    ? (S.mixMode === 'all' ? ['add', 'sub', 'mul', 'div'] : ['add', 'sub'])
+    : [S.op];
+  return pick(kinds);
+}
+
+/* 난이도별 숫자 범위 — 나눗셈은 항상 딱 떨어지는 정수 */
+function genNumbers(kind) {
+  const d = S.diff;
+  if (kind === 'add') {
+    if (d === 'easy') return [rand(1, 9), rand(1, 9)];
+    if (d === 'mid') return [rand(12, 79), rand(11, 49)];
+    return [rand(146, 899), rand(108, 299)];
+  }
+  if (kind === 'sub') {
+    if (d === 'easy') { const a = rand(2, 9); return [a, rand(1, a)]; }
+    if (d === 'mid') { const a = rand(25, 99); return [a, rand(11, Math.min(88, a - 1))]; }
+    return [rand(305, 980), rand(106, 299)];
+  }
+  if (kind === 'mul') {
+    if (d === 'easy') return [rand(2, 5), rand(1, 9)];
+    if (d === 'mid') return [rand(2, 9), rand(2, 9)];
+    return [rand(12, 39), rand(2, 9)];
+  }
+  // div: (피제수 = 제수 × 몫, 제수)
+  if (d === 'easy') { const b = rand(2, 5); return [b * rand(1, 9), b]; }
+  if (d === 'mid') { const b = rand(2, 9); return [b * rand(2, 9), b]; }
+  const b = rand(2, 9); return [b * rand(12, 49), b];
+}
+
+/* 보기 4지선다: 연산·난이도에 맞는 그럴듯한 오답 */
+function makeChoices(kind, ans, d) {
+  const cand = [];
+  const add = (v) => { if (Number.isFinite(v) && v >= 0 && v !== ans && !cand.includes(v)) cand.push(v); };
+  add(ans + 1); add(ans - 1); add(ans + 2); add(ans - 2);
+  if (kind === 'mul' || kind === 'div') {
+    add(ans + 10); add(ans - 10); add(ans + 3); add(ans - 3);
+    add(d === 'easy' ? ans + 5 : ans + 9); add(d === 'easy' ? ans - 5 : ans - 9);
   } else {
-    const t = Math.random();
-    if (t < 0.38) {
-      a = rand(11, 79); b = rand(11, 20); op = '+'; ans = a + b;
-    } else if (t < 0.72) {
-      a = rand(21, 99); b = rand(11, Math.min(60, a - 1)); op = '−'; ans = a - b;
-    } else {
-      a = rand(2, 9); b = rand(2, 9); op = '×'; ans = a * b;
-    }
+    add(ans + 10); add(ans - 10);
+    if (d !== 'easy') { add(ans + 9); add(ans - 9); add(ans + 11); add(ans - 11); }
+    if (d === 'hard') { add(ans + 100); add(ans - 100); add(ans + 30); add(ans - 30); }
   }
-  text = `${a} ${op} ${b} = ?`;
-  const choices = new Set([ans]);
-  const spread = S.diff === 'kinder' ? 4 : Math.max(6, Math.round(ans * 0.25));
+  for (let i = cand.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cand[i], cand[j]] = [cand[j], cand[i]];
+  }
+  const chosen = cand.slice(0, 3);
   let guard = 0;
-  while (choices.size < 4 && guard < 200) {
+  while (chosen.length < 3 && guard < 400) {
     guard += 1;
-    let d = rand(-spread, spread);
-    if (d === 0) d = pick([-1, 1, 2, -2, 3]);
-    const c = ans + d;
-    if (c >= 0 && c !== ans) choices.add(c);
+    const v = ans + rand(-6, 6);
+    if (v >= 0 && v !== ans && !chosen.includes(v)) chosen.push(v);
   }
-  while (choices.size < 4) choices.add(rand(0, ans + 12));
-  const list = Array.from(choices);
+  const list = [ans, ...chosen];
   for (let i = list.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [list[i], list[j]] = [list[j], list[i]];
   }
-  return { text, ans, choices: list };
+  return list;
+}
+
+function makeQuestion() {
+  const kind = pickKind();
+  const [a, b] = genNumbers(kind);
+  const ans = kind === 'add' ? a + b : kind === 'sub' ? a - b : kind === 'mul' ? a * b : a / b;
+  return { kind, text: `${a} ${KIND_OP[kind]} ${b} = ?`, ans, choices: makeChoices(kind, ans, S.diff) };
 }
 
 function newQuestion() {
@@ -1487,6 +1634,59 @@ function renderProfileBar() {
   $('#chipDex').textContent = '📕 ' + S.dex.ids.size;
   $$('.diffrow button').forEach((b) => b.classList.toggle('on', b.dataset.diff === S.diff));
 }
+/* ---------- 설정 (연산·난이도) ---------- */
+let setTarget = null;
+function openSettings(pid) {
+  setTarget = Profiles.get(pid) ? pid : Profiles.data.active;
+  renderSettings();
+  openModal('settingsModal');
+}
+function renderSettings() {
+  const p = Profiles.get(setTarget) || Profiles.active();
+  $('#setOwner').textContent = p.name;
+  $$('#opGrid button').forEach((b) => b.classList.toggle('on', b.dataset.op === p.op));
+  $('#mixPick').hidden = p.op !== 'mix';
+  $$('#mixPick button').forEach((b) => b.classList.toggle('on', b.dataset.mix === p.mix));
+  $$('#diffGrid button').forEach((b) => b.classList.toggle('on', b.dataset.diff === p.diff));
+}
+function saveSettings(patch, pid) {
+  const id = pid || setTarget || Profiles.data.active;
+  const p = Profiles.get(id);
+  if (!p) return;
+  Object.assign(p, patch);
+  Profiles.save();
+  if (id === setTarget) renderSettings();
+  renderProfileCards('#startList', true);
+  renderProfileCards('#profileList', false);
+  renderProfileBar();
+  if (p.id === Profiles.data.active) {
+    S.diff = p.diff;
+    S.op = p.op;
+    S.mixMode = p.mix;
+    renderAll();
+    if (S.screen === 'battle') newQuestion();
+  }
+}
+
+/* ---------- 도감 초기화 ---------- */
+function openReset() {
+  const p = Profiles.active();
+  const n = S.dex.ids.size;
+  $('#resetTitle').textContent = `정말 ${p.name}의 도감을 초기화할까요?`;
+  $('#resetDesc').textContent = n ? `잡은 ${n}마리가 모두 사라집니다. 되돌릴 수 없어요.` : '아직 잡은 몬스터가 없어요.';
+  openModal('resetModal');
+}
+function doReset() {
+  const p = Profiles.active();
+  S.dex = { ids: new Set(), counts: {} };
+  Profiles.saveDex(p.id, S.dex);
+  renderDex(false);
+  renderDexBadge();
+  closeModal('resetModal');
+  Sound.click();
+  toast(`${p.name}의 도감을 초기화했어요`, 'info', 1500);
+}
+
 function renderProfileCards(sel, start) {
   const host = $(sel);
   if (!host) return;
@@ -1500,11 +1700,14 @@ function renderProfileCards(sel, start) {
     card.tabIndex = 0;
     card.innerHTML = `
       <span class="pe" data-emoji title="캐릭터 바꾸기">${p.emoji}</span>
-      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${p.diff === 'elem' ? '⚡ 초등' : '🌱 킨더'}</span></span>
+      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${DIFF_LABEL[p.diff]} · ${opLabel(p)}</span></span>
+      <button class="pedit pset" title="연산·난이도 설정" aria-label="설정">⚙️</button>
       <button class="pedit" title="이름 바꾸기" aria-label="이름 바꾸기">✏️</button>`;
     card.addEventListener('click', (e) => {
       const emoji = e.target.closest('[data-emoji]');
-      const edit = e.target.closest('.pedit');
+      const edit = e.target.closest('.pedit:not(.pset)');
+      const gear = e.target.closest('.pset');
+      if (gear) { e.stopPropagation(); Sound.ensure(); Sound.click(); openSettings(p.id); return; }
       if (edit) { e.stopPropagation(); editProfileName(card, p); return; }
       if (emoji) {
         e.stopPropagation();
@@ -1556,7 +1759,9 @@ function applyProfile(id, opts) {
   const o = opts || {};
   Profiles.setActive(id);
   const p = Profiles.active();
-  S.diff = p.diff === 'elem' ? 'elem' : 'kinder';
+  S.diff = p.diff === 'elem' ? 'mid' : (DIFF_KEYS.includes(p.diff) ? p.diff : 'easy');
+  S.op = OP_KEYS.includes(p.op) ? p.op : 'mix';
+  S.mixMode = p.mix === 'pm' ? 'pm' : 'all';
   S.dex = Profiles.loadDex(p.id);
   renderProfileBar();
   renderDexBadge();
@@ -1578,17 +1783,18 @@ function chooseProfile(id) {
 function openModal(id) {
   const m = document.getElementById(id);
   if (!m) return;
-  S.paused = true;
   if (id === 'dexModal') renderDex(false);
   m.hidden = false;
+  syncPause();
 }
 function closeModal(id) {
   const m = document.getElementById(id);
   if (!m) return;
   m.hidden = true;
-  S.paused = false;
+  syncPause();
 }
 function anyModal() { return $$('.modal').some((m) => !m.hidden); }
+function syncPause() { S.paused = !!document.hidden || anyModal(); }
 
 /* ---------- 초기화 ---------- */
 function bind() {
@@ -1611,16 +1817,47 @@ function bind() {
     b.addEventListener('click', () => {
       Sound.ensure();
       if (S.diff === b.dataset.diff) return;
-      S.diff = b.dataset.diff;
-      const prof = Profiles.active();
-      prof.diff = S.diff;
-      Profiles.save();
       Sound.click();
-      renderAll();
-      toast(S.diff === 'kinder' ? '🌱 킨더 난이도' : '⚡ 초등 난이도', 'info', 900);
-      if (S.screen === 'battle') newQuestion();
+      saveSettings({ diff: b.dataset.diff }, Profiles.data.active);
+      toast(DIFF_LABEL[b.dataset.diff] + ' 난이도', 'info', 900);
     });
   });
+
+  /* 설정 모달 */
+  $('#setBtn').addEventListener('click', () => {
+    Sound.ensure();
+    Sound.click();
+    openSettings(Profiles.data.active);
+  });
+  $$('#opGrid button').forEach((b) => {
+    b.addEventListener('click', () => {
+      Sound.ensure(); Sound.click();
+      const p = Profiles.get(setTarget);
+      const op = b.dataset.op;
+      if (!p || p.op === op) return;
+      saveSettings({ op }, setTarget);
+      toast(OP_LABEL[op] + (op === 'mix' ? ' — 아래에서 골라 주세요' : ' 연산'), 'info', 1100);
+    });
+  });
+  $$('#mixPick button').forEach((b) => {
+    b.addEventListener('click', () => {
+      Sound.ensure(); Sound.click();
+      saveSettings({ mix: b.dataset.mix, op: 'mix' }, setTarget);
+      toast(b.dataset.mix === 'pm' ? '섞어서 — 덧셈+뺄셈' : '섞어서 — 사칙연산 전부', 'info', 1100);
+    });
+  });
+  $$('#diffGrid button').forEach((b) => {
+    b.addEventListener('click', () => {
+      Sound.ensure(); Sound.click();
+      saveSettings({ diff: b.dataset.diff }, setTarget);
+      toast(DIFF_LABEL[b.dataset.diff], 'info', 900);
+    });
+  });
+
+  /* 도감 초기화 (2차 확인) */
+  $('#dexResetBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openReset(); });
+  $('#resetCancel').addEventListener('click', () => { Sound.click(); closeModal('resetModal'); });
+  $('#resetConfirm').addEventListener('click', () => { doReset(); });
 
   $$('[data-close]').forEach((b) => {
     b.addEventListener('click', () => { Sound.click(); closeModal(b.dataset.close); });
@@ -1672,7 +1909,9 @@ function boot() {
   Profiles.load();
   Profiles.migrateLegacy();
   const me = Profiles.active();
-  S.diff = me.diff === 'elem' ? 'elem' : 'kinder';
+  S.diff = me.diff === 'elem' ? 'mid' : (DIFF_KEYS.includes(me.diff) ? me.diff : 'easy');
+  S.op = OP_KEYS.includes(me.op) ? me.op : 'mix';
+  S.mixMode = me.mix === 'pm' ? 'pm' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();
   POKEMON.forEach((p) => { if (!p.level) p.level = rand(2, 9); });
