@@ -23,6 +23,7 @@ const api = {
   '/api/live-briefing': require('./api/live-briefing.js'),
   '/api/stock-chart': require('./api/stock-chart.js'),
   '/api/deals-shopping': require('./api/deals-shopping.js'),
+  '/api/dart-live': require('./api/dart-live.js'),
 };
 
 const MIME = {

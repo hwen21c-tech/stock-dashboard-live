@@ -20,6 +20,7 @@ const handlers = {
   'deals-shopping': require('./api/deals-shopping.js'),
   'live-briefing': require('./api/live-briefing.js'),
   'tabs-live': require('./api/tabs-live.js'),
+  'dart-live': require('./api/dart-live.js'),
 };
 
 function makeReq(urlPath, method = 'GET') {
@@ -128,11 +129,39 @@ liveOk &= check(
   );
 }
 
+/* ---- WTI 유가 · 필라델피아 반도체(SOX) — Yahoo CL=F / ^SOX ---- */
+const macro = (live.json && live.json.macro) || {};
+const wti = macro.WTI;
+const sox = macro.SOX;
+liveOk &= check('WTI 유가(CL=F) 수신', Boolean(wti && wti.price > 0), wti ? `$${nf(wti.price)} (${nf(wti.changePct)}%, ${wti.asOfKst} KST)` : '없음');
+liveOk &= check('필라델피아 반도체(^SOX) 수신', Boolean(sox && sox.price > 0), sox ? `${nf(sox.price)}pt (${nf(sox.changePct)}%, ${sox.asOfKst} KST)` : '없음');
+liveOk &= check(
+  'WTI·SOX 모두 실시간/마감값 구분 라벨(basis·updateCycle) 보유',
+  [wti, sox].every(
+    (m) => m && typeof m.basis === 'string' && m.basis.length > 3 && typeof m.updateCycle === 'string' && m.updateCycle.length > 5,
+  ),
+  [wti, sox]
+    .filter(Boolean)
+    .map((m) => `${m.key}: ${m.basis} / ${m.updateCycle}`)
+    .join(' | '),
+);
+liveOk &= check(
+  'WTI·SOX 전일 종가·고저 계산 정합성',
+  [wti, sox].every(
+    (m) => !m || (typeof m.previousClose === 'number' && typeof m.dayHigh === 'number' && m.dayHigh >= m.dayLow),
+  ),
+  [wti, sox]
+    .filter(Boolean)
+    .map((m) => `${m.key} 전일 ${m.previousClose} · 고 ${m.dayHigh} / 저 ${m.dayLow}${m.sessionOpen === true ? ' (정규장 중)' : ' (마감값)'}`)
+    .join(' | '),
+);
+
 summary.stockLive = {
   ...summary.stockLive,
   indices: idx.map((i) => `${i.name} ${nf(i.price)} (${nf(i.changePct)}%) 대금 ${i.valueText || '-'}`),
   fx: fx ? `${nf(fx.price)}원 (${nf(fx.changePct)}%, ${fx.source})` : null,
   futures: fut.map((f) => `${f.name} ${nf(f.price)} (${nf(f.changePct)}%)`),
+  macro: { wti, sox },
   stocks: stocks.map((s) => ({ code: s.code, name: s.label || s.name, price: s.price, changePct: s.changePct, valueText: s.valueText })),
   marketStatus: live.json && live.json.marketStatus,
   errors: (live.json && live.json.errors) || [],
@@ -339,6 +368,41 @@ check('100억 미만 소형주 제외 목록 분리', (tlUpper.excluded || []).l
 check('상한가 확정 vs +25% 돌파 구분', (tlUpper.confirmed || []).every((s) => s.upperLimit === true) && (tlUpper.near || []).every((s) => s.upperLimit !== true), `확정 ${(tlUpper.confirmed || []).length} · 임박 ${(tlUpper.near || []).length}`);
 check('최신 증시 뉴스 12건 + 링크', tlNews.length === 12 && tlNews.every((n) => n.title && /^https:\/\/n\.news\.naver\.com\//.test(n.url || '')), tlNews.slice(0, 3).map((n) => `${n.time} ${n.title.slice(0, 18)}`).join(' / '));
 check('tabs-live 부분 실패 0건', (tlJson.errors || []).length === 0, (tlJson.errors || []).join(' · ') || 'none');
+
+/* ---- 3번 탭: 감시군(테마32+RN11+종베10) 시간외 체결 대금·등락 순위 ---- */
+const tlAfter = tlJson.aftermarket || {};
+const aftValue = tlAfter.byValue || [];
+const aftTop = tlAfter.byPctTop || [];
+const aftBottom = tlAfter.byPctBottom || [];
+{
+  check('aftermarket 감시군 41종목(테마32+RN존11+종베10 중복 제거)',
+    tlAfter.universe === 41 && tlAfter.universeGroups && tlAfter.universeGroups.테마 === 32 && tlAfter.universeGroups.RN존 === 11 && tlAfter.universeGroups.종베 === 10,
+    `universe ${tlAfter.universe} (테마 ${tlAfter.universeGroups && tlAfter.universeGroups.테마} · RN ${tlAfter.universeGroups && tlAfter.universeGroups.RN존} · 종베 ${tlAfter.universeGroups && tlAfter.universeGroups.종베})`);
+  check('시간외 체결 종목 수 = 있음 + 없음 합계',
+    tlAfter.withAfterCount + tlAfter.noAfterCount + tlAfter.missingCount === tlAfter.universe && tlAfter.withAfterCount > 0,
+    `체결 ${tlAfter.withAfterCount} · 미체결 ${tlAfter.noAfterCount} · 누락 ${tlAfter.missingCount}`);
+  check('시간외 대금 순위 = 내림차순 · 6건 이하 · 0원 없음',
+    aftValue.length > 0 && aftValue.length <= 6 &&
+      aftValue.every((r, i) => typeof r.overValue === 'number' && r.overValue > 0 && /^\d{6}$/.test(r.code) && (i === 0 || aftValue[i - 1].overValue >= r.overValue)),
+    aftValue.map((r) => `${r.rank}.${r.name} ${r.overValueText}`).join(' / '));
+  check('시간외 등락 상위·하위 순위 (전일 종가 대비)',
+    aftTop.length > 0 && aftBottom.length > 0 &&
+      aftTop.every((r) => typeof r.overPct === 'number') &&
+      aftTop[0].overPct >= aftTop[aftTop.length - 1].overPct &&
+      aftBottom[0].overPct <= aftBottom[aftBottom.length - 1].overPct,
+    `상위 ${aftTop.slice(0, 2).map((r) => `${r.name} ${r.overPct}%`).join(', ')} / 하위 ${aftBottom.map((r) => `${r.name} ${r.overPct}%`).join(', ')}`);
+  check('시간외 체결가·기준 시각·세션 표기 제공',
+    aftValue.every((r) => typeof r.overPrice === 'number' && Boolean(r.overTradedAt)) &&
+      Boolean(tlAfter.basisLabel) && /^\d{4}-\d{2}-\d{2}$/.test(tlAfter.basisDate || '') &&
+      typeof tlAfter.inSession === 'boolean' && Boolean(tlAfter.sessionLabel),
+    `기준 ${tlAfter.basisLabel} · 세션 ${tlAfter.inSession ? '진행 중' : '아님'} (${tlAfter.sessionLabel})`);
+  check('시간외 데이터 없는 종목을 0원으로 채우지 않음',
+    aftValue.every((r) => r.overValue > 0) && (tlAfter.rules || {}).missing !== undefined,
+    `미체결 ${tlAfter.noAfterCount}종목은 순위 제외 (규칙: ${(tlAfter.rules || {}).missing})`);
+  check('세션 밖이면 직전 거래일 기준임을 notes 에 명시',
+    tlAfter.inSession === true || (tlJson.notes || []).some((n) => /시간외 세션 아님/.test(n) && /기준 \d/.test(n)),
+    (tlJson.notes || []).filter((n) => /시간외/.test(n)).join(' · '));
+}
 const tlCache = await call('tabs-live', '/api/tabs-live');
 check('Cache-Control = s-maxage=15, swr=30', /s-maxage=15/.test(tlCache.headers['cache-control'] || '') && /stale-while-revalidate=30/.test(tlCache.headers['cache-control'] || ''), tlCache.headers['cache-control']);
 summary.tabsLive = {
@@ -349,6 +413,7 @@ summary.tabsLive = {
   themes: tlThemes.map((t) => ({ rank: t.rank, name: t.name, avgPct: t.avgPct, sumValueText: t.sumValueText })),
   high52: tlHigh,
   upperLimit: tlUpper,
+  aftermarket: tlAfter,
   news: tlNews,
   errors: tlJson.errors || [],
 };
@@ -678,6 +743,165 @@ summary.liveExtra = {
   sorted,
   supplyMapped,
   nxtCodes,
+};
+
+/* ============================================================
+ *  9번 달력 — 만기일 규칙 자동 계산 (public/live-calendar.js)
+ *    · 옵션만기 = 매월 둘째 목요일 · 동시만기 = 3·6·9·12월 둘째 목요일
+ * ============================================================ */
+console.log('\n▶ [14] 9번 달력 만기일 규칙 (/public/live-calendar.js)');
+const cal = require('./public/live-calendar.js');
+let calOk = true;
+calOk &= check('live-calendar.js 로드(순수 계산 export)', Boolean(cal && typeof cal.expiryOfMonth === 'function'), Object.keys(cal || {}).length + '개 export');
+{
+  // 둘째 목요일 검증 — 달력으로 확인 가능한 실제 날짜
+  const cases = [
+    [2026, 11, 12, false], // 2026-11-12 (목) 옵션만기
+    [2026, 12, 10, true],  // 2026-12-10 (목) 선물·옵션 동시만기
+    [2027, 1, 14, false],
+    [2027, 3, 11, true],
+    [2027, 6, 10, true],
+    [2027, 9, 9, true],
+    [2027, 2, 11, false],
+  ];
+  const wrong = cases.filter(([y, m, day, sim]) => {
+    const e = cal.expiryOfMonth(y, m);
+    return e.day !== day || e.simultaneous !== sim || !cal.isValidExpiry(e);
+  });
+  calOk &= check(
+    '옵션만기=둘째 목요일 · 3·6·9·12월=동시만기 규칙 계산',
+    wrong.length === 0,
+    wrong.length ? `오답: ${wrong.map((c) => c.join('-')).join(', ')}` : cases.map(([y, m]) => `${y}-${m}:${cal.expiryOfMonth(y, m).day}일 ${cal.expiryOfMonth(y, m).simultaneous ? '동시만기' : '옵션만기'}`).join(' / '),
+  );
+  const allThursday = [];
+  for (let y = 2026; y <= 2028; y += 1) {
+    for (let m = 1; m <= 12; m += 1) {
+      const e = cal.expiryOfMonth(y, m);
+      const d = new Date(Date.UTC(y, m - 1, e.day));
+      if (d.getUTCDay() !== 4) allThursday.push(`${y}-${m}`);
+      if (e.simultaneous !== [3, 6, 9, 12].includes(m)) allThursday.push(`SIM:${y}-${m}`);
+    }
+  }
+  calOk &= check('2026~2028 36개월 전수 — 전부 목요일 & 동시만기 월 일치', allThursday.length === 0, allThursday.join(',') || '36개월 이상 없음');
+
+  const next = cal.nextExpiries('2026-11-14', 3);
+  calOk &= check(
+    '오늘(11/14) 이후 다가오는 만기 3건',
+    next.length === 3 && next[0].date === '2026-12-10' && next[0].simultaneous === true && next[1].date === '2027-01-14' && next[2].date === '2027-02-11',
+    next.map((e) => `${e.date}(${e.weekday}) ${e.kind}`).join(' → '),
+  );
+  calOk &= check(
+    '당일 만기 포함(오늘 D-DAY) · 지난 만기는 제외',
+    cal.nextExpiries('2026-11-12', 1)[0].date === '2026-11-12' && cal.nextExpiries('2026-11-13', 1)[0].date === '2026-12-10',
+    `11/12 기준 → ${cal.nextExpiries('2026-11-12', 1)[0].date} / 11/13 기준 → ${cal.nextExpiries('2026-11-13', 1)[0].date}`,
+  );
+  const stPast = cal.expiryState('2026-11-12', '2026-11-14');
+  const stToday = cal.expiryState('2026-11-14', '2026-11-14');
+  const stSoon = cal.expiryState('2026-12-10', '2026-11-14');
+  calOk &= check(
+    '상태 문구 = 종료 / 오늘 D-DAY / D-N',
+    stPast.label === '종료' && stToday.label === '오늘 D-DAY' && stSoon.label === 'D-26' && stSoon.days === 26,
+    `${stPast.label} / ${stToday.label} / ${stSoon.label}`,
+  );
+}
+{
+  const htmlCal = readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+  calOk &= check('index.html 에 live-calendar.js 로드', /<script defer src="live-calendar\.js"><\/script>/.test(htmlCal));
+  calOk &= check('달력 월 제목(연·월) 존재 — 월을 읽어 규칙 계산', /class="cal-title">[^<]*\d{4}년\s*\d{1,2}월/.test(htmlCal));
+  calOk &= check('11월 만기 배지 = 둘째 목요일(11/12) 칸에 있음', /<span class="cal-date-num">12<\/span>\s*<span class="cal-badge opt"[^>]*>옵션만기 \(종료\)<\/span>/.test(htmlCal));
+  calOk &= check(
+    '"오늘" 강조가 실제 오늘(11/14) 칸에 있음',
+    /<div class="cal-cell today selected" id="calCellToday"[^>]*>\s*<span class="cal-date-num"[^>]*>14<\/span>/.test(htmlCal),
+  );
+  calOk &= check('달력 헤더 "오늘" 문구는 11월 14일 기준', /⭐ 오늘: 11월 14일\(토\)/.test(htmlCal));
+}
+summary.calendar = {
+  next: cal.nextExpiries(cal.kstToday().date, 3).map((e) => `${e.date} ${e.kind}`),
+  today: cal.kstToday(),
+};
+
+/* ============================================================
+ *  DART 실시간 공시 (/api/dart-live) — 키 없이도 정직하게 폴백
+ *    · DART_API_KEY 미설정 → ok:false + reason DART_API_KEY_NOT_SET (정적 스캔 유지)
+ *    · 키가 있으면 list.json 조회 · 관심종목/위험키워드 분류는 단위 테스트로 검증
+ * ============================================================ */
+console.log('\n▶ [15] /api/dart-live (오픈DART 공시 레이더)');
+let dartOk = true;
+{
+  const dart = handlers['dart-live'];
+  const hadKey = process.env.DART_API_KEY;
+  // 키가 없는 상태(기본)에서의 응답
+  const noKey = await (async () => {
+    const res = makeRes();
+    const prev = process.env.DART_API_KEY;
+    delete process.env.DART_API_KEY;
+    await dart(makeReq('/api/dart-live'), res);
+    if (prev !== undefined) process.env.DART_API_KEY = prev;
+    let json = null;
+    try { json = JSON.parse(res._state.body); } catch (e) { json = null; }
+    return { status: res._state.statusCode, headers: res._state.headers, json };
+  })();
+  if (!hadKey) {
+    dartOk &= check('키 없음 → ok:false + reason DART_API_KEY_NOT_SET (200)',
+      noKey.status === 200 && noKey.json && noKey.json.ok === false && noKey.json.reason === 'DART_API_KEY_NOT_SET' && noKey.json.keySet === false,
+      noKey.json && noKey.json.message ? noKey.json.message.slice(0, 70) : '응답 없음');
+    dartOk &= check('키 없음 응답은 캐시하지 않음(no-store) · 관심종목 목록은 그대로 제공',
+      /no-store/.test(noKey.headers['cache-control'] || '') && (noKey.json.interestCount || 0) > 0,
+      `cache-control=${noKey.headers['cache-control']} · 관심 ${noKey.json && noKey.json.interestCount}종목`);
+  } else {
+    check('DART_API_KEY 설정됨 — 로컬 1회 조회 결과 구조 확인', Boolean(noKey.json), noKey.json && (noKey.json.ok ? `ok:true · 공시 ${noKey.json.counts && noKey.json.counts.matched}건` : `ok:false ${noKey.json.reason}`));
+  }
+
+  // 분류 규칙 단위 테스트
+  const cases = [
+    ['주요사항보고서(유상증자결정)', 'risk'],
+    ['주요사항보고서(전환사채권발행결정)', 'risk'],
+    ['주요사항보고서(신주인수권부사채권발행결정)', 'risk'],
+    ['불성실공시법인지정', 'risk'],
+    ['단일판매·공급계약체결', 'watch'],
+    ['주식등의대량보유상황보고서(약식)', 'watch'],
+    ['주요사항보고서(자기주식취득결정)', 'watch'],
+    ['분기보고서 (2026.09)', 'info'],
+    ['임원ㆍ주요주주특정증권등소유상황보고서', 'info'],
+  ];
+  const wrongKind = cases.filter(([nm, want]) => dart.classifyReport(nm).kind !== want);
+  dartOk &= check('공시명 키워드 분류(위험/주목/일반) — 오분류 없음', wrongKind.length === 0,
+    wrongKind.length ? `오답: ${wrongKind.map((c) => c[0]).join(', ')}` : cases.map(([nm]) => `${nm.slice(0, 12)}→${dart.classifyReport(nm).kind}`).join(' · '));
+
+  const sample = dart.normalizeRow({
+    corp_name: '테스트전자', stock_code: '005930', report_nm: '주요사항보고서(유상증자결정)',
+    rcept_no: '20261114000001', rcept_dt: '20261114', flr_nm: '테스트전자', corp_cls: 'Y',
+  });
+  dartOk &= check('DART 원문 필드 정규화(접수일·원문 URL·관심종목 여부)',
+    sample.rceptDate === '2026-11-14' && /rcpNo=20261114000001$/.test(sample.url || '') && sample.kind === 'risk' && sample.stockCode === '005930',
+    `${sample.rceptDate} · ${sample.kind} · ${sample.url}`);
+  dartOk &= check('관심 종목 15종목(종베10+RN11 중복 제거) · 6자리 코드만',
+    dart.INTEREST.length === 15 && dart.INTEREST_CODES.every((c) => /^\d{6}$/.test(c)),
+    dart.INTEREST.map((s) => s.code).join(','));
+
+  // 일반 공시 폭주 컷 · 위험 우선 정렬
+  const picked = dart.pickItems([
+    { corp_name: 'A', stock_code: '005930', report_nm: '분기보고서 (2026.09)', rcept_no: '20261114000001', rcept_dt: '20261114' },
+    { corp_name: 'B', stock_code: '999999', report_nm: '분기보고서 (2026.09)', rcept_no: '20261114000002', rcept_dt: '20261114' },
+    { corp_name: 'C', stock_code: '999999', report_nm: '주요사항보고서(유상증자결정)', rcept_no: '20261114000003', rcept_dt: '20261114' },
+    { corp_name: 'D', stock_code: '000660', report_nm: '단일판매·공급계약체결', rcept_no: '20261114000004', rcept_dt: '20261113' },
+  ]);
+  dartOk &= check('관심종목 공시 + 위험·주목 키워드만 남기고 위험을 앞에 정렬',
+    picked.length === 2 && picked[0].kind === 'risk' && picked[1].kind === 'watch' && !picked.some((p) => p.kind === 'info'),
+    picked.map((p) => `${p.corpName}:${p.kind}${p.inInterest ? '(관심)' : ''}`).join(' → '));
+  // 관심 종목이면 일반 공시도 남긴다 (예: SK하이닉스 분기보고서)
+  const pickedInterestInfo = dart.pickItems([
+    { corp_name: 'SK하이닉스', stock_code: '000660', report_nm: '분기보고서 (2026.09)', rcept_no: '20261114000009', rcept_dt: '20261114' },
+    { corp_name: '무관회사', stock_code: '123456', report_nm: '분기보고서 (2026.09)', rcept_no: '20261114000010', rcept_dt: '20261114' },
+  ]);
+  dartOk &= check('관심종목 일반 공시는 유지 · 무관 종목 일반 공시는 제외',
+    pickedInterestInfo.length === 1 && pickedInterestInfo[0].corpName === 'SK하이닉스',
+    pickedInterestInfo.map((p) => p.corpName).join(',') || '없음');
+}
+summary.dartLive = {
+  keySet: Boolean(process.env.DART_API_KEY),
+  fallbackReason: handlers['dart-live'] ? 'DART_API_KEY_NOT_SET (키 없을 때)' : null,
+  interestCount: handlers['dart-live'].INTEREST ? handlers['dart-live'].INTEREST.length : null,
 };
 
 /* -------------------------------- 결과 저장 -------------------------------- */const total = results.length;

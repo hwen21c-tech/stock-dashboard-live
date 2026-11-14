@@ -143,6 +143,56 @@ const THEMES = [
 
 const ALL_CODES = THEMES.reduce((acc, t) => acc.concat(t.stocks.map((s) => s.code)), []);
 
+/* -------------- 감시군 확장 — RN존 11종목 · 종베 10종목 (앱 내장 목록) -------------- */
+//  public/index.html 의 window.RnZone.RAW_STOCKS / window.Jongbe.STOCKS 와 같은 코드를 쓴다.
+//  시간외(애프터마켓) 대금 순위는 이 감시군 안에서만 계산한다(없는 종목을 만들어 넣지 않는다).
+const WATCH_RN = [
+  { code: '007810', name: '코리아써키트' },
+  { code: '263860', name: '지니언스' },
+  { code: '002990', name: '금호건설' },
+  { code: '399720', name: '가온칩스' },
+  { code: '000270', name: '기아' },
+  { code: '036930', name: '주성엔지니어링' },
+  { code: '058470', name: '리노공업' },
+  { code: '067310', name: '하나마이크론' },
+  { code: '240810', name: '원익IPS' },
+  { code: '000660', name: 'SK하이닉스' },
+  { code: '006400', name: '삼성SDI' },
+];
+const WATCH_JONGBE = [
+  { code: '263860', name: '지니언스' },
+  { code: '007810', name: '코리아써키트' },
+  { code: '002990', name: '금호건설' },
+  { code: '399720', name: '가온칩스' },
+  { code: '241520', name: 'DSC인베스트먼트' },
+  { code: '036930', name: '주성엔지니어링' },
+  { code: '001440', name: '대한전선' },
+  { code: '034020', name: '두산에너빌리티' },
+  { code: '012450', name: '한화에어로스페이스' },
+  { code: '000660', name: 'SK하이닉스' },
+];
+
+function buildWatchUniverse() {
+  const map = new Map();
+  const add = (code, name, group) => {
+    if (!/^[0-9A-Z]{6}$/.test(String(code || ''))) return;
+    if (!map.has(code)) map.set(code, { code, name: name || null, groups: [] });
+    const it = map.get(code);
+    if (!it.groups.includes(group)) it.groups.push(group);
+    if (!it.name && name) it.name = name;
+  };
+  THEMES.forEach((t) => (t.stocks || []).forEach((s) => add(s.code, s.name, '테마')));
+  WATCH_RN.forEach((s) => add(s.code, s.name, 'RN존'));
+  WATCH_JONGBE.forEach((s) => add(s.code, s.name, '종베'));
+  return Array.from(map.values());
+}
+
+const WATCH = buildWatchUniverse();
+const WATCH_CODES = WATCH.map((w) => w.code);
+const AFTER_TOP = 6; // 시간외 대금 상위
+const AFTER_PCT_TOP = 5; // 시간외 등락 상위
+const AFTER_PCT_BOTTOM = 3; // 시간외 등락 하위
+
 /* ------------------------------- 캐시/시간 ------------------------------- */
 const memCache = new Map();
 const MEM_TTL_MS = 5000;
@@ -192,6 +242,18 @@ function sessionOf(p, naverStatus) {
   return { phase: '장마감', label: '정규장 마감 (15:30 이후 · 시간외 반영)' };
 }
 
+/** NXT 애프터마켓(15:30~20:00) · 시간외 단일가(16:00~18:00) 안인지 */
+function afterSessionOf(p) {
+  const weekday = !(p.wd === 'Sat' || p.wd === 'Sun');
+  const inSession = weekday && p.minutes >= 15 * 60 + 30 && p.minutes < 20 * 60;
+  return {
+    inSession,
+    label: inSession
+      ? '시간외 세션 진행 중 (NXT 애프터마켓 15:30~20:00 · 시간외 단일가 16:00~18:00)'
+      : '시간외 세션 아님 — 직전 거래일 시간외 체결 마감값',
+  };
+}
+
 /* ------------------------------ 시세 정규화 ------------------------------ */
 function signedValue(v, negative) {
   const n = parseNum(v);
@@ -215,6 +277,14 @@ function normalizeQuote(d) {
   const valueAfter = over ? parseNum(over.accumulatedTradingValueRaw) : null;
   const valueInteg = integ ? parseNum(integ.accumulatedTradingValueRaw) : null;
   const value = valueInteg !== null ? valueInteg : valueRegular;
+
+  // 시간외(NXT 애프터마켓 · 시간외 단일가) 체결가·등락률 — 전일 종가 대비
+  const overSign = (over && over.compareToPreviousPrice && over.compareToPreviousPrice.name) || null;
+  const overNegative = overSign === 'FALLING' || overSign === 'LOWER_LIMIT';
+  const overPrice = over ? parseNum(over.overPrice) : null;
+  const overPct = over ? signedValue(over.fluctuationsRatio, overNegative) : null;
+  const overVolume = over ? parseNum(over.accumulatedTradingVolumeRaw) : null;
+  const overTradedAt = over ? over.localTradedAt || null : null;
 
   const open = (integ ? parseNum(integ.openPrice) : null) ?? parseNum(d.openPriceRaw) ?? parseNum(d.openPrice);
   const high = (integ ? parseNum(integ.highPrice) : null) ?? parseNum(d.highPriceRaw) ?? parseNum(d.highPrice);
@@ -241,6 +311,12 @@ function normalizeQuote(d) {
     valueRegularText: formatKoreanMoney(valueRegular),
     valueAfter,
     valueAfterText: formatKoreanMoney(valueAfter),
+    overValue: valueAfter, // 시간외 체결 대금(원) — valueAfter 와 같은 값, 의미를 이름으로 구분
+    overPrice,
+    overPct,
+    overVolume,
+    overTradedAt,
+    overMarketStatus: over ? over.overMarketStatus || null : null,
     valueBasis: valueInteg !== null ? '통합(KRX+NXT)' : '정규장',
     upperLimit: sign === 'UPPER_LIMIT',
     marketStatus: d.marketStatus || null,
@@ -322,7 +398,8 @@ async function pollQuotes(codes) {
 }
 
 async function fetchThemeQuotes() {
-  const map = await pollQuotes(ALL_CODES);
+  // 테마 32종목 + 시간외 순위용 감시군(RN존·종베 추가분)을 한 번에 조회한다
+  const map = await pollQuotes(ALL_CODES.concat(WATCH_CODES));
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   const themes = THEMES.map((t) => {
@@ -565,6 +642,127 @@ function buildUpperLimit(cand) {
   };
 }
 
+/* ------------------------ 시간외(애프터마켓) 대금·등락 순위 ------------------------ */
+
+/** ISO 시각 → KST 날짜·표시 라벨 (예: 2026-11-13 / 11/13(금) 20:00) */
+function kstDayLabel(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    weekday: 'short',
+  }).formatToParts(d);
+  const g = (t) => (parts.find((p) => p.type === t) || {}).value || '';
+  return {
+    date: `${g('year')}-${g('month')}-${g('day')}`,
+    label: `${Number(g('month'))}/${Number(g('day'))}(${WEEKDAY_KO[g('weekday')] || ''}) ${g('hour')}:${g('minute')}`,
+  };
+}
+
+/**
+ * 감시군(테마32 + RN11 + 종베10) 중 NXT 시간외 체결이 있는 종목만 모아
+ * 시간외 체결 대금·등락률 순위를 만든다. 값이 없는 종목은 0으로 채우지 않고 따로 센다.
+ */
+function buildAftermarket(map, afterSession) {
+  const rows = [];
+  let noAfterCount = 0;
+  let missingCount = 0;
+
+  WATCH.forEach((w) => {
+    const q = map[w.code];
+    if (!q) {
+      missingCount += 1;
+      return;
+    }
+    if (typeof q.overValue !== 'number' || q.overValue <= 0) {
+      noAfterCount += 1;
+      return;
+    }
+    const integ = typeof q.value === 'number' ? q.value : null;
+    rows.push({
+      code: w.code,
+      name: q.name || w.name,
+      market: q.market || null,
+      groups: w.groups,
+      price: q.price,
+      changePct: q.changePct,
+      overPrice: q.overPrice,
+      overPct: q.overPct,
+      overValue: q.overValue,
+      overValueText: q.valueAfterText,
+      overVolume: q.overVolume,
+      overTradedAt: q.overTradedAt,
+      value: q.value,
+      valueText: q.valueText,
+      // 통합 대금 중 시간외 비중 (%) — 통합 값이 있을 때만 계산
+      afterSharePct: integ && integ > 0 ? Number(((q.overValue / integ) * 100).toFixed(1)) : null,
+      upperLimit: Boolean(q.upperLimit),
+    });
+  });
+
+  // 기준 시각 = 감시군 시간외 체결 중 가장 늦은 시각
+  let basis = null;
+  rows.forEach((r) => {
+    const d = r.overTradedAt ? new Date(r.overTradedAt) : null;
+    if (!d || Number.isNaN(d.getTime())) return;
+    if (!basis || d > basis.at) {
+      const lab = kstDayLabel(r.overTradedAt);
+      basis = { at: d, date: lab.date, label: lab.label };
+    }
+  });
+
+  const withRank = (arr) => arr.map((r, i) => ({ ...r, rank: i + 1 }));
+  const byValue = withRank(
+    rows
+      .slice()
+      .sort((a, b) => b.overValue - a.overValue || (a.name || '').localeCompare(b.name || ''))
+      .slice(0, AFTER_TOP),
+  );
+  const priced = rows.filter((r) => typeof r.overPct === 'number');
+  const byPctTop = withRank(
+    priced
+      .slice()
+      .sort((a, b) => b.overPct - a.overPct || b.overValue - a.overValue)
+      .slice(0, AFTER_PCT_TOP),
+  );
+  const byPctBottom = priced
+    .slice()
+    .sort((a, b) => a.overPct - b.overPct || b.overValue - a.overValue)
+    .slice(0, AFTER_PCT_BOTTOM)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  return {
+    universe: WATCH.length,
+    universeGroups: {
+      테마: THEMES.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), []).length,
+      RN존: WATCH_RN.length,
+      종베: WATCH_JONGBE.length,
+    },
+    withAfterCount: rows.length,
+    noAfterCount,
+    missingCount,
+    inSession: Boolean(afterSession && afterSession.inSession),
+    sessionLabel: (afterSession && afterSession.label) || null,
+    basisDate: basis ? basis.date : null,
+    basisLabel: basis ? basis.label : null,
+    byValue,
+    byPctTop,
+    byPctBottom,
+    rules: {
+      universe: '테마 32 + RN존 11 + 종베 10 (중복 제거)',
+      metric: '시간외 대금 = 네이버 overMarketPriceInfo 누적 체결 대금(= 통합 − 정규장 · NXT 애프터마켓·시간외 단일가)',
+      pct: '시간외 등락률 = 시간외 체결가 기준 전일 종가 대비',
+      missing: '시간외 체결 데이터가 없는 종목은 0으로 채우지 않고 순위에서 제외',
+    },
+  };
+}
+
 /** Vercel CDN 캐시 헤더까지 같이 내려준다.
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
@@ -688,6 +886,10 @@ module.exports = async function handler(req, res) {
     (upLists[0] && upLists[0].marketStatus) ||
     null;
   const session = sessionOf(p, naverStatus);
+  const afterSession = afterSessionOf(p);
+
+  // 3번 탭 — 감시군 시간외 체결 대금·등락 순위 (map 은 테마 폴링에서 같이 받아온다)
+  const aftermarket = buildAftermarket(knownMap, afterSession);
 
   const notes = [];
   if (session.phase === '주말휴장') {
@@ -695,9 +897,19 @@ module.exports = async function handler(req, res) {
   }
   notes.push('거래대금은 통합(KRX+NXT·시간외 포함) 기준이며, 통합 체결이 없는 종목은 정규장 값입니다.');
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
+  if (!afterSession.inSession) {
+    notes.push(
+      `${afterSession.label}${aftermarket.basisLabel ? ` (기준 ${aftermarket.basisLabel})` : ''} — 장중·주말에는 시간외 대금이 늘지 않습니다.`,
+    );
+  }
 
   const body = {
-    ok: themes.length > 0 || Boolean(high52) || Boolean(upperLimit) || news.length > 0,
+    ok:
+      themes.length > 0 ||
+      Boolean(high52) ||
+      Boolean(upperLimit) ||
+      aftermarket.withAfterCount > 0 ||
+      news.length > 0,
     generatedAt: now.toISOString(),
     generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}:${pad2(p.ss)}`,
     generatedAtLabel: `${p.y}-${pad2(p.m)}-${pad2(p.d)}(${WEEKDAY_KO[p.wd] || ''}) ${pad2(p.hh)}:${pad2(p.mi)}:${pad2(p.ss)} KST`,
@@ -707,6 +919,7 @@ module.exports = async function handler(req, res) {
     themes,
     high52,
     upperLimit,
+    aftermarket,
     news,
     newsVia,
     enrichedCodes: enriched,

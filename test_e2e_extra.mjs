@@ -246,6 +246,100 @@ check('요약 문장 코스피·코스닥·NQ=F·ES=F 실시간 표기',
 check('지수·선물 span 4개가 실시간 갱신 표시(data-live=1)', sum.liveAttr.every((v) => v === '1'), sum.liveAttr.join(','));
 check('KRX 야간선물은 실시간이 아님을 분리 표기', sum.hasNightText && !sum.hasFakeNight && sum.nightValueKept && !sum.afSpansHaveNight, sum.night);
 
+/* ---------- 4-1) 상단 WTI 유가 · 필라델피아 반도체(SOX) 실시간 연동 ---------- */
+const macroReady = await page.waitForFunction(
+  () => {
+    const af = document.getElementById('afSox');
+    return !!af && af.getAttribute('data-live') === '1';
+  },
+  { timeout: 90000 },
+).then(() => true).catch(() => false);
+const macro = await page.evaluate(() => {
+  const bar = document.querySelector('.ticker-bar');
+  const items = bar ? Array.from(bar.querySelectorAll('.ticker-item')) : [];
+  const pick = (kw) => {
+    const it = items.find((el) => {
+      const l = el.querySelector('.label');
+      return l && (l.textContent || '').indexOf(kw) >= 0;
+    });
+    if (!it) return null;
+    const label = it.querySelector('.label');
+    return {
+      value: (it.querySelector('.val') || {}).textContent || null,
+      badge: label ? (label.querySelector('span') || {}).textContent || null : null,
+      title: it.getAttribute('title'),
+      onclick: it.getAttribute('onclick'),
+    };
+  };
+  return {
+    wti: pick('WTI'),
+    sox: pick('필라델피아'),
+    afWti: (document.getElementById('afWti') || {}).textContent || null,
+    afSox: (document.getElementById('afSox') || {}).textContent || null,
+    mfSox: (document.getElementById('mfSox') || {}).textContent || null,
+    // 현재상태를 보여주는 자리(상단 티커·요약 span)만 본다 — 날짜가 붙은 지난 브리핑 카드는 과거 기록
+    staleSox: (() => {
+      const bar = document.querySelector('.ticker-bar');
+      const text = [bar ? bar.textContent : '', (document.getElementById('afSox') || {}).textContent || '',
+        (document.getElementById('mfSox') || {}).textContent || '', (document.getElementById('afWti') || {}).textContent || ''].join(' ');
+      return /5,232\.85|\+3\.42%/.test(text);
+    })(),
+  };
+});
+check('상단 WTI 유가 티커가 야후 CL=F 실시간 값으로 갱신',
+  macroReady && Boolean(macro.wti) && /^\$\d+(\.\d+)? \([-+]?\d+\.\d{2}%\)$/.test(macro.wti.value || ''),
+  `WTI ${macro.wti && macro.wti.value} · 배지 ${macro.wti && macro.wti.badge} · ${macro.wti && macro.wti.title}`);
+check('상단 WTI 마감/실시간 구분 배지 + 열었을 때 값도 같은 수치',
+  Boolean(macro.wti) && /NYMEX (실시간|마감값)/.test(macro.wti.badge || '') &&
+    (macro.wti.onclick || '').indexOf((macro.wti.value || '').replace(/^/, '')) >= 0,
+  `배지 ${macro.wti && macro.wti.badge} / 클릭 팝업 ${(macro.wti && macro.wti.onclick || '').slice(0, 90)}`);
+check('상단 SOX 티커가 야후 ^SOX 최신치로 갱신 (낡은 +3.42% 5,232.85 소거)',
+  macroReady && Boolean(macro.sox) && /^[\d,]+\.\d{2} \([-+]?\d+\.\d{2}%\)$/.test(macro.sox.value || '') && !macro.staleSox,
+  `SOX ${macro.sox && macro.sox.value} · 배지 ${macro.sox && macro.sox.badge} · 낡은값 ${macro.staleSox ? '남아있음' : '없음'}`);
+check('SOX는 美 장 마감값(일 1회) 성격을 배지·툴팁으로 표기',
+  Boolean(macro.sox) && /(美장 마감 기준|SOX 실시간)/.test(macro.sox.badge || '') && /1일 1회/.test(macro.sox.title || ''),
+  `배지 ${macro.sox && macro.sox.badge} / ${macro.sox && macro.sox.title}`);
+check('3번 요약 문장·분석 패널의 SOX·WTI도 같은 실시간 값',
+  /^[\d,]+\.\d{2} \([-+]?\d+\.\d{2}%\)$/.test(macro.afSox || '') && /^\$\d+(\.\d+)? \([-+]?\d+\.\d{2}%\)$/.test(macro.afWti || ''),
+  `afSox ${macro.afSox} / afWti ${macro.afWti}`);
+
+/* ---------- 4-2) 3번 탭 시간외 체결 대금·등락 순위 (감시군 실시간 산출) ---------- */
+const afterReady = await page.waitForFunction(
+  () => {
+    const host = document.getElementById('tabsLiveAfterTop');
+    return !!host && host.getAttribute('data-live') === '1';
+  },
+  { timeout: 90000 },
+).then(() => true).catch(() => false);
+const afterPanel = await page.evaluate(() => {
+  const host = document.getElementById('tabsLiveAfterTop');
+  if (!host) return { mounted: false };
+  const rows = Array.from(host.querySelectorAll('.reason-item'));
+  const title = Array.from(document.querySelectorAll('#tabAftermarket .sec-head'))
+    .find((h) => (h.textContent || '').indexOf('시간외) 실시간 체결') >= 0);
+  return {
+    mounted: true,
+    rows: rows.length,
+    texts: rows.map((r) => (r.querySelector('.ri-head') || {}).textContent || ''),
+    metas: rows.slice(0, 2).map((r) => (r.querySelector('.ri-meta') || {}).textContent || ''),
+    sub: title ? ((title.querySelector('.sub') || {}).textContent || null) : null,
+    head: title ? (title.textContent || '').replace(/\s+/g, ' ').trim() : null,
+    hasStaticStale: /11\/13 실체결/.test(host.parentNode ? host.parentNode.textContent : ''),
+    note: (Array.from(host.querySelectorAll('div')).find((d) => /시간외 대금 =/.test(d.textContent || '')) || {}).textContent || null,
+  };
+});
+check('3번 탭 시간외 대금/등락 순위 패널 실시간 렌더',
+  afterReady && afterPanel.rows >= 3 && afterPanel.texts.every((t) => /\d{6}/.test(t)),
+  `${afterPanel.rows}행`);
+check('순위 행에 종목명·코드·시간외 대금·체결가·정규장 등락 표기',
+  afterPanel.rows > 0 && afterPanel.texts.some((t) => /(억|조)/.test(t)) && afterPanel.metas.every((m) => /시간외 체결 [\d,]+원/.test(m)),
+  `${afterPanel.texts[0]} || ${afterPanel.metas[0]}`);
+check('시간외 세션 여부·직전 거래일 기준을 헤더에 명시',
+  /(직전 거래일|시간외 세션 진행 중)/.test(afterPanel.sub || '') && /\d{2}:\d{2}:\d{2} 갱신/.test(afterPanel.sub || ''),
+  afterPanel.sub);
+check('정적 "11/13 실체결" 카드가 실시간 순위로 교체', !afterPanel.hasStaticStale, afterPanel.hasStaticStale ? '정적 카드 남음' : '정적 카드 제거됨');
+check('시간외 대금 산정 기준(통합−정규장)을 화면에 설명', /시간외 대금 =/.test(afterPanel.note || ''), (afterPanel.note || '').slice(0, 90));
+
 // NXT 랭킹 패널 · 지수/선물 요약 문장 확대 스크린샷
 for (const [name, sel] of [
   ['nxt_panel', () => document.getElementById('nxtRankGrid') && document.getElementById('nxtRankGrid').closest('div[id="nxtRankPanel"]')],
@@ -315,6 +409,32 @@ check('8번 DART 배지: 정기 스캔 결과로 표기',
   /DART 전자공시 정기 스캔 결과/.test(labels.jongText) && /자동 실시간 아님/.test(labels.jongText) &&
   !/DART 전자공시 실시간 악재 레이더 가동 중/.test(labels.doc));
 
+/* ---------- 6-1) DART 실시간 레이더 (/api/dart-live) — 키 미설정 폴백이 정직한지 ---------- */
+const dartApi = await (await fetch(`${BASE}/api/dart-live`)).json();
+const dartDom = await page.evaluate(() => {
+  const note = document.getElementById('dartKeyState');
+  return {
+    keyState: note ? (note.textContent || '').trim() : null,
+    bannerTitle: (document.getElementById('dartRadarTitle') || {}).textContent || null,
+    bannerBody: (document.getElementById('dartRadarBody') || {}).textContent || null,
+    liveList: (document.getElementById('dartLiveList') || {}).textContent || '',
+    modalSection: (document.getElementById('dartLiveSection') || {}).textContent || '',
+    staticKept: /전 종목 악재 없음|정기 스캔/.test(document.getElementById('dartRadarBody') ? document.getElementById('dartRadarBody').textContent : ''),
+  };
+});
+const dartKeySet = Boolean(dartApi && dartApi.ok === true);
+check('8번 DART 레이더 — 실시간 조회 상태를 화면에 표시',
+  Boolean(dartDom.keyState) || dartKeySet,
+  dartKeySet ? `실시간 조회 ok (공시 ${dartApi.counts && dartApi.counts.matched}건)` : `상태표시 "${dartDom.keyState}"`);
+check('DART_API_KEY 없으면 정직 폴백(정적 스캔 유지 · 가짜 실시간 표기 없음)',
+  dartKeySet
+    ? /DART 전자공시 실시간 조회/.test(dartDom.bannerTitle || '')
+    : (/미설정|키 오류|조회 실패/.test(dartDom.keyState || '') && /정적 스캔|기존 정적/.test(dartDom.modalSection) && !/DART_API_KEY 미설정.*실시간 조회/.test(dartDom.bannerTitle || '')),
+  dartKeySet ? dartDom.bannerTitle : `배지 ${dartDom.keyState} / 모달 ${(dartDom.modalSection || '').replace(/\s+/g, ' ').slice(0, 80)}`);
+check('DART 모달에 실시간 섹션 자리 · 정적 판정 근거 유지',
+  Boolean(dartDom.modalSection) && /4대 치명적 악재/.test(labels.doc),
+  (dartDom.modalSection || '').replace(/\s+/g, ' ').slice(0, 70));
+
 /* ---------- 7) 6·8·9번 탭 회귀(다른 탭이 상하지 않았는지) ---------- */
 await page.evaluate(() => {
   const btn = document.querySelector('.tab-btn[data-view="rnzone"]');
@@ -359,14 +479,34 @@ await page.evaluate(() => {
 await sleep(700);
 const cal = await page.evaluate(() => {
   const tab = document.getElementById('tabCalendar');
+  const box = document.getElementById('calExpiryRuleBox');
+  const todayCell = tab ? tab.querySelector('.cal-cell.today') : null;
+  const optBadges = tab ? Array.from(tab.querySelectorAll('.cal-badge.opt')).map((b) => (b.textContent || '').trim()) : [];
   return {
     display: tab ? tab.style.display : null,
     cells: tab ? tab.querySelectorAll('.cal-cell').length : 0,
+    dated: tab ? tab.querySelectorAll('.cal-cell[data-cal-date]').length : 0,
     badge: tab ? ((tab.textContent.match(/정기 백엔드 반영 기준[^)]*\)/) || [])[0] || null) : null,
     title: tab ? tab.textContent.replace(/\s+/g, ' ').trim().slice(0, 80) : null,
+    today: todayCell ? (todayCell.getAttribute('data-cal-date') || '') : null,
+    todayNum: todayCell ? ((todayCell.querySelector('.cal-date-num') || {}).textContent || '') : null,
+    optBadges,
+    ruleBox: box ? (box.textContent || '').replace(/\s+/g, ' ').trim() : null,
+    ruleHalf: box ? /옵션만기일 = 매월 둘째 목요일/.test(box.textContent || '') && /3·6·9·12월 둘째 목요일/.test(box.textContent || '') : false,
+    nextListed: box ? (box.textContent.match(/\d{4}\/\d{2}\/\d{2}\(목\) [^D]+/g) || []).slice(0, 3) : [],
+    navText: (tab ? (tab.querySelector('.cal-month-nav') || {}).textContent : null) || null,
   };
 });
 check('9번 증시일정 탭 정상 렌더 + 정기 반영 라벨', cal.display !== 'none' && cal.cells > 20 && /정기 백엔드 반영 기준/.test(cal.badge || ''), `${cal.cells}셀 · ${cal.badge}`);
+check('달력 칸마다 실제 날짜 부여 + 오늘 강조가 오늘 칸에',
+  cal.dated >= cal.cells - 1 && Boolean(cal.today) && /⭐ 오늘: \d{1,2}월 \d{1,2}일/.test(cal.navText || ''),
+  `data-cal-date ${cal.dated}/${cal.cells} · 오늘=${cal.today}(칸 ${cal.todayNum}) · 헤더 "${cal.navText}"`);
+check('만기일 배지 = 둘째 목요일 규칙 + 상태(종료/D-N) 표시',
+  cal.optBadges.length > 0 && cal.optBadges.every((t) => /(옵션만기|동시만기)/.test(t)) && cal.optBadges.some((t) => /\((종료|오늘 D-DAY|D-\d+)\)/.test(t)),
+  cal.optBadges.join(' / '));
+check('만기일 규칙·다가오는 만기 3건 박스',
+  cal.ruleHalf && /D-\d+|오늘/.test(cal.ruleBox || '') && cal.nextListed.length >= 2,
+  cal.nextListed.join(' → '));
 await page.screenshot({ path: SHOT('calendar') });
 
 /* ---------- 1번 탭 복귀 후 칩·레이아웃 ---------- */

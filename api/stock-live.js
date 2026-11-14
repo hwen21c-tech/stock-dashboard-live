@@ -3,7 +3,9 @@
 /**
  * GET /api/stock-live
  *  - 코스피/코스닥 지수, 원/달러 환율, 나스닥100·S&P500 선물, 주요 종목 현재가를 한 번에 반환.
- *  - 소스: 네이버 금융 polling API (지수·국내종목), 네이버 증권 marketIndex (환율), Yahoo Finance (해외선물)
+ *  - WTI 유가(CL=F) · 필라델피아 반도체(^SOX)는 macro 키로 함께 내려준다.
+ *      · 값과 함께 '지금이 정규장 중인지(실시간) / 직전 마감 확정값인지'를 basis·basisLabel·updateCycle 로 명시한다.
+ *  - 소스: 네이버 금융 polling API (지수·국내종목), 네이버 증권 marketIndex (환율), Yahoo Finance (해외선물·유가·SOX)
  *  - 쿼리: ?codes=005930,000660 (선택) / ?fresh=1 (서버 메모리 캐시 무시)
  *  - 캐시: s-maxage=10, stale-while-revalidate=20
  */
@@ -40,6 +42,12 @@ const DEFAULT_STOCKS = [
 const FUTURES = [
   { symbol: 'NQ=F', name: '나스닥100 선물' },
   { symbol: 'ES=F', name: 'S&P500 선물' },
+];
+
+// 상단 티커의 WTI 유가 · 필라델피아 반도체(SOX) — 둘 다 Yahoo 무료 시세
+const MACRO = [
+  { symbol: 'CL=F', key: 'WTI', name: 'WTI 유가' },
+  { symbol: '^SOX', key: 'SOX', name: '필라델피아 반도체' },
 ];
 
 // 인스턴스 메모리 캐시 (Vercel CDN 캐시와 별개로 같은 인스턴스의 연속 호출을 묶어준다)
@@ -199,16 +207,69 @@ async function fetchYahooQuote(symbol) {
         ? m.regularMarketChangePercent
         : null;
   if (price === null) throw new Error(`yahoo no price ${symbol}`);
+  // 지금이 그 시장의 정규장 안인지 (일 1회 확정값인지 실시간인지 가르는 근거)
+  const regular = m.currentTradingPeriod && m.currentTradingPeriod.regular;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const sessionOpen =
+    regular && Number.isFinite(regular.start) && Number.isFinite(regular.end)
+      ? nowSec >= regular.start && nowSec < regular.end
+      : null;
   return {
     symbol: m.symbol || symbol,
     price: Number(price.toFixed(2)),
     change: change === null ? null : Number(change.toFixed(2)),
     changePct: changePct === null ? null : Number(changePct.toFixed(2)),
+    previousClose: change === null ? null : Number((price - change).toFixed(2)),
+    dayHigh: typeof m.regularMarketDayHigh === 'number' ? Number(m.regularMarketDayHigh.toFixed(2)) : null,
+    dayLow: typeof m.regularMarketDayLow === 'number' ? Number(m.regularMarketDayLow.toFixed(2)) : null,
     currency: m.currency || null,
+    sessionOpen,
     asOf: m.regularMarketTime ? new Date(m.regularMarketTime * 1000).toISOString() : null,
     asOfKst: m.regularMarketTime ? kstLabel(m.regularMarketTime * 1000) : null,
     source: 'yahoo',
   };
+}
+
+/* --------------------- WTI 유가 · 필라델피아 반도체(SOX) --------------------- */
+async function fetchMacro() {
+  const settled = await Promise.allSettled(MACRO.map((m) => fetchYahooQuote(m.symbol)));
+  const macro = {};
+  const errors = [];
+  settled.forEach((s, i) => {
+    const def = MACRO[i];
+    if (s.status !== 'fulfilled') {
+      errors.push(`${def.symbol}: ${s.reason && s.reason.message}`);
+      return;
+    }
+    const q = s.value;
+    const inSession = q.sessionOpen === true;
+    macro[def.key] = {
+      key: def.key,
+      name: def.name,
+      symbol: q.symbol,
+      price: q.price,
+      change: q.change,
+      changePct: q.changePct,
+      previousClose: q.previousClose,
+      dayHigh: q.dayHigh,
+      dayLow: q.dayLow,
+      currency: q.currency,
+      asOf: q.asOf,
+      asOfKst: q.asOfKst,
+      sessionOpen: q.sessionOpen,
+      // 이 값이 '지금 체결'인지 '직전 마감 확정'인지 화면에서 구분해 쓸 수 있게 내려준다
+      basis: inSession ? '정규장 진행 중 실시간' : '직전 정규장 마감값',
+      basisLabel: inSession
+        ? '실시간 (정규장 진행 중)'
+        : `마감 확정값 (${q.asOfKst || '—'} KST)`,
+      updateCycle:
+        def.key === 'SOX'
+          ? '미국 정규장 중에는 실시간 · 마감 후 다음 장 시작 전까지 1일 1회 확정값'
+          : 'NYMEX 정규장 중에는 실시간 · 주말·휴장에는 직전 마감값',
+      source: 'yahoo',
+    };
+  });
+  return { macro, errors };
 }
 
 async function fetchFutures() {
@@ -254,14 +315,16 @@ module.exports = async function handler(req, res) {
     stocks: fetchStocks(codes),
     fxNaver: fetchFxFromNaver(),
     futures: fetchFutures(),
+    macro: fetchMacro(),
   };
 
   // 환율은 네이버가 실패하면 Yahoo로 대체
-  const [indicesR, stocksR, fxR, futuresR] = await Promise.allSettled([
+  const [indicesR, stocksR, fxR, futuresR, macroR] = await Promise.allSettled([
     tasks.indices,
     tasks.stocks,
     tasks.fxNaver,
     tasks.futures,
+    tasks.macro,
   ]);
 
   let fx = null;
@@ -290,14 +353,19 @@ module.exports = async function handler(req, res) {
   collect('naver-stock', stocksR);
   collect('naver-fx', fxR);
   collect('yahoo-futures', futuresR);
+  collect('yahoo-macro', macroR);
   if (futuresR.status === 'fulfilled' && futuresR.value.errors.length) {
     errors.push(...futuresR.value.errors);
+  }
+  if (macroR.status === 'fulfilled' && macroR.value.errors.length) {
+    errors.push(...macroR.value.errors);
   }
   if (fxError) errors.push(`fx: ${fxError}`);
 
   const indices = indicesR.status === 'fulfilled' ? indicesR.value : [];
   const stocks = stocksR.status === 'fulfilled' ? stocksR.value : [];
   const futures = futuresR.status === 'fulfilled' ? futuresR.value.futures : [];
+  const macro = macroR.status === 'fulfilled' ? macroR.value.macro : {};
 
   const body = {
     ok: indices.length > 0 || stocks.length > 0,
@@ -308,6 +376,7 @@ module.exports = async function handler(req, res) {
     indices,
     fx,
     futures,
+    macro,
     stocks: stocks.map((s) => {
       const known = DEFAULT_STOCKS.find((d) => d.code === s.code);
       return known ? { ...s, label: known.name } : s;

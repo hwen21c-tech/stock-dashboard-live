@@ -103,6 +103,106 @@
     }
   }
 
+  /* -------------------- WTI 유가 · 필라델피아 반도체(SOX) -------------------- */
+
+  // 티커 항목의 onclick(openIndexChart) 인자를 실시간 값으로 다시 쓴다
+  function repaintOnclick(target, title, v1, v2, desc, key) {
+    if (!target || !target.item) return false;
+    function clean(s) {
+      return String(s === null || s === undefined ? '' : s).replace(/['"\\]/g, '').replace(/\s+/g, ' ').trim();
+    }
+    target.item.setAttribute(
+      'onclick',
+      "openIndexChart('" + clean(title) + "', '" + clean(v1) + "', '" + clean(v2) + "', '" + clean(desc) + "', '" + clean(key) + "')"
+    );
+    return true;
+  }
+
+  // 라벨 안의 작은 배지(SOX 공식 / NYMEX) 문구 교체
+  function setTickerBadge(target, text) {
+    if (!target || !target.label) return false;
+    var badge = target.label.querySelector('span');
+    if (!badge) return false;
+    if (badge.textContent !== text) badge.textContent = text;
+    return true;
+  }
+
+  function macroValueText(m) {
+    var price = num(m.price);
+    if (price === null) return null;
+    var pct = num(m.changePct);
+    if (m.key === 'WTI') return '$' + price.toFixed(2) + ' ' + pctText(pct);
+    return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + pctText(pct);
+  }
+
+  // 페이지 안 여러 위치(상단 요약·분석 모달)의 같은 지표 문구를 한 번에 맞춘다
+  function paintInline(ids, text, pct) {
+    if (!text) return 0;
+    var hits = 0;
+    for (var i = 0; i < ids.length; i += 1) {
+      var el = byId(ids[i]);
+      if (!el) continue;
+      el.textContent = text;
+      el.style.color = pct === null ? '#94a3b8' : (pct > 0 ? '#f43f5e' : '#38bdf8');
+      el.setAttribute('data-live', '1');
+      hits += 1;
+    }
+    return hits;
+  }
+
+  function applyMacro(payload) {
+    var macro = payload.macro || {};
+    var applied = 0;
+
+    // ---- 상단 티커 · 요약 문장의 WTI ----
+    var wti = macro.WTI;
+    if (wti) {
+      var wText = macroValueText(wti);
+      var wTarget = findTicker(function (l) { return l.indexOf('WTI') >= 0; });
+      if (wText && wTarget) {
+        if (paintTicker(wTarget, wText, num(wti.changePct))) applied += 1;
+        wTarget.item.setAttribute('title', '야후 CL=F · ' + (wti.basisLabel || '') + ' · ' + (wti.updateCycle || ''));
+        setTickerBadge(wTarget, wti.sessionOpen === true ? 'NYMEX 실시간' : 'NYMEX 마감값');
+        repaintOnclick(
+          wTarget,
+          'WTI 국제유가 선물 (NYMEX 최근월물)',
+          '$' + num(wti.price).toFixed(2) + ' ' + pctText(num(wti.changePct)),
+          '전일 종가 $' + (num(wti.previousClose) === null ? '—' : num(wti.previousClose).toFixed(2)) +
+            (num(wti.change) === null ? '' : ' · ' + (num(wti.change) > 0 ? '+' : '') + num(wti.change).toFixed(2) + '달러'),
+          '야후 CL=F · ' + (wti.basisLabel || '') + ' · ' + (wti.updateCycle || ''),
+          'wti'
+        );
+      }
+      var wInline = paintInline(['afWti', 'mfWti'], wText, num(wti.changePct));
+      applied += wInline;
+    }
+
+    // ---- 상단 티커 · 요약 문장의 필라델피아 반도체(SOX) ----
+    var sox = macro.SOX;
+    if (sox) {
+      var sText = macroValueText(sox);
+      var sTarget = findTicker(function (l) { return l.indexOf('SOX') >= 0 || l.indexOf('필라델피아') >= 0; });
+      if (sText && sTarget) {
+        if (paintTicker(sTarget, sText, num(sox.changePct))) applied += 1;
+        sTarget.item.setAttribute('title', '야후 ^SOX · ' + (sox.basisLabel || '') + ' · ' + (sox.updateCycle || ''));
+        // 일 1회 갱신 성격을 배지로 명시
+        setTickerBadge(sTarget, sox.sessionOpen === true ? 'SOX 실시간' : '美장 마감 기준');
+        repaintOnclick(
+          sTarget,
+          '필라델피아 반도체 지수 (SOX)',
+          num(sox.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'pt ' + pctText(num(sox.changePct)),
+          '전일 종가 ' + (num(sox.previousClose) === null ? '—' : num(sox.previousClose).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) + 'pt',
+          '야후 ^SOX · ' + (sox.basisLabel || '') + ' · ' + (sox.updateCycle || ''),
+          'sox'
+        );
+      }
+      var sInline = paintInline(['afSox', 'mfSox'], sText, num(sox.changePct));
+      applied += sInline;
+    }
+
+    return applied;
+  }
+
   function applyLive(payload) {
     var applied = 0;
     var indices = payload.indices || [];
@@ -146,6 +246,9 @@
         if (ft2 && paintTicker(ft2, fxPrice.toFixed(2) + '원 ' + pctText(fxp), fxp)) applied += 1;
       }
     }
+
+    // WTI 유가 · 필라델피아 반도체(SOX)
+    applied += applyMacro(payload);
 
     // 감시 종목(RN존 목록) 현재가·등락률·통합 거래대금
     var map = {};
@@ -1402,7 +1505,7 @@
     lastAt: null,
     lastBody: null,
     applied: 0,
-    mounted: { news: false, after: false },
+    mounted: { news: false, after: false, afterTop: false },
     reqId: 0
   };
 
@@ -1996,6 +2099,132 @@
     return a + b;
   }
 
+  /* ------------------ [3탭] 애프터마켓 시간외 체결 대금·등락 순위 ------------------ */
+
+  function afterPanelEl() {
+    var tab = document.getElementById('tabAftermarket');
+    if (!tab) return null;
+    var boxes = $$('.panel-box', tab);
+    for (var i = 0; i < boxes.length; i += 1) {
+      var head = boxes[i].querySelector('.sec-head');
+      if (head && (head.textContent || '').indexOf('시간외) 실시간 체결') >= 0) return boxes[i];
+    }
+    for (var j = 0; j < boxes.length; j += 1) {
+      var h2 = boxes[j].querySelector('.sec-head');
+      if (h2 && (h2.textContent || '').indexOf('3. 애프터마켓') >= 0) return boxes[j];
+    }
+    return null;
+  }
+
+  // 패널의 정적 카드만 지운다 (sec-head·실시간 host 는 남긴다)
+  function clearPanelCards(panel, keepId) {
+    Array.prototype.slice.call(panel.children).forEach(function (el) {
+      if (el.id === keepId) return;
+      if (el.className && String(el.className).indexOf('sec-head') >= 0) return;
+      el.remove();
+    });
+  }
+
+  function afterRowHtml(r) {
+    if (!r) return '';
+    var pct = isNum(r.overPct) ? r.overPct : null;
+    var bits = [];
+    if (isNum(r.overPrice)) bits.push('시간외 체결 ' + fmt(r.overPrice) + '원 (' + pctTxt(pct) + ')');
+    if (isNum(r.changePct)) bits.push('정규장 ' + pctTxt(r.changePct));
+    if (isNum(r.afterSharePct)) bits.push('통합 대금 중 시간외 ' + Number(r.afterSharePct).toFixed(1) + '%');
+    if (r.groups && r.groups.length) bits.push('감시군 ' + r.groups.join('·'));
+    var metaTxt = bits.join(' | ');
+    var reason = '시간외 체결 대금 ' + (r.overValueText || '—') +
+      (isNum(r.overPrice) ? ' · 시간외 체결가 ' + fmt(r.overPrice) + '원' : '') +
+      (isNum(pct) ? ' (전일 종가 대비 ' + pctTxt(pct) + ')' : '') +
+      (isNum(r.changePct) ? ' · 정규장 ' + pctTxt(r.changePct) : '') +
+      ' · 네이버 시간외 애프터마켓(NXT·시간외 단일가) 누적 체결 기준';
+    var onclick = buildOnclick(
+      r.name + ' (' + r.code + ')',
+      (isNum(r.overPrice) ? fmt(r.overPrice) + '원' : '—') + ' (' + pctTxt(pct) + ')',
+      metaTxt,
+      reason
+    );
+    return '' +
+      '<div class="reason-item" data-live="1" style="border-left:3px solid ' +
+        (isNum(pct) && pct < 0 ? '#38bdf8' : '#34d399') + ';" onclick="' + esc(onclick) + '">' +
+        '<div class="ri-head">' +
+          '<span><span style="display:inline-block; min-width:14px; color:#64748b; font-weight:800;">' +
+            esc(String(r.rank || '')) + '</span> ' + esc(r.name) +
+            ' <span style="font-size:9.5px; color:#64748b; font-weight:700;">' + esc(r.code) + '</span>' +
+            (r.upperLimit ? ' <span style="font-size:9.5px; color:#fca5a5;">상한가</span>' : '') +
+          '</span>' +
+          '<span style="color:#34d399; font-weight:800;">' + esc(r.overValueText || '—') + '</span>' +
+        '</div>' +
+        '<div class="ri-meta">' + esc(metaTxt) + '</div>' +
+      '</div>';
+  }
+
+  function renderAftermarket(body, stamp) {
+    var af = body.aftermarket;
+    if (!af) return 0;
+    var byValue = af.byValue || [];
+    var byTop = af.byPctTop || [];
+    var byBottom = af.byPctBottom || [];
+    if (!byValue.length && !byTop.length) return 0;
+
+    var panel = afterPanelEl();
+    if (!panel) return 0;
+
+    var head = panel.querySelector('.sec-head');
+    var sub = head ? head.querySelector('.sub') : null;
+    var basisTxt = af.inSession
+      ? '시간외 세션 진행 중 · ⚡ ' + stamp + ' 갱신'
+      : '직전 거래일' + (af.basisLabel ? ' ' + af.basisLabel : '') + ' 시간외 마감값 · ⚡ ' + stamp + ' 갱신';
+    if (sub) {
+      sub.textContent = basisTxt;
+      sub.setAttribute('data-live', '1');
+    }
+
+    var html = '';
+    html += '<div style="font-size:10.5px; color:#94a3b8; margin:0 0 6px 2px;">' +
+      '감시군 ' + esc(String(af.universe || 0)) + '종목(테마·RN존·종베) 중 <strong style="color:#34d399;">시간외 체결 ' +
+      esc(String(af.withAfterCount || 0)) + '종목</strong> 기준 · ' +
+      '시간외 체결 데이터 없는 ' + esc(String(af.noAfterCount || 0)) + '종목은 순위에서 제외</div>';
+
+    html += '<div style="font-size:11px; font-weight:800; color:#6ee7b7; margin:6px 0 4px 2px;">' +
+      '💰 시간외 체결 대금 상위 ' + byValue.length + '종목</div>';
+    html += byValue.map(afterRowHtml).join('');
+
+    if (byTop.length) {
+      html += '<div style="font-size:11px; font-weight:800; color:#fca5a5; margin:9px 0 4px 2px;">' +
+        '📈 시간외 등락 상위 ' + byTop.length + '종목 (전일 종가 대비)</div>';
+      html += byTop.map(afterRowHtml).join('');
+    }
+    if (byBottom.length) {
+      html += '<div style="font-size:11px; font-weight:800; color:#7dd3fc; margin:9px 0 4px 2px;">' +
+        '📉 시간외 등락 하위 ' + byBottom.length + '종목</div>';
+      html += byBottom.map(afterRowHtml).join('');
+    }
+
+    var note = '※ 시간외 대금 = 네이버 시간외 애프터마켓(NXT 애프터마켓·시간외 단일가) 누적 체결 대금(= 통합 − 정규장)입니다. ' +
+      '시간외 등락률은 시간외 체결가의 전일 종가 대비 등락입니다.<br>';
+    note += af.inSession
+      ? '※ 지금은 시간외 세션 진행 중입니다 — 값이 계속 늘어납니다.'
+      : '※ 지금은 시간외 세션이 아닙니다 — 직전 거래일 ' + esc(af.basisLabel || '—') + ' 마감값이며, 장마감 후 시간외 체결이 시작되면 자동으로 늘어납니다.';
+    html += '<div style="font-size:10px; color:#64748b; margin-top:6px;">' + note + '</div>';
+
+    var host = document.getElementById('tabsLiveAfterTop');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'tabsLiveAfterTop';
+      clearPanelCards(panel, 'tabsLiveAfterTop');
+      if (head && head.nextSibling) panel.insertBefore(host, head.nextSibling);
+      else panel.appendChild(host);
+    }
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+    }
+    host.setAttribute('data-live', '1');
+    return byValue.length + byTop.length + byBottom.length;
+  }
+
   /* ------------------ 주말/휴장 표현 정정 (정적 문구) ------------------ */
 
   function fixSessionWording(phase) {
@@ -2048,6 +2277,13 @@
 
     // 3·5번 탭 — 실시간 뉴스
     applied += renderNews(body, stamp);
+
+    // 3번 탭 — 시간외 체결 대금·등락 순위 (감시군 실시간 산출)
+    var afCount = renderAftermarket(body, stamp);
+    if (afCount > 0) {
+      applied += afCount;
+      state.mounted.afterTop = true;
+    }
 
     // 주말 휴장 문구 정정
     fixSessionWording(body.sessionPhase);
