@@ -336,7 +336,7 @@
     border:5px solid transparent;border-right-color:#fff6d6;opacity:0;transition:opacity .15s
   }
   .menu .mbtn.sel::before,.mbtn:hover::before{opacity:1}
-  .mbtn[disabled]{filter:grayscale(.75);opacity:.55;box-shadow:0 2px 0 rgba(122,72,10,.3)}
+  .mbtn[disabled],.mbtn.off{filter:grayscale(.75);opacity:.55;box-shadow:0 2px 0 rgba(122,72,10,.3)}
   .mbtn .badge{
     flex:0 0 auto;font-size:clamp(9px,2.2vw,11px);background:#e8443a;color:#fff;
     border-radius:999px;padding:0 5px;line-height:1.5;font-weight:900
@@ -1626,8 +1626,10 @@ function renderAll() {
   if (fb) fb.textContent = S.flee;
   const fbtn = $('#fleeBtn');
   if (fbtn) {
-    fbtn.disabled = S.flee <= 0;
-    fbtn.style.opacity = S.flee <= 0 ? '.55' : '1';
+    const off = S.flee <= 0;
+    fbtn.classList.toggle('off', off);
+    fbtn.setAttribute('aria-disabled', off ? 'true' : 'false');
+    fbtn.style.opacity = off ? '.55' : '1';
   }
   $('#qCount').textContent = `${S.solved} / ${MAXHP}`;
   $$('.diffrow button').forEach((b) => b.classList.toggle('on', b.dataset.diff === S.diff));
