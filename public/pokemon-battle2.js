@@ -925,11 +925,14 @@
     palOf(key) { return FX_PAL[key] || FX_PAL.normal; },
 
     /* 작은 조각 하나를 날려 보낸다 */
+    unit() { return Math.max(0.85, Math.min(1.9, (window.innerWidth || 420) / 460)); },
+
     dot(host, x, y, pal, n, spread, starry) {
       const p = document.createElement('span');
       const star = starry && Math.random() < 0.62;
+      const u = this.unit();
       p.className = 'pb2-pt' + (star ? ' star' : '');
-      const size = star ? 9 + Math.random() * 13 : 5 + Math.random() * 10;
+      const size = (star ? 9 + Math.random() * 13 : 5 + Math.random() * 10) * u;
       const c = pal[n % pal.length];
       p.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
         + 'width:' + size.toFixed(1) + 'px;height:' + size.toFixed(1) + 'px;'
@@ -954,10 +957,11 @@
     ring(x, y, color, from, to, dur) {
       const r = document.createElement('span');
       r.className = 'pb2-ring';
+      from = from * this.unit();
       r.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
         + 'width:' + (from * 2).toFixed(1) + 'px;height:' + (from * 2).toFixed(1) + 'px;'
         + 'margin:' + (-from).toFixed(1) + 'px 0 0 ' + (-from).toFixed(1) + 'px;'
-        + 'border-width:' + Math.max(2, from * 0.22).toFixed(1) + 'px;border-color:' + color;
+        + 'border-width:' + Math.max(2, from * 0.22).toFixed(1) + 'px;border-color:' + color + ';color:' + color;
       this.layer().appendChild(r);
       const sc = Math.max(0.1, to / Math.max(1, from));
       try {
@@ -972,7 +976,7 @@
     spark(x, y, size) {
       const s = document.createElement('span');
       s.className = 'pb2-spark';
-      const w = size || 120;
+      const w = (size || 120) * this.unit();
       s.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
         + 'width:' + w + 'px;height:' + w + 'px;margin:' + (-w / 2) + 'px 0 0 ' + (-w / 2) + 'px';
       this.layer().appendChild(s);
@@ -1043,7 +1047,7 @@
         for (let i = 0; i < 22; i += 1) this.dot(host, x, y, FX_RAINBOW, i, sp * 1.7, true);
         const c = document.createElement('span');
         c.className = 'pb2-catchburst';
-        const w = sp * 1.6;
+        const w = sp * 1.25;
         c.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;width:' + w.toFixed(0) + 'px;height:' + w.toFixed(0) + 'px;margin:' + (-w / 2).toFixed(0) + 'px 0 0 ' + (-w / 2).toFixed(0) + 'px';
         host.appendChild(c);
         try {

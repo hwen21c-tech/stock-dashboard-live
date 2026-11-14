@@ -1392,7 +1392,7 @@
     const from = 12;
     ring.style.cssText = 'left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;'
       + 'width:' + from * 2 + 'px;height:' + from * 2 + 'px;margin:' + (-from) + 'px 0 0 ' + (-from) + 'px;'
-      + 'border-width:4px;border-color:' + pal[2];
+      + 'border-width:4px;border-color:' + pal[2] + ';color:' + pal[2];
     host.appendChild(ring);
     const sc = Math.max(0.2, spread * (strong ? 1.5 : 1.1) / from);
     try {
