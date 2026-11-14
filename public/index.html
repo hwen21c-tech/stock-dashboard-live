@@ -2093,8 +2093,9 @@
   <div class="signal-ticker-wrap">
     <div class="signal-label">
       <span>🎯 실전 타점 신호등:</span>
+      <span id="signalChipsStamp" style="font-size:9.5px; font-weight:700; color:#94a3b8;">RN 내장 60일봉 기준 · 실측 갱신 대기</span>
     </div>
-    <div class="signal-chips-scroll">
+    <div class="signal-chips-scroll" id="signalChipsScroll" data-live="0">
       <div class="signal-chip green" onclick="navigateToSignalStock('rnzone', '031980')">
         <span>🟢 [RN존 하단안착]</span>
         <strong>피에스케이홀딩스:</strong>
@@ -2597,6 +2598,9 @@
 
   <!-- TAB 2: SUPPLY STOCKS (시총 1,000억+ · 최소 50억+ 순매수 & 시간별 수급 추이 트래커 탑재) -->
   <div id="tabSupply" style="display: none;">
+    <div id="supplyLiveStamp" style="font-size:10.5px; font-weight:700; color:#94a3b8; background:rgba(56,189,248,0.07); border:1px solid rgba(56,189,248,0.25); border-radius:6px; padding:6px 10px; margin-bottom:10px; line-height:1.45;">
+      ⚡ 현재가·등락률 실시간 연결 중 (/api/stock-live) — 외인·기관·연기금 순매수 금액은 KRX 장마감 확정치이며 실시간이 아닙니다.
+    </div>
     <div class="panel-box blue" style="border-color:#0284c7;">
       <div class="sec-head" style="border-bottom-color:#0284c7; color:#38bdf8;">
         <span>💰 수급 주도주 4대 핵심 분석 (시총 1,000억+ · 최소 50억+ 순매수)</span>
@@ -2815,100 +2819,101 @@
 
   <!-- TAB 3: AFTERMARKET (시간외 단일가 · 장마감 후 뉴스 · 익일 시초가 예측 · 주도주 수급 유지 분석) -->
   <div id="tabAftermarket" style="display: none;">
-                                                                                                                                                                                                                                                                                                                                                          <!-- AUTO NXT AFTERMARKET RANKING PANEL -->
-      <div style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,27,75,0.85)); border: 1px solid #a855f7; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
+                                                                                                                                                                                                                                                                                                                                                          <!-- AUTO NXT AFTERMARKET RANKING PANEL (전체 실시간: /api/stock-live · live-extra.js) -->
+      <div id="nxtRankPanel" style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,27,75,0.85)); border: 1px solid #a855f7; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
           <div style="font-size:13px; font-weight:800; color:#e9d5ff;">🌙 [11/14 토] NXT 애프터마켓(15:30~20:00) 통합 체결·수급 Top 6 랭킹</div>
-          <span style="font-size:10.5px; background:rgba(168,85,247,0.2); color:#d8b4fe; padding:2px 8px; border-radius:4px; font-weight:700;">KRX+NXT 통합 실시간 파서 가동 중 (05:31:08)</span>
+          <span id="nxtRankStamp" style="font-size:10.5px; background:rgba(168,85,247,0.2); color:#d8b4fe; padding:2px 8px; border-radius:4px; font-weight:700;">⚡ 실시간 시세 연결 중 · 현재가·등락률·통합대금(KRX+NXT)</span>
         </div>
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px;">
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+        <div id="nxtRankGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px;">
+          <div data-nxt-code="000660" data-nxt-order="0" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 1</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 1</span>
                 <strong style="color:#fff; font-size:12.5px;">SK하이닉스</strong>
-                <span style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">6조 1,185억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">6조 1,185억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#38bdf8;">1,233,000원</div>
-              <div style="font-size:11px; font-weight:700; color:#38bdf8;">-1.67%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#38bdf8;">1,233,000원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#38bdf8;">-1.67%</div>
             </div>
           </div>
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-nxt-code="005930" data-nxt-order="1" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 2</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 2</span>
                 <strong style="color:#fff; font-size:12.5px;">삼성전자</strong>
-                <span style="font-size:10px; color:#34d399; font-weight:700;">🟢 종가 지지 안착</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟢 종가 지지 안착</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">4조 4,406억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">4조 4,406억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#f43f5e;">208,500원</div>
-              <div style="font-size:11px; font-weight:700; color:#f43f5e;">+0.48%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#f43f5e;">208,500원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#f43f5e;">+0.48%</div>
             </div>
           </div>
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-nxt-code="009150" data-nxt-order="2" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 3</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 3</span>
                 <strong style="color:#fff; font-size:12.5px;">삼성전기</strong>
-                <span style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">1조 2,869억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">1조 2,869억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#38bdf8;">863,000원</div>
-              <div style="font-size:11px; font-weight:700; color:#38bdf8;">-2.48%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#38bdf8;">863,000원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#38bdf8;">-2.48%</div>
             </div>
           </div>
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-nxt-code="402340" data-nxt-order="3" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 4</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 4</span>
                 <strong style="color:#fff; font-size:12.5px;">SK스퀘어</strong>
-                <span style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">7,606억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">7,606억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#38bdf8;">768,000원</div>
-              <div style="font-size:11px; font-weight:700; color:#38bdf8;">-2.78%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#38bdf8;">768,000원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#38bdf8;">-2.78%</div>
             </div>
           </div>
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-nxt-code="035420" data-nxt-order="4" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 5</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 5</span>
                 <strong style="color:#fff; font-size:12.5px;">NAVER</strong>
-                <span style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟡 매물 소화 중</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">4,202억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">4,202억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#38bdf8;">173,600원</div>
-              <div style="font-size:11px; font-weight:700; color:#38bdf8;">-4.51%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#38bdf8;">173,600원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#38bdf8;">-4.51%</div>
             </div>
           </div>
-          <div style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
+          <div data-nxt-code="006400" data-nxt-order="5" style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 6</span>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP 6</span>
                 <strong style="color:#fff; font-size:12.5px;">삼성SDI</strong>
-                <span style="font-size:10px; color:#34d399; font-weight:700;">🟢 종가 지지 안착</span>
+                <span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">🟢 종가 지지 안착</span>
               </div>
-              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong style="color:#c084fc;">3,800억</strong></div>
+              <div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">KRX+NXT 통합대금: <strong class="nxt-value" style="color:#c084fc;">3,800억</strong></div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:13px; font-weight:800; color:#f43f5e;">480,000원</div>
-              <div style="font-size:11px; font-weight:700; color:#f43f5e;">+1.48%</div>
+              <div class="nxt-price" style="font-size:13px; font-weight:800; color:#f43f5e;">480,000원</div>
+              <div class="nxt-pct" style="font-size:11px; font-weight:700; color:#f43f5e;">+1.48%</div>
             </div>
           </div>
         </div>
+        <div style="font-size:10px; color:#64748b; margin-top:6px; line-height:1.45;">※ 현재가·등락률·통합대금은 /api/stock-live 실시간 값으로 갱신하고 통합대금 내림차순으로 재정렬합니다(순위는 이 6종목 안에서의 순위). 상태 문구(🟢/🟡/🔵)는 표시된 등락률에서 자동 산출합니다. KRX 야간선물·주간선물은 공개 실시간 소스가 없어 아래 요약 문장에서 '직전 확정'으로 분리 표기합니다.</div>
       </div>
-      <!-- /AUTO NXT AFTERMARKET RANKING PANEL -->
+      
     <div class="panel-box purple" style="border-color:#9333ea;">
       <div class="sec-head" style="border-bottom-color:#581c87; color:#c084fc;">
         <span>🌙 애프터마켓 & 익일 장세 정밀 분석</span>
@@ -2922,11 +2927,12 @@
           <span class="sub">국내 야간선물 + 미 나스닥선물 폭등 실시간 연동</span>
         </div>
         <div style="font-size:11.5px; color:#cbd5e1; line-height:1.5;">
-          • <strong>장마감 잠정 지표:</strong> 코스피 5,290.53 (-0.98%) · 코스닥 699.66 (+0.45%) · 코스피200 주간선물 836.35 (+2.99%)<br>
-          • <strong>야간 선물 및 글로벌:</strong> KRX 야간선물 837.50 (+0.14% 🟢 836선 지지) · CME E-mini 나스닥 100 선물 28,442.50 (+2.18% 🚀 폭등 랠리 지속) · S&P 500 선물 6,002.50 (+0.55%) · SOXX 필라델피아반도체 +3.42%<br>
+          • <strong>지수 실시간(코스피·코스닥):</strong> 코스피 <span id="afKospi" title="/api/stock-live 실시간 지수">5,290.53 (-0.98%)</span> · 코스닥 <span id="afKosdaq" title="/api/stock-live 실시간 지수">699.66 (+0.45%)</span> · <span style="color:#94a3b8;" title="KRX 주간선물은 무료 실시간 소스가 없습니다">코스피200 주간선물 836.35 (+2.99%) [직전 확정 · 실시간 아님]</span><br>
+          • <strong>글로벌 선물 실시간(NQ=F·ES=F):</strong> CME E-mini 나스닥100 선물 <span id="afNq" title="Yahoo Finance NQ=F 실시간">28,442.50 (+2.18%)</span> · S&amp;P500 선물 <span id="afEs" title="Yahoo Finance ES=F 실시간">6,002.50 (+0.55%)</span> · <span style="color:#94a3b8;">SOXX 필라델피아반도체 +3.42% [직전 확정]</span><br>
+          • <strong style="color:#fbbf24;">KRX 야간선물(공개 실시간 API 없음 · 위 지수·선물과 별개):</strong> <strong>837.50 (+0.14%)</strong> — 11/14 KRX 06:00 확정치 기준이며 실시간 시세가 아닙니다<br>
           • <strong>환율 & 확정 수급:</strong> 원/달러 1,333.80원 하향 안정 · 외국인(코스피) -5,521억 원 vs 기관(코스피) +23억 원 (연기금 +640억 순매수 방어) · 외인 선물 +12,400계약 대량 순매수 지지<br>
           <div style="background:#0c4a6e; border:1px solid #0284c7; border-radius:6px; padding:8px 10px; margin-top:6px; color:#f0f9ff;">
-            🎯 <strong>내일(익주 월요일 11/16) 장세 및 시초가 예측:</strong><br>
+            🎯 <strong>내일(익주 월요일 11/16) 장세 및 시초가 예측:</strong> <span style="font-size:10.5px; color:#94a3b8;">— 11/13 마감 시점에 작성한 정적 시나리오입니다. 위 실시간 수치와 다를 수 있습니다(자동 갱신 아님).</span><br>
             - <strong>코스피:</strong> 정규장 외국인 주간선물 +12,400계약 대량 순매수 유입과 미 나스닥 100 선물 +2.18% 폭등세에 힘입어, 오늘 현물 매도분을 빠르게 만회하며 <strong>+0.8% ~ +1.3% 갭상승 출발 및 5,340선 회복 시도</strong>가 유력합니다.<br>
             - <strong>코스닥:</strong> 지수 699선 마감 후 시간외에서 CXL(코리아써키트), AI 보안(지니언스), 시스템반도체(가온칩스)로 자금이 집중되었습니다. 시간외 매수 잔량이 탄탄하게 유지되어 다음 주 월요일 장초반 700선 즉각 돌파 및 주도주 랠리가 지속될 전망입니다.
           </div>
@@ -6277,7 +6283,7 @@
       <div style="background: linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border: 1px solid #10b981; border-radius: 10px; padding: 14px; margin-bottom: 14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
           <div style="font-size:13px; font-weight:800; color:#34d399;">🤖 실시간 만쥬 종가베팅 4대 기준 자동 채점 스크리너 (Top 5)</div>
-          <span style="font-size:10.5px; background:rgba(16,185,129,0.15); color:#6ee7b7; padding:2px 8px; border-radius:4px; font-weight:700;">채점 기준: 대금(35)·윗꼬리(25)·등락(20)·테마(20) | 갱신 05:31:08</span>
+          <span style="font-size:10.5px; background:rgba(16,185,129,0.15); color:#6ee7b7; padding:2px 8px; border-radius:4px; font-weight:700;">채점 기준: 대금(35)·윗꼬리(25)·등락(20)·테마(20) | 정기 반영 11/14 05:31</span>
         </div>
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px;">
           <div style="background:#0f172a; border:1px solid rgba(56,189,248,0.25); border-left:4px solid #dc2626; border-radius:6px; padding:10px 12px; display:flex; flex-direction:column; gap:4px;">
@@ -6542,7 +6548,7 @@
              style="flex:1; min-width:170px; background:#0f172a; color:#e2e8f0; border:1px solid rgba(148,163,184,0.35); border-radius:7px; padding:7px 9px; font-size:12.5px;">
       <button type="button" onclick="if(window.LiveAPI) LiveAPI.searchStock()" style="background:#0284c7; color:#ffffff; border:1px solid #38bdf8; border-radius:7px; padding:7px 14px; font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap;">조회</button>
       <span id="liveSearchStatus" style="font-size:11px; color:#94a3b8; flex-basis:100%; line-height:1.45;">종목명이나 코드를 입력하면 서버가 실시간 60일봉과 RN 지지/저항선을 계산해 바로 그립니다.</span>
-      <span id="rnLiveStatus" style="font-size:11px; color:#94a3b8; flex-basis:100%; line-height:1.45;">⚡ RN존 기본 종목 캔들·RN선은 탭을 열 때 /api/stock-chart 로 순차 자동 갱신됩니다.</span>
+      <span id="rnLiveStatus" style="font-size:11px; color:#94a3b8; flex-basis:100%; line-height:1.45;">⚡ RN존 11종목 캔들·RN선은 페이지를 열 때와 RN 탭 진입 시 /api/stock-chart 로 순차 자동 갱신됩니다(1번 탭 신호등 칩도 같은 실측값을 씁니다).</span>
     </div>
     
 
@@ -6724,8 +6730,8 @@
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 16px;">🛡️</span>
         <div>
-          <div style="font-size: 12px; font-weight: 800; color: #34d399;">DART 전자공시 실시간 악재 레이더 가동 중</div>
-          <div style="font-size: 11px; color: #94a3b8;">오늘 종가베팅 엄선 10종목 장마감 후 유상증자·CB발행·블록딜 공시 전수 스캔: <strong>전 종목 악재 없음(클린 🟢)</strong> <span style="font-size:10px; color:#34d399; margin-left:6px;">[실시간 스캔: 05:31:08]</span></div>
+          <div style="font-size: 12px; font-weight: 800; color: #34d399;">DART 전자공시 정기 스캔 결과 (장마감 후 1회 반영)</div>
+          <div style="font-size: 11px; color: #94a3b8;">오늘 종가베팅 엄선 10종목 장마감 후 유상증자·CB발행·블록딜 공시 전수 스캔: <strong>전 종목 악재 없음(클린 🟢)</strong> <span style="font-size:10px; color:#94a3b8; margin-left:6px;" title="DART 공시 자동 실시간 수집 API가 없어 정기 스캔 시점 값을 표시합니다">[스캔 시각 11/14 05:31 · 자동 실시간 아님]</span></div>
         </div>
       </div>
       <button class="dart-badge-btn" onclick="openDartModal()">
@@ -6935,7 +6941,7 @@
       <div style="background: linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.8)); border: 1px solid rgba(56,189,248,0.3); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:12px; font-weight:800; color:#38bdf8;">📊 거시경제 지표 임팩트 신호등 & 핵심 섹터 이벤트 관제</span>
-          <span style="font-size:10.5px; background:rgba(34,197,94,0.15); color:#4ade80; padding:2px 8px; border-radius:4px; font-weight:700;">실시간 자동 갱신: 05:31:08</span>
+          <span style="font-size:10.5px; background:rgba(148,163,184,0.15); color:#cbd5e1; padding:2px 8px; border-radius:4px; font-weight:700;" title="이 패널은 정기 백엔드 반영 시점의 스냅샷이며 자동 실시간 갱신 API가 없습니다">정기 백엔드 반영 기준: 11/14 05:31 (자동 실시간 아님)</span>
         </div>
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;">
           <div style="background:rgba(239,68,68,0.08); border-left:3px solid #ef4444; padding:8px 10px; border-radius:4px;">
@@ -11388,6 +11394,8 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
 
   <!-- ⚡ 동적 실시간 API 연동 (15초 폴링 · 실패 시 내장 데이터 유지) -->
   <script defer src="live-api.js"></script>
+  <!-- ⚡ 1·2·3번 탭 잔여 실시간 고도화 (신호등 칩 · NXT 랭킹 · 수급 카드 · 요약 문장) -->
+  <script defer src="live-extra.js"></script>
 
 </body>
 </html>

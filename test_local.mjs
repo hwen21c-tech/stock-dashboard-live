@@ -560,6 +560,126 @@ console.log('\n▶ [10] 내장 시드 데이터 정합성 (public/index.html)');
   check('RN존 내장 목록 코드 중복 없음', new Set(codes).size === codes.length, codes.join(','));
 }
 
+/* ============================================================
+ *  1·2·3번 탭 잔여 실시간 고도화 (public/live-extra.js)
+ *    · 신호등 6칩 자동 생성 규칙 · NXT 통합대금 재정렬 · 수급 카드 현재가 표기
+ *    · index.html 정적 결선(칩 컨테이너·afKospi/afNq·data-nxt-code) · 정직 라벨
+ * ============================================================ */
+console.log('\n▶ [13] 1·2·3번 탭 잔여 실시간 고도화 (/public/live-extra.js)');
+const le = require('./public/live-extra.js');
+let leOk = true;
+leOk &= check('live-extra.js 로드(순수 계산 함수 export)', Boolean(le && typeof le.buildSignalChips === 'function'), Object.keys(le || {}).length + '개 export');
+
+/* 13-1) RN존 실측 → 신호등 칩 */
+const chipStocks = [
+  // 하단 RN 존 터치 후 종가 유지 (하단 안착)
+  { name: '테스트하단', code: '111111', price: 92000, changeRatio: 3.2, lowerRN: 91000, upperRN: 93000, buy1: 94640, rnBand: 200, valueText: '1,200억',
+    candles: [{ date: '2026-11-14', open: 90200, high: 92800, low: 90900, close: 92000, vol: 1000 }] },
+  // 상단 RN 존 터치 후 눌림
+  { name: '테스트상단', code: '222222', price: 58000, changeRatio: -1.1, lowerRN: 57000, upperRN: 59000, buy1: 59280, rnBand: 200, valueText: '300억',
+    candles: [{ date: '2026-11-14', open: 60000, high: 58900, low: 57500, close: 58000, vol: 1000 }] },
+  // 오래된 내장값(지지선·저항선이 현재가와 안 맞음) → 신호로 쓰면 안 됨
+  { name: '깨진데이터', code: '333333', price: 174200, changeRatio: 1.3, lowerRN: 50000, upperRN: 75000, buy1: 52000, candles: [] },
+];
+const built = le.buildSignalChips(chipStocks, null, { maxChips: 6 });
+const tags = built.chips.map((c) => c.tag);
+leOk &= check('신호등 칩 생성 · 최대 6개', built.chips.length > 0 && built.chips.length <= 6, `${built.chips.length}칩 / 유효 ${built.validCount}종목`);
+leOk &= check('하단 RN 터치·안착 칩 생성', tags.some((t) => t.includes('하단 터치·안착')), tags.join(' | '));
+leOk &= check('상단 RN 터치 후 눌림 칩 생성', tags.some((t) => t.includes('상단 RN 터치 후 눌림')), tags.join(' | '));
+leOk &= check('RN 지지·저항이 현재가와 안 맞는 내장값은 칩에서 제외',
+  !built.chips.some((c) => c.code === '333333') && built.validCount === 2,
+  `유효 ${built.validCount}종목 (깨진데이터 제외)`);
+leOk &= check('칩 코드 중복 없음', new Set(built.chips.map((c) => c.code)).size === built.chips.length);
+
+const dup = le.buildSignalChips(
+  [chipStocks[0], chipStocks[0], chipStocks[0], chipStocks[1], chipStocks[1]],
+  null,
+  { maxChips: 6 },
+);
+leOk &= check('같은 종목이 여러 신호에 걸려도 칩은 1개만', dup.chips.length === 2 && new Set(dup.chips.map((c) => c.code)).size === 2, dup.chips.map((c) => c.code + ':' + c.tag).join(' / '));
+
+const withTabs = le.buildSignalChips(
+  chipStocks,
+  { upperLimit: { confirmed: [{ code: '399720', name: '가온칩스', changePct: 29.92, valueText: '836억' }], near: [] },
+    high52: { byValue: [{ code: '007810', name: '코리아써키트', changePct: 3.16, valueText: '2,240억' }] } },
+  { maxChips: 6 },
+);
+leOk &= check('1번 탭 실시간 상한가·신고가가 칩으로 합류',
+  withTabs.chips.some((c) => c.code === '399720' && c.tag.includes('상한가')) &&
+  withTabs.chips.some((c) => c.code === '007810' && c.tag.includes('52주 신고가')),
+  withTabs.chips.map((c) => `${c.name}:${c.tag}`).join(' | '));
+leOk &= check('상한가 칩은 1번 탭으로 이동(overview)', withTabs.chips.find((c) => c.code === '399720').view === 'overview');
+leOk &= check('칩 문구에 억지 생성 없음 — 근거 값 없는 종목은 관찰 칩으로만', withTabs.chips.every((c) => c.body && c.basis));
+
+/* 13-2) NXT 통합대금 재정렬 */
+const sorted = le.sortNxtByValue([
+  { code: 'A', value: 1185000000000, order: 0 },
+  { code: 'B', value: 440600000000, order: 1 },
+  { code: 'C', value: null, order: 2 },
+  { code: 'D', value: 76060000000, order: 3 },
+  { code: 'E', value: 440600000000, order: 4 },
+]);
+leOk &= check('NXT 통합대금 내림차순 정렬 (동률·결측 처리)',
+  JSON.stringify(sorted) === JSON.stringify(['A', 'B', 'E', 'D', 'C']), sorted.join(' > '));
+
+/* 13-3) 수급 카드 현재가 표기 */
+const up = le.formatPriceCell(208500, 0.48);
+const down = le.formatPriceCell(768000, -2.78);
+leOk &= check('수급 카드 표기 = "가격원 (+x.xx%)"', up.text === '208,500원 (+0.48%)' && down.text === '768,000원 (-2.78%)', `${up.text} / ${down.text}`);
+leOk &= check('상승/하락 색 구분(상승=빨강, 하락=파랑)', up.color === '#f43f5e' && down.color === '#38bdf8', `${up.color} / ${down.color}`);
+leOk &= check('가격 없으면 null (기존 표기 유지)', le.formatPriceCell(null, 1) === null && le.formatPriceCell(0, 1) === null);
+
+/* 13-4) 문자열 파서 · 상태 문구 */
+leOk &= check('통합대금 표기 파서(조/억/만)', le.parseValueText('6조 1,185억') > le.parseValueText('7,606억') && le.parseValueText('7,606억') > le.parseValueText('3,800억'),
+  `6조1,185억=${le.parseValueText('6조 1,185억')} / 7,606억=${le.parseValueText('7,606억')}`);
+leOk &= check('NXT 상태 문구는 등락률에서 자동 산출', le.nxtState(2) === '🟢 종가 지지 안착' && le.nxtState(-0.4) === '🟡 매물 소화 중' && le.nxtState(-4.5) === '🔵 약세 조정',
+  `${le.nxtState(2)} / ${le.nxtState(-0.4)} / ${le.nxtState(-4.5)}`);
+
+/* 13-5) index.html 정적 결선 */
+const htmlSrc = readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+leOk &= check('1번 탭 신호등 칩 컨테이너 존재', /id="signalChipsScroll"/.test(htmlSrc) && /id="signalChipsStamp"/.test(htmlSrc));
+leOk &= check('live-extra.js 로드', /<script defer src="live-extra\.js"><\/script>/.test(htmlSrc));
+leOk &= check('3번 요약 문장 실시간 span(afKospi·afKosdaq·afNq·afEs)',
+  ['afKospi', 'afKosdaq', 'afNq', 'afEs'].every((id) => htmlSrc.includes('id="' + id + '"')));
+leOk &= check('KRX 야간선물은 실시간과 분리 표기', /KRX 야간선물\(공개 실시간 API 없음/.test(htmlSrc) && /직전 확정 · 실시간 아님/.test(htmlSrc));
+
+const nxtCodes = Array.from(htmlSrc.matchAll(/data-nxt-code="(\d{6})"/g)).map((m) => m[1]);
+leOk &= check('3번 NXT 랭킹 카드 6개에 종목코드 매핑', nxtCodes.length === 6 && nxtCodes.every((c) => /^\d{6}$/.test(c)), nxtCodes.join(','));
+
+const supplyNamesInHtml = Array.from(htmlSrc.matchAll(/class="ssc-name">([^<]+)</g)).map((m) => m[1].trim());
+const supplyMapped = supplyNamesInHtml.filter((n) => le.SUPPLY_CODES[n]);
+leOk &= check('2번 수급 카드 전 종목에 6자리 코드 매핑',
+  supplyNamesInHtml.length >= 12 && supplyMapped.length === supplyNamesInHtml.length,
+  `${supplyMapped.length}/${supplyNamesInHtml.length}종목 (${Array.from(new Set(supplyMapped)).join(',')})`);
+leOk &= check('수급 코드는 전부 6자리', Object.values(le.SUPPLY_CODES).every((c) => /^\d{6}$/.test(c)), Object.entries(le.SUPPLY_CODES).map(([n, c]) => n + ':' + c).join(' '));
+
+/* 13-6) 오해 소지 라벨 정직화 */
+leOk &= check('가짜 "실시간 자동 갱신 HH:MM:SS" 배지 제거',
+  !/실시간 자동 갱신: \d{2}:\d{2}:\d{2}/.test(htmlSrc) && /정기 백엔드 반영 기준/.test(htmlSrc));
+leOk &= check('DART "실시간 악재 레이더" 오해 문구 제거',
+  !/DART 전자공시 실시간 악재 레이더 가동 중/.test(htmlSrc) && /DART 전자공시 정기 스캔 결과/.test(htmlSrc) && /자동 실시간 아님/.test(htmlSrc));
+leOk &= check('NXT 랭킹 배지의 고정 시각(05:31:08) 제거', !/KRX\+NXT 통합 실시간 파서 가동 중 \(05:31:08\)/.test(htmlSrc));
+
+/* 13-7) 실 API — 수급 카드·NXT 6종목 코드가 한 번에 조회되는지 */
+{
+  const need = Array.from(new Set(le.NXT_CODES.concat(Object.values(le.SUPPLY_CODES))));
+  const res = await call('stock-live', '/api/stock-live?codes=' + need.join(',') + '&fresh=1');
+  const rows = (res.json && res.json.stocks) || [];
+  const missing = need.filter((c) => !rows.some((s) => s.code === c && typeof s.price === 'number'));
+  leOk &= check('수급·NXT 15종목 실시간 시세 일괄 수신', res.status === 200 && missing.length === 0,
+    `${rows.length}종목 수신 / 누락 ${missing.join(',') || '없음'}`);
+  leOk &= check('NXT 재정렬에 쓸 통합 거래대금(valueInteg) 확보',
+    rows.filter((s) => typeof s.valueInteg === 'number').length >= 12,
+    rows.slice(0, 4).map((s) => `${s.name} ${s.valueIntegText || s.valueText}`).join(' · '));
+}
+
+summary.liveExtra = {
+  chips: built.chips.map((c) => `${c.name} ${c.tag} ${c.body}`),
+  sorted,
+  supplyMapped,
+  nxtCodes,
+};
+
 /* -------------------------------- 결과 저장 -------------------------------- */const total = results.length;
 const passed = results.filter((r) => r.ok).length;
 summary.total = total;

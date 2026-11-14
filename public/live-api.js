@@ -403,6 +403,8 @@
       function finish() {
         rnRefresh.running = false;
         rnRefresh.lastAt = nowText();
+        // RN 실측값이 갱신되면 1번 탭 '실전 타점 신호등' 칩도 다시 만든다
+        try { if (window.LiveExtra && typeof window.LiveExtra.renderChips === 'function') window.LiveExtra.renderChips(); } catch (e) { /* noop */ }
         if (rnRefresh.fail === 0) {
           rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · ' + rnRefresh.ok + '/' + rnRefresh.total +
             ' 종목 60일봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
@@ -576,6 +578,17 @@
     }, 250);
     startRnCycle();
     if (isRnTabVisible()) refreshRnList({ onlySelected: true });
+
+    // ⚡ 1번 탭만 보고 있어도 RN존 11종목 실측(60일봉·RN선)을 백그라운드로 받아 둔다.
+    //    → 6번 탭을 열지 않아도 1번 탭 상단 '실전 타점 신호등' 칩이 최신 실측치로 만들어진다.
+    //    · 화면이 뜬 뒤 조용히 4종목씩 순차 갱신(먼저 도는 갱신이 있으면 끝날 때까지 대기)
+    var bgTries = 0;
+    var bgTimer = setInterval(function () {
+      bgTries += 1;
+      if (rnRefresh.running && bgTries < 40) return;
+      clearInterval(bgTimer);
+      refreshRnList().catch(function () { /* 실패 시 내장 데이터 유지 */ });
+    }, 2500);
   }
 
   /* ------------------ RN존 실시간 종목 조회 (60일봉 + RN) ------------------ */
@@ -607,6 +620,7 @@
     var price = json.current && num(json.current.price) !== null ? json.current.price : candles[candles.length - 1].close;
     price = Math.round(price);
     var rn = json.rn || {};
+    var rnBand = rn.band !== undefined && num(rn.band) !== null ? rn.band : null;
     var lower = rn.nearestSupport && num(rn.nearestSupport.level) !== null ? rn.nearestSupport.level : Math.floor(price / 10) * 10;
     var upper = rn.nearestResistance && num(rn.nearestResistance.level) !== null ? rn.nearestResistance.level : Math.ceil(price * 1.1);
     if (!(lower > 0)) lower = Math.floor(price / 10) * 10;
@@ -623,6 +637,7 @@
       changeRatio: changePct,
       upperRN: Math.round(upper),
       lowerRN: Math.round(lower),
+      rnBand: rnBand,
       buy1: buy1,
       buy2: buy2,
       targetMin: Math.round(buy1 * 1.07),

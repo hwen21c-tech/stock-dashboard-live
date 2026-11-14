@@ -1,0 +1,416 @@
+#!/usr/bin/env node
+/**
+ * 헤드리스 E2E — 1·2·3번 탭 잔여 실시간 API 고도화 검증
+ *   node test_e2e_extra.mjs                 (로컬 dev_server 자동 기동)
+ *   BASE=https://stock-dashboard-live-psi.vercel.app node test_e2e_extra.mjs   (라이브)
+ *
+ *  검증 항목
+ *   1) 1번 탭 '실전 타점 신호등' 6칩이 RN존 실측값으로 자동 생성되는지 (하드코딩 문구 소거)
+ *   2) 6번 탭을 열지 않아도 RN존 11종목 /api/stock-chart 백그라운드 갱신이 도는지
+ *   3) 3번 애프터마켓 NXT Top 6 — 현재가·등락률·통합대금 실시간 + 통합대금순 재정렬
+ *   4) 3번 탭 요약 문장 — 코스피·코스닥·NQ=F·ES=F 실시간 / KRX 야간선물 분리 표기
+ *   5) 2번 수급 탭 카드 — 현재가·등락률만 실시간 (외인·기관 금액 불변)
+ *   6) 9번 달력·8번 DART 배지 정직 라벨
+ *   7) 콘솔·페이지·HTTP 오류 0, 폴드8 폭(884px) 가로 넘침 0
+ *
+ * 결과: e2e_extra_results.json · 스크린샷: live_extra_*.png
+ */
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// puppeteer: 로컬 설치 우선, 없으면 워크스페이스 E2E 하네스 사용
+let puppeteer;
+try {
+  puppeteer = createRequire(import.meta.url)('puppeteer');
+} catch (_) {
+  puppeteer = createRequire('/workspace/_tools/e2e/run.mjs')('puppeteer');
+}
+
+const EXTERNAL = process.env.BASE || null;
+const PORT = Number(process.env.PORT || 8794);
+const BASE = EXTERNAL || `http://127.0.0.1:${PORT}`;
+const SHOT = (n) => path.join(__dirname, `live_extra_${n}.png`);
+
+const results = [];
+const check = (label, ok, detail) => {
+  results.push({ label, ok: !!ok, detail: detail === undefined ? null : detail });
+  console.log(`${ok ? '✅' : '❌'} ${label}${detail !== undefined && detail !== null ? `  → ${detail}` : ''}`);
+  return !!ok;
+};
+
+let server = null;
+if (!EXTERNAL) {
+  server = spawn(process.execPath, ['dev_server.mjs'], {
+    cwd: __dirname,
+    env: { ...process.env, PORT: String(PORT) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout.on('data', () => {});
+  server.stderr.on('data', () => {});
+}
+async function waitServer() {
+  for (let i = 0; i < 90; i += 1) {
+    try {
+      const r = await fetch(`${BASE}/api/stock-live?codes=005930`, { signal: AbortSignal.timeout(20000) });
+      if (r.ok) return true;
+    } catch (_) { /* 대기 */ }
+    await sleep(500);
+  }
+  return false;
+}
+
+const up = await waitServer();
+check('서버 응답 (GET /api/stock-live 200)', up, BASE);
+if (!up) {
+  if (server) server.kill('SIGKILL');
+  process.exit(1);
+}
+
+const browser = await puppeteer.launch({
+  headless: 'shell',
+  args: ['--no-sandbox', '--disable-dev-shm-usage', '--lang=ko-KR', '--force-device-scale-factor=2'],
+});
+
+const page = await browser.newPage();
+await page.setViewport({ width: 884, height: 1100, deviceScaleFactor: 2 });
+
+const consoleErrors = [];
+const pageErrors = [];
+const httpErrors = [];
+page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+page.on('pageerror', (e) => pageErrors.push(String(e && e.message ? e.message : e)));
+page.on('response', (r) => {
+  const u = r.url();
+  if (u.startsWith(BASE) && r.status() >= 400) httpErrors.push(`${r.status()} ${u.replace(BASE, '')}`);
+});
+
+// 신호등 하드코딩 문구(작업 전 상태) — 페이지 로드 직후 사라져 있어야 한다
+await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 180000 });
+
+/* ---------- 1) 1번 탭 신호등 칩 ---------- */
+const chipsReady = await page.waitForFunction(
+  () => {
+    const host = document.getElementById('signalChipsScroll');
+    return !!host && host.getAttribute('data-live') === '1';
+  },
+  { timeout: 120000 },
+).then(() => true).catch(() => false);
+
+const chipInfo = await page.evaluate(() => {
+  const host = document.getElementById('signalChipsScroll');
+  const chips = host ? Array.from(host.querySelectorAll('.signal-chip[data-live="1"]')) : [];
+  return {
+    count: chips.length,
+    texts: chips.map((c) => c.textContent.replace(/\s+/g, ' ').trim()),
+    codes: chips.map((c) => c.getAttribute('data-signal-code')),
+    onclick: chips.map((c) => c.getAttribute('onclick')),
+    stamp: (document.getElementById('signalChipsStamp') || {}).textContent || null,
+    hostText: host ? host.textContent : '',
+  };
+});
+check('1번 탭 신호등 칩 자동 생성', chipsReady && chipInfo.count === 6, `${chipInfo.count}칩 · ${chipInfo.stamp}`);
+check('하드코딩 칩(피에스케이홀딩스 152,800원) 소거',
+  !/피에스케이홀딩스 152,800/.test(chipInfo.hostText) && !/156,000원 이하 체결존/.test(chipInfo.hostText),
+  chipInfo.texts[0]);
+check('칩 본문이 실측 수치(RN·현재가·등락률)로 구성',
+  chipInfo.texts.every((t) => /RN|타점|통합대금|원/.test(t)) && chipInfo.codes.every((c) => /^\d{6}$/.test(c || '')),
+  chipInfo.codes.join(','));
+check('칩 클릭 → RN존/메인 탭 이동 액션 연결',
+  chipInfo.onclick.every((o) => /LiveExtra\._open\(\d+\)/.test(o || '')),
+  chipInfo.onclick[0]);
+
+/* ---------- 2) 6번 탭 미개방 상태의 RN 백그라운드 실측 ---------- */
+const rnBg = await page.evaluate(() => {
+  const st = (window.LiveAPI && window.LiveAPI.rnState) || {};
+  const rnTab = document.getElementById('tabRnzone');
+  return { lastAt: st.lastAt || null, ok: st.ok || 0, total: st.total || 0, rnTabVisible: rnTab ? rnTab.style.display !== 'none' : null };
+});
+const rnReady = await page.waitForFunction(
+  () => {
+    const st = (window.LiveAPI && window.LiveAPI.rnState) || {};
+    return Boolean(st.lastAt) && (st.ok || 0) >= 8;
+  },
+  { timeout: 120000 },
+).then(() => true).catch(() => false);
+const rnAfter = await page.evaluate(() => {
+  const st = window.LiveAPI.rnState || {};
+  const stamp = (document.getElementById('signalChipsStamp') || {}).textContent || '';
+  return { lastAt: st.lastAt, ok: st.ok, total: st.total, stamp, rnTabVisible: (document.getElementById('tabRnzone') || {}).style.display };
+});
+check('6번 탭을 열지 않아도 RN존 실측 백그라운드 갱신', rnReady && rnAfter.rnTabVisible === 'none',
+  `${rnAfter.ok}/${rnAfter.total}종목 · 갱신 ${rnAfter.lastAt} (RN탭 display=${rnAfter.rnTabVisible})`);
+check('신호등 배지에 실측 갱신 시각 표기', /RN 실측 \d{2}:\d{2}:\d{2} 갱신/.test(rnAfter.stamp), rnAfter.stamp);
+
+// 실측 갱신 후: 칩에 찍힌 RN 수치가 RN존 실제 값과 일치하는지 (내장값 고착 방지)
+const chipSync = await page.evaluate(() => {
+  const st = (window.RnZone && window.RnZone.getStocks()) || [];
+  const chips = Array.from(document.querySelectorAll('#signalChipsScroll .signal-chip'));
+  return chips.map((c) => {
+    const code = c.getAttribute('data-signal-code');
+    const s = st.find((x) => x.code === code);
+    const txt = c.textContent.replace(/\s+/g, ' ');
+    // 1번 탭 실시간 상한가·신고가 칩은 RN 수치가 없는 게 정상 → 검증 제외
+    if (!s || !/RN/.test(txt)) return { code, ok: true, skipped: true, txt: txt.slice(0, 70) };
+    const lower = Math.round(s.lowerRN).toLocaleString('ko-KR');
+    const upper = Math.round(s.upperRN).toLocaleString('ko-KR');
+    return { code, lower, upper, ok: txt.includes(lower) || txt.includes(upper), txt: txt.slice(0, 90) };
+  });
+});
+check('칩 RN 수치가 갱신된 RN존 실측값과 일치',
+  chipSync.filter((c) => !c.skipped).length >= 3 && chipSync.every((c) => c.ok),
+  chipSync.map((c) => (c.skipped ? `${c.code}:${c.txt.includes('RN') ? 'RN없음' : '1탭칩'}` : `${c.code} RN ${c.lower}~${c.upper} ${c.ok ? 'OK' : '불일치'}`)).join(' | '));
+
+/* ---------- 3) 3번 애프터마켓 · NXT 랭킹 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="aftermarket"]');
+  if (btn) btn.click();
+});
+await sleep(600);
+const nxtWait = await page.waitForFunction(
+  () => {
+    const grid = document.getElementById('nxtRankGrid');
+    if (!grid) return false;
+    return Array.from(grid.querySelectorAll('[data-nxt-code]')).every((c) => c.getAttribute('data-live') === '1');
+  },
+  { timeout: 90000 },
+).then(() => true).catch(() => false);
+
+const nxt = await page.evaluate(() => {
+  const grid = document.getElementById('nxtRankGrid');
+  const cards = grid ? Array.from(grid.querySelectorAll('[data-nxt-code]')) : [];
+  return {
+    count: cards.length,
+    rows: cards.map((c) => ({
+      rank: (c.querySelector('.nxt-rank') || {}).textContent,
+      code: c.getAttribute('data-nxt-code'),
+      price: (c.querySelector('.nxt-price') || {}).textContent,
+      pct: (c.querySelector('.nxt-pct') || {}).textContent,
+      value: (c.querySelector('.nxt-value') || {}).textContent,
+      state: (c.querySelector('.nxt-state') || {}).textContent,
+      live: c.getAttribute('data-live'),
+    })),
+    stamp: (document.getElementById('nxtRankStamp') || {}).textContent || '',
+  };
+});
+check('3번 NXT Top 6 카드 6개 실시간 갱신', nxtWait && nxt.count === 6 && nxt.rows.every((r) => r.live === '1'),
+  nxt.rows.map((r) => `${r.rank} ${r.code} ${r.price} ${r.pct} ${r.value}`).join(' | '));
+check('NXT 랭킹이 통합대금 내림차순으로 재정렬', nxt.rows.every((r, i) => r.rank === `TOP ${i + 1}`),
+  (() => {
+    const toNum = (t) => {
+      if (!t) return 0;
+      const jo = /([\d,.]+)조/.exec(t); const eok = /([\d,.]+)억/.exec(t);
+      return (jo ? parseFloat(jo[1].replace(/,/g, '')) * 1e12 : 0) + (eok ? parseFloat(eok[1].replace(/,/g, '')) * 1e8 : 0);
+    };
+    const vals = nxt.rows.map((r) => toNum(r.value));
+    return `${vals.join(' > ')} ${vals.every((v, i) => i === 0 || vals[i - 1] >= v) ? '내림차순 OK' : '역전 있음'}`;
+  })());
+check('NXT 배지가 실제 조회 시각·통합대금 기준을 표기', /⚡ \d{2}:\d{2}:\d{2} 조회 · .*통합대금\(KRX\+NXT\)/.test(nxt.stamp), nxt.stamp);
+
+/* ---------- 4) 3번 탭 요약 문장 ---------- */
+const sum = await page.evaluate(() => {
+  const g = (id) => (document.getElementById(id) || {}).textContent || null;
+  const tab = document.getElementById('tabAftermarket');
+  return {
+    kospi: g('afKospi'), kosdaq: g('afKosdaq'), nq: g('afNq'), es: g('afEs'),
+    liveAttr: ['afKospi', 'afKosdaq', 'afNq', 'afEs'].map((id) => (document.getElementById(id) || {}).getAttribute
+      ? document.getElementById(id).getAttribute('data-live') : null),
+    night: (() => {
+      if (!tab) return null;
+      const t = tab.textContent.replace(/\s+/g, ' ');
+      const i = t.indexOf('KRX 야간선물(공개 실시간 API 없음');
+      return i >= 0 ? t.slice(i, i + 130) : null;
+    })(),
+    nightValueKept: Boolean(tab && /837\.50/.test(tab.textContent)),
+    afSpansHaveNight: ['afKospi', 'afKosdaq', 'afNq', 'afEs'].some((id) => {
+      const el = document.getElementById(id);
+      return Boolean(el && /837\.50/.test(el.textContent));
+    }),
+    hasNightText: tab ? /KRX 야간선물\(공개 실시간 API 없음 · 위 지수·선물과 별개\)/.test(tab.textContent) : false,
+    hasFakeNight: tab ? /837\.50 \(\+0\.14% 🟢 836선 지지\) · CME/.test(tab.textContent) : false,
+  };
+});
+check('요약 문장 코스피·코스닥·NQ=F·ES=F 실시간 표기',
+  ['kospi', 'kosdaq', 'nq', 'es'].every((k) => /\d[\d,]*\.\d{2} \([-+]?\d+\.\d{2}%\)/.test(sum[k] || '')),
+  `코스피 ${sum.kospi} · 코스닥 ${sum.kosdaq} · NQ ${sum.nq} · ES ${sum.es}`);
+check('지수·선물 span 4개가 실시간 갱신 표시(data-live=1)', sum.liveAttr.every((v) => v === '1'), sum.liveAttr.join(','));
+check('KRX 야간선물은 실시간이 아님을 분리 표기', sum.hasNightText && !sum.hasFakeNight && sum.nightValueKept && !sum.afSpansHaveNight, sum.night);
+
+// NXT 랭킹 패널 · 지수/선물 요약 문장 확대 스크린샷
+for (const [name, sel] of [
+  ['nxt_panel', () => document.getElementById('nxtRankGrid') && document.getElementById('nxtRankGrid').closest('div[id="nxtRankPanel"]')],
+  ['after_summary', () => document.getElementById('afKospi') && document.getElementById('afKospi').closest('.panel-box')],
+]) {
+  const handle = await page.evaluateHandle(sel);
+  const el = handle.asElement();
+  if (el) {
+    try { await el.screenshot({ path: SHOT(name) }); } catch (_) { /* 高大한 요소는 넘어감 */ }
+  }
+  await handle.dispose();
+}
+await page.screenshot({ path: SHOT('aftermarket') });
+
+/* ---------- 5) 2번 수급 탭 카드 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="supply"]');
+  if (btn) btn.click();
+});
+await sleep(600);
+const supplyWait = await page.waitForFunction(
+  () => {
+    const tab = document.getElementById('tabSupply');
+    if (!tab) return false;
+    const cells = Array.from(tab.querySelectorAll('.ssc-price'));
+    return cells.length > 0 && cells.filter((c) => c.getAttribute('data-live') === '1').length >= 10;
+  },
+  { timeout: 90000 },
+).then(() => true).catch(() => false);
+
+const supply = await page.evaluate(() => {
+  const tab = document.getElementById('tabSupply');
+  const cards = Array.from(tab.querySelectorAll('.supply-stock-card'));
+  return {
+    cards: cards.map((c) => ({
+      name: (c.querySelector('.ssc-name') || {}).textContent,
+      price: (c.querySelector('.ssc-price') || {}).textContent,
+      code: (c.querySelector('.ssc-price') || {}).getAttribute
+        ? c.querySelector('.ssc-price').getAttribute('data-live-code') : null,
+      net: Array.from(c.querySelectorAll('.s-badge')).map((b) => b.textContent.trim()).join(' / '),
+    })),
+    stamp: (document.getElementById('supplyLiveStamp') || {}).textContent || '',
+  };
+});
+check('2번 수급 카드 현재가·등락률 실시간 갱신', supplyWait, supply.cards.slice(0, 3).map((c) => `${c.name} ${c.price}`).join(' | '));
+check('수급 카드에 6자리 종목코드 매핑', supply.cards.filter((c) => /^\d{6}$/.test(c.code || '')).length >= 12,
+  Array.from(new Set(supply.cards.map((c) => c.code).filter(Boolean))).join(','));
+check('외인·기관 순매수 금액은 확정치 그대로 유지(실시간 아님)',
+  /외인 \+7,449억/.test(supply.cards[0].net) && /KRX 장마감 확정치/.test(supply.stamp),
+  `${supply.cards[0].name}: ${supply.cards[0].net}`);
+await page.screenshot({ path: SHOT('supply') });
+
+/* ---------- 6) 정직 라벨(9번 달력·8번 DART) ---------- */
+const labels = await page.evaluate(() => {
+  const cal = document.getElementById('tabCalendar');
+  const jong = document.getElementById('tabJongbe');
+  return {
+    calText: cal ? cal.textContent : '',
+    jongText: jong ? jong.textContent : '',
+    doc: document.body.textContent,
+  };
+});
+check('9번 달력 배지: 정기 백엔드 반영 기준으로 표기',
+  /정기 백엔드 반영 기준/.test(labels.calText) && !/실시간 자동 갱신: \d{2}:\d{2}:\d{2}/.test(labels.calText),
+  (labels.calText.match(/정기 백엔드 반영 기준[^)]*\)/) || [''])[0]);
+check('8번 DART 배지: 정기 스캔 결과로 표기',
+  /DART 전자공시 정기 스캔 결과/.test(labels.jongText) && /자동 실시간 아님/.test(labels.jongText) &&
+  !/DART 전자공시 실시간 악재 레이더 가동 중/.test(labels.doc));
+
+/* ---------- 7) 6·8·9번 탭 회귀(다른 탭이 상하지 않았는지) ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="rnzone"]');
+  if (btn) btn.click();
+});
+await sleep(900);
+const rnTab = await page.evaluate(() => {
+  const tab = document.getElementById('tabRnzone');
+  const grid = document.getElementById('stockListGrid');
+  const cards = grid ? grid.querySelectorAll('.stock-card') : [];
+  const row = cards[0];
+  return {
+    display: tab ? tab.style.display : null,
+    cardCount: cards.length,
+    firstCard: row ? row.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : null,
+    hasLiveValue: tab ? /당일 대금/.test(tab.textContent) : false,
+  };
+});
+check('6번 RN존 탭 정상 렌더(11종목 카드 · 당일 대금)', rnTab.display !== 'none' && rnTab.cardCount === 11 && rnTab.hasLiveValue, `${rnTab.cardCount}카드 · ${rnTab.firstCard}`);
+await page.screenshot({ path: SHOT('rnzone') });
+
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="jongbe"]');
+  if (btn) btn.click();
+});
+await sleep(700);
+const jong = await page.evaluate(() => {
+  const tab = document.getElementById('tabJongbe');
+  return {
+    display: tab ? tab.style.display : null,
+    lines: tab ? tab.textContent.replace(/\s+/g, ' ').trim().length : 0,
+    dartText: tab ? /DART 전자공시 정기 스캔 결과/.test(tab.textContent) : false,
+  };
+});
+check('8번 종베 탭 정상 렌더 + DART 정직 라벨', jong.display !== 'none' && jong.lines > 1500 && jong.dartText, `${jong.lines}자 · DART라벨=${jong.dartText}`);
+await page.screenshot({ path: SHOT('jongbe') });
+
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="calendar"]');
+  if (btn) btn.click();
+});
+await sleep(700);
+const cal = await page.evaluate(() => {
+  const tab = document.getElementById('tabCalendar');
+  return {
+    display: tab ? tab.style.display : null,
+    cells: tab ? tab.querySelectorAll('.cal-cell').length : 0,
+    badge: tab ? ((tab.textContent.match(/정기 백엔드 반영 기준[^)]*\)/) || [])[0] || null) : null,
+    title: tab ? tab.textContent.replace(/\s+/g, ' ').trim().slice(0, 80) : null,
+  };
+});
+check('9번 증시일정 탭 정상 렌더 + 정기 반영 라벨', cal.display !== 'none' && cal.cells > 20 && /정기 백엔드 반영 기준/.test(cal.badge || ''), `${cal.cells}셀 · ${cal.badge}`);
+await page.screenshot({ path: SHOT('calendar') });
+
+/* ---------- 1번 탭 복귀 후 칩·레이아웃 ---------- */
+await page.evaluate(() => {
+  const btn = document.querySelector('.tab-btn[data-view="overview"]');
+  if (btn) btn.click();
+});
+await sleep(500);
+const layout = await page.evaluate(() => ({
+  scrollW: document.documentElement.scrollWidth,
+  innerW: window.innerWidth,
+  chipsOverflow: (() => {
+    const host = document.getElementById('signalChipsScroll');
+    return host ? host.scrollWidth : 0;
+  })(),
+}));
+check('폴드8 폭(884px) 가로 넘침 0', layout.scrollW <= layout.innerW + 1, `scrollWidth ${layout.scrollW} / innerWidth ${layout.innerW}`);
+await page.screenshot({ path: SHOT('overview_fold8') });
+
+/* ---------- 오류 집계 ---------- */
+check('콘솔 오류 0', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ') || 'none');
+check('페이지(JS) 오류 0', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | ') || 'none');
+check('HTTP 4xx/5xx 0', httpErrors.length === 0, httpErrors.slice(0, 3).join(' | ') || 'none');
+
+await browser.close();
+if (server) server.kill('SIGKILL');
+
+const passed = results.filter((r) => r.ok).length;
+const out = {
+  base: BASE,
+  generatedAt: new Date().toISOString(),
+  total: results.length,
+  passed,
+  failed: results.filter((r) => !r.ok),
+  results,
+  chips: chipInfo,
+  chipSync,
+  rnAfter,
+  nxt,
+  sum,
+  supplyCards: supply.cards,
+  layout,
+  consoleErrors,
+  pageErrors,
+  httpErrors,
+};
+writeFileSync(path.join(__dirname, 'e2e_extra_results.json'), JSON.stringify(out, null, 2), 'utf8');
+console.log('\n────────────────────────────────────────');
+console.log(`E2E 결과: ${passed}/${results.length} 통과${passed === results.length ? ' — 전체 성공 🎉' : ''}`);
+for (const f of out.failed) console.log(`  ❌ ${f.label} ${f.detail || ''}`);
+console.log('상세 → dynamic_app/e2e_extra_results.json');
+process.exit(passed === results.length ? 0 : 1);
