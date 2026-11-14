@@ -352,6 +352,15 @@ function buildHeadline(phase, indices, futures, fx, tradingDate) {
   return `${prefix} | ${bits.join(' · ')}`;
 }
 
+/** Vercel CDN 캐시 헤더까지 같이 내려준다.
+ *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
+ *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
+function applyCacheHeaders(res, policy) {
+  res.setHeader('Cache-Control', policy);
+  res.setHeader('CDN-Cache-Control', policy);
+  res.setHeader('Vercel-CDN-Cache-Control', policy);
+}
+
 /* -------------------------------- handler -------------------------------- */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -369,6 +378,7 @@ module.exports = async function handler(req, res) {
     const hit = memCache.get(cacheKey);
     if (hit && Date.now() - hit.at < MEM_TTL_MS) {
       res.setHeader('X-Cache', 'HIT-memory');
+      applyCacheHeaders(res, CACHE_CONTROL);
       return sendJson(res, 200, hit.value, CACHE_CONTROL);
     }
   }
@@ -502,6 +512,7 @@ module.exports = async function handler(req, res) {
   };
 
   if (!ok) {
+    applyCacheHeaders(res, 'no-store');
     return sendJson(
       res,
       502,
@@ -516,5 +527,6 @@ module.exports = async function handler(req, res) {
 
   if (!fresh) memCache.set(cacheKey, { at: Date.now(), value: body });
   res.setHeader('X-Cache', fresh ? 'BYPASS-fresh' : 'MISS');
+  applyCacheHeaders(res, fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL);
   return sendJson(res, 200, body, fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL);
 };
