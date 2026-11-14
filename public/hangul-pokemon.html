@@ -3210,7 +3210,19 @@ function applyProfile(id, opts) {
   renderDexBadge();
   renderAll();
   if (!$('#dexModal').hidden) renderDex(false);
-  if (S.screen === 'battle' && o.fresh !== false) newQuestion();
+  /* 프로필을 바꾸면 배틀을 완전히 새로 시작한다 —
+     HP를 깎아 둔 채 다른 친구로 바꿔 대신 잡는 것을 막는다 */
+  if (o.fresh !== false) {
+    S.myHP = MAXHP;
+    S.foeHP = MAXHP;
+    S.flee = 3;
+    S.hints = 3;
+    S.hintUsed = false;
+    S.solved = 0;
+    const hb = $('#hintBox'); if (hb) hb.hidden = true;
+    if (typeof TTS !== 'undefined' && TTS.stop) TTS.stop();
+    newEncounter({ keepFlee: false, silent: !!o.silent });
+  }
 }
 function chooseProfile(id) {
   applyProfile(id, {});
