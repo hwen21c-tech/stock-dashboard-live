@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+/**
+ * 로컬 미리보기 서버 (Vercel 없이 동적 앱을 그대로 띄워보는 용도)
+ *   node dev_server.mjs          → http://localhost:8787
+ *   PORT=9000 node dev_server.mjs
+ *
+ * /api/* 는 Vercel 서버리스 핸들러를 그대로 호출하고, 나머지는 public/ 정적 파일을 서빙한다.
+ * (배포에는 쓰이지 않는 개발 편의 스크립트)
+ */
+import http from 'node:http';
+import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT || 8787);
+
+const api = {
+  '/api/stock-live': require('./api/stock-live.js'),
+  '/api/stock-chart': require('./api/stock-chart.js'),
+  '/api/deals-shopping': require('./api/deals-shopping.js'),
+};
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
+};
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
+
+  const handler = api[pathname];
+  if (handler) {
+    try {
+      await handler(req, res);
+    } catch (e) {
+      console.error('[api error]', pathname, e);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify({ ok: false, reason: 'unhandled', message: e.message }));
+      }
+    }
+    console.log(`${req.method} ${req.url} → ${res.statusCode}`);
+    return;
+  }
+
+  const rel = pathname === '/' ? '/index.html' : pathname;
+  const filePath = path.join(__dirname, 'public', path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
+  try {
+    const buf = await readFile(filePath);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', MIME[path.extname(filePath)] || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(buf);
+    console.log(`${req.method} ${req.url} → 200 (static)`);
+  } catch (e) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('404 Not Found');
+    console.log(`${req.method} ${req.url} → 404`);
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`동적 앱 로컬 미리보기: http://localhost:${PORT}`);
+  console.log('종료: Ctrl+C');
+});

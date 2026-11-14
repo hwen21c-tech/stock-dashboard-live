@@ -1,0 +1,14 @@
+{
+  "name": "stock-dashboard-live",
+  "version": "1.0.0",
+  "private": true,
+  "description": "연오랑 동적 관제탑 — 증시 실시간 관제탑 9대 탭 + 패밀리 특가 레이더 (Vercel Serverless API 연동)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test_local.mjs",
+    "dev": "node dev_server.mjs",
+    "check": "node --check api/stock-live.js && node --check api/stock-chart.js && node --check api/deals-shopping.js && node --check lib/http.js && node --check public/live-api.js && node --check public/deals-shopping.js && node --check dev_server.mjs"
+  }
+}
