@@ -811,8 +811,9 @@
     el.style.cssText = 'padding:3px 8px; font-size:10.5px; font-weight:800; border-radius:4px; ' +
       'background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.35); white-space:nowrap;';
     el.textContent = '⚡ 1·3·5탭 연결 중…';
-    var anchor = document.getElementById('liveApiBadge') || document.getElementById('lastSyncTxt');
-    if (anchor && anchor.parentNode === host) host.insertBefore(el, anchor.nextSibling);
+    // '최근 갱신' 텍스트 바로 앞(왼쪽)에 넣어 레이더 바 오른쪽 잘림에 가리지 않게 한다.
+    var anchor = document.getElementById('lastSyncTxt');
+    if (anchor && anchor.parentNode === host) host.insertBefore(el, anchor);
     else host.appendChild(el);
     return el;
   }
