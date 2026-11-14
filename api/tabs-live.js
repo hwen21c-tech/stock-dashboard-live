@@ -418,11 +418,38 @@ async function fetchNews() {
 }
 
 /* ------------------------------ 52주 신고가 ------------------------------ */
+
+/** 우선주 이름 꼴 — 끝이 `우`, `우B`, `우C`, `우(전환)` 등 (예: 한진칼우 · 현대차2우B · CJ4우(전환)) */
+const PREFERRED_NAME_RE = /^\S*\d*우([A-Z])?(\(전환\))?$/;
+
+/**
+ * 우선주 판별 — 이름 꼴과 종목코드를 함께 본다.
+ *  · 보통주 코드는 끝자리가 0 이고, 우선주는 5·7·9 또는 K/L 같은 문자로 끝난다.
+ *    (삼성전자 005930 ↔ 삼성전자우 005935, SK 034730 ↔ SK우 03473K, 한진칼 180640 ↔ 한진칼우 18064K)
+ *  · 이름만으로 거르면 `성우`(458650)·`이오플로우`(294090) 같은 보통주를 오탐하므로 코드 조건을 반드시 함께 본다.
+ */
+function isPreferredStock(item) {
+  if (!item) return false;
+  const name = String(item.name || item.stockName || '').replace(/\s+/g, '');
+  const code = String(item.code || item.itemCode || '').toUpperCase();
+  if (!PREFERRED_NAME_RE.test(name)) return false;
+  if (!/^[0-9A-Z]{6}$/.test(code)) return false;
+  return !/0$/.test(code); // 보통주 코드(끝자리 0)는 우선주가 아니다
+}
+
 function collectHigh52Candidates(lists) {
   const uniq = new Map();
+  const preferred = [];
   lists.forEach((l) => {
     (l.items || []).forEach((it) => {
       if (it.kind !== 'stock') return; // ETF·ETN·리츠 등 제외
+      if (isPreferredStock(it)) {
+        // 우선주(한진칼우 등)도 제외 — 이름·코드로만 판별하고 보통주는 건드리지 않는다
+        if (!preferred.some((p) => p.code === it.code)) {
+          preferred.push({ code: it.code, name: it.name, market: it.market });
+        }
+        return;
+      }
       if (!uniq.has(it.code)) uniq.set(it.code, it);
     });
   });
@@ -435,17 +462,25 @@ function collectHigh52Candidates(lists) {
     .slice()
     .sort((a, b) => (b.changePct || 0) - (a.changePct || 0))
     .slice(0, HIGH52_LIMIT);
-  return { base, byValue, byPct };
+  return { base, byValue, byPct, preferred };
 }
 
 function finalizeHigh52(cand, counts) {
   if (!cand) return null;
-  const { base, byValue, byPct } = cand;
+  const { base, byValue, byPct, preferred } = cand;
+  const excludedPreferred = preferred || [];
   return {
     byValue,
     byPct,
     stockCount: base.length,
     counts: counts || { KOSPI: 0, KOSDAQ: 0 },
+    // ETF·ETN 제외에 이어 우선주도 제외한다 — 무엇을 뺐는지 응답에 남겨 검증 가능하게 한다
+    excludedPreferred,
+    excludedPreferredCount: excludedPreferred.length,
+    rules: {
+      kind: 'stock only (ETF·ETN 제외)',
+      preferred: '우선주(이름 끝 우/우B/우C/우(전환) + 코드 끝자리 0 아님) 제외',
+    },
   };
 }
 
@@ -631,10 +666,10 @@ module.exports = async function handler(req, res) {
   const high52 = high52Cand
     ? finalizeHigh52(high52Cand, {
         KOSPI: (highKospiR.status === 'fulfilled'
-          ? highKospiR.value.items.filter((i) => i.kind === 'stock').length
+          ? highKospiR.value.items.filter((i) => i.kind === 'stock' && !isPreferredStock(i)).length
           : 0),
         KOSDAQ: (highKosdaqR.status === 'fulfilled'
-          ? highKosdaqR.value.items.filter((i) => i.kind === 'stock').length
+          ? highKosdaqR.value.items.filter((i) => i.kind === 'stock' && !isPreferredStock(i)).length
           : 0),
       })
     : null;
@@ -693,3 +728,7 @@ module.exports = async function handler(req, res) {
   applyCacheHeaders(res, fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL);
   return sendJson(res, 200, body, fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL);
 };
+
+// 테스트(test_local.mjs)에서 우선주 판별 규칙을 직접 검증할 수 있게 내보낸다.
+module.exports.isPreferredStock = isPreferredStock;
+module.exports.PREFERRED_NAME_RE = PREFERRED_NAME_RE;

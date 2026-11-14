@@ -7,7 +7,7 @@
  * 네트워크가 없으면 해당 항목은 FAIL 로 표시되고 종료코드 1.
  */
 import { createRequire } from 'node:module';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -259,8 +259,7 @@ summary.liveBriefing = {
 };
 
 /* ------------------------------ 5) tabs-live ------------------------------ */
-console.log('\n▶ [8] /api/tabs-live?fresh=1 (1·3·5번 탭 실시간)');
-const tl = await call('tabs-live', '/api/tabs-live?fresh=1');
+console.log('\n▶ [8] /api/tabs-live?fresh=1 (1·3·5번 탭 실시간)');const tl = await call('tabs-live', '/api/tabs-live?fresh=1');
 const tlJson = tl.json || {};
 const tlThemes = tlJson.themes || [];
 const tlStocks = tlThemes.reduce((acc, t) => acc.concat(t.stocks || []), []);
@@ -275,6 +274,49 @@ check('32종목 시/고/저·거래대금·통합 대금', tlStocks.every((s) =>
 check('테마 평균 등락률·합산 대금', tlThemes.every((t) => typeof t.avgPct === 'number' && Boolean(t.sumValueText)), tlThemes.map((t) => `${t.rank}위 ${t.avgPct}%/${t.sumValueText}`).join(' '));
 check('52주 신고가 대금순·상승률순', (tlHigh.byValue || []).length > 0 && (tlHigh.byPct || []).length > 0, (tlHigh.byValue || []).map((s) => `${s.name} ${s.valueText}`).join(' / '));
 check('52주 신고가 당일 고가 확보', (tlHigh.byValue || []).length > 0 && tlHigh.byValue.every((s) => typeof s.high === 'number'), (tlHigh.byValue || []).map((s) => `${s.name} 고가 ${s.high}`).join(' / '));
+
+/* ---- 52주 신고가 우선주 제외 ---- */
+{
+  const isPreferredStock = handlers['tabs-live'].isPreferredStock;
+  const cases = [
+    ['한진칼우', '18064K', true],
+    ['삼성전자우', '005935', true],
+    ['현대차2우B', '005387', true],
+    ['CJ4우(전환)', '00104K', true],
+    ['CJ제일제당 우', '097955', true],
+    ['성우', '458650', false],
+    ['이오플로우', '294090', false],
+    ['파수', '150900', false],
+    ['대우건설', '047040', false],
+    ['한진칼', '180640', false],
+  ];
+  const wrong = cases.filter(([name, code, want]) => isPreferredStock({ name, code }) !== want);
+  check(
+    '우선주 판별 규칙(이름+코드 결합) — 보통주 오탐 없음',
+    typeof isPreferredStock === 'function' && wrong.length === 0,
+    wrong.length ? `오답 ${wrong.map((c) => `${c[0]}(${c[1]})`).join(',')}` : `한진칼우·삼성전자우·현대차2우B·CJ4우(전환)=제외 / 성우·이오플로우·파수·대우건설=보통주`,
+  );
+
+  const prefIn = [].concat(tlHigh.byValue || [], tlHigh.byPct || []);
+  const leaked = prefIn.filter((s) => isPreferredStock(s));
+  check(
+    '52주 신고가 대금순·상승률순에 우선주 없음',
+    leaked.length === 0,
+    leaked.length ? `우선주 노출: ${leaked.map((s) => `${s.name}(${s.code})`).join(',')}` : `우선주 0건 · 제외 ${tlHigh.excludedPreferredCount || 0}건`,
+  );
+  const ex = tlHigh.excludedPreferred || [];
+  check(
+    '우선주 제외 목록이 응답에 기록됨(한진칼우 등)',
+    Array.isArray(ex) && ex.every((s) => s.code && s.name && isPreferredStock(s)),
+    ex.length ? ex.map((s) => `${s.name}(${s.code})`).join(', ') : '이번 응답엔 우선주 편입 0건(정상)',
+  );
+  check(
+    '52주 신고가 종목 수 = 보통주만 집계',
+    typeof tlHigh.stockCount === 'number' &&
+      tlHigh.stockCount === ((tlHigh.counts && tlHigh.counts.KOSPI) || 0) + ((tlHigh.counts && tlHigh.counts.KOSDAQ) || 0),
+    `stockCount ${tlHigh.stockCount} = KOSPI ${tlHigh.counts && tlHigh.counts.KOSPI} + KOSDAQ ${tlHigh.counts && tlHigh.counts.KOSDAQ}`,
+  );
+}
 check('상한가·임박은 +25% 이상 & 100억 이상', tlUpperAll.length > 0 && tlUpperAll.every((s) => s.changePct >= 25 && s.value >= 100 * 1e8), tlUpperAll.map((s) => `${s.name} ${s.changePct}% ${s.valueText}`).join(' / '));
 check('100억 미만 소형주 제외 목록 분리', (tlUpper.excluded || []).length > 0 && tlUpper.excluded.every((s) => s.value < 100 * 1e8), (tlUpper.excluded || []).map((s) => `${s.name} ${s.changePct}% ${s.valueText}`).join(' / '));
 check('상한가 확정 vs +25% 돌파 구분', (tlUpper.confirmed || []).every((s) => s.upperLimit === true) && (tlUpper.near || []).every((s) => s.upperLimit !== true), `확정 ${(tlUpper.confirmed || []).length} · 임박 ${(tlUpper.near || []).length}`);
@@ -442,8 +484,66 @@ summary.newsImpact = {
   })),
 };
 
-/* -------------------------------- 결과 저장 -------------------------------- */
-const total = results.length;
+/* ------------- [10] public/index.html 내장 시드 정합성 (가온칩스 오기 재발방지) ------------- */
+console.log('\n▶ [10] 내장 시드 데이터 정합성 (public/index.html)');
+{
+  const html = readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+  function arrayAt(marker) {
+    const at = html.indexOf(marker);
+    if (at < 0) return null;
+    const start = html.indexOf('[', at);
+    let depth = 0, inStr = false, esc = false, i = start;
+    for (; i < html.length; i += 1) {
+      const ch = html[i];
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '[' || ch === '{') depth += 1;
+      else if (ch === ']' || ch === '}') {
+        depth -= 1;
+        if (depth === 0) { i += 1; break; }
+      }
+    }
+    try { return JSON.parse(html.slice(start, i)); } catch (e) { return null; }
+  }
+
+  const raw = arrayAt('const RAW_STOCKS = [');
+  const jongbe = arrayAt('const STOCKS = [');
+  check('RN존 내장 목록 파싱', Array.isArray(raw) && raw.length > 0, raw ? `${raw.length}종목` : '파싱 실패');
+  check('종베 내장 목록 파싱', Array.isArray(jongbe) && jongbe.length > 0, jongbe ? `${jongbe.length}종목` : '파싱 실패');
+
+  const gaon = (raw || []).find((s) => s.name === '가온칩스');
+  const gaonJ = (jongbe || []).find((s) => s.name === '가온칩스');
+  check('RN존 가온칩스 코드 = 399720', Boolean(gaon && gaon.code === '399720'), gaon ? gaon.code : '없음');
+  check('종베 가온칩스 코드 = 399720 (동일 오기 정정)', Boolean(gaonJ && gaonJ.code === '399720'), gaonJ ? gaonJ.code : '없음');
+  check('에코프로 코드(086520)가 가온칩스에 붙어있지 않음', Boolean(gaon && gaon.code !== '086520' && gaonJ && gaonJ.code !== '086520'));
+
+  // 실측 일봉과 대조 (가온칩스 399720)
+  const kc = await call('stock-chart', '/api/stock-chart?code=399720&count=60');
+  const livePrice = kc.json && kc.json.current && kc.json.current.price;
+  check('가온칩스 현재가 = 실측 현재가', Boolean(gaon && gaon.price === Math.round(livePrice)), gaon ? `${gaon.price}원 / 실측 ${livePrice}원` : '없음');
+  check('가온칩스 캔들 = 실측 60봉 (마지막 봉 종가 일치)',
+    Boolean(gaon && Array.isArray(gaon.candles) && gaon.candles.length === 60 &&
+      gaon.candles[gaon.candles.length - 1].close === kc.json.candles[kc.json.candles.length - 1].c),
+    gaon ? `${gaon.candles.length}봉 · ${gaon.candles[gaon.candles.length - 1].date} 종가 ${gaon.candles[gaon.candles.length - 1].close}` : '없음');
+  check('가온칩스 RN·타점 = 실측 RN 기준 재계산',
+    Boolean(gaon && kc.json &&
+      gaon.upperRN === kc.json.rn.nearestResistance.level &&
+      gaon.lowerRN === kc.json.rn.nearestSupport.level &&
+      gaon.buy1 === Math.round(gaon.lowerRN * 1.04) &&
+      gaon.buy2 === Math.round(gaon.buy1 * 0.8) &&
+      gaon.targetMin === Math.round(gaon.buy1 * 1.07) &&
+      gaon.targetMax === Math.round(gaon.buy1 * 1.2)),
+    gaon ? `RN ${gaon.lowerRN}~${gaon.upperRN} · 1차 ${gaon.buy1} · 2차 ${gaon.buy2} · 목표 ${gaon.targetMin}~${gaon.targetMax}` : '없음');
+  const codes = (raw || []).map((s) => s.code);
+  check('RN존 내장 목록 코드 중복 없음', new Set(codes).size === codes.length, codes.join(','));
+}
+
+/* -------------------------------- 결과 저장 -------------------------------- */const total = results.length;
 const passed = results.filter((r) => r.ok).length;
 summary.total = total;
 summary.passed = passed;

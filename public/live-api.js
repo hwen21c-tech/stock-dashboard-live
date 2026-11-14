@@ -161,6 +161,14 @@
       try { window.RnZone.refreshLivePrices(map); applied += 1; } catch (e) { /* noop */ }
     }
 
+    // 8번 종베 탭 카드(현재가·등락률) · 7번 만쥬 탭 카드(현재가·등락률·통합대금)
+    if (window.Jongbe && typeof window.Jongbe.refreshLivePrices === 'function' && Object.keys(map).length) {
+      try { if (window.Jongbe.refreshLivePrices(map) > 0) applied += 1; } catch (e) { /* noop */ }
+    }
+    if (Object.keys(map).length) {
+      try { if (applyManjuQuotes(map) > 0) applied += 1; } catch (e) { /* noop */ }
+    }
+
     return applied;
   }
 
@@ -203,15 +211,298 @@
 
   /* --------------------------- 실시간 폴링 --------------------------- */
 
-  function watchCodes() {
+  /* ======================================================================
+   * 7번 만쥬 탭 — 정적 카드의 현재가·등락률·통합대금을 실시간 시세로 갱신
+   *   · 카드 구조(이름 (코드) / 11,210원 (+29.90%) / • 통합대금: 957억)를 그대로 두고
+   *     텍스트 노드만 덮어쓴다. 종목 선정 이유·타점 문구는 손대지 않는다.
+   * ==================================================================== */
+  var manjuState = { map: null, at: 0 };
+
+  function leafText(el) {
+    return (el && el.textContent ? el.textContent : '').replace(/\s+/g, ' ').trim();
+  }
+
+  function buildManjuMap() {
+    var map = {};
+    var tab = byId('tabManju');
+    if (!tab) { manjuState.map = map; manjuState.at = Date.now(); return map; }
+
+    Array.prototype.slice.call(tab.querySelectorAll('strong, span, b')).forEach(function (el) {
+      if (el.children && el.children.length) return;
+      var m = leafText(el).match(/^(.+?)\s*\((\d{6})\)$/);
+      if (!m) return;
+      var code = m[2];
+      if (map[code]) return;
+
+      var headRow = el.parentElement;                          // 순위·이름 한 줄
+      var row = headRow ? headRow.parentElement : null;        // 이름 + 가격 줄
+      var card = row ? row.parentElement : null;               // 카드 전체(대금·캔들상태·타점 포함)
+      if (!card) return;
+
+      var priceEl = null;
+      var valueEl = null;
+      var priceHost = row || card;
+      Array.prototype.slice.call(priceHost.querySelectorAll('span, strong, div')).forEach(function (n) {
+        if (priceEl || (n.children && n.children.length)) return;
+        if (/^[\d,]+\s*원\s*\(\s*[+\-]?\d+(?:\.\d+)?%\s*\)$/.test(leafText(n))) priceEl = n;
+      });
+      Array.prototype.slice.call(card.querySelectorAll('span, div')).forEach(function (n) {
+        if (valueEl) return;
+        var t = leafText(n);
+        if (t.indexOf('통합대금') === 0 || t.indexOf('• 통합대금') === 0 || t.indexOf('•통합대금') === 0) {
+          var strong = n.querySelector ? n.querySelector('strong') : null;
+          valueEl = strong || n;
+        }
+      });
+      if (!priceEl) return;
+      map[code] = { name: m[1], priceEl: priceEl, valueEl: valueEl };
+    });
+
+    manjuState.map = map;
+    manjuState.at = Date.now();
+    return map;
+  }
+
+  function manjuMap(force) {
+    if (force || !manjuState.map || !Object.keys(manjuState.map).length) return buildManjuMap();
+    return manjuState.map;
+  }
+
+  function manjuCodes() {
+    return Object.keys(manjuMap(false) || {});
+  }
+
+  function applyManjuQuotes(map) {
+    if (!map) return 0;
+    var cards = manjuMap(false);
+    var hits = 0;
+    Object.keys(cards).forEach(function (code) {
+      var q = map[code];
+      var c = cards[code];
+      if (!q || !c) return;
+      if (!c.priceEl || !document.body.contains(c.priceEl)) {
+        applyManjuQuotes.broken = true;
+        return;
+      }
+      if (num(q.price) !== null) {
+        var pct = num(q.changePct);
+        c.priceEl.textContent = money(q.price) + '원' +
+          (pct === null ? '' : ' (' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%)');
+        c.priceEl.style.color = pct === null || pct === 0 ? '#e2e8f0' : (pct > 0 ? '#f43f5e' : '#38bdf8');
+        hits += 1;
+      }
+      if (c.valueEl && q.valueText && document.body.contains(c.valueEl)) {
+        c.valueEl.textContent = q.valueText;
+        hits += 1;
+      }
+    });
+    if (applyManjuQuotes.broken) {
+      applyManjuQuotes.broken = false;
+      manjuMap(true);
+    }
+    return hits;
+  }
+
+  /* ======================================================================
+   * 6번 RN존 탭 — 기본 목록 11종목의 60일봉·현재가·RN선을 동적 갱신
+   *   · 한꺼번에 11종목을 때리지 않는다: 선택 종목 먼저 → 나머지를 4종목씩 순차
+   *   · 실패한 종목은 기존(내장) 데이터를 그대로 유지한다
+   * ==================================================================== */
+  var RN_BATCH = 4;           // 배치당 종목 수
+  var RN_GAP_MS = 400;        // 종목 사이 간격
+  var RN_CYCLE_MS = 300000;   // RN 탭을 보는 동안 5분마다 백그라운드 갱신
+  var rnRefresh = { running: false, ok: 0, fail: 0, total: 0, lastAt: null, timer: null, promise: null };
+
+  function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function rnStatus(text, kind) {
+    var el = byId('rnLiveStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = kind === 'err' ? '#fca5a5' : kind === 'ok' ? '#34d399' : kind === 'warn' ? '#fbbf24' : '#94a3b8';
+  }
+
+  function rnCodes() {
     try {
       if (window.RnZone && typeof window.RnZone.getStocks === 'function') {
-        var list = window.RnZone.getStocks() || [];
-        var codes = list.map(function (s) { return s && s.code; }).filter(function (c) { return /^\d{6}$/.test(String(c)); });
-        if (codes.length) return codes.slice(0, 30);
+        return (window.RnZone.getStocks() || [])
+          .map(function (s) { return s && s.code; })
+          .filter(function (c) { return /^[0-9A-Z]{6}$/.test(String(c)); });
       }
     } catch (e) { /* noop */ }
     return [];
+  }
+
+  function isRnTabVisible() {
+    var tab = byId('tabRnzone');
+    return Boolean(tab && tab.style.display !== 'none' && !document.hidden);
+  }
+
+  function fetchChartJson(code, count) {
+    var controller = null;
+    var timer = null;
+    try { controller = new AbortController(); } catch (e) { controller = null; }
+    if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, 12000);
+    var url = CHART_URL + '?code=' + encodeURIComponent(code) + '&count=' + (count || 60);
+    return fetch(url, controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+          return { status: res.status, body: json };
+        });
+      })
+      .then(function (out) { if (timer) clearTimeout(timer); return out; })
+      .catch(function (err) { if (timer) clearTimeout(timer); throw err; });
+  }
+
+  /** 종목 1개의 60일봉·현재가·RN을 받아 RN존 목록 항목을 교체한다. 실패 시 false. */
+  function refreshStockData(code) {
+    if (!code) return Promise.resolve(false);
+    return fetchChartJson(code, 60)
+      .then(function (out) {
+        var body = out.body;
+        if (!body || body.ok !== true) return false;
+        var stock = toRnStock(body);
+        if (!stock) return false;
+        if (!window.RnZone || typeof window.RnZone.updateStockData !== 'function') return false;
+        return window.RnZone.updateStockData(stock) === true;
+      })
+      .catch(function () { return false; });
+  }
+
+  /** RN존 기본 목록 갱신 — 선택 종목 우선, 나머지는 RN_BATCH 개씩 순차 */
+  function refreshRnList(opts) {
+    opts = opts || {};
+    if (rnRefresh.running) return rnRefresh.promise || Promise.resolve({ skipped: true });
+    var all = rnCodes();
+    if (!all.length) return Promise.resolve({ ok: 0, fail: 0, total: 0 });
+
+    var selected = window.RnZone && typeof window.RnZone.getSelectedCode === 'function'
+      ? window.RnZone.getSelectedCode()
+      : null;
+    var order = [];
+    if (selected && all.indexOf(selected) >= 0) order.push(selected);
+    if (!opts.onlySelected) {
+      all.forEach(function (c) { if (order.indexOf(c) < 0) order.push(c); });
+    }
+
+    rnRefresh.running = true;
+    rnRefresh.ok = 0;
+    rnRefresh.fail = 0;
+    rnRefresh.total = order.length;
+    rnStatus('⏳ RN 캔들·RN선 동적 갱신 중… (0/' + order.length + ')', null);
+
+    rnRefresh.promise = new Promise(function (resolve) {
+      var i = 0;
+
+      function finish() {
+        rnRefresh.running = false;
+        rnRefresh.lastAt = nowText();
+        if (rnRefresh.fail === 0) {
+          rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · ' + rnRefresh.ok + '/' + rnRefresh.total +
+            ' 종목 60일봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
+        } else {
+          rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · 성공 ' + rnRefresh.ok + ' · 보류 ' + rnRefresh.fail +
+            '/' + rnRefresh.total + ' (보류 종목은 기존 데이터 유지)', 'warn');
+        }
+        resolve({ ok: rnRefresh.ok, fail: rnRefresh.fail, total: rnRefresh.total, lastAt: rnRefresh.lastAt });
+      }
+
+      function nextBatch() {
+        if (i >= order.length) { finish(); return; }
+        var batch = order.slice(i, i + RN_BATCH);
+        i += batch.length;
+        var seq = Promise.resolve();
+        batch.forEach(function (code) {
+          seq = seq
+            .then(function () { return refreshStockData(code); })
+            .then(function (done) {
+              if (done) rnRefresh.ok += 1; else rnRefresh.fail += 1;
+              rnStatus('⏳ RN 캔들·RN선 동적 갱신 ' + (rnRefresh.ok + rnRefresh.fail) + '/' + order.length +
+                ' · 성공 ' + rnRefresh.ok + ' · 보류 ' + rnRefresh.fail, null);
+            })
+            .then(function () { return sleep(RN_GAP_MS); });
+        });
+        seq.then(nextBatch);
+      }
+
+      nextBatch();
+    });
+
+    return rnRefresh.promise;
+  }
+
+  /** RN 탭을 보는 동안 주기적으로 캔들을 최신화한다 */
+  function startRnCycle() {
+    if (rnRefresh.timer) clearInterval(rnRefresh.timer);
+    rnRefresh.timer = setInterval(function () {
+      if (!isRnTabVisible()) return;
+      refreshRnList();
+    }, RN_CYCLE_MS);
+  }
+
+  /* -------- 탭 전환·즉시 새로고침에 RN 갱신을 물려 둔다 -------- */
+  function patchSwitchView() {
+    var orig = window.switchView;
+    if (typeof orig !== 'function') return false;
+    if (orig.__rnLivePatched) return true;
+    var patched = function (view) {
+      var out = orig.apply(this, arguments);
+      try {
+        if (view === 'rnzone') {
+          refreshRnList({ onlySelected: true })
+            .then(function () { return sleep(700); })
+            .then(function () { if (isRnTabVisible()) refreshRnList(); });
+        }
+      } catch (e) { /* noop */ }
+      return out;
+    };
+    patched.__rnLivePatched = true;
+    window.switchView = patched;
+    return true;
+  }
+
+  function patchForceRefresh() {
+    var orig = window.forceLiveRefresh;
+    if (typeof orig !== 'function') return false;
+    if (orig.__rnForcePatched) return true;
+    var patched = function () {
+      try {
+        poll();
+        manjuMap(true);
+        if (isRnTabVisible()) refreshRnList();
+      } catch (e) { /* noop */ }
+      return orig.apply(this, arguments);
+    };
+    patched.__rnForcePatched = true;
+    window.forceLiveRefresh = patched;
+    return true;
+  }
+
+  /* 6번 RN존 + 7번 만쥬 카드 + 8번 종베 카드의 종목코드를 한 번에 폴링한다. */
+  function pushCode(out, code) {
+    var c = String(code || '').trim();
+    if (!/^[0-9A-Z]{6}$/.test(c)) return;
+    if (out.indexOf(c) === -1) out.push(c);
+  }
+
+  function watchCodes() {
+    var codes = [];
+    try {
+      rnCodes().forEach(function (c) { if (/^\d{6}$/.test(String(c))) pushCode(codes, c); });
+    } catch (e) { /* noop */ }
+    try {
+      if (window.Jongbe && typeof window.Jongbe.getStocks === 'function') {
+        (window.Jongbe.getStocks() || []).forEach(function (s) { pushCode(codes, s && s.code); });
+      }
+    } catch (e) { /* noop */ }
+    try {
+      manjuCodes().forEach(function (c) { pushCode(codes, c); });
+    } catch (e) { /* noop */ }
+    return codes.slice(0, 40);
   }
 
   function poll() {
@@ -271,6 +562,18 @@
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) poll();
     });
+
+    // 7·8번 탭 카드 매핑(만쥬)과 RN존 동적 캔들 갱신 준비
+    try { manjuMap(false); } catch (e) { /* noop */ }
+    var tries = 0;
+    var t = setInterval(function () {
+      tries += 1;
+      var okView = patchSwitchView();
+      var okForce = patchForceRefresh();
+      if ((okView && okForce) || tries > 20) clearInterval(t);
+    }, 250);
+    startRnCycle();
+    if (isRnTabVisible()) refreshRnList({ onlySelected: true });
   }
 
   /* ------------------ RN존 실시간 종목 조회 (60일봉 + RN) ------------------ */
@@ -288,7 +591,7 @@
       var prev = i > 0 ? raw[i - 1].c : c.o;
       var ratio = prev ? ((c.c - prev) / prev) * 100 : 0;
       return {
-        date: c.date,
+        date: String(c.date || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'),
         open: c.o,
         high: c.h,
         low: c.l,
@@ -395,7 +698,14 @@
     start: start,
     searchStock: searchStock,
     applyLive: applyLive,
-    state: state
+    state: state,
+    // 동적화 상태·수동 제어 (테스트·디버깅용)
+    refreshRnList: refreshRnList,
+    refreshStockData: refreshStockData,
+    rnState: rnRefresh,
+    watchCodes: watchCodes,
+    manjuMap: manjuMap,
+    applyManjuQuotes: applyManjuQuotes
   };
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -403,6 +713,312 @@
   } else {
     document.addEventListener('DOMContentLoaded', start);
   }
+})();
+
+/* ============================================================================
+ * 📊 종목 상세 모달 — 실시간 일봉·종목코드 연동
+ * ----------------------------------------------------------------------------
+ *  · openDetail() 은 제목에서 종목을 찾아 500일 캔들 DB(window.DAILY_500_CANDLES)를 쓰는데,
+ *    DB에 없는 종목(예: 에이디테크놀로지)은 Math.sin/Math.random 으로 만든 가짜 차트를 그리고
+ *    종목코드도 못 찾아(기본값 005930) 네이버/토스 링크가 삼성전자를 가리켰다.
+ *  · 그래서 DB에 없는 종목은 /api/stock-chart 로 실시간 일봉·종목코드를 받아 다시 그린다.
+ *    · 조회 중에는 가짜 차트 대신 "불러오는 중" 안내, 실패하면 가짜 차트를 만들지 않고 실패 안내
+ *    · 받은 종목코드로 btnNaverQuote / btnTossQuote 링크를 즉시 갱신
+ *  · DB에 실제 500일 치가 있는 종목·지수는 기존 엔진을 그대로 둔다(링크 코드만 보정).
+ * ==========================================================================*/
+(function () {
+  'use strict';
+
+  var CHART_URL = '/api/stock-chart';
+  var state = { reqId: 0 };
+
+  function $(id) { return document.getElementById(id); }
+
+  /** 모당 제목 → 종목명 (코드·이모지·등락률·금액 알맹이 제거) */
+  function cleanName(title) {
+    return String(title || '')
+      .replace(/\((\d{6})\)/g, ' ')
+      .replace(/[★☆👑🎯🏆⚡☣🔥🔎📊📈📉]/g, ' ')
+      .replace(/상한가|상한가임박|대장주|대장|수혜주|수혜|원탑|경보|돌파|안착|임박|신고가/g, ' ')
+      .replace(/\d{1,3}(,\d{3})*(\.\d+)?\s*원/g, ' ')
+      .replace(/[+\-]?\d+(\.\d+)?\s*%/g, ' ')
+      .replace(/[\s,·|]+/g, ' ')
+      .trim();
+  }
+
+  function codeFromTitle(title) {
+    var m = String(title || '').match(/(?:^|[^\d])(\d{6})(?:[^\d]|$)/);
+    return m ? m[1] : null;
+  }
+
+  /** 원본 renderUniversalModalChart 와 같은 순서로 "실제 500일 DB가 있는지" 먼저 확인한다 */
+  function dbSeriesName(title, name) {
+    var db = window.DAILY_500_CANDLES || {};
+    var codes = window.stockCodes || {};
+    var cleanTitle = String(title || '')
+      .replace(/[★👑🎯🏆⚡\[\]()0-9.,%+원]/g, '')
+      .replace(/상한가|대장|수혜|원탑|상|주의|경보|돌파|안착/g, '')
+      .trim();
+    var n;
+    if (cleanTitle && db[cleanTitle]) return cleanTitle;
+    if (title && db[title]) return title;
+    for (n in codes) {
+      if (
+        (cleanTitle && (cleanTitle.indexOf(n) !== -1 || n.indexOf(cleanTitle) !== -1)) ||
+        (title && (title.indexOf(n) !== -1 || n.indexOf(title) !== -1))
+      ) {
+        if (db[codes[n]]) return codes[n];
+        if (db[n]) return n;
+      }
+    }
+    if (name && db[name]) return name;
+    for (var sName in db) {
+      if (name && (name.indexOf(sName) !== -1 || sName.indexOf(name) !== -1)) return sName;
+    }
+    return null;
+  }
+
+  function knownCode(name, title) {
+    var codes = window.stockCodes || {};
+    if (name && codes[name]) return codes[name];
+    for (var n in codes) {
+      if (title && String(title).indexOf(n) !== -1) return codes[n];
+      if (name && (name.indexOf(n) !== -1 || n.indexOf(name) !== -1)) return codes[n];
+    }
+    return null;
+  }
+
+  function setLinks(code) {
+    if (!code) return;
+    var nv = $('btnNaverQuote');
+    var ts = $('btnTossQuote');
+    if (nv) {
+      nv.href = 'https://m.stock.naver.com/item/' + encodeURIComponent(code);
+      nv.textContent = '📊 네이버 증권 실시간 호가창';
+      nv.setAttribute('data-code', code);
+      nv.style.opacity = '1';
+    }
+    if (ts) {
+      ts.href = 'https://tossinvest.com/stocks/' + encodeURIComponent(code);
+      ts.textContent = '📱 토스증권 실시간 차트';
+      ts.setAttribute('data-code', code);
+      ts.style.opacity = '1';
+    }
+  }
+
+  /** 종목코드 확인 전 — 잘못된 기본 링크(005930)로 이동하는 일을 막는다 */
+  function markLinksPending() {
+    var nv = $('btnNaverQuote');
+    var ts = $('btnTossQuote');
+    if (nv) {
+      nv.setAttribute('href', '#');
+      nv.removeAttribute('data-code');
+      nv.textContent = '⏳ 종목코드 확인 중…';
+      nv.style.opacity = '0.55';
+    }
+    if (ts) {
+      ts.setAttribute('href', '#');
+      ts.removeAttribute('data-code');
+      ts.textContent = '⏳ 종목코드 확인 중…';
+      ts.style.opacity = '0.55';
+    }
+  }
+
+  function markLinksFailed(name) {
+    var nv = $('btnNaverQuote');
+    var ts = $('btnTossQuote');
+    var q = encodeURIComponent(name || '');
+    if (nv) {
+      nv.href = 'https://m.stock.naver.com/search?q=' + q;
+      nv.textContent = '🔎 네이버 증권에서 검색';
+      nv.style.opacity = '1';
+    }
+    if (ts) {
+      ts.href = 'https://tossinvest.com/'; 
+      ts.textContent = '📱 토스증권';
+      ts.style.opacity = '1';
+    }
+  }
+
+  function showNotice(text, color) {
+    var wrap = $('modalCandleCanvasWrap');
+    if (!wrap) return;
+    var el = $('modalChartNotice');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'modalChartNotice';
+      el.style.cssText = 'position:absolute; inset:0; display:flex; align-items:center; justify-content:center; ' +
+        'text-align:center; font-size:12px; font-weight:800; padding:10px; background:rgba(7,12,20,0.92); border-radius:6px; z-index:3;';
+      wrap.appendChild(el);
+    }
+    el.style.color = color || '#94a3b8';
+    el.textContent = text;
+    el.style.display = 'flex';
+  }
+
+  function hideNotice() {
+    var el = $('modalChartNotice');
+    if (el) el.style.display = 'none';
+  }
+
+  function setTrend(text, color) {
+    var el = $('modalChartTrend');
+    if (!el) return;
+    el.textContent = text;
+    if (color) el.style.color = color;
+  }
+
+  /** DB에 없는 종목 → 실시간 일봉으로 모달 차트를 다시 그린다 */
+  function loadLiveChart(title, code) {
+    state.reqId += 1;
+    var reqId = state.reqId;
+    var name = cleanName(title);
+    var query = code || name;
+    if (!query) {
+      showNotice('종목을 해석하지 못했습니다. 종목명을 확인해 주세요.', '#fca5a5');
+      setTrend('데이터 없음', '#fca5a5');
+      return;
+    }
+
+    // 가짜 차트가 남아 있으면 지운 뒤 로딩 안내를 띄운다
+    window.modalAllCandles = [];
+    window.modalViewCount = 60;
+    window.modalViewOffset = 0;
+    try { if (typeof window.drawModalCandles === 'function') window.drawModalCandles(); } catch (e) { /* noop */ }
+    showNotice('⏳ ' + (name || code) + ' 실시간 일봉 불러오는 중…', '#7dd3fc');
+    setTrend('실시간 조회 중…', '#7dd3fc');
+    markLinksPending();
+
+    var controller = null;
+    var timer = null;
+    try { controller = new AbortController(); } catch (e) { controller = null; }
+    if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, 14000);
+
+    fetch(CHART_URL + '?q=' + encodeURIComponent(query) + '&count=250',
+      controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+          return { status: res.status, body: json };
+        });
+      })
+      .then(function (out) {
+        if (timer) clearTimeout(timer);
+        if (reqId !== state.reqId) return;
+        var body = out.body;
+        if (!body || body.ok !== true) {
+          var msg = body && body.message ? body.message : ('차트 데이터를 받지 못했습니다 (HTTP ' + out.status + ')');
+          showNotice('⚠️ ' + msg + '\n가짜 차트를 대신 그리지 않습니다. 잠시 후 다시 눌러 주세요.', '#fca5a5');
+          setTrend('실시간 데이터 없음', '#fca5a5');
+          markLinksFailed(name);
+          return;
+        }
+        var candles = (body.candles || []).map(function (c) {
+          return { date: c.date, open: c.o, high: c.h, low: c.l, close: c.c, vol: c.v };
+        });
+        if (!candles.length) {
+          showNotice('⚠️ ' + (body.name || name) + ' 일봉 데이터가 비어 있습니다.', '#fca5a5');
+          setTrend('데이터 없음', '#fca5a5');
+          return;
+        }
+
+        window.modalAllCandles = candles;
+        window.modalViewCount = Math.min(60, candles.length);
+        window.modalViewOffset = 0;
+
+        setLinks(body.code);
+        hideNotice();
+
+        var last = candles[candles.length - 1];
+        var first = candles[0];
+        var up = last.close >= first.close;
+        setTrend(
+          '실시간 일봉 ' + candles.length + '봉 · ' + last.date + ' 종가 ' +
+            Math.round(last.close).toLocaleString('ko-KR') + '원 (' + (up ? '우상향 🎯' : '조정·눌림') + ')',
+          up ? '#4ade80' : '#fbbf24'
+        );
+        var hi = Math.max.apply(null, candles.map(function (c) { return c.high; }));
+        var lo = Math.min.apply(null, candles.map(function (c) { return c.low; }));
+        if ($('modalChartHigh')) $('modalChartHigh').textContent = Math.round(hi).toLocaleString('ko-KR') + '원';
+        if ($('modalChartLow')) $('modalChartLow').textContent = Math.round(lo).toLocaleString('ko-KR') + '원';
+        if ($('modalChartTitleTxt')) $('modalChartTitleTxt').textContent = '📊 실시간 일봉 ' + candles.length + '봉 (네이버 fchart·동적 API)';
+
+        try { if (typeof window.setupModalCanvasInteraction === 'function') window.setupModalCanvasInteraction(); } catch (e) { /* noop */ }
+        try { if (typeof window.drawModalCandles === 'function') window.drawModalCandles(); } catch (e) { /* noop */ }
+      })
+      .catch(function (err) {
+        if (timer) clearTimeout(timer);
+        if (reqId !== state.reqId) return;
+        var reason = err && err.name === 'AbortError' ? '응답 시간 초과(14초)' : (err && err.message ? err.message : String(err));
+        showNotice('⚠️ 실시간 일봉 조회 살패: ' + reason, '#fca5a5');
+        setTrend('실시간 데이터 없음', '#fca5a5');
+        markLinksFailed(name);
+      });
+  }
+
+  /* ---------------- 기존 엔진 래핑 ---------------- */
+
+  function patchRender() {
+    var orig = window.renderUniversalModalChart;
+    if (typeof orig !== 'function') return false;
+    if (orig.__liveModalPatched) return true;
+    var patched = function (seriesKey, title) {
+      if (seriesKey) return orig.apply(this, arguments); // 지수·수급 시리즈는 기존 엔진 그대로
+      var name = cleanName(title);
+      var code = codeFromTitle(title);
+      if (dbSeriesName(title, name)) {
+        hideNotice();
+        var titleTxt = document.getElementById('modalChartTitleTxt');
+        if (titleTxt) titleTxt.textContent = '📊 1~2년 실시간 캔들 & 추세선 차트';
+        var out = orig.apply(this, arguments);
+        var known = code || knownCode(name, title);
+        if (known) setLinks(known);
+        else markLinksPending();
+        return out;
+      }
+      loadLiveChart(title, code);
+      return undefined;
+    };
+    patched.__liveModalPatched = true;
+    window.renderUniversalModalChart = patched;
+    return true;
+  }
+
+  function patchOpenDetail() {
+    var orig = window.openDetail;
+    if (typeof orig !== 'function') return false;
+    if (orig.__liveDetailPatched) return true;
+    var patched = function (title) {
+      var out = orig.apply(this, arguments);
+      try {
+        // openDetail 은 종목을 못 찾으면 링크를 삼성전자(005930)로 두므로 즉시 정정/보류 처리
+        var name = cleanName(title);
+        var code = codeFromTitle(title) || knownCode(name, title);
+        if (code) setLinks(code);
+        else markLinksPending();
+      } catch (e) { /* noop */ }
+      return out;
+    };
+    patched.__liveDetailPatched = true;
+    window.openDetail = patched;
+    return true;
+  }
+
+  function boot() {
+    var tries = 0;
+    var t = setInterval(function () {
+      tries += 1;
+      var a = patchRender();
+      var b = patchOpenDetail();
+      if ((a && b) || tries > 24) clearInterval(t);
+    }, 250);
+  }
+
+  window.ModuleLiveChart = { load: loadLiveChart, cleanName: cleanName, state: state };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 
 /* ============================================================================
