@@ -104,6 +104,29 @@
   .game.math{--ac:#f0a71c;--acbg:#fff3c6;--acbd:#f0cf6a}
   .game.hangul{--ac:#3fbe2c;--acbg:#e7fbd8;--acbd:#b6e79a}
   .game.english{--ac:#3d7ff0;--acbg:#e6efff;--acbd:#a8c6f0}
+  .gwrap{position:relative}
+  .rulebtn{
+    position:absolute;top:9px;right:10px;z-index:3;width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-size:14px;font-weight:900;color:#4f6b33;
+    background:#fff;border:2px solid var(--line);box-shadow:0 2px 0 rgba(40,90,20,.16);
+  }
+  .rulebtn:active{transform:translateY(2px);box-shadow:none}
+
+  /* 규칙 모달 */
+  .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;
+    background:rgba(18,48,10,.42);backdrop-filter:blur(2px)}
+  .modal[hidden]{display:none}
+  .msheet{width:min(460px,100%);max-height:84dvh;overflow:auto;background:#fffdf3;border:2.5px solid var(--line);
+    border-radius:18px;box-shadow:0 12px 30px rgba(20,60,10,.3)}
+  .mhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:13px 14px 10px;
+    border-bottom:2px solid #eef6dd;position:sticky;top:0;background:#fffdf3;border-radius:18px 18px 0 0}
+  .mhead h2{margin:0;font-size:clamp(15px,4vw,18px);letter-spacing:-.03em}
+  .mx{width:30px;height:30px;border-radius:50%;background:#f1f9e2;border:1.5px solid var(--line);font-weight:900;color:#5c7a34}
+  .mbody{padding:10px 16px 16px;font-size:clamp(11.5px,3vw,13px);font-weight:800;color:#3f5227;line-height:1.7}
+  .mbody ul{margin:6px 0 10px;padding-left:18px}
+  .mbody li{margin:3px 0}
+  .mbody h3{margin:12px 0 4px;font-size:clamp(12px,3.1vw,13.5px);color:#2f4a16;letter-spacing:-.02em}
+  .mbody b{color:#8a4b00}
 
   .foot{margin:20px auto 0;max-width:720px;text-align:center}
   .foot p{margin:0 0 6px;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#3c6524;line-height:1.65;
@@ -127,6 +150,16 @@
     <path d="M0 176 C140 142 240 196 360 168 C480 140 580 194 700 170 C820 146 930 198 1040 172 C1110 156 1160 172 1200 164 L1200 300 L0 300 Z" fill="#5cc235" opacity=".75"/>
     <path d="M0 226 C150 198 260 244 380 222 C500 200 610 246 730 226 C850 206 960 250 1080 228 C1140 217 1175 226 1200 221 L1200 300 L0 300 Z" fill="#39a324"/>
   </svg>
+</div>
+
+<div class="modal" id="ruleModal" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="ruleTitle">
+    <div class="mhead">
+      <h2 id="ruleTitle">게임 규칙</h2>
+      <button class="mx" id="ruleClose" aria-label="닫기">✕</button>
+    </div>
+    <div class="mbody" id="ruleBody"></div>
+  </div>
 </div>
 
 <div class="wrap">
@@ -162,33 +195,42 @@
   </section>
 
   <nav class="games" aria-label="게임 선택">
-    <a class="game math" href="./math-pokemon.html">
-      <span class="ico" aria-hidden="true">⚡</span>
-      <span class="body">
-        <span class="ttl">산수 배틀</span>
-        <span class="desc">숫자와 셈으로 몬스터를 잡아요</span>
-        <span class="lv"><i>덧셈</i><i>뺄셈</i><i>빈칸</i><i>비교</i></span>
-      </span>
-      <span class="go" aria-hidden="true">▶</span>
-    </a>
-    <a class="game hangul" href="./hangul-pokemon.html">
-      <span class="ico" aria-hidden="true">📖</span>
-      <span class="body">
-        <span class="ttl">한글 배틀</span>
-        <span class="desc">글자를 듣고 고르고 조립해요</span>
-        <span class="lv"><i>빈칸 글자</i><i>듣고 고르기</i><i>글자 조립</i></span>
-      </span>
-      <span class="go" aria-hidden="true">▶</span>
-    </a>
-    <a class="game english" href="./english-pokemon.html">
-      <span class="ico" aria-hidden="true">🔤</span>
-      <span class="body">
-        <span class="ttl">영어 배틀</span>
-        <span class="desc">단어·발음·문장을 익혀요</span>
-        <span class="lv"><i>단어</i><i>듣기</i><i>철자</i><i>문장</i></span>
-      </span>
-      <span class="go" aria-hidden="true">▶</span>
-    </a>
+    <div class="gwrap">
+      <a class="game math" href="./math-pokemon.html">
+        <span class="ico" aria-hidden="true">⚡</span>
+        <span class="body">
+          <span class="ttl">산수 배틀</span>
+          <span class="desc">숫자와 셈으로 몬스터를 잡아요</span>
+          <span class="lv"><i>덧셈</i><i>뺄셈</i><i>빈칸</i><i>비교</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="math" aria-label="산수 배틀 규칙">❓</button>
+    </div>
+    <div class="gwrap">
+      <a class="game hangul" href="./hangul-pokemon.html">
+        <span class="ico" aria-hidden="true">📖</span>
+        <span class="body">
+          <span class="ttl">한글 배틀</span>
+          <span class="desc">글자를 듣고 고르고 조립해요</span>
+          <span class="lv"><i>빈칸 글자</i><i>듣고 고르기</i><i>글자 조립</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="hangul" aria-label="한글 배틀 규칙">❓</button>
+    </div>
+    <div class="gwrap">
+      <a class="game english" href="./english-pokemon.html">
+        <span class="ico" aria-hidden="true">🔤</span>
+        <span class="body">
+          <span class="ttl">영어 배틀</span>
+          <span class="desc">단어·발음·문장을 익혀요</span>
+          <span class="lv"><i>단어</i><i>듣기</i><i>철자</i><i>문장</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="english" aria-label="영어 배틀 규칙">❓</button>
+    </div>
   </nav>
 
   <div class="foot">
@@ -305,11 +347,65 @@
   }
 
   migrate();
-  paint(151);
-  fetch('./pokemon-db.json', { cache: 'no-cache' })
+  paint(151);  fetch('./pokemon-db.json', { cache: 'no-cache' })
     .then((r) => (r.ok ? r.json() : null))
     .then((db) => { if (Array.isArray(db) && db.length > 200) paint(db.length); })
     .catch(() => { /* 1세대 151로 표시 */ });
+  /* ---------- 게임별 규칙 모달 ---------- */
+  const RULES = {
+    math: {
+      title: '⚡ 산수 배틀 규칙',
+      html: '<h3>🎯 목표</h3><ul><li>문제를 <b>5개 맞혀</b> 야생 포켓몬을 몬스터볼로 잡아요.</li>'
+        + '<li>한 문제당 <b>30초</b> · 틀리거나 시간이 지나면 내 HP가 1칸 줄어요.</li></ul>'
+        + '<h3>🧮 단계 · 연산</h3><ul><li>맨 위 <b>1·2·3단계</b>로 난이도를 바꾸고 <b>🎲섬기</b>로 섮을 수 있어요.</li>'
+        + '<li>⚙️에서 <b>덧셈·뺄셈·곱셈·나눗셈</b>을 여러 개 골라 섮어서 내요. (최소 1개)</li></ul>'
+        + '<h3>🧩 문제 종류</h3><ul><li>기본식 · 빈칸식(<b>3 + □ = 8</b>) · 세 수식 · 크기 비교(<b>&gt; &lt; =</b>)</li></ul>'
+        + '<h3>💡 힌트 · 🏃 도망</h3><ul><li><b>힌트</b>는 한 판에 <b>3번</b>, 문제마다 1번 — 그림으로 풀이를 도와줘요.</li>'
+        + '<li><b>도망간다</b>도 한 판에 <b>3번</b>까지. 도망가면 새 문제로 바뀌어요.</li></ul>',
+    },
+    hangul: {
+      title: '📖 한글 배틀 규칙',
+      html: '<h3>🎯 목표</h3><ul><li>한글 문제를 <b>5개 맞혀</b> 야생 포켓몬을 잡아요.</li>'
+        + '<li>한 문제당 <b>30초</b> · 틀리거나 시간이 지나면 내 HP가 1칸 줄어요.</li></ul>'
+        + '<h3>🧩 세 가지 문제</h3><ul><li><b>1단계 빈칸 글자</b>: 그림을 보고 빠진 글자를 골라요.</li>'
+        + '<li><b>2단계 듣고 고르기</b>: 들려주는 낱말을 골라요. (소리가 안 나오면 그림 힌트)</li>'
+        + '<li><b>3단계 글자 조립</b>: 첫소리·가운데·받침으로 글자를 만들어요. 어려움에서는 <b>겹받침(ㄺ·ㄻ·ㅄ)</b>도 나와요!</li></ul>'
+        + '<h3>🌱 난이도</h3><ul><li>HUD의 <b>쉬움·중간·어려움</b>으로 낱말 수준을 골라요. (단계 선택과 따로 놀아요)</li></ul>'
+        + '<h3>💡 힌트 · 🏃 도망</h3><ul><li><b>힌트</b>는 한 판에 <b>3번</b>, 문제마다 1번.</li><li><b>도망간다</b>도 3번까지, 도망가면 새 문제로 바뀌어요.</li></ul>',
+    },
+    english: {
+      title: '🔤 영어 배틀 규칙',
+      html: '<h3>🎯 목표</h3><ul><li>영어 문제를 <b>5개 맞혀</b> 야생 포켓몬을 잡아요.</li>'
+        + '<li>한 문제당 <b>30초</b> · 틀리거나 시간이 지나면 내 HP가 1칸 줄어요.</li></ul>'
+        + '<h3>🧩 네 가지 문제</h3><ul><li><b>1단계</b>: 그림·뜻으로 단어 고르기 (발음 듣기 단추)</li>'
+        + '<li><b>2단계</b>: 원어민 발음 듣고 고르기 · 철자 빈칸</li>'
+        + '<li><b>3단계</b>: 생활 문장 빈칸 완성 (문법·회화)</li></ul>'
+        + '<h3>🌱 난이도</h3><ul><li>HUD의 <b>쉬움·중간·어려움</b>으로 단어·문장 수준을 골라요.</li></ul>'
+        + '<h3>💡 힌트 · 🏃 도망</h3><ul><li><b>힌트</b>는 한 판에 <b>3번</b>, 문제마다 1번 — 첫 글자·뜻·문법을 알려줘요.</li>'
+        + '<li><b>도망간다</b>도 3번까지, 도망가면 새 문제로 바뀌어요.</li></ul>',
+    },
+  };
+
+  const modal = document.getElementById('ruleModal');
+  const titleEl = document.getElementById('ruleTitle');
+  const bodyEl = document.getElementById('ruleBody');
+  function closeRule() { if (modal) modal.hidden = true; }
+  Array.prototype.forEach.call(document.querySelectorAll('.rulebtn'), function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const r = RULES[btn.dataset.rule];
+      if (!r || !modal) return;
+      titleEl.textContent = r.title;
+      bodyEl.innerHTML = r.html;
+      modal.hidden = false;
+    });
+  });
+  if (modal) {
+    modal.addEventListener('click', function (e) { if (e.target === modal) closeRule(); });
+  }
+  const closeBtn = document.getElementById('ruleClose');
+  if (closeBtn) closeBtn.addEventListener('click', closeRule);
 })();
 </script>
 </body>
