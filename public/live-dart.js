@@ -205,9 +205,16 @@
 
     var m = modalEls();
     if (m.host) {
-      var rows = items.length
-        ? items.slice(0, 10).map(function (it) { return itemRow(it, { compact: false }); }).join('')
+      // 위험만 잔뜩 보이지 않도록 유형별로 나눠 보여준다(위험 6 · 주목 4 · 일반 2)
+      var byKind = { risk: [], watch: [], info: [] };
+      items.forEach(function (it) { (byKind[it.kind] || byKind.info).push(it); });
+      var shown = byKind.risk.slice(0, 6).concat(byKind.watch.slice(0, 4), byKind.info.slice(0, 2));
+      var rows = shown.length
+        ? shown.map(function (it) { return itemRow(it, { compact: false }); }).join('')
         : '<div style="font-size:11px; color:#94a3b8; padding:8px;">최근 ' + (body.lookbackDays || 7) + '일 해당 공시 없음.</div>';
+      var more = items.length > shown.length
+        ? '<div style="font-size:10px; color:#94a3b8; margin-top:4px;">표시 ' + shown.length + '건 / 전체 ' + items.length + '건 — 나머지는 유형별로 순위상 뒤에 있습니다.</div>'
+        : '';
       var mhtml =
         '<div style="background:rgba(16,185,129,0.07); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:10px 12px; margin-bottom:14px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap:8px; flex-wrap:wrap;">' +
@@ -215,6 +222,7 @@
           '<span id="dartLiveStamp" style="font-size:10px; color:#6ee7b7; font-weight:800;">⚡ ' + stamp + ' 조회 · 스캔 ' + (counts.fetched || 0) + '건</span>' +
         '</div>' +
         rows +
+        more +
         coverageHtml(body) +
         '<div style="font-size:10px; color:#64748b; margin-top:5px; line-height:1.5;">' +
           '※ DART OpenAPI list.json 응답만 표시합니다. 유형(위험/주목)은 공시명 키워드로 자동 분류한 것이고 본문 해석이 아닙니다.<br>' +
