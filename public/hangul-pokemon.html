@@ -2182,10 +2182,19 @@ const Deck = {
 };
 Deck.load();
 
+/* 최근에 쓴 낱말은 단계가 달라도 곧바로 또 나오지 않게 한다 */
+const recentWords = [];
 function takeWord(pool, key) {
   if (!pool || !pool.length) return ['🔤', '가'];
-  const i = Deck.next(`${key}|${pool.length}`, pool.length);
-  return pool[i] || pool[0];
+  let out = pool[0];
+  for (let t = 0; t < 6; t += 1) {
+    const i = Deck.next(`${key}|${pool.length}`, pool.length);
+    out = pool[i] || pool[0];
+    if (!recentWords.includes(out[1])) break;
+  }
+  recentWords.push(out[1]);
+  if (recentWords.length > 60) recentWords.shift();
+  return out;
 }
 
 async function loadBank(refresh) {
@@ -2366,7 +2375,7 @@ function makeAssembleQ() {
   const base = levelWords();
   let pool = base.filter((it) => Array.from(it[1]).some((c) => isSyl(c) && decSyl(c).jong > 0));
   if (pool.length < 8) pool = base;
-  const one = pool.filter((it) => it[1].length === 1);
+  const one = S.level === 'hard' ? [] : pool.filter((it) => it[1].length === 1);   // 어려움은 여러 글자 낱말로
   const item = takeWord(one.length && Math.random() < 0.4 ? one : pool, 'assemble:' + S.level);
   const chars = Array.from(item[1]);
   const idxs = [];

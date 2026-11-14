@@ -2171,10 +2171,19 @@ const Deck = {
 };
 Deck.load();
 
+/* 최근에 쓴 단어는 문제 유형이 달라도 곧바로 또 나오지 않게 한다 */
+const recentWords = [];
 function takeEnWord(pool, key) {
   if (!pool || !pool.length) return WORDS[0];
-  const i = Deck.next(`${key}|${pool.length}`, pool.length);
-  return pool[i] || pool[0];
+  let out = WORDS[0];
+  for (let t = 0; t < 6; t += 1) {
+    const i = Deck.next(`${key}|${pool.length}`, pool.length);
+    out = pool[i] || pool[0];
+    if (!recentWords.includes(out.en)) break;
+  }
+  recentWords.push(out.en);
+  if (recentWords.length > 60) recentWords.shift();
+  return out;
 }
 function takeSent() {
   if (!SENTS.length) return { q: 'I ___ happy.', a: 'am', o: ['is', 'are', 'be'], k: '나는 행복하다.' };
@@ -2404,9 +2413,16 @@ function makeSpellQ() {
 }
 
 /* ⚡ 3단계 — 생활 문장 빈칸 완성 */
+const recentSents = [];
 function makeSentQ() {
   const pool = levelSents();
-  const s = pool[Deck.next(`sent:${S.level}|${pool.length}`, pool.length)] || pool[0];
+  let s = pool[0];
+  for (let t = 0; t < 6; t += 1) {
+    s = pool[Deck.next(`sent:${S.level}|${pool.length}`, pool.length)] || pool[0];
+    if (!recentSents.includes(s.q)) break;
+  }
+  recentSents.push(s.q);
+  if (recentSents.length > 40) recentSents.shift();
   const opts = shuffleArr([s.a, ...s.o]);
   return {
     stage: 'hard', tag: '문장 완성', cls: 'sent', css: 'words',
