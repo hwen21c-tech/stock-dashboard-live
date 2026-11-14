@@ -671,7 +671,7 @@
   .rules .k{font-weight:900;color:#8a5a00;background:#fff3c4;border-radius:5px;padding:0 4px}
   .rules .note{margin-top:12px;font-size:11px;color:#7d8a63}
 
-  /* ===== 설정 (연산·난이도) ===== */
+  /* ===== 설정 (문제 단계) ===== */
   .sect{margin:14px 0 7px;font-size:clamp(12.5px,3.5vw,14.5px);color:#2f6a1c;font-weight:900}
   .sect:first-child{margin-top:0}
   .opgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
@@ -2402,7 +2402,7 @@ function renderProfileBar() {
   $('#chipDex').textContent = '📕 ' + S.dex.ids.size;
   $$('.diffrow button').forEach((b) => b.classList.toggle('on', b.dataset.diff === S.diff));
 }
-/* ---------- 설정 (연산·난이도) ---------- */
+/* ---------- 설정 (문제 단계) ---------- */
 let setTarget = null;
 function openSettings(pid) {
   setTarget = Profiles.get(pid) ? pid : Profiles.data.active;
@@ -2466,7 +2466,7 @@ function renderProfileCards(sel, start) {
     card.innerHTML = `
       <span class="pe" data-emoji title="캐릭터 바꾸기">${p.emoji}</span>
       <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${stageLabel(p)}</span></span>
-      <button class="pedit pset" title="연산·난이도 설정" aria-label="설정">⚙️</button>
+      <button class="pedit pset" title="문제 단계 설정" aria-label="설정">⚙️</button>
       <button class="pedit" title="이름 바꾸기" aria-label="이름 바꾸기">✏️</button>`;
     card.addEventListener('click', (e) => {
       const emoji = e.target.closest('[data-emoji]');
