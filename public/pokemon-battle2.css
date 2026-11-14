@@ -665,3 +665,89 @@
 #pkmQuota .pkq-adm{background:linear-gradient(180deg,#fff,#eef7ff);border-color:#a8c6f0;color:#1d3f6b;
   box-shadow:0 3px 0 rgba(30,80,150,.2)}
 @media (prefers-reduced-motion:reduce){#pkmQuota .pkq-sheet{animation:none}}
+
+/* ============================================================
+   5탄 레이아웃 보정 (2026-11-15)
+   · 태블릿·폴드8(가로/세로)·일반폰에서 오른쪽 잘림 0
+   · 왼쪽 버튼 레일(도감·힌트·도망간다)과 내 파트너 겹침 0
+   · 내 파트너·야생 포켓몬을 조금 더 큼직하게(앞/뒤 원근 비율 유지)
+   ============================================================ */
+:root{
+  --pb2-rail-w:clamp(78px,19vw,124px);   /* #menu 폭과 같은 값 */
+}
+
+/* 1) #app 의 그리드 트랙이 내용 min-content 에 끌려 화면 밖으로 밀리던 문제 */
+#app{grid-template-columns:minmax(0,1fr);max-width:100%;width:100%}
+#app>*{min-width:0;max-width:100%}
+
+/* 2) 상단바 — 오른쪽 아이콘(🔊)이 잘리지 않게 */
+#app .profilebar{flex-wrap:nowrap;overflow:hidden;gap:5px}
+#app .profilebar .pchip{flex:0 1 auto;min-width:0}
+#app .profilebar .pstat{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#app .profilebar .icobtn{flex:0 0 auto}
+
+/* 3) HUD — 야생 Lv·타입 배지가 오른쪽에서 넘치지 않게 */
+#app .hud{flex-wrap:nowrap;overflow:hidden}
+#app .hud .pcard{min-width:0}
+#app .hud .pcard .top{min-width:0;flex-wrap:nowrap;overflow:hidden}
+#app .hud .pcard .nm{flex:0 1 auto;min-width:0}
+#app .hud .pcard .lv{flex:0 0 auto;margin-left:auto}
+#app .hud .tyb{flex:0 1 auto;min-width:0;overflow:hidden}
+
+/* 4) 문제 카드 — 오른쪽 0/5 잘림 방지 */
+#app .controls{min-width:0}
+#app .qhead{min-width:0}
+#app .qtext{min-width:0;flex:1 1 0}
+#app .qcount{flex:0 0 auto}
+#app .choices{min-width:0}
+#app .choice{min-width:0;overflow:hidden}
+#app .choice .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 5) 왼쪽 버튼 레일 바깥으로 내 파트너를 옮긴다(모든 폭에서 겹침 0) */
+.pb2-partner{
+  left:calc(8px + var(--pb2-rail-w) + 18px);
+  bottom:5%;
+  width:clamp(124px,17.5vh,148px);
+}
+/* 태블릿·폴드8 펼침: 한층 더 크게 */
+@media (min-width:700px),(min-height:900px){
+  .pb2-partner{left:calc(8px + var(--pb2-rail-w) + 22px);bottom:5%;width:clamp(178px,20vh,212px)}
+}
+/* 좁은 폰: 레일 옆에 붙이되 겹치지 않게 */
+@media (max-width:470px){
+  .pb2-partner{left:calc(8px + var(--pb2-rail-w) + 14px);bottom:4%;width:clamp(122px,16vh,140px)}
+}
+/* 6) 야생 포켓몬도 조금 더 크게 — 뒤쪽 원근 비율(scale .88)은 그대로 */
+.stage .wildzone{
+  right:clamp(10px,4vw,44px);top:40%;
+  width:min(clamp(122px,21vh,208px),31vw);
+  transform:translateY(-50%) scale(.88);
+  transform-origin:50% 60%;
+}
+@media (max-height:700px){ .stage .wildzone{top:41%} }
+@media (orientation:landscape) and (max-height:560px){
+  .stage .wildzone{top:44%;right:clamp(8px,3vw,30px);width:min(clamp(104px,25vh,182px),34vw);transform:translateY(-50%) scale(.86)}
+  .pb2-partner{width:clamp(120px,26vh,150px)}
+}
+
+/* 7) 낮은 화면(폴드8 가로·태블릿 가로)에서 보기 4개가 한 화면에 들어오게 */
+@media (max-height:820px){
+  #app{grid-template-rows:auto auto auto minmax(0,1fr) auto}
+  #app .profilebar{padding:3px 8px 4px}
+  #app .hud{padding:2px 8px 3px;gap:5px}
+  #app .hud .pcard{padding:3px 7px 4px;gap:2px}
+  #app .hud .diffrow button{padding:1px 2px;font-size:clamp(8.5px,2.2vw,10.5px);line-height:1.35}
+  #app .hud .hp i{height:6px}
+  #app .timerstrip{padding:0 8px 2px}
+  #app .timerbar{height:11px}
+  #app .controls{padding:4px 9px calc(5px + env(safe-area-inset-bottom));gap:4px}
+  #app .controls .qtext{font-size:clamp(19px,5.4vw,34px)}
+  #app .controls .choice{min-height:clamp(42px,7.4vh,62px);font-size:clamp(18px,4.6vw,28px)}
+  #app .stage{min-height:64px}
+}
+@media (max-height:680px){
+  #app .profilebar .icobtn{width:30px !important;height:28px !important;font-size:13px !important}
+  #app .hud .pcard .nm{font-size:clamp(12px,3.2vw,16px)}
+  #app .controls .qtext{font-size:clamp(17px,4.8vw,28px)}
+  #app .controls .choice{min-height:40px}
+}

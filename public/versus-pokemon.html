@@ -226,6 +226,76 @@
   .after button.main{background:linear-gradient(180deg,#a8e86b,#57bd2f);border-color:#3f9b22;color:#0f3a06}
   .footnote{margin:10px 0 0;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
 
+  /* ---------- 5탄: 대결 방식 2가지 · 5라운드 블라인드 픽 ---------- */
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 auto 12px;max-width:660px}
+  @media (max-width:470px){ .modes{grid-template-columns:1fr} }
+  .modes button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 11px;
+    border-radius:15px;background:linear-gradient(180deg,#fff,#f6fbea);border:2.5px solid #dcebc4;
+    border-bottom-width:5px;text-align:left}
+  .modes button b{font-size:clamp(12px,3.5vw,15px);letter-spacing:-.02em;color:#22400f}
+  .modes button span{font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b8547;line-height:1.32}
+  .modes button.on{background:linear-gradient(180deg,#fff8e4,#ffe9a8);border-color:#e8b93c}
+  .modes button.on b{color:#7a3c00}
+  .qpanel{position:relative}
+  .qpanel.picking .qbody,.qpanel.picking .choices{display:none}
+  .qpanel.picking{min-height:clamp(150px,25dvh,230px)}
+  .ppick{display:flex;flex-direction:column;gap:4px;min-height:0}
+  .ppick[hidden]{display:none}
+  .ppickh{font-size:clamp(8.5px,2.5vw,10.5px);font-weight:900;color:#8a4b00;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ppickg{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;overflow:auto;
+    max-height:min(210px,29dvh);-webkit-overflow-scrolling:touch}
+  .ppickg .pc{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 2px;border-radius:10px;
+    background:#fff;border:2px solid #e2eecd;border-bottom-width:3px;
+    font-size:clamp(7.5px,2vw,9px);font-weight:900;letter-spacing:-.03em;color:#33501a;overflow:hidden}
+  .ppickg .pc img{width:34px;height:34px;object-fit:contain;image-rendering:pixelated}
+  .ppickg .pc span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ppickg .pc:active{transform:translateY(2px)}
+  .pcover{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+    text-align:center;border-radius:16px;padding:8px;line-height:1.42;letter-spacing:-.02em;
+    background:linear-gradient(180deg,rgba(255,253,243,.97),rgba(238,248,221,.97));
+    font-size:clamp(10.5px,3vw,13px);font-weight:900;color:#4d6b32}
+  .pcover[hidden]{display:none}
+  .qpanel.wait .pcover{color:#7d8a63}
+  .qbump{flex:0 0 auto;font-size:clamp(8px,2.3vw,9.5px);font-weight:900;color:#fff;background:#e0453c;
+    border-radius:999px;padding:1px 6px;white-space:nowrap}
+  .qbump[hidden]{display:none}
+  /* 필드 동시 공개 카드 */
+  .rvc{position:absolute;inset:0;z-index:6;display:grid;place-items:center;pointer-events:none;transition:opacity .4s}
+  .rvc[hidden]{display:none}
+  .rvc .ball{position:absolute;width:clamp(50px,13vw,82px);aspect-ratio:1;border-radius:50%;
+    background:linear-gradient(180deg,#ff7a5f 0%,#ef4433 46%,#2a2a2a 46%,#1c1c1c 54%,#f7f7f2 54%,#fff 100%);
+    border:3px solid #222;box-shadow:0 6px 16px rgba(0,0,0,.35),inset 0 0 12px rgba(255,255,255,.4);
+    transition:transform .55s cubic-bezier(.3,1.5,.4,1),opacity .45s}
+  .rvc .ball::after{content:"";position:absolute;left:50%;top:50%;width:26%;aspect-ratio:1;
+    margin:-13% 0 0 -13%;border-radius:50%;background:#fff;border:3px solid #222}
+  .rvc img{width:clamp(86px,21vw,146px);opacity:0;transform:scale(.55) rotate(-12deg);image-rendering:pixelated;
+    transition:transform .5s cubic-bezier(.2,1.5,.4,1),opacity .35s;
+    filter:drop-shadow(0 6px 8px rgba(10,40,4,.45))}
+  .rvc .rnm{position:absolute;left:50%;top:5%;transform:translateX(-50%);white-space:nowrap;opacity:0;
+    transition:opacity .3s;font-size:clamp(9px,2.6vw,12px);font-weight:900;color:#fff;
+    background:rgba(20,50,10,.72);border:1.4px solid rgba(255,255,255,.7);border-radius:999px;padding:1px 8px}
+  .rvc.open .ball{transform:scale(.35) rotate(200deg);opacity:0}
+  .rvc.open img{opacity:1;transform:scale(1) rotate(0)}
+  .rvc.open .rnm{opacity:1}
+  .fighter.dim img{opacity:.2;filter:grayscale(.6) drop-shadow(0 4px 5px rgba(10,40,4,.3))}
+  /* 턴제 커튼 */
+  .curtain{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px;
+    background:rgba(12,36,6,.62);backdrop-filter:blur(4px)}
+  .curtain[hidden]{display:none}
+  .ccard{width:min(420px,100%);text-align:center;padding:18px 16px;border-radius:22px;
+    background:linear-gradient(180deg,#fffdf3,#f2ffe0);border:3px solid var(--line);
+    box-shadow:0 18px 40px rgba(10,40,4,.45);animation:cardin .34s cubic-bezier(.2,1.5,.4,1) both}
+  .ccard .cemo{font-size:clamp(32px,10vw,46px);line-height:1}
+  .ccard h2{margin:6px 0 4px;font-size:clamp(17px,4.8vw,23px);letter-spacing:-.03em}
+  .ccard p{margin:0 0 12px;font-size:clamp(10.5px,2.9vw,12.5px);font-weight:900;color:#4d6b32;line-height:1.45}
+  .ccard button{width:100%;padding:12px;border:none;border-radius:16px;
+    font-size:clamp(14px,3.9vw,17px);font-weight:900;color:#fff;
+    background:linear-gradient(180deg,#ffb02e,#e8760a);box-shadow:0 5px 0 #a5520a}
+  .ccard button:active{transform:translateY(3px);box-shadow:0 2px 0 #a5520a}
+  .hintbar{margin:5px 0 0;text-align:center;font-size:clamp(9.5px,2.6vw,11.5px);font-weight:900;
+    color:#3c6524;min-height:14px}
+
   #fx{position:fixed;inset:0;z-index:45;pointer-events:none;overflow:hidden}
   .proj{position:fixed;width:24px;height:24px;border-radius:50%;margin:-12px 0 0 -12px;
     background:radial-gradient(circle,#fff,#59c7ff 45%,#1168b8);box-shadow:0 0 16px rgba(120,220,255,.9)}
@@ -265,7 +335,11 @@
 <section class="setup" id="setup">
   <div class="lead">
     <b>태블릿 하나로 둘이 겨루기!</b>
-    <span>각자 과목·난이도를 고르고, 먼저 상대 파트너의 HP를 0으로 만들면 승리 🏆</span>
+    <span>매 라운드 서로 몰래 포켓몬을 골라 겨루고, 5라운드 뒤 HP가 많은 쪽이 승리 🏆</span>
+  </div>
+  <div class="modes" id="modeBar" role="group" aria-label="대결 방식">
+    <button type="button" data-mode="speed" class="on"><b>⚡ 스피드</b><span>둘이 동시에 문제를 풀어 먼저 맞히기</span></button>
+    <button type="button" data-mode="turn"><b>⏱️ 턴제 타임어택</b><span>한 명씩 차례로 · 시간이 짧은 쪽이 이겨요</span></button>
   </div>
   <div class="cards" id="cards"></div>
   <div class="startwrap">
@@ -281,22 +355,25 @@
       <div class="l1"><span class="who" id="hud1Name">첫째</span><span class="pt" id="hud1Pt"></span></div>
       <div class="pips" id="hp1"></div>
     </div>
-    <div class="mid"><b>VS</b></div>
+    <div class="mid"><b id="midLab">1R</b></div>
     <div class="hside p2" id="hud2">
       <div class="l1"><span class="pt" id="hud2Pt"></span><span class="who" id="hud2Name">둘째</span></div>
       <div class="pips" id="hp2"></div>
     </div>
   </div>
+  <p class="hintbar" id="hintBar" aria-live="polite"></p>
 
   <main class="field" id="field">
     <div class="half left" id="half1">
       <div class="pb2-bg" data-theme="forest" id="bg1"><i class="pb2-sky"></i><i class="pb2-far"></i><i class="pb2-mid"></i><i class="pb2-ground"></i><i class="pb2-motes" id="motes1"></i></div>
-      <div class="fighter" id="f1"><img alt="" decoding="async"><b class="fnm" id="f1nm"></b></div>
+      <div class="fighter dim" id="f1"><img alt="" decoding="async"><b class="fnm" id="f1nm"></b></div>
+      <div class="rvc" id="rv1" hidden><span class="ball"></span><img alt="" decoding="async"><b class="rnm" id="rn1"></b></div>
     </div>
     <div class="cut" aria-hidden="true"></div>
     <div class="half right" id="half2">
       <div class="pb2-bg" data-theme="forest" id="bg2"><i class="pb2-sky"></i><i class="pb2-far"></i><i class="pb2-mid"></i><i class="pb2-ground"></i><i class="pb2-motes" id="motes2"></i></div>
-      <div class="fighter" id="f2"><img alt="" decoding="async"><b class="fnm" id="f2nm"></b></div>
+      <div class="fighter dim" id="f2"><img alt="" decoding="async"><b class="fnm" id="f2nm"></b></div>
+      <div class="rvc" id="rv2" hidden><span class="ball"></span><img alt="" decoding="async"><b class="rnm" id="rn2"></b></div>
     </div>
   </main>
 
@@ -304,23 +381,45 @@
     <div class="qpanel p1" id="qp1">
       <div class="qtop">
         <span class="qn" id="qn1">첫째</span>
+        <span class="qbump" id="bd1" hidden>⚖️ 상성 불리 · 난이도↑</span>
         <span class="combo" id="combo1"></span>
         <span class="tbar"><i id="tb1"></i></span>
       </div>
       <div class="qbody"><span class="qemoji" id="qe1"></span><span class="qtext" id="qt1">…</span></div>
       <div class="choices" id="ch1"></div>
+      <div class="ppick" id="pp1" hidden>
+        <div class="ppickh" id="pph1">🐾 1라운드 포켓몬</div>
+        <div class="ppickg" id="pg1"></div>
+      </div>
+      <div class="pcover" id="pc1" hidden><span id="pct1">🔒 비밀 선택 완료</span></div>
     </div>
     <div class="qpanel p2" id="qp2">
       <div class="qtop">
         <span class="qn" id="qn2">둘째</span>
+        <span class="qbump" id="bd2" hidden>⚖️ 상성 불리 · 난이도↑</span>
         <span class="combo" id="combo2"></span>
         <span class="tbar"><i id="tb2"></i></span>
       </div>
       <div class="qbody"><span class="qemoji" id="qe2"></span><span class="qtext" id="qt2">…</span></div>
       <div class="choices" id="ch2"></div>
+      <div class="ppick" id="pp2" hidden>
+        <div class="ppickh" id="pph2">🐾 1라운드 포켓몬</div>
+        <div class="ppickg" id="pg2"></div>
+      </div>
+      <div class="pcover" id="pc2" hidden><span id="pct2">🔒 비밀 선택 완료</span></div>
     </div>
   </div>
 </section>
+
+<!-- 턴제 순서 전환 · 라운드 결과 커튼 -->
+<div class="curtain" id="curtain" hidden>
+  <div class="ccard" role="dialog" aria-modal="true" aria-labelledby="curTitle">
+    <div class="cemo" id="curEmo">🐾</div>
+    <h2 id="curTitle">둘째 차례!</h2>
+    <p id="curSub">화면을 넘겨주세요</p>
+    <button type="button" id="curBtn">준비됐어요 ▶</button>
+  </div>
+</div>
 
 <div id="fx" aria-hidden="true"></div>
 <div class="centerflash" id="flash" aria-hidden="true"></div>
@@ -504,21 +603,24 @@
     return shuffle(out.map(String));
   }
 
-  function mathQ(diff) {
+  /* bump: 상성 불리 보정 — 같은 연산·같은 규칙이되 수 범위를 한 단계 키운다(1 → 1.5단계) */
+  function mathQ(diff, bump) {
     let a, b, ans, text;
+    const K = bump ? 1.4 : 1;
+    const up = (n) => Math.max(1, Math.round(n * K));
     if (diff === 'easy') {
-      if (Math.random() < 0.5) { a = rnd(1, 9); b = rnd(1, 9); ans = a + b; text = a + ' + ' + b + ' = ?'; }
-      else { a = rnd(3, 15); b = rnd(1, a); ans = a - b; text = a + ' − ' + b + ' = ?'; }
+      if (Math.random() < 0.5) { a = rnd(1, up(9)); b = rnd(1, up(9)); ans = a + b; text = a + ' + ' + b + ' = ?'; }
+      else { a = rnd(3, up(15)); b = rnd(1, a); ans = a - b; text = a + ' − ' + b + ' = ?'; }
     } else if (diff === 'mid') {
       const t = Math.random();
-      if (t < 0.34) { a = rnd(12, 89); b = rnd(6, 60); ans = a + b; text = a + ' + ' + b + ' = ?'; }
-      else if (t < 0.68) { a = rnd(30, 99); b = rnd(4, 29); ans = a - b; text = a + ' − ' + b + ' = ?'; }
-      else { a = rnd(2, 9); b = rnd(2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
+      if (t < 0.34) { a = rnd(up(12), up(89)); b = rnd(up(6), up(60)); ans = a + b; text = a + ' + ' + b + ' = ?'; }
+      else if (t < 0.68) { a = rnd(up(30), up(99)); b = rnd(up(4), up(29)); ans = a - b; text = a + ' − ' + b + ' = ?'; }
+      else { a = rnd(bump ? 4 : 2, 9); b = rnd(bump ? 4 : 2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
     } else {
       const t = Math.random();
-      if (t < 0.4) { a = rnd(12, 49); b = rnd(2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
-      else if (t < 0.75) { b = rnd(2, 9); ans = rnd(3, 12); a = b * ans; text = a + ' ÷ ' + b + ' = ?'; }
-      else { a = rnd(10, 40); b = rnd(5, 30); const c = rnd(2, 20); ans = a + b - c; text = a + ' + ' + b + ' − ' + c + ' = ?'; }
+      if (t < 0.4) { a = rnd(up(12), up(49)); b = rnd(bump ? 5 : 2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
+      else if (t < 0.75) { b = rnd(bump ? 5 : 2, 9); ans = rnd(up(3), up(12)); a = b * ans; text = a + ' ÷ ' + b + ' = ?'; }
+      else { a = rnd(up(10), up(40)); b = rnd(up(5), up(30)); const c = rnd(up(2), up(20)); ans = a + b - c; text = a + ' + ' + b + ' − ' + c + ' = ?'; }
     }
     const choices = uniqChoices(ans, (cur) => {
       const delta = rnd(1, diff === 'easy' ? 4 : 12) * (Math.random() < 0.5 ? -1 : 1);
@@ -528,11 +630,14 @@
     return { prompt: text, emoji: '⚡', sub: '', ans: String(ans), choices };
   }
 
-  function hangulQ(diff) {
-    const pool = BANK.hangul.filter((w) => w && w.w && w.w.length >= 2 && (w.level || 'mid') === diff);
+  const LEVEL_UP = { easy: 'mid', mid: 'hard', hard: 'hard' };
+
+  function hangulQ(diff, bump) {
+    const lv = bump ? (LEVEL_UP[diff] || diff) : diff;
+    const pool = BANK.hangul.filter((w) => w && w.w && w.w.length >= 2 && (w.level || 'mid') === lv);
     const fallback = BANK.hangul.filter((w) => w && w.w && w.w.length >= 2);
     const src = pool.length >= 4 ? pool : fallback;
-    if (!src.length) return mathQ(diff);
+    if (!src.length) return mathQ(diff, bump);
     const it = pickOf(src);
     const chars = Array.from(it.w);
     const at = rnd(0, chars.length - 1);
@@ -547,9 +652,10 @@
     return { prompt: shown, emoji: it.e || '📖', sub: '빈칸에 들어갈 글자는?', ans: ansCh, choices };
   }
 
-  function englishQ(diff) {
-    if (diff === 'hard' && BANK.sentences.length) {
-      const pool = BANK.sentences.filter((s) => (s.level || 'mid') === diff);
+  function englishQ(diff, bump) {
+    const lv = bump ? (LEVEL_UP[diff] || diff) : diff;
+    if (lv === 'hard' && BANK.sentences.length) {
+      const pool = BANK.sentences.filter((s) => (s.level || 'mid') === lv);
       const src = pool.length ? pool : BANK.sentences;
       const it = pickOf(src);
       const ans = String(it.a);
@@ -559,9 +665,9 @@
       while (uniq.length < 4) uniq.push(String(Math.random()).slice(2, 4));
       return { prompt: it.q, emoji: '🔤', sub: it.k || '빈칸에 알맞은 말은?', ans, choices: shuffle(uniq) };
     }
-    const pool = BANK.english.filter((w) => w && w.en && (w.level || 'mid') === diff);
+    const pool = BANK.english.filter((w) => w && w.en && (w.level || 'mid') === lv);
     const src = pool.length >= 4 ? pool : BANK.english;
-    if (!src.length) return mathQ(diff);
+    if (!src.length) return mathQ(diff, bump);
     const it = pickOf(src);
     const ans = String(it.en);
     const choices = uniqChoices(ans, () => {
@@ -573,44 +679,15 @@
 
   function makeQ(side) {
     const cfg = side.cfg;
+    const bump = !!side.bump;
     try {
-      if (cfg.subj === 'hangul') return hangulQ(cfg.diff);
-      if (cfg.subj === 'english') return englishQ(cfg.diff);
-      return mathQ(cfg.diff);
+      if (cfg.subj === 'hangul') return hangulQ(cfg.diff, bump);
+      if (cfg.subj === 'english') return englishQ(cfg.diff, bump);
+      return mathQ(cfg.diff, bump);
     } catch (e) {
-      return mathQ(cfg.diff);
+      return mathQ(cfg.diff, bump);
     }
   }
-
-  /* ---------- 대결 상태 ---------- */
-  const D = {
-    on: false, over: false,
-    s: { p1: null, p2: null },
-  };
-  const MAXHP = 5;
-
-  function makeSide(slot, cfg, pos) {
-    const ids = dexIds(slot);
-    let pid = partnerId(slot);
-    let practice = false;
-    if (!pid) { pid = 25; practice = true; }
-    const p = byId(pid) || { id: 25, name: '피카츄', types: ['전기'] };
-    return {
-      pos, slot, cfg, practice,
-      name: slotName(slot),
-      partner: p,
-      hp: MAXHP,
-      q: null,
-      locked: false,
-      timer: 0,
-      tleft: 30,
-      combo: 0,
-      right: 0,
-      wrong: 0,
-      caught: ids.length,
-    };
-  }
-  function other(side) { return side.pos === 'p1' ? D.s.p2 : D.s.p1; }
 
   /* ---------- 화면: 준비 ---------- */
   function paintSetup() {
@@ -648,8 +725,7 @@
     validate();
   }
 
-  /* 선택된 슬롯 추적 (기본은 화면 자리 그대로) */
-  D.chosen = { p1: 'p1', p2: 'p2' };
+  /* 선택된 슬롯 추적 (기본은 화면 자리 그대로) — D.chosen 은 상태 객체 안에서 초기화된다 */
 
   function validate() {
     const hint = $('#setHint');
@@ -660,78 +736,447 @@
     else hint.textContent = '';
   }
 
-  /* ---------- 화면: 대결 ---------- */
+
+  /* ---------- 대결 상태 (5라운드 · ⚡스피드 / ⏱️턴제) ---------- */
+  const MAXHP = 5;
+  const MAXROUND = 5;
+  const DEFAULT_POOL = [1, 4, 7, 25, 133, 152];
+  const D = {
+    on: false, over: false,
+    mode: 'speed',
+    round: 1,
+    s: { p1: null, p2: null },
+    pick: { p1: 0, p2: 0 },
+    lock: { p1: false, p2: false },
+    adv: { p1: false, p2: false },
+    tpos: 'p1',
+    chosen: { p1: 'p1', p2: 'p2' },
+    history: [],
+    winner: null,
+  };
+
+  function num(pos) { return pos === 'p1' ? '1' : '2'; }
+  /* 받침에 맞는 조사 — '하린가' 같은 어색한 말이 나오지 않게 */
+  function josa(name, pair) {
+    const t = String(name || '').trim();
+    const c = t ? t.charCodeAt(t.length - 1) - 0xAC00 : -1;
+    const hasJong = c >= 0 && c <= 11171 && (c % 28) !== 0;
+    const p = pair || '이가';
+    return t + (hasJong ? p.charAt(0) : p.charAt(1));
+  }
+  function pan(pos) { return document.getElementById('qp' + num(pos)); }
+  function el2(id) { return document.getElementById(id); }
+  function other(side) { return side.pos === 'p1' ? D.s.p2 : D.s.p1; }
+  function sideOf(pos) { return D.s[pos]; }
+  function setHintBar(t) { const h = el2('hintBar'); if (h) h.textContent = t || ''; }
+
+  function makeSide(slot, cfg, pos) {
+    const ids = dexIds(slot);
+    return {
+      pos, slot, cfg,
+      practice: !ids.length,
+      name: slotName(slot),
+      pool: (ids.length ? ids.slice() : DEFAULT_POOL.slice()),
+      partner: null,
+      hp: MAXHP,
+      q: null,
+      locked: false,
+      timer: 0,
+      tleft: 30,
+      combo: 0,
+      right: 0,
+      wrong: 0,
+      bump: false,
+      roundStart: 0,
+      penalty: 0,
+      roundTime: 0,
+      roundOk: false,
+      done: false,
+      totalTime: 0,
+    };
+  }
+
+  /* ---------- 패널 그리기 ---------- */
+  function clearPanel(pos) {
+    const n = num(pos);
+    const c = el2('ch' + n);
+    if (c) c.innerHTML = '';
+    const t = el2('qt' + n);
+    if (t) t.textContent = '…';
+    const e = el2('qe' + n);
+    if (e) e.textContent = '';
+    const cb = el2('combo' + n);
+    if (cb) cb.textContent = '';
+    const bar = el2('tb' + n);
+    if (bar) { bar.style.width = '0%'; bar.className = ''; }
+  }
+  function coverPanel(pos, text, kind) {
+    const p = pan(pos);
+    if (!p) return;
+    p.classList.add('picking');
+    p.classList.toggle('wait', kind === 'wait');
+    const g = el2('pp' + num(pos));
+    if (g) g.hidden = true;
+    const cv = el2('pc' + num(pos));
+    const tx = el2('pct' + num(pos));
+    if (cv) cv.hidden = false;
+    if (tx) tx.textContent = text;
+  }
+  function showQ(pos) {
+    const p = pan(pos);
+    if (!p) return;
+    p.classList.remove('picking', 'wait');
+    const g = el2('pp' + num(pos));
+    if (g) g.hidden = true;
+    const cv = el2('pc' + num(pos));
+    if (cv) cv.hidden = true;
+  }
+  function openPick(pos) {
+    const p = pan(pos);
+    if (!p) return;
+    p.classList.add('picking');
+    p.classList.remove('wait');
+    clearPanel(pos);
+    paintPickGrid(pos);
+    const g = el2('pp' + num(pos));
+    if (g) g.hidden = false;
+    const cv = el2('pc' + num(pos));
+    if (cv) cv.hidden = true;
+  }
+  function paintPickGrid(pos) {
+    const s = D.s[pos];
+    const n = num(pos);
+    const host = el2('pg' + n);
+    const h = el2('pph' + n);
+    if (h) {
+      h.textContent = '🐾 ' + D.round + '라운드 · ' + (s.practice ? '연습 친구 중에서' : '내 도감에서') + ' 비밀 선택';
+    }
+    if (!host) return;
+    host.innerHTML = s.pool.slice(0, 20).map((id) => {
+      const p = byId(id) || { name: '#' + id };
+      return '<button type="button" class="pc" data-pos="' + pos + '" data-id="' + id + '">'
+        + '<img src="' + SPR(id) + '" alt="" loading="lazy"><span>' + p.name + '</span></button>';
+    }).join('');
+  }
+
+  /* ---------- 라운드 흐름 ---------- */
   function paintHud() {
     [['p1', 'hud1Name', 'hud1Pt', 'hp1'], ['p2', 'hud2Name', 'hud2Pt', 'hp2']].forEach((row) => {
       const s = D.s[row[0]];
-      $('#' + row[1]).textContent = s.name;
-      const p = s.partner;
-      $('#' + row[2]).textContent = (p ? p.name : '') + (s.practice ? ' (연습)' : '');
-      const pips = $('#' + row[3]);
+      if (!s) return;
+      el2(row[1]).textContent = s.name;
+      el2(row[2]).textContent = s.partner ? s.partner.name : (s.practice ? '연습 친구' : '비밀 선택');
+      const pips = el2(row[3]);
       let html = '';
       for (let i = 0; i < MAXHP; i += 1) html += '<i class="' + (i < s.hp ? 'on' : '') + '"></i>';
       pips.innerHTML = html;
       pips.classList.toggle('crit', s.hp <= 2);
     });
+    const mid = el2('midLab');
+    if (mid) mid.textContent = D.round + 'R';
   }
 
   function paintTheme() {
     [['p1', 'bg1', 'motes1'], ['p2', 'bg2', 'motes2']].forEach((row) => {
       const s = D.s[row[0]];
-      const t = (s.partner && s.partner.types && s.partner.types[0]) || '노말';
+      const p = s.partner;
+      const t = (p && p.types && p.types[0]) || '노말';
       const key = THEME_OF[t] || 'forest';
-      const bg = $('#' + row[1]);
+      const bg = el2(row[1]);
+      if (!bg) return;
       bg.dataset.theme = key;
-      const host = $('#' + row[2]);
-      host.innerHTML = '';
-      const n = 7;
-      for (let i = 0; i < n; i += 1) {
-        const d = document.createElement('i');
-        d.className = 'pb2-mote';
-        const w = 3 + Math.random() * 4;
-        d.style.cssText = 'left:' + (Math.random() * 96).toFixed(1) + '%;top:' + (10 + Math.random() * 70).toFixed(1)
-          + '%;width:' + w.toFixed(1) + 'px;height:' + w.toFixed(1) + 'px;background:#fffdf0;'
-          + 'animation:pb2-' + (i % 2 ? 'down' : 'up') + ' ' + (3.6 + Math.random() * 3).toFixed(2) + 's linear '
-          + (Math.random() * 3).toFixed(2) + 's infinite';
-        host.appendChild(d);
+      const host = el2(row[2]);
+      if (host) {
+        host.innerHTML = '';
+        for (let i = 0; i < 7; i += 1) {
+          const d = document.createElement('i');
+          d.className = 'pb2-mote';
+          const w = 3 + Math.random() * 4;
+          d.style.cssText = 'left:' + (Math.random() * 96).toFixed(1) + '%;top:' + (10 + Math.random() * 70).toFixed(1)
+            + '%;width:' + w.toFixed(1) + 'px;height:' + w.toFixed(1) + 'px;background:#fffdf0;'
+            + 'animation:pb2-' + (i % 2 ? 'down' : 'up') + ' ' + (3.6 + Math.random() * 3).toFixed(2) + 's linear '
+            + (Math.random() * 3).toFixed(2) + 's infinite';
+          host.appendChild(d);
+        }
       }
-      $('#' + (row[0] === 'p1' ? 'f1' : 'f2')).className = 'fighter';
     });
-    ['f1', 'f2'].forEach((id) => {
-      const wrap = $('#' + id);
-      const s = D.s[id === 'f1' ? 'p1' : 'p2'];
+    ['p1', 'p2'].forEach((pos) => {
+      const s = D.s[pos];
+      const wrap = el2('f' + num(pos));
+      if (!wrap || !s) return;
       const img = wrap.querySelector('img');
-      img.onerror = () => { img.onerror = null; img.src = SPR(s.partner.id); };
-      img.src = ART(s.partner.id);
-      img.alt = s.partner.name;
-      wrap.querySelector('.fnm').textContent = s.partner.name;
+      const pid = s.partner ? s.partner.id : (partnerId(s.slot) || 25);
+      img.onerror = () => { img.onerror = null; img.src = SPR(pid); };
+      img.src = s.partner ? ART(pid) : SPR(pid);
+      img.alt = s.partner ? s.partner.name : '';
+      wrap.querySelector('.fnm').textContent = s.partner ? s.partner.name : '';
+      wrap.classList.toggle('dim', !s.partner);
     });
   }
 
-  function paintQ(side, opts) {
-    const n = side.pos === 'p1' ? '1' : '2';
+  function paintBadges() {
+    ['p1', 'p2'].forEach((pos) => {
+      const s = D.s[pos];
+      const bd = el2('bd' + num(pos));
+      if (!bd) return;
+      bd.hidden = !s.bump;
+    });
+  }
+  function paintCombo(side) {
+    const c = el2('combo' + num(side.pos));
+    if (!c) return;
+    if (D.mode === 'turn') return;        // 턴제는 시간 표시를 따로 쓴다
+    c.textContent = side.combo > 1 ? '🔥' + side.combo : '';
+  }
+
+  function showReveal(pos, poke) {
+    const box = el2('rv' + num(pos));
+    if (!box) return;
+    const img = box.querySelector('img');
+    img.src = ART(poke.id);
+    img.onerror = () => { img.onerror = null; img.src = SPR(poke.id); };
+    img.alt = poke.name;
+    const nm = el2('rn' + num(pos));
+    if (nm) nm.textContent = poke.name + (poke.types && poke.types.length ? ' · ' + poke.types.join('·') : '');
+    box.hidden = false;
+    box.classList.remove('open');
+    void box.offsetWidth;
+    box.classList.add('open');
+  }
+  function hideReveal() {
+    ['1', '2'].forEach((n) => {
+      const box = el2('rv' + n);
+      if (box) { box.hidden = true; box.classList.remove('open'); }
+    });
+  }
+
+  function beginRound() {
+    if (!D.on || D.over) return;
+    hideReveal();
+    D.pick = { p1: 0, p2: 0 };
+    D.lock = { p1: false, p2: false };
+    D.adv = { p1: false, p2: false };
+    ['p1', 'p2'].forEach((pos) => {
+      const s = D.s[pos];
+      clearInterval(s.timer);
+      s.partner = null;
+      s.q = null;
+      s.locked = false;
+      s.combo = 0;
+      s.bump = false;
+      s.done = false;
+      s.penalty = 0;
+      s.roundTime = 0;
+      s.roundOk = false;
+      clearPanel(pos);
+    });
+    paintHud();
+    paintTheme();
+    paintBadges();
+    openPick('p1');
+    coverPanel('p2', '🔒 ' + josa(D.s.p1.name, '이가') + ' 고르는 중이에요', 'wait');
+    setHintBar('🐾 ' + D.round + '라운드 — 먼저 ' + josa(D.s.p1.name, '이가') + ' 몰래 포켓몬을 골라요');
+  }
+
+  function choosePoke(pos, id) {
+    if (!D.on || D.over) return { ok: false, why: 'off' };
+    if (D.lock[pos]) return { ok: false, why: 'locked' };
+    const s = D.s[pos];
+    const pid = Number(id);
+    if (s.pool.indexOf(pid) < 0) return { ok: false, why: 'notmine' };
+    D.pick[pos] = pid;
+    D.lock[pos] = true;
+    coverPanel(pos, '🔒 비밀 선택 완료', 'lock');
+    Sfx.click();
+    if (pos === 'p1' && !D.lock.p2) {
+      openPick('p2');
+      setHintBar('🐾 ' + D.s.p2.name + ' 차례 — 상대가 뭘 골랐는지 보이지 않아요!');
+    }
+    if (D.lock.p1 && D.lock.p2) setTimeout(revealRound, 380);
+    return { ok: true, pick: pid };
+  }
+
+  function revealRound() {
+    if (!D.on || D.over) return;
+    const a = D.s.p1;
+    const b = D.s.p2;
+    a.partner = byId(D.pick.p1) || { id: D.pick.p1, name: '#' + D.pick.p1, types: ['노말'] };
+    b.partner = byId(D.pick.p2) || { id: D.pick.p2, name: '#' + D.pick.p2, types: ['노말'] };
+    const s1 = !!(POK3 && POK3.strongPair(a.partner.types || [], b.partner.types || []));
+    const s2 = !!(POK3 && POK3.strongPair(b.partner.types || [], a.partner.types || []));
+    D.adv.p1 = s2 && !s1;      // 첫째가 상성 불리
+    D.adv.p2 = s1 && !s2;      // 둘째가 상성 불리
+    a.bump = D.adv.p1;
+    b.bump = D.adv.p2;
+    paintHud();
+    paintTheme();
+    paintBadges();
+    showReveal('p1', a.partner);
+    showReveal('p2', b.partner);       // 동시 공개
+    Sfx.tone(620, 0.14, 'triangle', 0.05, 980);
+    setTimeout(() => Sfx.cry(a.partner.id), 280);
+    setTimeout(() => Sfx.cry(b.partner.id), 580);
+    const dis = D.adv.p1 ? a : D.adv.p2 ? b : null;
+    setHintBar('⚔️ ' + a.partner.name + ' vs ' + b.partner.name
+      + (dis ? ' — ' + josa(dis.name, '은는') + ' 상성 불리! 이번 문제가 조금 어려워요' : ' — 팽팽한 승부!'));
+    setTimeout(() => {
+      if (!D.on || D.over) return;
+      hideReveal();
+      startQuestions();
+    }, 1450);
+  }
+
+  function startQuestions() {
+    if (!D.on || D.over) return;
+    if (D.mode === 'turn') {
+      coverPanel('p2', '🔒 ' + D.s.p1.name + ' 차례예요 — 잠깐 기다려요', 'wait');
+      showCurtain({
+        emoji: '⏱️',
+        title: D.s.p1.name + ' 차례!',
+        sub: D.round + '라운드 · 화면을 ' + D.s.p1.name + '에게 넘겨주세요',
+        btn: '준비됐어요 ▶',
+        onOk: () => askQuestion('p1'),
+      });
+      return;
+    }
+    showQ('p1');
+    showQ('p2');
+    setHintBar('⚡ 먼저 맞히는 사람이 이번 라운드를 가져가요!');
+    nextQ(D.s.p1);
+    nextQ(D.s.p2);
+  }
+
+  /* ---------- ⏱️ 턴제 ---------- */
+  function askQuestion(pos) {
+    if (!D.on || D.over) return;
+    const s = D.s[pos];
+    showQ(pos);
+    s.q = makeQ(s);
+    s.locked = false;
+    s.done = false;
+    s.penalty = 0;
+    s.roundTime = 0;
+    s.roundOk = false;
+    s.roundStart = performance.now();
+    paintQ(s);
+    startTurnClock(s);
+    setHintBar('⏱️ ' + s.name + ' 차례 — 빨리 맞힐수록 좋아요! (틀리면 +3초)');
+  }
+
+  function startTurnClock(s) {
+    clearInterval(s.timer);
+    const n = num(s.pos);
+    const tick = () => {
+      if (!D.on || D.over || s.done) { clearInterval(s.timer); return; }
+      const el = (performance.now() - s.roundStart) / 1000 + s.penalty;
+      const c = el2('combo' + n);
+      if (c) c.textContent = '⏱ ' + el.toFixed(1) + '초';
+      const bar = el2('tb' + n);
+      if (bar) {
+        bar.style.width = clamp((el / 30) * 100, 0, 100) + '%';
+        bar.className = el > 20 ? 'crit' : el > 12 ? 'warn' : '';
+      }
+    };
+    tick();
+    s.timer = setInterval(tick, 100);
+  }
+
+  function answerTurn(s, idx) {
+    if (!D.on || D.over || s.done || !s.q) return;
+    s.done = true;
+    clearInterval(s.timer);
+    const ok = String(s.q.choices[idx]) === String(s.q.ans);
+    const spent = (performance.now() - s.roundStart) / 1000;
+    s.roundOk = ok;
+    if (ok) {
+      s.right += 1;
+      s.combo += 1;
+      Sfx.correct();
+    } else {
+      s.wrong += 1;
+      s.combo = 0;
+      s.penalty += 3;
+      Sfx.wrong();
+    }
+    s.roundTime = Math.round((spent + s.penalty) * 10) / 10;
+    reveal(s, idx);
+    const n = num(s.pos);
+    const c = el2('combo' + n);
+    if (c) c.textContent = '⏱ ' + s.roundTime.toFixed(1) + '초';
+    if (!ok) popPenalty(s);
+    setTimeout(() => {
+      if (!D.on || D.over) return;
+      if (s.pos === 'p1') {
+        coverPanel('p1', '🔒 ' + josa(s.name, '은는') + ' 기록 완료 · ' + s.roundTime.toFixed(1) + '초', 'wait');
+        showCurtain({
+          emoji: '⏱️',
+          title: D.s.p2.name + ' 차례!',
+          sub: '화면을 ' + D.s.p2.name + '에게 넘겨주세요',
+          btn: '준비됐어요 ▶',
+          onOk: () => askQuestion('p2'),
+        });
+      } else {
+        settleTurnRound();
+      }
+    }, 1050);
+  }
+
+  function settleTurnRound() {
+    const a = D.s.p1;
+    const b = D.s.p2;
+    a.totalTime = Math.round((a.totalTime + a.roundTime) * 10) / 10;
+    b.totalTime = Math.round((b.totalTime + b.roundTime) * 10) / 10;
+    let win = null;
+    if (a.roundTime < b.roundTime) win = a;
+    else if (b.roundTime < a.roundTime) win = b;
+    else if (a.roundOk !== b.roundOk) win = a.roundOk ? a : b;
+    if (win) {
+      const loser = other(win);
+      loser.hp = Math.max(0, loser.hp - 1);
+      popDmg(loser, 1, false);
+      flashHurt(loser);
+    }
+    D.history.push({
+      round: D.round, mode: 'turn',
+      pick: { p1: D.pick.p1, p2: D.pick.p2 },
+      t: { p1: a.roundTime, p2: b.roundTime },
+      ok: { p1: a.roundOk, p2: b.roundOk },
+      win: win ? win.pos : null,
+    });
+    paintHud();
+    showCurtain({
+      emoji: win ? '🏅' : '🤝',
+      title: D.round + '라운드 — ' + (win ? win.name + ' 승!' : '무승부'),
+      sub: a.name + ' ' + a.roundTime.toFixed(1) + '초 · ' + b.name + ' ' + b.roundTime.toFixed(1) + '초'
+        + ' · 누적 ' + a.name + ' ' + a.totalTime.toFixed(1) + '초 / ' + b.name + ' ' + b.totalTime.toFixed(1) + '초',
+      btn: D.round >= MAXROUND ? '결과 보기 ▶' : (D.round + 1) + '라운드 ▶',
+      onOk: endRound,
+    });
+  }
+
+  /* ---------- ⚡ 스피드 ---------- */
+  function paintQ(side) {
+    const n = num(side.pos);
     const q = side.q;
-    $('#qn' + n).textContent = side.name;
-    $('#combo' + n).textContent = side.combo > 1 ? '🔥' + side.combo : '';
-    $('#qp' + n).classList.toggle('cool', !!side.locked);
+    el2('qn' + n).textContent = side.name;
+    paintCombo(side);
+    const bd = el2('bd' + n);
+    if (bd) bd.hidden = !side.bump;
     if (!q) return;
-    $('#qe' + n).textContent = q.emoji || '';
-    $('#qt' + n).textContent = q.prompt || '';
-    const host = $('#ch' + n);
+    el2('qe' + n).textContent = q.emoji || '';
+    el2('qt' + n).textContent = q.prompt || '';
+    const host = el2('ch' + n);
     host.innerHTML = q.choices.map((c, i) =>
       '<button class="choice" data-i="' + i + '"><i class="n">' + (i + 1) + '</i><span>' + String(c) + '</span></button>').join('');
-    if (!opts || !opts.keepLock) {
-      $$('.choice', host).forEach((b) => {
-        b.addEventListener('click', () => answer(side, Number(b.dataset.i)));
-      });
-    }
+    $$('.choice', host).forEach((b) => {
+      b.addEventListener('click', () => answer(side, Number(b.dataset.i)));
+    });
   }
 
   function paintTimer(side) {
-    const n = side.pos === 'p1' ? '1' : '2';
-    const bar = $('#tb' + n);
-    const pct = clamp(side.tleft / 30, 0, 1) * 100;
-    bar.style.width = pct + '%';
+    const bar = el2('tb' + num(side.pos));
+    if (!bar) return;
+    bar.style.width = (clamp(side.tleft / 30, 0, 1) * 100) + '%';
     bar.className = side.tleft <= 6 ? 'crit' : side.tleft <= 12 ? 'warn' : '';
   }
 
@@ -740,7 +1185,7 @@
     side.tleft = 30;
     paintTimer(side);
     side.timer = setInterval(() => {
-      if (!D.on || D.over) { clearInterval(side.timer); return; }
+      if (!D.on || D.over || side.done) { clearInterval(side.timer); return; }
       side.tleft -= 0.1;
       if (side.tleft <= 0) {
         side.tleft = 0;
@@ -755,48 +1200,58 @@
 
   function nextQ(side) {
     side.locked = false;
+    side.done = false;
     side.q = makeQ(side);
     paintQ(side);
     startTimer(side);
   }
 
   function timeout(side) {
-    if (!D.on || D.over || side.locked) return;
+    if (!D.on || D.over || side.locked || side.done) return;
     side.locked = true;
+    side.done = true;
     side.combo = 0;
     side.wrong += 1;
     Sfx.wrong();
     reveal(side, -1);
-    selfHurt(side, '⏰ 시간 초과!');
+    selfHurt(side);
+    if (other(side).done) endRoundNoWin();
   }
 
   function answer(side, idx) {
-    if (!D.on || D.over || side.locked || !side.q) return;
+    if (!D.on || D.over || side.locked || !side.q || side.done) return;
+    if (D.mode !== 'speed') { answerTurn(side, idx); return; }
     side.locked = true;
     clearInterval(side.timer);
     const ok = String(side.q.choices[idx]) === String(side.q.ans);
-    const host = $('#ch' + (side.pos === 'p1' ? '1' : '2'));
-    $$('.choice', host).forEach((b, i) => {
-      b.disabled = true;
-      if (String(side.q.choices[i]) === String(side.q.ans)) b.classList.add('ok');
-      else if (i === idx) b.classList.add('no');
-    });
+    const host = el2('ch' + num(side.pos));
+    if (host) {
+      $$('.choice', host).forEach((b, i) => {
+        b.disabled = true;
+        if (String(side.q.choices[i]) === String(side.q.ans)) b.classList.add('ok');
+        else if (i === idx) b.classList.add('no');
+      });
+    }
     if (ok) {
       side.combo += 1;
       side.right += 1;
       Sfx.correct();
-      $('#combo' + (side.pos === 'p1' ? '1' : '2')).textContent = side.combo > 1 ? '🔥' + side.combo : '';
-      strike(side, other(side));
+      paintCombo(side);
+      winRound(side);
     } else {
       side.combo = 0;
       side.wrong += 1;
+      side.done = true;
       Sfx.wrong();
+      paintCombo(side);
       selfHurt(side);
+      if (other(side).done && !D.over) endRoundNoWin();
     }
   }
 
   function reveal(side, idx) {
-    const host = $('#ch' + (side.pos === 'p1' ? '1' : '2'));
+    const host = el2('ch' + num(side.pos));
+    if (!host || !side.q) return;
     $$('.choice', host).forEach((b, i) => {
       b.disabled = true;
       if (String(side.q.choices[i]) === String(side.q.ans)) b.classList.add('ok');
@@ -805,7 +1260,8 @@
   }
 
   function popDmg(side, amount, se) {
-    const half = $('#half' + (side.pos === 'p1' ? '1' : '2'));
+    const half = el2('half' + num(side.pos));
+    if (!half) return;
     const el = document.createElement('div');
     el.className = 'dmgpop';
     el.textContent = '−' + amount;
@@ -819,40 +1275,84 @@
       setTimeout(() => b.remove(), 1500);
     }
   }
-
-  function selfHurt(side, msg) {
-    side.hp = Math.max(0, side.hp - 1);
-    popDmg(side, 1, false);
-    const f = $('#f' + (side.pos === 'p1' ? '1' : '2'));
-    f.classList.remove('hurt'); void f.offsetWidth; f.classList.add('hurt');
+  function popPenalty(side) {
+    const half = el2('half' + num(side.pos));
+    if (!half) return;
+    const el = document.createElement('div');
+    el.className = 'dmgpop';
+    el.style.color = '#e8760a';
+    el.textContent = '＋3초';
+    half.appendChild(el);
+    setTimeout(() => el.remove(), 900);
+  }
+  function flashHurt(side) {
+    const f = el2('f' + num(side.pos));
+    if (!f) return;
+    f.classList.remove('hurt');
+    void f.offsetWidth;
+    f.classList.add('hurt');
     setTimeout(() => f.classList.remove('hurt'), 620);
-    paintHud();
-    if (side.hp <= 0) { finish(other(side)); return; }
-    setTimeout(() => { if (D.on && !D.over) nextQ(side); }, 760);
   }
 
-  function strike(att, def) {
-    const fromEl = $('#f' + (att.pos === 'p1' ? '1' : '2'));
-    const toEl = $('#f' + (def.pos === 'p1' ? '1' : '2'));
-    const type = (att.partner.types && att.partner.types[0]) || '노말';
-    const strong = !!(POK3 && POK3.strongPair(att.partner.types || [], def.partner.types || []));
+  function selfHurt(side) {
+    side.hp = Math.max(0, side.hp - 1);
+    popDmg(side, 1, false);
+    flashHurt(side);
+    paintHud();
+    if (side.hp <= 0 && !D.over) finish(other(side));
+  }
+
+  function flashScreen() {
+    const f = el2('flash');
+    if (!f) return;
+    f.classList.remove('go');
+    void f.offsetWidth;
+    f.classList.add('go');
+  }
+
+  function winRound(winner) {
+    const loser = other(winner);
+    loser.locked = true;
+    loser.done = true;
+    clearInterval(loser.timer);
+    const strong = !!(POK3 && winner.partner && loser.partner
+      && POK3.strongPair(winner.partner.types || [], loser.partner.types || []));
+    D.history.push({
+      round: D.round, mode: 'speed',
+      pick: { p1: D.pick.p1, p2: D.pick.p2 },
+      win: winner.pos, dmg: strong ? 2 : 1,
+    });
+    strike(winner, loser, strong, () => {
+      if (!D.on || D.over) return;
+      if (loser.hp <= 0) { finish(winner); return; }
+      endRound();
+    });
+  }
+
+  function strike(att, def, strong, done) {
+    const fromEl = el2('f' + num(att.pos));
+    const toEl = el2('f' + num(def.pos));
+    const type = (att.partner && att.partner.types && att.partner.types[0]) || '노말';
     const dmg = strong ? 2 : 1;
-    const a = fromEl.getBoundingClientRect();
-    const b = toEl.getBoundingClientRect();
-    const x0 = a.left + a.width / 2;
-    const y0 = a.top + a.height * 0.45;
-    const x1 = b.left + b.width / 2;
-    const y1 = b.top + b.height * 0.5;
     Sfx.hit(type);
+    let dur = 380;
     try {
-      fromEl.classList.remove('jump'); void fromEl.offsetWidth; fromEl.classList.add('jump');
+      const a = fromEl.getBoundingClientRect();
+      const b = toEl.getBoundingClientRect();
+      const x0 = a.left + a.width / 2;
+      const y0 = a.top + a.height * 0.45;
+      const x1 = b.left + b.width / 2;
+      const y1 = b.top + b.height * 0.5;
+      fromEl.classList.remove('jump');
+      void fromEl.offsetWidth;
+      fromEl.classList.add('jump');
       setTimeout(() => fromEl.classList.remove('jump'), 600);
       const p = document.createElement('div');
       p.className = 'proj ' + (PROJ[type] || 'normal') + (strong ? ' big' : '');
       p.style.left = x0 + 'px';
       p.style.top = y0 + 'px';
-      $('#fx').appendChild(p);
-      const dur = clamp(Math.abs(x1 - x0) * 0.85 + 260, 280, 620);
+      el2('fx').appendChild(p);
+      dur = clamp(Math.abs(x1 - x0) * 0.85 + 260, 280, 620);
       p.animate([
         { transform: 'translate(0,0) scale(.6)', opacity: 0 },
         { transform: 'translate(' + (x1 - x0) * 0.5 + 'px,' + ((y1 - y0) * 0.5 - 46) + 'px) scale(1)', opacity: 1, offset: 0.5 },
@@ -860,72 +1360,133 @@
       ], { duration: dur, easing: 'cubic-bezier(.3,.05,.5,1)' }).finished
         .then(() => p.remove()).catch(() => p.remove());
     } catch (e) { /* */ }
-
     setTimeout(() => {
       if (!D.on) return;
       def.hp = Math.max(0, def.hp - dmg);
       popDmg(def, dmg, strong);
-      const f = $('#f' + (def.pos === 'p1' ? '1' : '2'));
-      f.classList.remove('hurt'); void f.offsetWidth; f.classList.add('hurt');
-      setTimeout(() => f.classList.remove('hurt'), 620);
+      flashHurt(def);
       if (strong) flashScreen();
       paintHud();
-      if (def.hp <= 0) { finish(att); return; }
-      setTimeout(() => { if (D.on && !D.over) nextQ(att); }, 620);
-    }, clamp(Math.abs(x1 - x0) * 0.6 + 180, 260, 560));
+      if (typeof done === 'function') done();
+    }, clamp(dur * 0.75 + 120, 240, 560));
   }
 
-  function flashScreen() {
-    const f = $('#flash');
-    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  function endRoundNoWin() {
+    if (D.over) return;
+    D.history.push({
+      round: D.round, mode: D.mode,
+      pick: { p1: D.pick.p1, p2: D.pick.p2 }, win: null,
+    });
+    setHintBar('🤝 ' + D.round + '라운드 무승부 — 다음 라운드로!');
+    setTimeout(endRound, 700);
   }
 
-  function finish(winner) {
+  function endRound() {
+    clearInterval(D.s.p1.timer);
+    clearInterval(D.s.p2.timer);
+    if (!D.on || D.over) return;
+    if (D.s.p1.hp <= 0 || D.s.p2.hp <= 0 || D.round >= MAXROUND) { finish(null); return; }
+    D.round += 1;
+    setTimeout(beginRound, 260);
+  }
+
+  function finish(forced) {
     if (D.over) return;
     D.over = true;
     clearInterval(D.s.p1.timer);
     clearInterval(D.s.p2.timer);
-    const loser = other(winner);
-    const lf = $('#f' + (loser.pos === 'p1' ? '1' : '2'));
-    const half = lf.parentNode;
-    /* 피니셔 — 마지막 한 방: 폭발 링 + 강타 문구 + 화면 흔들림 */
-    try {
-      const a = lf.getBoundingClientRect();
-      const hb = half.getBoundingClientRect();
-      const blast = document.createElement('span');
-      blast.className = 'finish-blast';
-      blast.style.left = (a.left + a.width / 2 - hb.left) + 'px';
-      blast.style.top = (a.top + a.height / 2 - hb.top) + 'px';
-      half.appendChild(blast);
-      const tx = document.createElement('b');
-      tx.className = 'finish-text';
-      tx.textContent = '💥 피니셔!';
-      half.appendChild(tx);
-      const field = $('#field');
-      field.classList.remove('shake');
-      void field.offsetWidth;
-      field.classList.add('shake');
-      setTimeout(() => field.classList.remove('shake'), 600);
-    } catch (e) { /* */ }
-    lf.classList.add('out');
-    flashScreen();
-    Sfx.fanfare();
-    setTimeout(() => openOver(winner), 1100);
+    const a = D.s.p1;
+    const b = D.s.p2;
+    let w = forced || null;
+    if (!w) {
+      if (a.hp !== b.hp) w = a.hp > b.hp ? a : b;
+      else if (a.right !== b.right) w = a.right > b.right ? a : b;
+      else if (D.mode === 'turn' && a.totalTime !== b.totalTime) w = a.totalTime < b.totalTime ? a : b;
+      else if (a.wrong !== b.wrong) w = a.wrong < b.wrong ? a : b;
+    }
+    if (w) {
+      const loser = other(w);
+      /* 피니셔 — 마지막 한 방: 폭발 링 + 강타 문구 + 화면 흔들림 */
+      try {
+        const lf = el2('f' + num(loser.pos));
+        const half = lf.parentNode;
+        const ar = lf.getBoundingClientRect();
+        const hb = half.getBoundingClientRect();
+        const blast = document.createElement('span');
+        blast.className = 'finish-blast';
+        blast.style.left = (ar.left + ar.width / 2 - hb.left) + 'px';
+        blast.style.top = (ar.top + ar.height / 2 - hb.top) + 'px';
+        half.appendChild(blast);
+        const tx = document.createElement('b');
+        tx.className = 'finish-text';
+        tx.textContent = '💥 피니셔!';
+        half.appendChild(tx);
+        const field = el2('field');
+        field.classList.remove('shake');
+        void field.offsetWidth;
+        field.classList.add('shake');
+        setTimeout(() => field.classList.remove('shake'), 600);
+        lf.classList.add('out');
+      } catch (e) { /* */ }
+      flashScreen();
+      Sfx.fanfare();
+    }
+    setHintBar(w ? '🏆 ' + w.name + ' 승리!' : '🤝 무승부!');
+    setTimeout(() => openOver(w), w ? 1100 : 500);
+  }
+
+  /* ---------- 턴제 커튼 ---------- */
+  let curtainOk = null;
+  function showCurtain(o) {
+    const box = el2('curtain');
+    if (!box) return;
+    el2('curEmo').textContent = o.emoji || '🐾';
+    el2('curTitle').textContent = o.title || '';
+    el2('curSub').textContent = o.sub || '';
+    const btn = el2('curBtn');
+    btn.textContent = o.btn || '확인';
+    btn.hidden = !o.btn;
+    curtainOk = o.onOk || null;
+    box.hidden = false;
+  }
+  function hideCurtain() {
+    const box = el2('curtain');
+    if (box) box.hidden = true;
+    curtainOk = null;
+  }
+  function confirmCurtain() {
+    const fn = curtainOk;
+    hideCurtain();
+    if (typeof fn === 'function') fn();
+    return true;
   }
 
   /* ---------- 보상 ---------- */
   function openOver(winner) {
-    D.winner = winner;
-    $('#overCup').textContent = '🏆';
-    $('#overTitle').textContent = winner.name + ' 승리!';
-    const lp = other(winner).partner;
-    $('#overWho').textContent = winner.partner.name + ' vs ' + (lp ? lp.name : '') + ' · ' + winner.right + '문제 정답';
-    $('#pickLabel').textContent = winner.name + '님만 받는 보상 — 하나를 골라요!';
-    $('#picks').style.display = '';
+    D.winner = winner || null;
+    const draw = !winner;
+    const a = D.s.p1;
+    const b = D.s.p2;
+    $('#overCup').textContent = draw ? '🤝' : '🏆';
+    $('#overTitle').textContent = draw ? '무승부!' : winner.name + ' 승리!';
+    const bits = [];
+    if (a.partner || b.partner) {
+      bits.push((a.partner ? a.partner.name : '-') + ' vs ' + (b.partner ? b.partner.name : '-'));
+    }
+    bits.push(a.name + ' ' + a.right + '정답 · HP ' + a.hp + '/' + MAXHP);
+    bits.push(b.name + ' ' + b.right + '정답 · HP ' + b.hp + '/' + MAXHP);
+    if (D.mode === 'turn') {
+      bits.push('누적 ' + a.totalTime.toFixed(1) + '초 / ' + b.totalTime.toFixed(1) + '초');
+    }
+    $('#overWho').textContent = bits.join(' · ');
+    $('#pickLabel').textContent = draw
+      ? '이번에는 보상이 없어요 — 다시 붙어 봐요!'
+      : winner.name + '님만 받는 보상 — 하나를 골라요!';
+    $('#picks').style.display = draw ? 'none' : '';
     $('#got').classList.remove('on');
     $('#got').textContent = '';
-    $('#after').classList.remove('on');
-    $$('#picks .pick').forEach((b) => { b.disabled = false; });
+    $('#after').classList.toggle('on', draw);
+    $$('#picks .pick').forEach((b2) => { b2.disabled = false; });
     $('#over').classList.add('on');
   }
 
@@ -949,24 +1510,48 @@
   }
 
   /* ---------- 시작 / 다시 ---------- */
+  function paintMode() {
+    $$('#modeBar button').forEach((b) => b.classList.toggle('on', b.dataset.mode === D.mode));
+  }
+  function setMode(m) {
+    D.mode = (m === 'turn') ? 'turn' : 'speed';
+    lsSet('pkm.versus.mode.v1', D.mode);
+    paintMode();
+    const hint = $('#setHint');
+    if (hint) {
+      hint.textContent = D.mode === 'turn'
+        ? '한 명씩 5문제 · 틀리면 +3초 · 총 시간이 짧은 쪽이 이겨요'
+        : '둘이 동시에 문제를 풀어 먼저 맞히면 상대 HP가 줄어요';
+    }
+    return D.mode;
+  }
+
   function startDuel() {
     if (D.chosen.p1 === D.chosen.p2) { validate(); return; }
     Sfx.ensure();
     Sfx.click();
+    hideCurtain();
     D.s.p1 = makeSide(D.chosen.p1, cfgOf(D.chosen.p1), 'p1');
     D.s.p2 = makeSide(D.chosen.p2, cfgOf(D.chosen.p2), 'p2');
-    D.on = true; D.over = false; D.winner = null;
+    D.on = true;
+    D.over = false;
+    D.winner = null;
+    D.round = 1;
+    D.history = [];
     $('#setup').style.display = 'none';
     $('#duel').classList.add('on');
     $('#over').classList.remove('on');
-    $('#f1').className = 'fighter';
-    $('#f2').className = 'fighter';
+    ['1', '2'].forEach((n) => {
+      const f = el2('f' + n);
+      if (f) f.className = 'fighter dim';
+      const box = el2('rv' + n);
+      if (box) { box.hidden = true; box.classList.remove('open'); }
+      const bad = el2('bd' + n);
+      if (bad) bad.hidden = true;
+    });
     paintHud();
     paintTheme();
-    nextQ(D.s.p1);
-    nextQ(D.s.p2);
-    setTimeout(() => Sfx.cry(D.s.p1.partner.id), 200);
-    setTimeout(() => Sfx.cry(D.s.p2.partner.id), 700);
+    beginRound();
   }
 
   /* ---------- 준비 화면 인터랙션 보정 ---------- */
@@ -1034,6 +1619,18 @@
       $('#muteBtn').textContent = Sfx.muted ? '🔇' : '🔊';
     });
     $('#startBtn').addEventListener('click', startDuel);
+    $$('#modeBar button').forEach((b) => {
+      b.addEventListener('click', () => { setMode(b.dataset.mode); Sfx.click(); });
+    });
+    const cb = $('#curBtn');
+    if (cb) cb.addEventListener('click', () => { Sfx.click(); confirmCurtain(); });
+    /* 비밀 선택 — 패널 그리드에서 포켓몬을 고른다 */
+    document.addEventListener('click', (e) => {
+      const pc = e.target.closest('.ppickg .pc');
+      if (!pc) return;
+      if (!D.on || D.over) return;
+      choosePoke(pc.dataset.pos, Number(pc.dataset.id));
+    });
     $$('#picks .pick').forEach((b) => {
       b.addEventListener('click', () => {
         const got = grantReward(b.dataset.pick);
@@ -1052,6 +1649,9 @@
     });
     $('#villageBtn').addEventListener('click', () => { location.href = '/pokemon/village-pokemon.html'; });
 
+    /* 저장해 둔 대결 방식(⚡스피드 / ⏱️턴제)을 되살린다 */
+    D.mode = lsGet('pkm.versus.mode.v1', 'speed') === 'turn' ? 'turn' : 'speed';
+    paintMode();
     paintSetup();
     bindSetup();
     validate();
@@ -1090,6 +1690,44 @@
     start: startDuel,
     setSlot(side, slot) { D.chosen[side] = slot; paintCardsOnly(); validate(); },
     setCfg(slot, cfg) { lsSet('pkm.versus.cfg.v1.' + slot, cfg); paintCardsOnly(); },
+    mode(m) { return m ? setMode(m) : D.mode; },
+    modeOf: () => D.mode,
+    round: () => D.round,
+    maxRound: () => MAXROUND,
+    pick(pos, id) { return choosePoke(pos, Number(id)); },
+    pickState: () => ({
+      round: D.round,
+      mode: D.mode,
+      pick: { p1: D.pick.p1, p2: D.pick.p2 },
+      lock: { p1: D.lock.p1, p2: D.lock.p2 },
+      adv: { p1: D.adv.p1, p2: D.adv.p2 },
+      bump: { p1: D.s.p1 && D.s.p1.bump, p2: D.s.p2 && D.s.p2.bump },
+      pickOpen: { p1: !$('#pp1').hidden, p2: !$('#pp2').hidden },
+      cover: { p1: $('#pc1').hidden ? '' : $('#pct1').textContent, p2: $('#pc2').hidden ? '' : $('#pct2').textContent },
+      reveal: { p1: !$('#rv1').hidden, p2: !$('#rv2').hidden },
+      hint: $('#hintBar').textContent,
+    }),
+    curtain: () => ({
+      open: !$('#curtain').hidden,
+      title: $('#curTitle').textContent,
+      sub: $('#curSub').textContent,
+      btn: $('#curBtn').textContent,
+    }),
+    confirm() { return confirmCurtain(); },
+    times: () => ({
+      p1: D.s.p1 ? D.s.p1.totalTime : 0,
+      p2: D.s.p2 ? D.s.p2.totalTime : 0,
+      round: { p1: D.s.p1 ? D.s.p1.roundTime : 0, p2: D.s.p2 ? D.s.p2.roundTime : 0 },
+    }),
+    history: () => D.history,
+    panel: (pos) => ({
+      picking: pan(pos).classList.contains('picking'),
+      wait: pan(pos).classList.contains('wait'),
+      q: D.s[pos] && D.s[pos].q ? D.s[pos].q.prompt : '',
+      choices: document.querySelectorAll('#ch' + num(pos) + ' .choice').length,
+      badge: !$('#bd' + num(pos)).hidden,
+      locked: D.s[pos] ? D.s[pos].locked : null,
+    }),
     answer(side, idx) { answer(D.s[side], idx); },
     auto(side) {
       const s = D.s[side];
@@ -1098,10 +1736,27 @@
       answer(s, i);
       return i;
     },
+    wrong(side) {
+      const s = D.s[side];
+      if (!s || !s.q) return -1;
+      const i = s.q.choices.findIndex((c) => String(c) !== String(s.q.ans));
+      answer(s, i);
+      return i;
+    },
     hp: () => ({ p1: D.s.p1 && D.s.p1.hp, p2: D.s.p2 && D.s.p2.hp }),
     over: () => D.over,
+    winner: () => (D.winner ? D.winner.pos : null),
     theme: () => ({ p1: $('#bg1').dataset.theme, p2: $('#bg2').dataset.theme }),
-    partner: () => ({ p1: D.s.p1 && D.s.p1.partner.name, p2: D.s.p2 && D.s.p2.partner.name }),
+    partner: () => ({
+      p1: D.s.p1 && D.s.p1.partner ? D.s.p1.partner.name : '',
+      p2: D.s.p2 && D.s.p2.partner ? D.s.p2.partner.name : '',
+    }),
+    fighters: () => ({
+      p1: $('#f1').querySelector('.fnm').textContent,
+      p2: $('#f2').querySelector('.fnm').textContent,
+      dim1: $('#f1').classList.contains('dim'),
+      dim2: $('#f2').classList.contains('dim'),
+    }),
     cfg: cfgOf,
     grant: grantReward,
   };

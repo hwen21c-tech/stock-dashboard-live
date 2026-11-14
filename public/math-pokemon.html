@@ -2155,7 +2155,7 @@ function makeChoices(kind, ans, d) {
   return list;
 }
 
-/* ---------- 문제 유형: 기본 · 빈칸 (세 수·비교식은 제외 — 항상 2개 숫자) ---------- */
+/* ---------- 문제 유형: 기본 · 빈칸 · 비교식 (세 수 연산만 제외 — 숫자는 2개까지) ---------- */
 function calc(kind, a, b) {
   return kind === 'add' ? a + b : kind === 'sub' ? a - b : kind === 'mul' ? a * b : a / b;
 }
@@ -2185,7 +2185,7 @@ function rngOf(seed) {
 }
 
 /* 오늘의 유형 덱: 날짜(KST) 시드로 문제 유형 순서가 매일 자정에 새로 섞인다 */
-const QTYPE_CYCLE = ['plain', 'plain', 'blank', 'plain', 'plain', 'blank', 'plain', 'blank', 'plain', 'blank'];
+const QTYPE_CYCLE = ['plain', 'blank', 'plain', 'compare', 'blank', 'plain', 'plain', 'compare', 'blank', 'plain'];
 const QDeck = {
   day: '',
   seq: [],
@@ -2287,7 +2287,7 @@ function qBlank() {
   return { kind, text, ans, choices: makeChoices(kind, ans, S.diff), hintHtml: blankHintHtml(kind, a, b, c, leftBlank) };
 }
 
-/* 세 수 식(5 + 4 + 8)·비교식은 아이들이 어려워해 뺐다 — 항상 2개 숫자 1회 연산만 */
+/* 세 수 식(5 + 4 + 8)은 아이들이 어려워해 뺐다 — 두 수 연산(+빈칸·비교식)만 낸다 */
 function qTriple() {
   return qPlain();
 }
@@ -2323,7 +2323,7 @@ function shuffleSymbols() {
 function makeQuestion() {
   const type = QDeck.nextType();
   for (let i = 0; i < 60; i += 1) {
-    const q = type === 'blank' ? qBlank() : qPlain();
+    const q = type === 'blank' ? qBlank() : type === 'compare' ? qCompare() : qPlain();
     if (!recentQ.includes(q.text)) {
       rememberQ(q.text);
       return q;

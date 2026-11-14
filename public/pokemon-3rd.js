@@ -30,18 +30,16 @@
   };
 
   /* 마을 꾸미기 아이템 — zone 은 기본 느낌(한 풀밭에서는 모두 자유 배치),
-     env:true 는 '환경 아이템'이라 가방 소모 없이 언제든 놓을 수 있다 */
+     glow:true 는 밤에 빛나는 조명 소품.
+     ⚠️ 연못·언덕·배틀장소는 꾸미기 아이템이 아니라 마을의 '자연 지형'이 되었다(5탄). */
   var ITEMS = [
-    { k: 'pond', name: '물가 연못', emoji: '💧', zone: 'grass', env: true, desc: '반짝이는 연못을 풀밭에 직접' },
-    { k: 'hill', name: '낮잠 언덕', emoji: '😴', zone: 'grass', env: true, desc: '둥글둥글 잔디 언덕' },
-    { k: 'arena', name: '작은 배틀 연습장', emoji: '⚔️', zone: 'grass', env: true, desc: '모래로 다진 연습장' },
     { k: 'tent', name: '포켓몬센터 텐트', emoji: '⛺', zone: 'grass', desc: '빨간 지붕의 작은 치료소' },
     { k: 'statue', name: '피카츄 동상', emoji: '🗿', zone: 'grass', desc: '번쩍번쩍 돌로 만든 피카츄' },
     { k: 'cushion', name: '잠만보 쿠션', emoji: '🛋️', zone: 'hill', desc: '폭신폭신 낮잠 쿠션' },
     { k: 'ballpot', name: '몬스터볼 화분', emoji: '🪴', zone: 'grass', desc: '몬스터볼 모양 화분' },
     { k: 'berrytree', name: '오랑열매 나무', emoji: '🌳', zone: 'grass', desc: '열매가 주렁주렁' },
     { k: 'berrybasket', name: '열매 바구니', emoji: '🍇', zone: 'grass', desc: '갓 딴 열매를 담아 둔 바구니' },
-    { k: 'campfire', name: '캠프파이어', emoji: '🔥', zone: 'grass', desc: '따뜻한 모닥불' },
+    { k: 'campfire', name: '캠프파이어', emoji: '🔥', zone: 'grass', glow: true, desc: '따뜻한 모닥불' },
     { k: 'fountain', name: '연못 분수', emoji: '⛲', zone: 'pond', desc: '물이 솟는 분수' },
     { k: 'flowerbed', name: '꽃밭', emoji: '🌷', zone: 'grass', desc: '알록달록 꽃밭' },
     { k: 'bench', name: '나무 벤치', emoji: '🪑', zone: 'grass', desc: '쉬어 가는 나무 의자' },
@@ -49,14 +47,14 @@
     { k: 'arch', name: '배틀 아치', emoji: '🏟️', zone: 'arena', desc: '연습장 어구 — 드림 매치!' },
     { k: 'mailbox', name: '작은 우편함', emoji: '📮', zone: 'grass', desc: '친구에게 마음을 전해요' },
     { k: 'hammock', name: '낮잠 해먹', emoji: '🛌', zone: 'hill', desc: '나무 사이 둥실둥실 그네 침대' },
-    { k: 'lantern', name: '별빛 랜턴', emoji: '🕯️', zone: 'hill', desc: '밤에 온은하게 빛나는 등' },
+    { k: 'lantern', name: '별빛 랜턴', emoji: '🕯️', zone: 'hill', glow: true, desc: '밤에 온은하게 빛나는 등' },
     { k: 'stones', name: '둥근 징검돌', emoji: '🪨', zone: 'pond', desc: '연못을 건너는 징검다리' },
     { k: 'sandcastle', name: '모래성', emoji: '🏰', zone: 'pond', desc: '연못가에 쌓은 모래성' },
     { k: 'parasol', name: '해변 파라솔', emoji: '⛱️', zone: 'pond', desc: '햇살을 가려 주는 파라솔' },
-    { k: 'lamp', name: '몬스터볼 가로등', emoji: '🏮', zone: 'grass', desc: '밤을 밝히는 가로등' },
+    { k: 'lamp', name: '몬스터볼 가로등', emoji: '🏮', zone: 'grass', glow: true, desc: '밤을 밝히는 가로등' },
     { k: 'mat', name: '피크닉 매트', emoji: '🧺', zone: 'hill', desc: '도시락 싸 온 매트' },
     { k: 'mill', name: '미니 풍차', emoji: '🎡', zone: 'grass', desc: '빙글빙글 도는 풍차' },
-    { k: 'star', name: '별빛 조명', emoji: '🌟', zone: 'hill', desc: '반짝반짝 별 조명' },
+    { k: 'star', name: '별빛 조명', emoji: '🌟', zone: 'hill', glow: true, desc: '반짝반짝 별 조명' },
     { k: 'kite', name: '연 날리기', emoji: '🪁', zone: 'grass', desc: '하늘 높이 연' },
     { k: 'teddy', name: '포켓몬 인형', emoji: '🧸', zone: 'grass', desc: '꼭 안고 자고 싶은 인형' },
     { k: 'balloon', name: '풍선 장식', emoji: '🎈', zone: 'grass', desc: '생일 파티 같은 풍선' },
@@ -66,16 +64,32 @@
     { k: 'birdhouse', name: '새집', emoji: '🐦', zone: 'grass', desc: '구구가 찾아오는 작은 새집' },
     { k: 'boat', name: '작은 보트', emoji: '⛵', zone: 'pond', desc: '연못에 둥둥 떠 있는 배' },
     { k: 'waterfall', name: '작은 폭포', emoji: '🌊', zone: 'pond', desc: '시원하게 떨어지는 물줄기' },
-    { k: 'fireflies', name: '반딧불 랜턴', emoji: '✨', zone: 'hill', desc: '밤하늘을 수놓는 작은 빛' },
+    { k: 'fireflies', name: '반딧불 랜턴', emoji: '✨', zone: 'hill', glow: true, desc: '밤하늘을 수놓는 작은 빛' },
+
+    /* ---------- 5탄: 야외 소품 · 조명 (밤에 빛나는 소품 포함) ---------- */
+    { k: 'garland', name: '가랜드 전구', emoji: '💡', zone: 'grass', glow: true, desc: '밤에 알록달록 반짝이는 줄 전구' },
+    { k: 'bridge', name: '돌다리', emoji: '🌉', zone: 'pond', desc: '연못을 건너는 아치 돌다리' },
+    { k: 'lily', name: '수련잎', emoji: '🪷', zone: 'pond', desc: '연못에 둥실 떠 있는 수련' },
+    { k: 'duck', name: '오리 가족', emoji: '🦆', zone: 'pond', desc: '꽥꽥, 연못 친구' },
+    { k: 'mushroom', name: '버섯 조형물', emoji: '🍄', zone: 'grass', desc: '빨간 갓이 귀여운 버섯' },
+    { k: 'butterfly', name: '나비 친구', emoji: '🦋', zone: 'grass', desc: '팔랑팔랑 날아다녀요' },
+    { k: 'chime', name: '바람 풍경', emoji: '🎐', zone: 'hill', glow: true, desc: '바람에 짤랑이는 유리 풍경' },
+    { k: 'fireflyjar', name: '반딧불 항아리', emoji: '🏺', zone: 'hill', glow: true, desc: '밤에 은은히 빛나는 항아리' },
   ];
 
   var byKey = {};
   ITEMS.forEach(function (it) { byKey[it.k] = it; });
 
+  /* 5탄에서 꾸미기 목록에서 빠진 키 — 예전에 저장한 마을/가방에 남아 있으면 지운다 */
+  var RETIRED = ['pond', 'hill', 'arena'];
+
   window.POK3 = {
-    version: 1,
+    version: 2,
     typeChart: TYPE_CHART,
     items: ITEMS,
+    retired: RETIRED.slice(),
+    isRetired: function (k) { return RETIRED.indexOf(k) >= 0; },
+    isGlow: function (k) { var it = byKey[k]; return !!(it && it.glow); },
     item: function (k) { return byKey[k] || null; },
     itemKeys: function () { return ITEMS.map(function (it) { return it.k; }); },
     /* 공격 타입이 방어 타입 목록 중 하나라도 찌르면 true */

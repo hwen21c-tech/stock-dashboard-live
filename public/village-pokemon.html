@@ -62,10 +62,9 @@
   /* ---------- 마을: 하나의 큰 풀밭 무대 ---------- */
   .village{padding:7px 9px calc(10px + env(safe-area-inset-bottom));max-width:1120px;margin:0 auto}
   .vbar2{display:flex;align-items:center;gap:6px;padding:6px 10px 0;max-width:1120px;margin:0 auto;width:100%}
-  .tod{display:flex;gap:4px;flex:1 1 auto;overflow-x:auto;padding-bottom:1px}
-  .tod button{flex:0 0 auto;padding:5px 9px;border-radius:999px;font-weight:900;
-    font-size:clamp(9.5px,2.6vw,11px);background:#fffdf3;border:2px solid var(--line);color:#4f6b33;white-space:nowrap}
-  .tod button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:#e8c25a;color:#6a3f00}
+  /* 시간대는 실제 시각을 따라 자동으로 바뀐다(수동 버튼 없음) — 지금 상태만 살짝 알려 준다 */
+  .todnow{flex:1 1 auto;min-width:0;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#4f6b33;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .shot{flex:0 0 auto;padding:6px 11px;border-radius:999px;font-weight:900;font-size:clamp(10px,2.8vw,12px);
     background:linear-gradient(180deg,#e8f2ff,#c9e0ff);border:2px solid #a8c6f0;color:#1d3f6b;
     box-shadow:0 2px 0 rgba(30,80,150,.22)}
@@ -82,9 +81,10 @@
     background-image:radial-gradient(1.6px 1.6px at 20% 18%,#fff,transparent),radial-gradient(1.4px 1.4px at 42% 9%,#fff,transparent),
       radial-gradient(1.8px 1.8px at 63% 22%,#fff,transparent),radial-gradient(1.4px 1.4px at 78% 12%,#fff,transparent),
       radial-gradient(1.5px 1.5px at 88% 28%,#fff,transparent),radial-gradient(1.3px 1.3px at 33% 30%,#fff,transparent),
-      radial-gradient(1.6px 1.6px at 12% 34%,#fff,transparent),radial-gradient(1.4px 1.4px at 55% 33%,#fff,transparent);
-    animation:twinkle 3.6s ease-in-out infinite}
-  @keyframes twinkle{0%,100%{opacity:.4}50%{opacity:.95}}
+      radial-gradient(1.6px 1.6px at 12% 34%,#fff,transparent),radial-gradient(1.4px 1.4px at 55% 33%,#fff,transparent)}
+  /* 별은 밤에만 — 트윙클 애니메이션이 낮에도 opacity 를 덮어 별이 보이던 문제 수정 */
+  .meadow.t-night .stars{opacity:1;animation:twinkle 3.6s ease-in-out infinite}
+  @keyframes twinkle{0%,100%{opacity:.45}50%{opacity:.95}}
   .meadow .clouds{position:absolute;left:-8%;right:-8%;top:4%;height:40%;opacity:.9;
     background:radial-gradient(closest-side,#fff,transparent 70%) 8% 26%/32% 44% no-repeat,
       radial-gradient(closest-side,#fff,transparent 72%) 66% 10%/40% 52% no-repeat,
@@ -99,23 +99,89 @@
   .meadow.t-sunset::after{background:radial-gradient(120% 90% at 50% 100%,rgba(120,60,10,.3),transparent 72%)}
   .meadow.t-night{background:linear-gradient(180deg,#101a3d 0%,#1b2a5c 28%,#26406e 46%,#2f5a52 70%,#2a5a30 100%)}
   .meadow.t-night .sun{opacity:0}
-  .meadow.t-night .stars{opacity:1}
   .meadow.t-night .clouds{opacity:.16;filter:blur(1px)}
   .meadow.t-night::after{background:radial-gradient(120% 90% at 50% 100%,rgba(0,10,20,.58),transparent 72%)}
   .meadow.t-night .pk img{filter:brightness(1.16) drop-shadow(0 4px 6px rgba(0,0,0,.55))}
   .meadow.t-night .it{filter:brightness(1.08) drop-shadow(0 4px 6px rgba(0,0,0,.5))}
   .meadow.t-night .it.nightlight{filter:drop-shadow(0 0 14px #ffd66b) brightness(1.2)}
 
+  /* ---------- 자연 지형 (연못 · 언덕 · 배틀장소) — 테두리 없는 풍경 ---------- */
+  .meadow .terr{position:absolute;inset:0;z-index:1;pointer-events:none;transition:filter .5s}
+  .meadow .terr .t{position:absolute;display:block}
+  .meadow .terr .t b{position:absolute;display:block}
+  /* 💧 연못 — 유기적인 타원, 가장자리는 풀밭으로 자연스럽게 번진다 */
+  .terr .t-pond{left:1%;top:57%;width:38%;height:30%;border-radius:52% 48% 46% 54%/50% 52% 48% 50%;
+    background:radial-gradient(ellipse at 46% 34%,#e8feff 0%,#a9ecfb 16%,#6ed3ef 40%,#35b0d6 62%,rgba(30,150,190,0) 80%)}
+  .terr .t-pond .rip{left:12%;top:26%;width:76%;height:56%;border-radius:50%;
+    background:radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.55) 0 2%,rgba(255,255,255,0) 3%),
+      radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.4) 0 6%,rgba(255,255,255,0) 8%),
+      radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.3) 0 14%,rgba(255,255,255,0) 17%),
+      radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.2) 0 24%,rgba(255,255,255,0) 28%);
+    animation:pondRip 4.2s ease-in-out infinite}
+  @keyframes pondRip{0%,100%{opacity:.45;transform:scale(.94)}50%{opacity:1;transform:scale(1.03)}}
+  .terr .t-pond .reeds{inset:0;
+    background:radial-gradient(closest-side,#2f8a3a,rgba(47,138,58,0) 72%) 6% 22%/13% 22% no-repeat,
+      radial-gradient(closest-side,#3aa347,rgba(58,163,71,0) 72%) 24% 88%/15% 24% no-repeat,
+      radial-gradient(closest-side,#2f8a3a,rgba(47,138,58,0) 72%) 82% 30%/13% 22% no-repeat,
+      radial-gradient(closest-side,#57bd2f,rgba(87,189,47,0) 70%) 66% 92%/12% 20% no-repeat,
+      radial-gradient(closest-side,#3aa347,rgba(58,163,71,0) 72%) 94% 74%/14% 24% no-repeat;opacity:.9}
+  /* 😴 언덕 — 완만한 풀 언덕 + 나무 그늘 */
+  .terr .t-hill{left:56%;top:21%;width:40%;height:30%;border-radius:50% 50% 46% 46%/62% 62% 38% 38%;
+    background:radial-gradient(ellipse at 44% 76%,#a5e072 0%,#86cf52 22%,#6cba3e 44%,rgba(108,186,62,.55) 62%,rgba(108,186,62,0) 78%)}
+  .terr .t-hill .shade{right:8%;top:8%;width:44%;height:52%;border-radius:50%;
+    background:radial-gradient(ellipse at 50% 50%,rgba(30,80,20,.34),rgba(30,80,20,0) 72%);filter:blur(1px)}
+  .terr .t-hill .tuft{inset:0;
+    background:radial-gradient(closest-side,#4f9c2c,rgba(79,156,44,0) 70%) 22% 74%/9% 14% no-repeat,
+      radial-gradient(closest-side,#4f9c2c,rgba(79,156,44,0) 70%) 54% 84%/8% 12% no-repeat,
+      radial-gradient(closest-side,#3f8a22,rgba(63,138,34,0) 70%) 76% 62%/9% 14% no-repeat,
+      radial-gradient(closest-side,#57bd2f,rgba(87,189,47,0) 70%) 40% 52%/7% 11% no-repeat;opacity:.8}
+  /* ⚔️ 배틀장소 — 모래로 다진 원형 대련장 */
+  .terr .t-arena{left:42%;top:70%;width:32%;height:24%;border-radius:50%;
+    background:radial-gradient(ellipse at 50% 44%,#fdf1d2 0%,#f0d8a3 26%,#e0bd7f 48%,#cca25c 66%,rgba(200,155,80,0) 80%)}
+  .terr .t-arena .ring{left:16%;top:16%;right:16%;bottom:16%;border-radius:50%;
+    border:2px solid rgba(255,255,255,.5);box-shadow:inset 0 0 12px rgba(140,95,30,.22)}
+  .terr .t-arena .line{left:50%;top:20%;bottom:20%;width:2px;margin-left:-1px;border-radius:2px;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.6) 0 5px,rgba(255,255,255,0) 5px 11px)}
+  .terr .tlabel{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;
+    font-size:clamp(8px,2.2vw,10px);font-weight:900;color:rgba(255,255,255,.92);
+    text-shadow:0 1px 4px rgba(15,50,10,.75)}
+  .terr .l-pond{left:20%;top:55%}
+  .terr .l-hill{left:76%;top:19%}
+  .terr .l-arena{left:58%;top:67%}
+  .meadow.t-sunset .terr{filter:saturate(1.08) hue-rotate(-6deg) brightness(.97)}
+  .meadow.t-night .terr{filter:brightness(.58) saturate(.82) hue-rotate(8deg)}
+
   /* ---------- 배치된 포켓몬 ---------- */
   .pk{position:absolute;z-index:4;width:clamp(76px,11.5vw,96px);transform:translate(-50%,-50%);
-    transition:left 3.4s linear,top 3.4s linear;cursor:pointer;padding:0;border:0;background:none}
-  .pk img{width:100%;display:block;image-rendering:pixelated;
+    transition:left 3.4s linear,top 3.4s linear;cursor:grab;padding:0;border:0;background:none;touch-action:none}
+  .pk.dragging{transition:none;cursor:grabbing;z-index:8}
+  .pk.sel{outline:3px dashed rgba(255,214,77,.95);outline-offset:6px;border-radius:50%;z-index:7}
+  .pk img{width:100%;display:block;image-rendering:pixelated;transform-origin:50% 92%;
     filter:drop-shadow(0 4px 5px rgba(20,60,10,.35));animation:pkbob 2.6s ease-in-out infinite}
   @keyframes pkbob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.02)}}
-  .pk.sleep img{animation:pksleep 3.6s ease-in-out infinite}
-  @keyframes pksleep{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(2px) scale(.98,.96)}}
-  .pk.spar img{animation:pkspar .9s ease-in-out infinite}
-  @keyframes pkspar{0%,100%{transform:translate(0,0) rotate(0)}45%{transform:translate(-6px,-4px) rotate(-6deg)}70%{transform:translate(5px,-1px) rotate(5deg)}}
+  /* 💧 연못 위 — 찰방찰방 물장구 */
+  .pk.b-pond img{animation:pksplash 1.15s ease-in-out infinite}
+  @keyframes pksplash{0%,100%{transform:translateY(0) scale(1,1)}
+    40%{transform:translateY(-8px) scale(.96,1.07)}70%{transform:translateY(1px) scale(1.05,.94)}}
+  .pk.b-pond::after{content:"";position:absolute;left:50%;bottom:0;width:66%;height:14%;
+    transform:translateX(-50%);border-radius:50%;border:2px solid rgba(255,255,255,.8);
+    animation:pkRipple 1.7s ease-out infinite;pointer-events:none}
+  @keyframes pkRipple{0%{opacity:.9;transform:translateX(-50%) scale(.45)}100%{opacity:0;transform:translateX(-50%) scale(1.5)}}
+  /* 😴 언덕 위 — 살짝 기울어 느리게 숨쉬며 자는 척 */
+  .pk.b-hill img{animation:pksnooze 3.9s ease-in-out infinite}
+  @keyframes pksnooze{0%,100%{transform:rotate(-8deg) translateY(1px) scale(1,1)}
+    50%{transform:rotate(-10deg) translateY(4px) scale(1.03,.94)}}
+  /* ⚔️ 배틀장소 위 — 기합 넣고 좌우로 대련 */
+  .pk.b-arena img{animation:pkfight .78s ease-in-out infinite}
+  @keyframes pkfight{0%,100%{transform:translateX(0) rotate(0)}
+    25%{transform:translateX(-7px) rotate(-6deg)}50%{transform:translateX(7px) rotate(5deg) scale(1.04)}
+    75%{transform:translateX(-3px) rotate(-2deg)}}
+  .pk .stb{position:absolute;left:54%;top:-6px;font-size:clamp(11px,3vw,14px);line-height:1;pointer-events:none;
+    filter:drop-shadow(0 1px 2px rgba(20,60,10,.5));opacity:.95}
+  .pkfx{position:absolute;z-index:7;pointer-events:none;font-size:clamp(11px,3vw,15px);
+    transform:translate(-50%,-50%);animation:pkfxfloat 1.5s ease-out forwards}
+  @keyframes pkfxfloat{0%{opacity:0;transform:translate(-50%,-40%) scale(.5)}
+    30%{opacity:1;transform:translate(-50%,-70%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-150%) scale(.9)}}
   .pk.jump img{animation:pkjump .6s cubic-bezier(.2,1.6,.4,1)}
   @keyframes pkjump{0%{transform:translateY(0) scale(1)}35%{transform:translateY(-22px) scale(1.08)}70%{transform:translateY(2px) scale(.96,1.04)}100%{transform:translateY(0) scale(1)}}
   .pk .zzz{position:absolute;left:56%;top:-14px;font-size:clamp(9px,2.6vw,12px);font-weight:900;color:#fff;
@@ -140,19 +206,11 @@
   @keyframes itbob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3%) scale(1.04)}}
   .it.sel{outline:3px dashed rgba(255,214,77,.95);outline-offset:5px;border-radius:18px;z-index:6;cursor:grabbing}
   .it.sel .g{animation:none}
-  /* 환경 아이템 — 연못 · 언덕 · 연습장을 풀밭 위에 직접 놓는다 */
-  .it.is-env{z-index:1}
-  .it.is-env .g{position:relative;z-index:1;font-size:.4em;filter:drop-shadow(0 2px 3px rgba(0,0,0,.28))}
-  .it.is-env::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:2.3em;height:1.4em;border-radius:50%;z-index:0}
-  .it.k-pond::before{background:radial-gradient(ellipse at 50% 40%,#bff2ff 0%,#63c8e8 55%,#1e7fa8 100%);
-    box-shadow:inset 0 6px 16px rgba(255,255,255,.6),0 6px 14px rgba(10,60,80,.25)}
-  .it.k-hill::before{background:radial-gradient(ellipse at 50% 18%,#cdf3a0,#6dbb3d 70%,#4f9c2c);
-    box-shadow:inset 0 -8px 18px rgba(30,80,10,.18)}
-  .it.k-arena::before{border-radius:26%;
-    background:repeating-linear-gradient(45deg,rgba(255,255,255,.18) 0 8px,transparent 8px 16px),
-      radial-gradient(ellipse at 50% 40%,#fff6dd,#e5c07a 70%,#c99a4e);
-    box-shadow:inset 0 0 18px rgba(120,80,20,.25)}
+  .it.k-butterfly .g{animation:itflit 2.2s ease-in-out infinite}
+  @keyframes itflit{0%,100%{transform:translate(0,0) rotate(-6deg)}50%{transform:translate(4%,-10%) rotate(8deg)}}
+  .it.k-garland .g,.it.k-chime .g{animation:itglow 3s ease-in-out infinite}
+  @keyframes itglow{0%,100%{filter:drop-shadow(0 0 4px rgba(255,214,107,.55)) brightness(1.02)}
+    50%{filter:drop-shadow(0 0 12px rgba(255,214,107,.95)) brightness(1.2)}}
   .meadow .it.nightlight{filter:drop-shadow(0 0 14px #ffd66b) brightness(1.16)}
   .meadow .it.sel{filter:drop-shadow(0 0 12px rgba(255,214,77,.9))}
 
@@ -325,12 +383,7 @@
 </div>
 
 <div class="vbar2">
-  <div class="tod" id="todBar" role="group" aria-label="시간대 바꾸기">
-    <button type="button" data-tod="day">☀️ 낮</button>
-    <button type="button" data-tod="sunset">🌅 노을</button>
-    <button type="button" data-tod="night">🌙 밤</button>
-    <button type="button" data-tod="auto" class="on">🕒 자동</button>
-  </div>
+  <p class="todnow" id="todNow" aria-live="polite">☀️ 낮 · 지금 시각에 맞춰 하늘이 바뀌어요</p>
   <button type="button" class="shot" id="photoBtn">📸 사진</button>
 </div>
 
@@ -345,6 +398,14 @@
   <div class="meadow t-day" id="meadow" data-tod="day">
     <div class="sky" aria-hidden="true">
       <span class="clouds"></span><span class="stars"></span><span class="sun"></span>
+    </div>
+    <div class="terr" id="terr" aria-hidden="true">
+      <i class="t t-pond"><b class="rip"></b><b class="reeds"></b></i>
+      <i class="t t-hill"><b class="shade"></b><b class="tuft"></b></i>
+      <i class="t t-arena"><b class="ring"></b><b class="line"></b></i>
+      <span class="tlabel l-pond">💧 연못</span>
+      <span class="tlabel l-hill">😴 언덕</span>
+      <span class="tlabel l-arena">⚔️ 배틀장소</span>
     </div>
     <div class="floor" id="meadowFloor" data-floor="meadow"></div>
   </div>
@@ -470,12 +531,33 @@
   const SPOTS = [[24,50],[46,44],[68,52],[33,70],[57,71],[79,64],[14,60],[87,46]];
   const MAX_PK = 8;
   const MAX_ITEM = 8;
-  const ZONES = [
-    { k: 'grass', name: '풀숲 놀이터', emoji: '🌿' },
-    { k: 'pond', name: '물가 연못', emoji: '💧' },
-    { k: 'hill', name: '낮잠 언덕', emoji: '😴' },
-    { k: 'arena', name: '작은 배틀 연습장', emoji: '⚔️' },
+
+  /* ---------- 자연 지형 (하나의 큰 풀밭 위 3구역 + 들판) ----------
+     cx·cy = 중심 퍼센트, rx·ry = 반지름 퍼센트. 놓인 좌표가 어느 타원 안인지로 지형을 정한다. */
+  const TERRAIN = [
+    { k: 'pond', emoji: '💧', name: '연못', cx: 20, cy: 72, rx: 19, ry: 15 },
+    { k: 'hill', emoji: '😴', name: '언덕', cx: 76, cy: 36, rx: 20, ry: 15 },
+    { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 58, cy: 82, rx: 16, ry: 12 },
   ];
+  const ZONE_ACTS = {
+    pond: { cls: 'b-pond', stb: '💦', fx: ['💦', '💧', '🌊'], bubble: '💦' },
+    hill: { cls: 'b-hill', stb: '💤', fx: ['💤', '✨', '😴'], bubble: '💤' },
+    arena: { cls: 'b-arena', stb: '⚡', fx: ['⚡', '💥', '🔥'], bubble: '⚡' },
+    grass: { cls: 'b-grass', stb: '', fx: ['🌿', '🍃', '🎵'], bubble: '🎵' },
+  };
+  function zoneAt(x, y) {
+    const px = Number(x);
+    const py = Number(y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return 'grass';
+    for (let i = 0; i < TERRAIN.length; i += 1) {
+      const t = TERRAIN[i];
+      const dx = (px - t.cx) / t.rx;
+      const dy = (py - t.cy) / t.ry;
+      if (dx * dx + dy * dy <= 1) return t.k;
+    }
+    return 'grass';
+  }
+
   const SLOTS = [
     { k: 'p1', fb: '첫째', emoji: '👧' },
     { k: 'p2', fb: '둘째', emoji: '🧒' },
@@ -490,12 +572,16 @@
   const POK3 = window.POK3 || null;
   const DB = { list: [], byId: {} };
   let SLOT = 'p1';
-  let ZONE = 'grass';
   let swapFor = null;   // {type:'poke'|'item', ...}
-  let TOD = lsGet('pkm.village.tod.v1', 'auto');   // day | sunset | night | auto
-  let selectedItem = -1;
+  let TOD_FORCE = null;   // 검증용 시간대 주입 훅(day|sunset|night) — 평소엔 null
   let todTimer = 0;
-  const GLOW = { campfire: 1, lantern: 1, lamp: 1, star: 1, fireflies: 1 };
+  let selectedItem = -1;
+  let selectedPoke = '';   // 탭으로 고른 포켓몬 id(문자열)
+  let pkDrag = null;
+  function isGlow(k) {
+    if (POK3 && POK3.isGlow) return POK3.isGlow(k);
+    return ['campfire', 'lantern', 'lamp', 'star', 'fireflies', 'garland', 'chime', 'fireflyjar'].indexOf(k) >= 0;
+  }
 
   /* ---------- 소리 ---------- */
   const Sfx = {
@@ -558,19 +644,28 @@
   function byId(id) { return DB.byId[id] || null; }
   function pkName(id) { const p = byId(id); return p ? p.name : ('#' + id); }
 
+  function isRetired(k) {
+    if (POK3 && POK3.isRetired) return POK3.isRetired(k);
+    return ['pond', 'hill', 'arena'].indexOf(k) >= 0;
+  }
   function state() {
     const raw = lsGet(K_PLACE(SLOT), null);
     const s = raw && typeof raw === 'object' ? raw : {};
     return {
       poke: Array.isArray(s.poke) ? s.poke.filter((x) => x && Number.isFinite(Number(x.id))) : [],
-      items: Array.isArray(s.items) ? s.items.filter((x) => x && x.k) : [],
+      /* 예전에 연못·언덕·연습장을 아이템으로 놓아 둔 저장분은 자연 지형으로 옮겨 왔으니 지운다 */
+      items: Array.isArray(s.items) ? s.items.filter((x) => x && x.k && !isRetired(x.k)) : [],
     };
   }
   function save(st) { lsSet(K_PLACE(SLOT), st); }
   function inv() {
     const o = lsGet(K_INV(SLOT), {}) || {};
     const out = {};
-    Object.keys(o).forEach((k) => { const n = Number(o[k]) || 0; if (n > 0) out[k] = n; });
+    Object.keys(o).forEach((k) => {
+      if (isRetired(k)) return;
+      const n = Number(o[k]) || 0;
+      if (n > 0) out[k] = n;
+    });
     return out;
   }
   function saveInv(o) { lsSet(K_INV(SLOT), o); }
@@ -585,6 +680,27 @@
 
   function floorOf() { return document.getElementById('meadowFloor'); }
 
+  /* 지형에 따른 행동 클래스 + 상태 배지(💦/💤/⚡) */
+  function applyZone(el, z) {
+    const act = ZONE_ACTS[z] || ZONE_ACTS.grass;
+    el.classList.remove('b-pond', 'b-hill', 'b-arena', 'b-grass');
+    el.classList.add(act.cls);
+    el.dataset.zone = z;
+    const old = el.querySelector('.stb');
+    if (act.stb) {
+      if (old) old.textContent = act.stb;
+      else {
+        const s = document.createElement('span');
+        s.className = 'stb';
+        s.textContent = act.stb;
+        el.appendChild(s);
+      }
+    } else if (old) {
+      old.remove();
+    }
+    return z;
+  }
+
   function paintVillage() {
     const floor = floorOf();
     if (!floor) return;
@@ -594,8 +710,7 @@
     st.items.forEach((it, idx) => {
       const meta = (POK3 && POK3.item(it.k)) || { emoji: '🏡', name: '아이템' };
       const el = document.createElement('div');
-      el.className = 'it k-' + it.k + (meta.env ? ' is-env' : '')
-        + (GLOW[it.k] ? ' light' : '') + (idx === selectedItem ? ' sel' : '');
+      el.className = 'it k-' + it.k + (isGlow(it.k) ? ' light' : '') + (idx === selectedItem ? ' sel' : '');
       el.dataset.item = String(idx);
       el.dataset.k = it.k;
       el.title = meta.name + ' — 눌러서 크게/작게 · 끌어서 옮기기';
@@ -608,19 +723,23 @@
       floor.appendChild(el);
     });
 
-    st.poke.forEach((p) => {
+    st.poke.forEach((p, idx) => {
       const el = document.createElement('button');
       el.className = 'pk';
       el.type = 'button';
       el.dataset.pid = String(p.id);
-      el.dataset.zone = 'meadow';
-      el.setAttribute('aria-label', pkName(p.id) + ' · 톡톡 두드려 보세요');
-      el.style.left = clamp(Number(p.x) || rnd(16, 84), 8, 92) + '%';
-      el.style.top = clamp(Number(p.y) || rnd(46, 80), 26, 90) + '%';
+      el.dataset.idx = String(idx);
+      el.setAttribute('aria-label', pkName(p.id) + ' · 톡톡 두드리면 반응해요 · 끌어서 옮겨요');
+      const px = clamp(Number(p.x) || rnd(16, 84), 8, 92);
+      const py = clamp(Number(p.y) || rnd(46, 80), 26, 90);
+      el.style.left = px + '%';
+      el.style.top = py + '%';
       el.innerHTML = '<img src="' + SPR(p.id) + '" alt="" decoding="async">';
       el.querySelector('img').addEventListener('error', () => {
         el.querySelector('img').src = ART(p.id);
       }, { once: true });
+      applyZone(el, zoneAt(px, py));
+      if (String(p.id) === String(selectedPoke)) el.classList.add('sel');
       floor.appendChild(el);
     });
 
@@ -637,7 +756,7 @@
     st.poke.forEach((p) => { placed[p.id] = 1; });
     const ids = dexIds(SLOT).slice().sort((a, b) => a - b);
     $('#pokeNote').textContent = '도감 ' + ids.length + '마리 중에서 고를 수 있어요 · 마을에는 최대 ' + MAX_PK + '마리';
-    $('#zoneChips').innerHTML = '<span class="mnote">🌿 넓은 풀밭 어디에나 놓을 수 있어요</span>';
+    $('#zoneChips').innerHTML = '<span class="mnote">🌿 넓은 풀밭 어디에나 놓을 수 있어요 · 끌거나 톡 골라 옮기면 💧연못·😴언덕·⚔️배틀장소에서 행동이 바뀌어요</span>';
 
     const grid = $('#pokeGrid');
     if (!ids.length) {
@@ -689,7 +808,7 @@
     const bag = inv();
     const keys = POK3 ? POK3.itemKeys() : Object.keys(bag);
     const n = Object.keys(bag).reduce((a, k) => a + bag[k], 0);
-    $('#itemNote').textContent = '💧 연못 · 😴 언덕 · ⚔️ 연습장은 기본! 가방엔 ' + n + '개 · 마을에는 최대 ' + MAX_ITEM + '개까지';
+    $('#itemNote').textContent = '가방에 있는 꾸미기 아이템이에요 · 마을에는 최대 ' + MAX_ITEM + '개 · 💡밤에 빛나는 소품도 있어요';
     $('#itemGrid').innerHTML = keys.map((k) => {
       const it = (POK3 && POK3.item(k)) || { emoji: '🏡', name: k };
       const free = !!(it && (it.env || it.free));
@@ -813,17 +932,46 @@
   }
 
   /* ---------- 살아있는 행동 & 터치 반응 ---------- */
+  /* 들판(🌿)에 있는 친구만 자유롭게 산책한다 — 연못·언덕·배틀장소에 놓인 친구는 그 자리에서 제 행동 */
   function wanderTick() {
     const st = state();
     $$('.village .pk').forEach((el) => {
-      if (el.classList.contains('jump')) return;
-      if (Math.random() < 0.28) return;            // 다들 한꺼번에 움직이지 않게
-      const x = rnd(10, 90);
-      const y = rnd(40, 86);
+      if (el.classList.contains('jump') || el.classList.contains('dragging')) return;
+      if ((el.dataset.zone || 'grass') !== 'grass') return;
+      if (Math.random() < 0.45) return;            // 다들 한꺼번에 움직이지 않게
+      let x = 0;
+      let y = 0;
+      let ok = false;
+      for (let i = 0; i < 6; i += 1) {
+        const cx = rnd(10, 90);
+        const cy = rnd(40, 86);
+        if (zoneAt(cx, cy) === 'grass') { x = cx; y = cy; ok = true; break; }
+      }
+      if (!ok) return;
       el.style.left = x + '%';
       el.style.top = y + '%';
       const p = st.poke.find((q) => String(q.id) === el.dataset.pid);
       if (p) { p.x = x; p.y = y; }
+    });
+  }
+
+  /* 지형별 잔물결 효과 — 물보라 💦 · 졸음 💤 · 스파크 ⚡ */
+  function zoneFx(el) {
+    const act = ZONE_ACTS[el.dataset.zone || 'grass'] || ZONE_ACTS.grass;
+    const floor = el.parentNode;
+    if (!floor) return;
+    const f = document.createElement('span');
+    f.className = 'pkfx';
+    f.textContent = pickOf(act.fx);
+    f.style.left = (parseFloat(el.style.left) + rnd(-5, 5)) + '%';
+    f.style.top = (parseFloat(el.style.top) - rnd(4, 11)) + '%';
+    floor.appendChild(f);
+    setTimeout(() => f.remove(), 1600);
+  }
+  function fxTick() {
+    $$('.village .pk').forEach((el) => {
+      if (Math.random() < 0.55) return;
+      zoneFx(el);
     });
   }
 
@@ -837,16 +985,6 @@
       }
     });
     save(st);
-  }
-
-  function arenaSpar() {
-    const list = $$('.village .pk');
-    if (!list.length) return;
-    list.forEach((el) => el.classList.remove('spar'));
-    if (Math.random() < 0.55) {
-      const one = list[Math.floor(Math.random() * list.length)];
-      if (one) one.classList.add('spar');
-    }
   }
 
   function bubble(el, text) {
@@ -878,15 +1016,46 @@
     void el.offsetWidth;
     el.classList.add('jump');
     setTimeout(() => el.classList.remove('jump'), 640);
-    bubble(el, Math.random() < 0.55 ? '❤️' : '🎵');
+    const act = ZONE_ACTS[el.dataset.zone || 'grass'] || ZONE_ACTS.grass;
+    bubble(el, Math.random() < 0.55 ? '❤️' : act.bubble);
     setTimeout(() => berry(el), 220);
     const now = Date.now();
     if (now - cryAt > 700) { cryAt = now; Sfx.cry(id); }
     Sfx.tone(760, 0.07, 'triangle', 0.04, 1080);
-    if (el.dataset.zone === 'hill') {
-      el.classList.remove('sleep');
-      setTimeout(() => { if (document.body.contains(el)) el.classList.add('sleep'); }, 2600);
-    }
+  }
+
+  /* ---------- 포켓몬 위치 옮기기 (끌기 · 탭 선택 → 탭한 곳으로) ---------- */
+  const ZONE_LABEL = { pond: '💧 연못', hill: '😴 언덕', arena: '⚔️ 배틀장소', grass: '🌿 들판' };
+  function selectPoke(pid) {
+    selectedPoke = pid ? String(pid) : '';
+    if (selectedPoke) selectedItem = -1;
+    $$('#meadowFloor .pk').forEach((el) => el.classList.toggle('sel', el.dataset.pid === selectedPoke));
+    if (selectedPoke) $$('#meadowFloor .it').forEach((el) => el.classList.remove('sel'));
+    paintCtl();
+    return selectedPoke;
+  }
+  function movePokeTo(id, x, y, quiet) {
+    const st = state();
+    const p = st.poke.find((q) => String(q.id) === String(id));
+    if (!p) return null;
+    const nx = Math.round(clamp(Number(x), 8, 92) * 10) / 10;
+    const ny = Math.round(clamp(Number(y), 26, 90) * 10) / 10;
+    const z = zoneAt(nx, ny);
+    p.x = nx;
+    p.y = ny;
+    save(st);
+    $$('#meadowFloor .pk').filter((el) => el.dataset.pid === String(id)).forEach((el) => {
+      el.style.left = nx + '%';
+      el.style.top = ny + '%';
+      applyZone(el, z);
+      if (!quiet) {
+        el.classList.remove('jump');
+        void el.offsetWidth;
+        el.classList.add('jump');
+        setTimeout(() => el.classList.remove('jump'), 640);
+      }
+    });
+    return { id: Number(id), x: nx, y: ny, zone: z };
   }
 
   /* ---------- 모달 공통 ---------- */
@@ -1073,7 +1242,9 @@
   }
   function selectItem(idx) {
     selectedItem = idx;
+    selectedPoke = '';
     $$('#meadowFloor .it').forEach((el) => el.classList.toggle('sel', Number(el.dataset.item) === idx));
+    $$('#meadowFloor .pk').forEach((el) => el.classList.remove('sel'));
     paintCtl();
     try { Sfx.click(); } catch (e) { /* */ }
   }
@@ -1099,7 +1270,8 @@
     if (el) { el.style.left = it.x + '%'; el.style.top = it.y + '%'; }
   }
 
-  /* ---------- 4탄: 시간대에 따라 바뀌는 마을 하늘 ---------- */
+  /* ---------- 5탄: 실제 시각을 따라 저절로 바뀌는 마을 하늘 ----------
+     06~16 낮 / 17~19 노을 / 20~05 밤 — 수동 버튼 없이 기기 시각(한국)으로만 정해진다. */
   function hourKST() { return new Date(Date.now() + 9 * 3600 * 1000).getUTCHours(); }
   function todOf(h) {
     const hh = Number(h);
@@ -1107,28 +1279,33 @@
     if (hh >= 17 && hh < 20) return 'sunset';
     return 'night';
   }
+  function todNow() { return TOD_FORCE || todOf(hourKST()); }
   function applyTod() {
     const m = document.getElementById('meadow');
-    if (!m) return;
-    const auto = TOD === 'auto';
-    const k = auto ? todOf(hourKST()) : TOD;
+    if (!m) return null;
+    const k = todNow();
     m.classList.remove('t-day', 't-sunset', 't-night');
     m.classList.add('t-' + k);
     m.dataset.tod = k;
-    $$('#todBar button').forEach((b) => b.classList.toggle('on', b.dataset.tod === (auto ? 'auto' : TOD)));
     $$('#meadowFloor .it').forEach((el) => el.classList.toggle('nightlight', k === 'night'));
+    const lab = document.getElementById('todNow');
+    if (lab) {
+      const nm = { day: '☀️ 낮', sunset: '🌅 노을', night: '🌙 밤' }[k];
+      lab.textContent = nm + ' · 실제 시각(06~16/17~19/20~05)에 맞춰 저절로 바뀌어요'
+        + (TOD_FORCE ? ' (시간 확인 중)' : '');
+    }
     const zClone = document.querySelector('#zoomStage .meadow');
     if (zClone) {
       zClone.classList.remove('t-day', 't-sunset', 't-night');
       zClone.classList.add('t-' + k);
+      zClone.dataset.tod = k;
     }
+    return k;
   }
-  function setTod(v) {
-    TOD = (v === 'day' || v === 'sunset' || v === 'night') ? v : 'auto';
-    lsSet('pkm.village.tod.v1', TOD);
-    applyTod();
-    const label = { day: '☀️ 낮', sunset: '🌅 노을', night: '🌙 밤', auto: '🕒 자동' }[TOD];
-    if (TOD !== 'auto') toast(label + ' 마을로 바꿨어요');
+  /* 검증용 시간대 주입 훅 — 평소 화면에는 영향이 없다(낮·노을·밤을 모두 볼 수 있게) */
+  function forceTod(k) {
+    TOD_FORCE = (k === 'day' || k === 'sunset' || k === 'night') ? k : null;
+    return applyTod();
   }
 
   /* ---------- 4탄: 마을 기념사진 (PNG) ---------- */
@@ -1151,6 +1328,70 @@
       } catch (e) { fin(null); }
     });
   }
+  /* 자연 지형도 사진에 그대로 담는다 — 화면의 풍경과 같은 자리·같은 색 */
+  function drawTerrain(ctx, W, H, tod) {
+    TERRAIN.forEach((t) => {
+      const cx = (t.cx / 100) * W;
+      const cy = (t.cy / 100) * H;
+      const rx = (t.rx / 100) * W;
+      const ry = (t.ry / 100) * H;
+      const big = Math.max(rx, ry);
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.clip();
+      if (t.k === 'pond') {
+        const g = ctx.createRadialGradient(cx - rx * 0.1, cy - ry * 0.3, big * 0.08, cx, cy, big);
+        g.addColorStop(0, '#e8feff');
+        g.addColorStop(0.18, '#a9ecfb');
+        g.addColorStop(0.44, '#6ed3ef');
+        g.addColorStop(0.68, '#35b0d6');
+        g.addColorStop(1, 'rgba(30,150,190,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,.55)';
+        ctx.lineWidth = Math.max(1.5, W * 0.0022);
+        [0.36, 0.56, 0.76].forEach((k) => {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rx * k, ry * k, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+      } else if (t.k === 'hill') {
+        const g = ctx.createRadialGradient(cx - rx * 0.2, cy + ry * 0.55, big * 0.08, cx, cy, big);
+        g.addColorStop(0, '#a5e072');
+        g.addColorStop(0.34, '#86cf52');
+        g.addColorStop(0.6, '#6cba3e');
+        g.addColorStop(1, 'rgba(108,186,62,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+        ctx.fillStyle = 'rgba(30,80,20,.28)';
+        ctx.beginPath();
+        ctx.ellipse(cx + rx * 0.32, cy - ry * 0.28, rx * 0.42, ry * 0.46, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const g = ctx.createRadialGradient(cx, cy - ry * 0.12, big * 0.08, cx, cy, big);
+        g.addColorStop(0, '#fdf1d2');
+        g.addColorStop(0.32, '#f0d8a3');
+        g.addColorStop(0.58, '#e0bd7f');
+        g.addColorStop(0.78, 'rgba(204,162,92,.75)');
+        g.addColorStop(1, 'rgba(200,155,80,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,.5)';
+        ctx.lineWidth = Math.max(2, W * 0.003);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rx * 0.7, ry * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (tod === 'night') {
+        ctx.globalAlpha = 0.44;
+        ctx.fillStyle = '#0a1428';
+        ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+      }
+      ctx.restore();
+    });
+  }
+
   function stampDate() {
     const d = new Date(Date.now() + 9 * 3600 * 1000);
     return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
@@ -1209,6 +1450,8 @@
       gg.addColorStop(1, tod === 'night' ? 'rgba(0,10,20,.55)' : 'rgba(30,90,20,.26)');
       ctx.fillStyle = gg;
       ctx.fillRect(0, H * 0.45, W, H * 0.55);
+      /* 자연 지형(연못·언덕·배틀장소) */
+      drawTerrain(ctx, W, H, tod);
       /* 꾸미기 아이템 */
       $$('#meadowFloor .it').forEach((el) => {
         const b = el.getBoundingClientRect();
@@ -1243,6 +1486,14 @@
         }
         if (!drawn) {
           /* 스프라이트를 못 받으면 조용히 건너뛴다 */
+        }
+        /* 지형에 따른 상태 배지(💦/💤/⚡)도 사진에 담는다 */
+        const act = ZONE_ACTS[el.dataset.zone || 'grass'] || ZONE_ACTS.grass;
+        if (act.stb) {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = Math.round(size * 0.34) + 'px "Apple Color Emoji","Noto Color Emoji",system-ui';
+          ctx.fillText(act.stb, cx + size * 0.26, cy - size * 0.44);
         }
       }
       /* 날짜 도장 */
@@ -1282,8 +1533,8 @@
   let zoomTimer = 0;
 
   function zoneMeta(k) {
-    const z = ZONES.find((x) => x.k === k);
-    return z ? { emoji: z.emoji, name: z.name } : { emoji: '🏡', name: '마을' };
+    const t = TERRAIN.find((x) => x.k === k);
+    return t ? { emoji: t.emoji, name: t.name } : { emoji: '🌿', name: '들판' };
   }
   function liveZone(k) { return document.querySelector('.village .zone[data-zone="' + k + '"]'); }
 
@@ -1318,6 +1569,11 @@
       el.style.left = from.style.left;
       el.style.top = from.style.top;
       el.classList.toggle('jump', from.classList.contains('jump'));
+      el.classList.toggle('sel', from.classList.contains('sel'));
+      const z = from.dataset.zone || 'grass';
+      el.classList.remove('b-pond', 'b-hill', 'b-arena', 'b-grass');
+      el.classList.add('b-' + z);
+      el.dataset.zone = z;
     });
     applyTod();
   }
@@ -1388,7 +1644,7 @@
       paintVillage();
     });
 
-    $('#pokeBtn').addEventListener('click', () => { Sfx.click(); ZONE = 'grass'; paintPokeModal(); open('pokeModal'); });
+    $('#pokeBtn').addEventListener('click', () => { Sfx.click(); paintPokeModal(); open('pokeModal'); });
     $('#itemBtn').addEventListener('click', () => { Sfx.click(); paintItemModal(); open('itemModal'); });
     $('#giftBtn').addEventListener('click', () => { Sfx.click(); Gift.reset(); open('giftModal'); });
     bindZoom();
@@ -1399,7 +1655,7 @@
       if (e.target.classList && e.target.classList.contains('modal')) { e.target.hidden = true; return; }
 
       const z = e.target.closest('#zoneChips button');
-      if (z) { ZONE = z.dataset.zone; paintPokeModal(); return; }
+      if (z) { paintPokeModal(); return; }
 
       const pc = e.target.closest('#pokeGrid .pcell');
       if (pc) {
@@ -1441,7 +1697,7 @@
     });
 
     const v = $('#village');
-    /* 하나의 풀밭: 아이템은 눌러서 고르고 끌어서 옮긴다 · 포켓몬은 톡톡 */
+    /* 하나의 풀밭: 아이템·포켓몬 모두 눌러서 고르고 끌어서 옮긴다 */
     const stage = document.getElementById('meadow');
     const floor = floorOf();
     let drag = null;
@@ -1459,10 +1715,23 @@
         const pkEl = e.target.closest('.pk');
         if (pkEl) {
           e.preventDefault();
-          touchPokemon(pkEl);
+          selectPoke(pkEl.dataset.pid);
+          pkDrag = { id: pkEl.dataset.pid, el: pkEl, moved: false, x0: e.clientX, y0: e.clientY, pid: e.pointerId };
+          try { pkEl.setPointerCapture(e.pointerId); } catch (err) { /* */ }
           return;
         }
-        /* 빈 풀밭을 누르면 고른 아이템이 그 자리로 이동 */
+        /* 빈 풀밭을 누르면 — 고른 포켓몬이 있으면 그 곳으로 이동, 아니면 고른 아이템이 그 자리로 */
+        if (selectedPoke && floor) {
+          const r = floor.getBoundingClientRect();
+          const mx = ((e.clientX - r.left) / r.width) * 100;
+          const my = ((e.clientY - r.top) / r.height) * 100;
+          const res = movePokeTo(selectedPoke, mx, my);
+          if (res) {
+            try { Sfx.pop(); } catch (err) { /* */ }
+            toast('🐾 ' + pkName(res.id) + ' → ' + (ZONE_LABEL[res.zone] || '들판'));
+          }
+          return;
+        }
         if (selectedItem >= 0 && floor) {
           const r = floor.getBoundingClientRect();
           moveItemTo(selectedItem, ((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100);
@@ -1470,6 +1739,18 @@
         }
       });
       stage.addEventListener('pointermove', (e) => {
+        if (pkDrag) {
+          if (!floor) return;
+          const r = floor.getBoundingClientRect();
+          if (!pkDrag.moved) {
+            if (Math.abs(e.clientX - pkDrag.x0) < 8 && Math.abs(e.clientY - pkDrag.y0) < 8) return;
+            pkDrag.moved = true;
+            pkDrag.el.classList.add('dragging');
+          }
+          pkDrag.el.style.left = clamp(((e.clientX - r.left) / r.width) * 100, 8, 92) + '%';
+          pkDrag.el.style.top = clamp(((e.clientY - r.top) / r.height) * 100, 26, 90) + '%';
+          return;
+        }
         if (!drag || !floor) return;
         const r = floor.getBoundingClientRect();
         drag.el.style.left = clamp(((e.clientX - r.left) / r.width) * 100, 5, 95) + '%';
@@ -1477,6 +1758,20 @@
         drag.moved = true;
       });
       const endDrag = () => {
+        if (pkDrag) {
+          const d = pkDrag;
+          pkDrag = null;
+          d.el.classList.remove('dragging');
+          if (d.moved) {
+            const res = movePokeTo(d.id, parseFloat(d.el.style.left) || 50, parseFloat(d.el.style.top) || 70, true);
+            if (res) {
+              try { Sfx.pop(); } catch (err) { /* */ }
+              toast('🐾 ' + pkName(res.id) + ' → ' + (ZONE_LABEL[res.zone] || '들판'));
+            }
+          } else {
+            touchPokemon(d.el);
+          }
+        }
         if (!drag) return;
         if (drag.moved) {
           moveItemTo(drag.idx, parseFloat(drag.el.style.left) || 50, parseFloat(drag.el.style.top) || 70);
@@ -1511,16 +1806,6 @@
       });
     }
 
-    /* 시간대 버튼 */
-    const todBar = document.getElementById('todBar');
-    if (todBar) {
-      todBar.addEventListener('click', (e) => {
-        const b = e.target.closest('button[data-tod]');
-        if (!b) return;
-        setTod(b.dataset.tod);
-        try { Sfx.click(); } catch (err) { /* */ }
-      });
-    }
     /* 기념사진 */
     const shot = document.getElementById('photoBtn');
     if (shot) {
@@ -1536,12 +1821,15 @@
       });
     }
 
-    document.addEventListener('visibilitychange', () => { if (document.hidden) savePositions(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) savePositions();
+      else applyTod();
+    });
   }
 
   function loop() {
     wanderTick();
-    if (Math.random() < 0.4) arenaSpar();
+    fxTick();
   }
 
   /* ---------- 부팅 ---------- */
@@ -1568,10 +1856,11 @@
       .catch(() => { /* */ });
 
     applyTod();
-    setInterval(loop, 3200);
+    setInterval(loop, 2600);
     setInterval(savePositions, 15000);
     clearInterval(todTimer);
-    todTimer = setInterval(() => { if (TOD === 'auto') applyTod(); }, 60000);
+    /* 실제 시각이 넘어가면(낮→노을→밤) 저절로 하늘이 바뀐다 */
+    todTimer = setInterval(applyTod, 30000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
@@ -1587,10 +1876,40 @@
     placeItem(k) { return placeItem(k); },
     removePoke,
     removeItem,
-    zone(z) { ZONE = z; paintPokeModal(); },
-    tod(k) { setTod(k); return (document.getElementById('meadow') || {}).dataset.tod; },
-    setTod,
+    zone(z) { return zoneAt(z && z.x, z && z.y); },
+    tod() { return (document.getElementById('meadow') || {}).dataset ? document.getElementById('meadow').dataset.tod : ''; },
     todOf,
+    hourKST,
+    forceTod,
+    terrain: () => TERRAIN.map((t) => ({ k: t.k, emoji: t.emoji, cx: t.cx, cy: t.cy, rx: t.rx, ry: t.ry })),
+    zoneAt,
+    movePoke(id, x, y) { return movePokeTo(Number(id), Number(x), Number(y), true); },
+    selectPoke(pid) { return selectPoke(pid); },
+    selectedPoke: () => selectedPoke,
+    applyZone(id, z) {
+      const el = document.querySelector('#meadowFloor .pk[data-pid="' + String(id) + '"]');
+      if (!el) return null;
+      return applyZone(el, z);
+    },
+    pokeInfo(id) {
+      const el = document.querySelector('#meadowFloor .pk[data-pid="' + String(id) + '"]');
+      if (!el) return null;
+      const st = state().poke.find((p) => String(p.id) === String(id));
+      const img = el.querySelector('img');
+      const stb = el.querySelector('.stb');
+      return {
+        id: Number(id),
+        x: parseFloat(el.style.left) || 0,
+        y: parseFloat(el.style.top) || 0,
+        zone: el.dataset.zone || 'grass',
+        cls: el.className,
+        sel: el.classList.contains('sel'),
+        stb: stb ? stb.textContent : '',
+        saved: st ? { x: st.x, y: st.y } : null,
+        anim: img ? getComputedStyle(img).animationName : '',
+      };
+    },
+    pkList() { return $$('#meadowFloor .pk').map((el) => ({ id: Number(el.dataset.pid), zone: el.dataset.zone || 'grass' })); },
     photo() { return takePhoto(); },
     select(i) { selectItem(Number(i)); return selectedItem; },
     selected: () => selectedItem,
