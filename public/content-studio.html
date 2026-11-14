@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="downloads/app_icon_192.png">
+<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✍️ 올인원 콘텐츠 스튜디오 (블로그·쇼츠·유튜브 요약)</title>
+<style>
+  :root {
+    --bg: #070c14;
+    --panel: #0b1120;
+    --panel-2: #0e1729;
+    --hover: #111a2e;
+    --border: rgba(56, 189, 248, 0.18);
+    --border-2: rgba(148, 163, 184, 0.18);
+    --text: #f8fafc;
+    --sub: #94a3b8;
+    --accent: #38bdf8;
+    --accent-2: #a855f7;
+    --gold: #f59e0b;
+    --green: #22c55e;
+    --red: #f43f5e;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    background: radial-gradient(1200px 600px at 15% -10%, rgba(56,189,248,0.10), transparent 60%),
+                radial-gradient(900px 500px at 95% 0%, rgba(168,85,247,0.10), transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    line-height: 1.55;
+    letter-spacing: -0.025em;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    padding: 12px;
+    max-width: 1400px;
+    margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  button { font-family: inherit; letter-spacing: inherit; }
+
+  /* ================= HEADER ================= */
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; flex-wrap: wrap;
+    padding-bottom: 12px; margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand-icon {
+    font-size: 24px; padding: 6px 10px; border-radius: 12px;
+    background: linear-gradient(135deg, rgba(56,189,248,0.18), rgba(168,85,247,0.18));
+    border: 1px solid var(--border);
+  }
+  .brand-title { font-size: 17px; font-weight: 900; letter-spacing: -0.04em; }
+  .brand-sub { font-size: 11px; color: var(--sub); font-weight: 600; margin-top: 2px; }
+  .hdr-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .btn-nav {
+    background: #0e2638; color: #7dd3fc; border: 1px solid rgba(56,189,248,0.45);
+    font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 11px; border-radius: 8px; font-size: 12px; white-space: nowrap;
+  }
+  .btn-nav.green { background: #022c22; color: #6ee7b7; border-color: #10b981; }
+  .btn-nav:hover { filter: brightness(1.15); }
+
+  /* ================= 요일 추천 ================= */
+  .plan {
+    background: linear-gradient(135deg, rgba(14,23,41,0.95), rgba(11,17,32,0.95));
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .plan-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .plan-title { font-size: 13px; font-weight: 900; }
+  .plan-badge {
+    font-size: 10.5px; font-weight: 800; color: #fbbf24;
+    background: rgba(245,158,11,0.14); border: 1px solid rgba(245,158,11,0.35);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .plan-note { font-size: 11.5px; color: var(--sub); font-weight: 600; }
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; }
+  .chip {
+    background: #0e1729; color: #bae6fd; border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .chip:hover { background: #13233c; border-color: var(--accent); color: #e0f2fe; transform: translateY(-1px); }
+
+  /* ================= 모드 ================= */
+  .modes {
+    display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 8px; margin-bottom: 12px;
+  }
+  .mode-btn {
+    background: var(--panel); border: 1px solid var(--border-2); border-radius: 10px;
+    padding: 11px 8px; cursor: pointer; color: var(--sub); font-size: 12.5px; font-weight: 800;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    transition: all .15s; min-width: 0; text-align: center;
+  }
+  .mode-btn .ico { font-size: 18px; }
+  .mode-btn.active {
+    background: linear-gradient(135deg, rgba(2,132,199,0.28), rgba(168,85,247,0.22));
+    border-color: var(--accent); color: #f0f9ff;
+    box-shadow: 0 4px 18px rgba(56,189,248,0.18);
+  }
+
+  /* ================= 패널 ================= */
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 12px;
+  }
+  .panel.hidden { display: none; }
+  .panel-title { font-size: 13px; font-weight: 900; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .panel-desc { font-size: 11.5px; color: var(--sub); font-weight: 600; margin-bottom: 10px; }
+  .field-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+  .input, .textarea, .select {
+    width: 100%; background: #060b14; color: var(--text);
+    border: 1px solid var(--border-2); border-radius: 9px;
+    padding: 10px 12px; font-size: 13px; font-family: inherit;
+    letter-spacing: -0.02em;
+  }
+  .input:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,0.12); }
+  .textarea { resize: vertical; min-height: 84px; line-height: 1.6; }
+  .input::placeholder, .textarea::placeholder { color: #475569; }
+  .btn {
+    background: linear-gradient(135deg, #0284c7, #38bdf8); color: #001018;
+    border: none; border-radius: 9px; padding: 10px 16px; font-size: 13px; font-weight: 900;
+    cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: all .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .55; cursor: wait; }
+  .btn.ghost { background: #0e1729; color: #93c5fd; border: 1px solid rgba(56,189,248,0.35); }
+  .btn.purple { background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; }
+  .btn.small { padding: 7px 11px; font-size: 11.5px; border-radius: 8px; }
+  .btn.green { background: linear-gradient(135deg, #047857, #22c55e); color: #02120a; }
+  .hint { font-size: 11px; color: #64748b; font-weight: 600; margin-top: 6px; line-height: 1.6; }
+  .hint b { color: #93c5fd; }
+  .kv { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .kv span {
+    font-size: 11px; font-weight: 700; color: #7dd3fc;
+    background: rgba(56,189,248,0.10); border: 1px solid rgba(56,189,248,0.25);
+    padding: 4px 9px; border-radius: 999px;
+  }
+  .status { font-size: 11.5px; font-weight: 700; color: #94a3b8; margin-top: 8px; min-height: 17px; }
+  .status.ok { color: #4ade80; }
+  .status.warn { color: #fbbf24; }
+  .status.err { color: #fb7185; }
+
+  /* 자막 붙여넣기 박스 */
+  .paste-box { margin-top: 12px; border: 1px dashed rgba(56,189,248,0.35); border-radius: 10px; padding: 12px; background: rgba(56,189,248,0.04); }
+  .paste-box.hidden { display: none; }
+  .paste-steps { margin: 8px 0 10px; padding-left: 18px; font-size: 11.5px; color: #cbd5e1; font-weight: 600; line-height: 1.75; }
+  .paste-steps li { margin-bottom: 2px; }
+  .file-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .file-row label {
+    font-size: 11.5px; font-weight: 800; color: #c4b5fd; background: #171233;
+    border: 1px solid rgba(168,85,247,0.35); border-radius: 8px; padding: 7px 11px; cursor: pointer;
+  }
+  input[type=file] { display: none; }
+
+  /* ================= 결과 ================= */
+  #result.hidden { display: none; }
+  .res-card {
+    background: linear-gradient(135deg, rgba(14,23,41,0.98), rgba(9,14,26,0.98));
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 12px;
+  }
+  .res-eyebrow { font-size: 10.5px; font-weight: 800; color: #7dd3fc; letter-spacing: 0.02em; }
+  .res-headline {
+    font-size: clamp(17px, 2.6vw, 24px); font-weight: 900; letter-spacing: -0.045em;
+    line-height: 1.32; margin: 5px 0 6px;
+  }
+  .res-sub { font-size: 12px; color: var(--sub); font-weight: 600; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .pills span {
+    font-size: 10.5px; font-weight: 800; color: #c7d2fe;
+    background: rgba(99,102,241,0.13); border: 1px solid rgba(99,102,241,0.3);
+    padding: 4px 9px; border-radius: 999px;
+  }
+  .notices { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .notice {
+    font-size: 11px; font-weight: 700; line-height: 1.6;
+    padding: 7px 10px; border-radius: 8px;
+    background: rgba(148,163,184,0.08); border-left: 3px solid #64748b; color: #cbd5e1;
+  }
+  .notice.info { background: rgba(56,189,248,0.08); border-left-color: #38bdf8; color: #bae6fd; }
+  .notice.warn { background: rgba(245,158,11,0.09); border-left-color: #f59e0b; color: #fde68a; }
+  .notice.err { background: rgba(244,63,94,0.09); border-left-color: #f43f5e; color: #fecdd3; }
+
+  .res-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .rtab {
+    background: #0b1120; border: 1px solid var(--border-2); color: var(--sub);
+    border-radius: 999px; padding: 7px 13px; font-size: 12px; font-weight: 800; cursor: pointer;
+  }
+  .rtab.active { background: rgba(56,189,248,0.16); border-color: var(--accent); color: #e0f2fe; }
+  .rbody { }
+  .rbody.hidden { display: none; }
+
+  .block {
+    background: var(--panel); border: 1px solid var(--border-2); border-radius: var(--radius);
+    padding: 13px; margin-bottom: 10px;
+  }
+  .block-title { font-size: 12px; font-weight: 900; color: #93c5fd; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .num-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .num-list li {
+    display: flex; gap: 9px; align-items: flex-start;
+    font-size: 13px; line-height: 1.62; font-weight: 600; color: #e2e8f0;
+  }
+  .num-list li .n {
+    flex: 0 0 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 900; color: #001018; background: linear-gradient(135deg, #38bdf8, #22d3ee); margin-top: 2px;
+  }
+  .md { font-size: 13px; line-height: 1.75; color: #e2e8f0; word-break: keep-all; }
+  .md h2 { font-size: 14.5px; font-weight: 900; color: #f0f9ff; margin: 16px 0 7px; padding-left: 9px; border-left: 3px solid var(--accent); letter-spacing: -0.03em; }
+  .md h2:first-child { margin-top: 0; }
+  .md p { margin-bottom: 8px; font-weight: 500; }
+  .md ul { margin: 0 0 10px 17px; }
+  .md li { margin-bottom: 5px; font-weight: 600; }
+  .md .meta { font-size: 11.5px; color: var(--sub); }
+  .title-cands { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .title-cand {
+    display: flex; gap: 8px; align-items: flex-start; background: rgba(56,189,248,0.06);
+    border: 1px solid rgba(56,189,248,0.18); border-radius: 8px; padding: 8px 10px;
+    font-size: 12.5px; font-weight: 700; color: #e0f2fe; line-height: 1.5;
+  }
+  .title-cand .tag {
+    flex: 0 0 auto; font-size: 10px; font-weight: 900; color: #0b1120;
+    background: #38bdf8; border-radius: 4px; padding: 1px 5px; margin-top: 1px;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+    color: #d1fae5; background: #060f0c; border: 1px solid rgba(34,197,94,0.25);
+    border-radius: 9px; padding: 11px;
+  }
+  .script-line { display: flex; gap: 9px; padding: 7px 0; border-bottom: 1px dashed rgba(148,163,184,0.15); }
+  .script-line:last-child { border-bottom: none; }
+  .script-line .t { flex: 0 0 44px; font-size: 11px; font-weight: 900; color: #38bdf8; font-variant-numeric: tabular-nums; }
+  .script-line .role { flex: 0 0 52px; font-size: 10px; font-weight: 800; color: #c4b5fd; }
+  .script-line .txt { flex: 1 1 auto; font-size: 13px; font-weight: 600; color: #e2e8f0; line-height: 1.6; min-width: 0; }
+  .fact-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .fact-table td { padding: 6px 4px; border-bottom: 1px solid rgba(148,163,184,0.12); vertical-align: top; }
+  .fact-table td:first-child { color: var(--sub); font-weight: 800; width: 34%; white-space: nowrap; }
+  .fact-table tr:last-child td { border-bottom: none; }
+  .canvas-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .canvas-box { background: #060b14; border: 1px solid var(--border-2); border-radius: 10px; padding: 9px; }
+  .canvas-box h4 { font-size: 11.5px; font-weight: 900; color: #93c5fd; margin-bottom: 7px; display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .canvas-box canvas { width: 100%; height: auto; display: block; border-radius: 6px; background: #0b1120; }
+  .canvas-box canvas.tall-canvas { width: auto; max-width: 100%; max-height: 560px; margin: 0 auto; }
+  .tool-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tag-cloud { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag-cloud span {
+    font-size: 11.5px; font-weight: 800; color: #a5f3fc;
+    background: rgba(34,211,238,0.10); border: 1px solid rgba(34,211,238,0.28);
+    padding: 4px 9px; border-radius: 999px;
+  }
+  .audio-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  audio { height: 32px; max-width: 100%; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: sp .7s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  footer { text-align: center; font-size: 10.5px; color: #475569; font-weight: 600; padding: 10px 0 24px; line-height: 1.7; }
+
+  /* ================= 반응형 ================= */
+  @media (max-width: 900px) {
+    .modes { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .canvas-wrap { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    body { padding: 9px; }
+    .brand-title { font-size: 15px; }
+    .brand-sub { font-size: 10px; }
+    .btn-nav { padding: 6px 9px; font-size: 11px; }
+    .panel { padding: 11px; }
+    .res-card { padding: 11px; }
+    .script-line { gap: 6px; }
+    .script-line .role { flex-basis: 42px; }
+    .md { font-size: 12.5px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon">✍️</div>
+    <div style="min-width:0">
+      <div class="brand-title">올인원 콘텐츠 스튜디오</div>
+      <div class="brand-sub">블로그 원고 · 50초 쇼츠 대본 · 썸네일까지 한 화면에서</div>
+    </div>
+  </div>
+  <div class="hdr-actions">
+    <a href="index.html" class="btn-nav">📈 주식 관제탑</a>
+    <a href="deals.html" class="btn-nav green">✈️ 특가 레이더</a>
+  </div>
+</header>
+
+<!-- 요일별 추천 -->
+<section class="plan">
+  <div class="plan-head">
+    <span class="plan-title">📅 오늘의 추천 주제</span>
+    <span class="plan-badge" id="planBadge">-</span>
+    <span class="plan-note" id="planNote">-</span>
+  </div>
+  <div class="chips" id="planChips"></div>
+</section>
+
+<!-- 모드 -->
+<nav class="modes">
+  <button class="mode-btn active" data-mode="stock"><span class="ico">📈</span>주식 관제탑</button>
+  <button class="mode-btn" data-mode="deals"><span class="ico">🎡</span>특가 레이더</button>
+  <button class="mode-btn" data-mode="video"><span class="ico">▶️</span>유튜브 요약</button>
+  <button class="mode-btn" data-mode="topic"><span class="ico">✍️</span>자유 주제</button>
+</nav>
+
+<!-- ============ 패널: 주식 ============ -->
+<section class="panel" id="panel-stock">
+  <div class="panel-title">📈 주식 관제탑 불러오기</div>
+  <div class="panel-desc">지금 관제탑이 받아온 지수·주도 테마·52주 신고가·상한가·뉴스를 그대로 재료로 씁니다. 추론 시나리오는 넣지 않습니다.</div>
+  <div class="field-row">
+    <button class="btn" id="btnStock" style="flex:1 1 200px">⚡ 지금 데이터로 생성</button>
+  </div>
+  <div class="status" id="stockStatus"></div>
+  <div class="hint">실시간 엔드포인트: <b>/api/stock-live</b> · <b>/api/tabs-live</b> (주말·휴장일에는 직전 거래일 종가 기준으로 표기됩니다)</div>
+</section>
+
+<!-- ============ 패널: 특가 ============ -->
+<section class="panel hidden" id="panel-deals">
+  <div class="panel-title">🎡 특가 레이더 불러오기</div>
+  <div class="panel-desc">특가 레이더에 실린 실측 스캔(여행·키즈)에서 동탄 4인 가족 기준으로 다시 골라 원고를 만듭니다.</div>
+  <div class="field-row">
+    <button class="btn" id="btnDeals" style="flex:1 1 200px">⚡ 최신 특가로 생성</button>
+  </div>
+  <div class="status" id="dealsStatus"></div>
+  <div class="hint">소스: <b>/deals.html</b> 에 들어 있는 최신 실측 스캔(가격·주차·후기) — 확인되지 않은 값은 비워 둡니다.</div>
+</section>
+
+<!-- ============ 패널: 유튜브 ============ -->
+<section class="panel hidden" id="panel-video">
+  <div class="panel-title">▶️ 유튜브 링크 핵심 요약기</div>
+  <div class="panel-desc">영상 제목·채널·썸네일은 실제로 가져옵니다. 자막은 YouTube가 서버 IP를 자주 막기 때문에, 자동 추출이 실패하면 아래에 자막을 붙여넣으면 같은 결과가 나옵니다.</div>
+  <div class="field-row">
+    <input class="input" id="videoUrl" style="flex:1 1 260px" placeholder="유튜브 주소 (watch / youtu.be / shorts)">
+    <button class="btn" id="btnVideo" style="flex:0 0 auto">▶️ 요약하기</button>
+  </div>
+  <div class="status" id="videoStatus"></div>
+
+  <div class="paste-box hidden" id="pasteBox">
+    <div class="panel-title" style="font-size:12.5px">📋 자막·스크립트 붙여넣기 (자동 추출 실패 시)</div>
+    <ol class="paste-steps">
+      <li>유튜브에서 영상 열기 → 설명란 펼치기 → <b>“스크립트 표시”</b> 클릭</li>
+      <li>스크립트 전체 선택 → 복사 → 아래에 붙여넣기</li>
+      <li>“스크립트 표시”가 없으면 <b>자막이 없는 영상</b>입니다 — 이때는 요약을 만들 수 없습니다(가짜 요약 안 만듦)</li>
+      <li>자막 파일(.srt/.vtt)이나 영상 요약 메모가 있으면 그것도 됩니다</li>
+    </ol>
+    <textarea class="textarea" id="videoTranscript" placeholder="예) 0:00 오늘 코스피는... (스크립트를 그대로 붙여넣으세요)"></textarea>
+    <div class="file-row">
+      <label for="subFile">📎 자막 파일 선택 (.srt/.vtt/.txt)</label>
+      <input type="file" id="subFile" accept=".srt,.vtt,.txt,text/plain">
+      <button class="btn small purple" id="btnPasteRun">이 자막으로 요약 생성</button>
+    </div>
+    <div class="hint" id="pasteHint">붙여넣은 문장에서만 요약합니다. 영상에 없는 내용은 생성하지 않습니다.</div>
+  </div>
+</section>
+
+<!-- ============ 패널: 자유 주제 ============ -->
+<section class="panel hidden" id="panel-topic">
+  <div class="panel-title">✍️ 자유 주제 / 키워드</div>
+  <div class="panel-desc">키워드와 메모만 넣으면 SEO 초안(제목 3안·소제목·본문·CTA)과 쇼츠 대본을 만듭니다. 메모에 없는 사실은 [ ] 로 비워 둡니다.</div>
+  <div class="field-row" style="margin-bottom:8px">
+    <input class="input" id="topicKeyword" placeholder="주제·키워드 (예: 동탄 아이와 갈 만한 실내 키즈카페)" style="flex:1 1 240px">
+    <select class="select" id="topicTemplate" style="flex:0 0 150px">
+      <option value="info">정보·정리 글</option>
+      <option value="review">후기·리뷰 글</option>
+    </select>
+  </div>
+  <textarea class="textarea" id="topicMemo" placeholder="메모·기사 요약·핵심 포인트 (선택). 여기에 쓴 내용에서만 문장을 뽑습니다."></textarea>
+  <div class="field-row" style="margin-top:8px">
+    <button class="btn" id="btnTopic" style="flex:1 1 200px">✍️ 초안 생성</button>
+  </div>
+  <div class="status" id="topicStatus"></div>
+</section>
+
+<!-- ============ 결과 ============ -->
+<section id="result" class="hidden">
+  <div class="res-card">
+    <div class="res-eyebrow" id="resEyebrow">-</div>
+    <div class="res-headline" id="resHeadline">-</div>
+    <div class="res-sub" id="resSub"></div>
+    <div class="pills" id="resPills"></div>
+    <div class="notices" id="resNotices"></div>
+    <div class="tool-row" style="margin-top:12px">
+      <button class="btn small ghost" id="btnCopyAll">📋 전체 복사</button>
+      <button class="btn small ghost" id="btnDownloadMd">⬇️ 블로그 .md</button>
+      <button class="btn small ghost" id="btnDownloadSrt">⬇️ 자막 .srt</button>
+      <button class="btn small ghost" id="btnTts">🔊 성우 음성 미리듣기</button>
+      <button class="btn small ghost" id="btnReset">↻ 접기</button>
+    </div>
+    <div class="audio-row" id="audioRow" style="margin-top:8px; display:none"><audio id="ttsAudio" controls preload="none"></audio><span class="hint" id="ttsHint"></span></div>
+  </div>
+
+  <div class="res-tabs">
+    <button class="rtab active" data-rtab="summary">📌 5줄 요약</button>
+    <button class="rtab" data-rtab="blog">📝 블로그 원고</button>
+    <button class="rtab" data-rtab="shorts">🎬 쇼츠 대본</button>
+    <button class="rtab" data-rtab="image">🖼️ 카드·썸네일</button>
+    <button class="rtab" data-rtab="tags">🔗 태그·팩트</button>
+  </div>
+
+  <div class="rbody" id="rbody-summary"></div>
+  <div class="rbody hidden" id="rbody-blog"></div>
+  <div class="rbody hidden" id="rbody-shorts"></div>
+  <div class="rbody hidden" id="rbody-image">
+    <div class="block">
+      <div class="block-title">🖼️ 이미지 카드 <span class="hint" style="margin:0">PNG로 바로 저장</span></div>
+      <div class="canvas-wrap">
+        <div class="canvas-box">
+          <h4>블로그용 가로 카드 (1200×630) <button class="btn small ghost" id="btnDlWide">⬇️ PNG</button></h4>
+          <canvas id="thumbWide" width="1200" height="630"></canvas>
+        </div>
+        <div class="canvas-box">
+          <h4>쇼츠용 세로 썸네일 (1080×1920) <button class="btn small ghost" id="btnDlTall">⬇️ PNG</button></h4>
+          <canvas id="thumbTall" width="1080" height="1920" class="tall-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rbody hidden" id="rbody-tags"></div>
+</section>
+
+<footer>
+  이 페이지는 <b style="color:#94a3b8">실측 데이터 + 규칙 기반 문장 조합</b>으로 원고를 만듭니다 · 없는 사실·가짜 요약은 만들지 않습니다<br>
+  ✍️ 콘텐츠 스튜디오 · 연오랑 관제탑 v1.0
+</footer>
+
+<script src="content-engine.js"></script>
+<script>
+(function () {
+  'use strict';
+  var E = window.CS_ENGINE;
+  var current = null;      // 마지막 생성 결과
+  var lastVideo = null;    // 유튜브 메타
+  var busy = false;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var win = function () { return window; };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function setStatus(id, text, cls) {
+    var el = $(id);
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+  function fmtDate() {
+    var kst = E.kstNow();
+    return kst.label + ' ' + kst.time;
+  }
+
+  /* ---------------- 요일별 추천 ---------------- */
+  function renderPlan() {
+    var p = E.weekdayPlan();
+    $('planBadge').textContent = p.dayName + '요일 · ' + p.plan.kind;
+    $('planNote').textContent = p.plan.note;
+    var wrap = $('planChips');
+    wrap.innerHTML = '';
+    p.plan.chips.forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'chip';
+      b.textContent = c.label;
+      b.addEventListener('click', function () {
+        selectMode(c.mode);
+        if (c.mode === 'stock') runStock();
+        else if (c.mode === 'deals') runDeals();
+        else if (c.mode === 'topic') {
+          $('topicKeyword').value = c.keyword || '';
+          runTopic();
+        } else if (c.mode === 'video') {
+          $('videoUrl').focus();
+        }
+      });
+      wrap.appendChild(b);
+    });
+  }
+
+  /* ---------------- 모드 전환 ---------------- */
+  function selectMode(mode) {
+    ['stock', 'deals', 'video', 'topic'].forEach(function (m) {
+      $('panel-' + m).classList.toggle('hidden', m !== mode);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.mode-btn'), function (b) {
+      b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.mode-btn'), function (b) {
+    b.addEventListener('click', function () { selectMode(b.getAttribute('data-mode')); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.rtab'), function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-rtab');
+      Array.prototype.forEach.call(document.querySelectorAll('.rtab'), function (x) {
+        x.classList.toggle('active', x === b);
+      });
+      ['summary', 'blog', 'shorts', 'image', 'tags'].forEach(function (r) {
+        $('rbody-' + r).classList.toggle('hidden', r !== t);
+      });
+    });
+  });
+
+  /* ---------------- 유틸: fetch with timeout ---------------- */
+  function getJson(url, ms) {
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, ms || 15000);
+    return fetch(url, { signal: ctl.signal, headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, status: r.status, data: d }; });
+      })
+      .finally(function () { clearTimeout(timer); });
+  }
+  function getText(url, ms) {
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, ms || 15000);
+    return fetch(url, { signal: ctl.signal })
+      .then(function (r) { return r.text(); })
+      .finally(function () { clearTimeout(timer); });
+  }
+
+  /* ---------------- 📈 주식 ---------------- */
+  function runStock() {
+    if (busy) return;
+    busy = true;
+    $('btnStock').disabled = true;
+    $('btnStock').innerHTML = '<span class="spin"></span> 생성 중…';
+    setStatus('stockStatus', '⏳ /api/stock-live · /api/tabs-live 동시 호출 중…');
+    Promise.all([getJson('/api/stock-live'), getJson('/api/tabs-live')])
+      .then(function (rs) {
+        var live = rs[0] && rs[0].data, tabs = rs[1] && rs[1].data;
+        var errs = [];
+        if (!live || !live.ok) errs.push('stock-live 실패');
+        if (!tabs || !tabs.ok) errs.push('tabs-live 실패');
+        if (!live || !tabs) {
+          setStatus('stockStatus', '⚠️ ' + errs.join(' · ') + ' — 잠시 후 다시 시도해 주세요.', 'err');
+          return;
+        }
+        var content = E.buildFromStocks({ live: live, tabs: tabs });
+        setStatus('stockStatus', '✅ ' + (tabs.generatedAtLabel || live.generatedAtKst || '') + ' 기준 · 8대 테마·신고가·상한가·뉴스 반영', 'ok');
+        render(content);
+      })
+      .catch(function (e) {
+        setStatus('stockStatus', '⚠️ 호출 실패: ' + (e && e.message ? e.message : e), 'err');
+      })
+      .finally(function () {
+        busy = false;
+        $('btnStock').disabled = false;
+        $('btnStock').textContent = '⚡ 지금 데이터로 생성';
+      });
+  }
+
+  /* ---------------- 🎡 특가 ---------------- */
+  function parseDealsHtml(html) {
+    function grabVar(name) {
+      var re = new RegExp('var\\s+' + name + '\\s*=\\s*(\\[[\\s\\S]*?\\]);');
+      var m = html.match(re);
+      if (!m) return [];
+      try { return JSON.parse(m[1]); } catch (e) { return []; }
+    }
+    function grabMeta() {
+      var re = new RegExp('var\\s+DEALS_SCAN_META\\s*=\\s*(\\{[\\s\\S]*?\\});');
+      var m = html.match(re);
+      if (!m) return {};
+      try { return JSON.parse(m[1]); } catch (e) { return {}; }
+    }
+    return { travelDeals: grabVar('travelDeals'), kidsDeals: grabVar('kidsDeals'), meta: grabMeta() };
+  }
+
+  function runDeals() {
+    if (busy) return;
+    busy = true;
+    $('btnDeals').disabled = true;
+    $('btnDeals').innerHTML = '<span class="spin"></span> 생성 중…';
+    setStatus('dealsStatus', '⏳ 특가 레이더(/deals.html)의 최신 실측 스캔을 읽는 중…');
+    getText('/deals.html' + (window.__dv ? '?v=' + window.__dv : ''), 20000)
+      .then(function (html) {
+        var deals = parseDealsHtml(html);
+        if (!deals.travelDeals.length && !deals.kidsDeals.length) {
+          setStatus('dealsStatus', '⚠️ 특가 데이터를 찾지 못했습니다. 특가 레이더 페이지를 확인해 주세요.', 'err');
+          return;
+        }
+        var content = E.buildFromDeals({ deals: deals });
+        setStatus('dealsStatus', '✅ ' + (deals.meta.scannedAt || '') + ' 스캔 기준 · 여행 ' + deals.travelDeals.length + '건 / 키즈 ' + deals.kidsDeals.length + '건', 'ok');
+        render(content);
+      })
+      .catch(function (e) {
+        setStatus('dealsStatus', '⚠️ 특가 페이지를 읽지 못했습니다: ' + (e && e.message ? e.message : e), 'err');
+      })
+      .finally(function () {
+        busy = false;
+        $('btnDeals').disabled = false;
+        $('btnDeals').textContent = '⚡ 최신 특가로 생성';
+      });
+  }
+
+  /* ---------------- ▶️ 유튜브 ---------------- */
+  function videoFromApi(d) {
+    var v = d.video || {};
+    return {
+      id: v.id, url: v.url, title: v.title, channel: v.channel,
+      thumbnail: v.thumbnail, duration: v.duration, captionSource: v.captionSource
+    };
+  }
+
+  function runVideo() {
+    var url = ($('videoUrl').value || '').trim();
+    if (!url) { setStatus('videoStatus', '유튜브 주소를 넣어 주세요.', 'warn'); return; }
+    if (busy) return;
+    busy = true;
+    $('btnVideo').disabled = true;
+    $('btnVideo').innerHTML = '<span class="spin"></span> 확인 중…';
+    setStatus('videoStatus', '⏳ 영상 정보·자막을 확인하는 중…');
+    $('pasteBox').classList.add('hidden');
+    getJson('/api/youtube-summary?url=' + encodeURIComponent(url), 25000)
+      .then(function (r) {
+        var d = r.data || {};
+        if (!r.ok || !d.ok) {
+          setStatus('videoStatus', '⚠️ ' + (d.message || '주소를 확인해 주세요.'), 'err');
+          return;
+        }
+        lastVideo = videoFromApi(d);
+        if (d.content) {
+          setStatus('videoStatus', '✅ 자막 ' + d.captions.segments + '구간 확보 (' + d.captions.source + ') — 요약 생성', 'ok');
+          render(d.content);
+        } else {
+          var msg = (d.captions && d.captions.message) || '자막을 받아오지 못했습니다.';
+          setStatus('videoStatus', '⚠️ ' + msg + ' → 아래에 자막을 붙여넣으면 같은 결과가 나옵니다.', 'warn');
+          $('pasteBox').classList.remove('hidden');
+          // 영상 메타만이라도 상단에 보여 준다(요약은 만들지 않음)
+          renderMetaOnly(lastVideo, msg);
+          $('videoTranscript').focus();
+        }
+      })
+      .catch(function (e) {
+        setStatus('videoStatus', '⚠️ 요청 실패: ' + (e && e.message ? e.message : e), 'err');
+      })
+      .finally(function () {
+        busy = false;
+        $('btnVideo').disabled = false;
+        $('btnVideo').textContent = '▶️ 요약하기';
+      });
+  }
+
+  function renderMetaOnly(video, msg) {
+    current = null;
+    $('resEyebrow').textContent = '▶️ 유튜브 · 메타만 확인됨';
+    $('resHeadline').textContent = video.title || '(제목 미확인)';
+    $('resSub').textContent = (video.channel || '') + (video.url ? ' · ' + video.url : '');
+    var pills = [];
+    if (video.channel) pills.push(video.channel);
+    if (video.duration) pills.push(E.fmtTime(video.duration));
+    $('resPills').innerHTML = pills.map(function (p) { return '<span>' + esc(p) + '</span>'; }).join('');
+    $('resNotices').innerHTML =
+      '<div class="notice warn">' + esc(msg) + ' — 그래서 요약을 지어내지 않았습니다.</div>' +
+      '<div class="notice info">자막을 붙여넣으면 ① 5줄 요약 ② 블로그 정리글 ③ 쇼츠 리액션 대본이 바로 나옵니다.</div>';
+    $('result').classList.remove('hidden');
+    $('rbody-summary').innerHTML = '<div class="block"><div class="block-title">📌 아직 요약 없음</div><div class="md"><p>자막이 없어서 요약을 만들지 않았습니다. 위 “자막 붙여넣기”에 스크립트를 넣고 <b>이 자막으로 요약 생성</b>을 눌러 주세요.</p></div></div>';
+    ['blog', 'shorts', 'image', 'tags'].forEach(function (r) { $('rbody-' + r).innerHTML = ''; });
+    document.querySelector('.rtab[data-rtab="summary"]').click();
+  }
+
+  function runPaste() {
+    var text = ($('videoTranscript').value || '').trim();
+    if (text.length < 60) {
+      $('pasteHint').textContent = '⚠️ 자막이 너무 짧습니다(60자 이상). 스크립트 전체를 붙여넣어 주세요.';
+      $('pasteHint').className = 'hint';
+      $('pasteHint').style.color = '#fbbf24';
+      return;
+    }
+    var parsed = E.parseTranscript(text);
+    var firstSentence = '';
+    for (var i = 0; i < parsed.segments.length; i++) {
+      if (parsed.segments[i].text && parsed.segments[i].text.length > 12) { firstSentence = parsed.segments[i].text; break; }
+    }
+    var content = E.buildFromVideo({
+      video: {
+        title: (lastVideo && lastVideo.title) || E.clamp(firstSentence, 58) || '붙여넣은 자막',
+        channel: (lastVideo && lastVideo.channel) || '',
+        url: (lastVideo && lastVideo.url) || '',
+        duration: (lastVideo && lastVideo.duration) || (parsed.segments.length ? parsed.segments[parsed.segments.length - 1].t : 0),
+        captionSource: '직접 붙여넣은 자막'
+      },
+      transcript: text
+    });
+    if (!content.summary || !content.summary.length) {
+      setStatus('videoStatus', '⚠️ 붙여넣은 내용에서 요약할 문장을 찾지 못했습니다. 자막·메모를 조금 더 넣어 주세요.', 'warn');
+      return;
+    }
+    setStatus('videoStatus', '✅ 붙여넣은 자막 ' + parsed.segments.length + '구간에서 요약 생성', 'ok');
+    render(content);
+  }
+
+  $('subFile').addEventListener('change', function (ev) {
+    var f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      $('videoTranscript').value = String(reader.result || '');
+      $('pasteHint').textContent = '📎 ' + f.name + ' 불러옴 (' + $('videoTranscript').value.length.toLocaleString() + '자) — “이 자막으로 요약 생성”을 눌러 주세요.';
+    };
+    reader.readAsText(f);
+  });
+
+  /* ---------------- ✍️ 자유 주제 ---------------- */
+  function runTopic() {
+    var kw = ($('topicKeyword').value || '').trim();
+    if (!kw) { setStatus('topicStatus', '키워드를 넣어 주세요.', 'warn'); return; }
+    var content = E.buildFromTopic({
+      keyword: kw,
+      memo: $('topicMemo').value || '',
+      template: $('topicTemplate').value
+    });
+    if (!content) return;
+    setStatus('topicStatus', content.summary.length > 1
+      ? '✅ 메모에서 ' + (content.summary.length - 0) + '문장 추출'
+      : '✅ 뼈대 초안 생성 — [ ] 자리를 채워 주세요.', 'ok');
+    render(content);
+  }
+
+  /* ---------------- 렌더 ---------------- */
+  function render(c) {
+    current = c;
+    $('result').classList.remove('hidden');
+    var label = { stock: '📈 주식 관제탑', deals: '🎡 특가 레이더', video: '▶️ 유튜브 요약', topic: '✍️ 자유 주제' }[c.mode] || '콘텐츠';
+    $('resEyebrow').textContent = label + ' · ' + (c.source && c.source.asOf ? c.source.asOf : fmtDate());
+    $('resHeadline').textContent = c.headline || '(제목 없음)';
+    $('resSub').textContent = c.subline || '';
+    $('resPills').innerHTML = (c.pills || []).map(function (p) { return '<span>' + esc(p) + '</span>'; }).join('');
+    $('resNotices').innerHTML = (c.notices || []).map(function (n) {
+      return '<div class="notice ' + esc(n.level || 'info') + '">' + esc(n.text) + '</div>';
+    }).join('');
+
+    /* 5줄 요약 */
+    var sum = '<div class="block"><div class="block-title">📌 핵심 5줄 요약 <span class="hint" style="margin:0">' + esc(c.source && c.source.label || '') + '</span></div><ol class="num-list">';
+    (c.summary || []).forEach(function (s, i) {
+      sum += '<li><span class="n">' + (i + 1) + '</span><span>' + esc(s) + '</span></li>';
+    });
+    sum += '</ol></div>';
+    if (c.facts && c.facts.length) {
+      sum += '<div class="block"><div class="block-title">📊 원본 수치</div><table class="fact-table">';
+      c.facts.forEach(function (f) {
+        sum += '<tr><td>' + esc(f.k) + '</td><td>' + esc(f.v) + '</td></tr>';
+      });
+      sum += '</table></div>';
+    }
+    $('rbody-summary').innerHTML = sum;
+
+    /* 블로그 */
+    var b = c.blog;
+    var html = '<div class="block">';
+    html += '<div class="block-title">📝 제목 후보 3개 <span class="hint" style="margin:0">' + esc(c.blog.metaDesc || '') + '</span></div>';
+    html += '<div class="title-cands">';
+    (b.titles || []).forEach(function (t, i) {
+      html += '<div class="title-cand"><span class="tag">' + (i + 1) + '</span><span>' + esc(t) + '</span></div>';
+    });
+    html += '</div>';
+    html += '<div class="block-title" style="margin-top:6px">본문</div><div class="md">';
+    if (b.intro) html += '<p>' + esc(b.intro) + '</p>';
+    (b.sections || []).forEach(function (s) {
+      html += '<h2>' + esc(s.h2) + '</h2>';
+      (s.paras || []).forEach(function (p) { if (p) html += '<p>' + esc(p) + '</p>'; });
+      if (s.items && s.items.length) {
+        html += '<ul>' + s.items.map(function (it) { return '<li>' + esc(it) + '</li>'; }).join('') + '</ul>';
+      }
+    });
+    html += '<h2>마무리</h2><p>' + esc(b.cta || '') + '</p>';
+    html += '<div class="tag-cloud" style="margin-top:10px">' + (b.tags || []).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>';
+    html += '</div></div>';
+    $('rbody-blog').innerHTML = html;
+
+    /* 쇼츠 */
+    var sh = c.shorts;
+    var shHtml = '<div class="block"><div class="block-title">🎬 50초 쇼츠 대본 · ' + sh.total + '초 <span class="hint" style="margin:0">후킹 3초 → 본론 → 마무리</span></div>';
+    sh.blocks.forEach(function (bl) {
+      shHtml += '<div class="script-line"><span class="t">' + bl.label + '</span><span class="role">' + esc(bl.role) + '</span><span class="txt">' + esc(bl.text) + '</span></div>';
+    });
+    shHtml += '</div>';
+    shHtml += '<div class="block"><div class="block-title">💬 자막 (SRT) <button class="btn small ghost" data-copy="srt">복사</button></div><div class="mono">' + esc(sh.srt) + '</div></div>';
+    shHtml += '<div class="block"><div class="block-title">🔗 해시태그</div><div class="tag-cloud">' + (sh.hashtags || []).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div></div>';
+    $('rbody-shorts').innerHTML = shHtml;
+
+    /* 태그·팩트 */
+    var tHtml = '<div class="block"><div class="block-title">🔗 태그 (블로그·쇼츠 공통)</div><div class="tag-cloud">' +
+      (b.tags || []).map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div></div>';
+    tHtml += '<div class="block"><div class="block-title">📊 팩트 표</div><table class="fact-table">' +
+      (c.facts || []).map(function (f) { return '<tr><td>' + esc(f.k) + '</td><td>' + esc(f.v) + '</td></tr>'; }).join('') +
+      '</table></div>';
+    tHtml += '<div class="block"><div class="block-title">🧾 메타 정보</div><div class="md"><p class="meta">' +
+      esc('엔진: ' + (c.engine || '-') + ' · 생성: ' + (c.generatedAt || '-') + ' · 출처: ' + (c.source && c.source.label || '-')) +
+      '</p></div></div>';
+    $('rbody-tags').innerHTML = tHtml;
+
+    drawThumbs(c);
+    document.querySelector('.rtab[data-rtab="summary"]').click();
+    $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /* ---------------- 캔버스 카드 ---------------- */
+  var FONT = "'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
+
+  function wrapLines(ctx, text, maxWidth, maxLines) {
+    var words = String(text || '').split(/\s+/);
+    var lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line);
+        line = words[i];
+        if (lines.length === maxLines - 1) break;
+      } else { line = test; }
+    }
+    if (line) lines.push(line);
+    if (lines.length > maxLines) lines = lines.slice(0, maxLines);
+    return lines;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawThumbs(c) {
+    var wide = $('thumbWide'), tall = $('thumbTall');
+    if (!wide || !tall) return;
+    var modeTag = { stock: '오늘의 시황', deals: '주말 나들이', video: '영상 요약', topic: '정리 노트' }[c.mode] || '콘텐츠';
+    var accent = { stock: '#38bdf8', deals: '#34d399', video: '#f472b6', topic: '#c084fc' }[c.mode] || '#38bdf8';
+
+    /* ---- 가로 카드 1200x630 ---- */
+    var g = wide.getContext('2d');
+    var grd = g.createLinearGradient(0, 0, 1200, 630);
+    grd.addColorStop(0, '#070c14'); grd.addColorStop(0.55, '#0b1220'); grd.addColorStop(1, '#101a2e');
+    g.fillStyle = grd; g.fillRect(0, 0, 1200, 630);
+    var glow = g.createRadialGradient(1050, 40, 10, 1050, 40, 620);
+    glow.addColorStop(0, hexA(accent, 0.24)); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, 1200, 630);
+
+    g.fillStyle = accent; g.fillRect(60, 62, 68, 8);
+    g.font = '700 30px ' + FONT; g.fillStyle = accent;
+    g.fillText(modeTag, 60, 128);
+    g.font = '800 24px ' + FONT; g.fillStyle = '#94a3b8';
+    g.textAlign = 'right'; g.fillText('연오랑 콘텐츠 스튜디오', 1140, 128); g.textAlign = 'left';
+
+    g.font = '900 62px ' + FONT; g.fillStyle = '#f8fafc';
+    var hl = wrapLines(g, c.headline || '', 1060, 3);
+    hl.forEach(function (l, i) { g.fillText(l, 60, 236 + i * 76); });
+
+    var y = 236 + hl.length * 76 + 22;
+    if (c.summary && c.summary.length) {
+      g.font = '700 27px ' + FONT; g.fillStyle = '#cbd5e1';
+      var s0 = wrapLines(g, c.summary[0], 1060, 2);
+      s0.forEach(function (l, i) { g.fillText(l, 60, y + i * 38); });
+      y += s0.length * 38 + 14;
+    }
+
+    /* pills */
+    var px = 60;
+    (c.pills || []).slice(0, 4).forEach(function (p) {
+      g.font = '800 24px ' + FONT;
+      var w = g.measureText(p).width + 34;
+      if (px + w > 1140) return;
+      g.fillStyle = hexA(accent, 0.14);
+      roundRect(g, px, y, w, 46, 23); g.fill();
+      g.strokeStyle = hexA(accent, 0.45); g.lineWidth = 1.5; g.stroke();
+      g.fillStyle = '#e2e8f0';
+      g.fillText(p, px + 17, y + 31);
+      px += w + 12;
+    });
+
+    g.fillStyle = 'rgba(148,163,184,0.35)'; g.fillRect(60, 560, 1080, 1);
+    g.font = '700 22px ' + FONT; g.fillStyle = '#64748b';
+    g.fillText((c.source && c.source.asOf ? c.source.asOf : fmtDate()) + ' · 실측 데이터 기반', 60, 600);
+
+    /* ---- 세로 썸네일 1080x1920 ---- */
+    var t = tall.getContext('2d');
+    var grd2 = t.createLinearGradient(0, 0, 1080, 1920);
+    grd2.addColorStop(0, '#081020'); grd2.addColorStop(0.6, '#0b1220'); grd2.addColorStop(1, '#141026');
+    t.fillStyle = grd2; t.fillRect(0, 0, 1080, 1920);
+    var glow2 = t.createRadialGradient(540, 380, 60, 540, 380, 900);
+    glow2.addColorStop(0, hexA(accent, 0.22)); glow2.addColorStop(1, 'rgba(0,0,0,0)');
+    t.fillStyle = glow2; t.fillRect(0, 0, 1080, 1920);
+
+    // 상단: 태그 + SHORTS 배지
+    t.fillStyle = accent; roundRect(t, 80, 150, 300, 62, 31); t.fill();
+    t.font = '900 34px ' + FONT; t.fillStyle = '#04101c';
+    t.fillText(modeTag, 106, 193);
+    t.font = '900 30px ' + FONT; t.fillStyle = hexA(accent, 0.9);
+    t.textAlign = 'right'; t.fillText('SHORTS', 1000, 193); t.textAlign = 'left';
+
+    t.font = '900 92px ' + FONT; t.fillStyle = '#ffffff';
+    var hook = (c.shorts && c.shorts.blocks && c.shorts.blocks[0] ? c.shorts.blocks[0].text : c.headline) || '';
+    var hl2 = wrapLines(t, hook, 920, 4);
+    hl2.forEach(function (l, i) { t.fillText(l, 80, 380 + i * 112); });
+    var ty = 380 + hl2.length * 112 + 26;
+    t.fillStyle = hexA(accent, 0.75); t.fillRect(80, ty, 150, 6);
+    ty += 56;
+
+    // 본문 핵심 3개 — 아래 빈 공간을 채운다
+    var bullets = (c.summary || []).slice(1, 4);
+    if (!bullets.length) bullets = (c.pills || []).slice(0, 3);
+    bullets.forEach(function (b, i) {
+      var boxH = 150;
+      t.fillStyle = 'rgba(148,163,184,0.07)';
+      roundRect(t, 80, ty, 920, boxH, 20); t.fill();
+      t.strokeStyle = 'rgba(148,163,184,0.16)'; t.lineWidth = 2; t.stroke();
+      t.beginPath(); t.arc(132, ty + 52, 22, 0, Math.PI * 2); t.fillStyle = accent; t.fill();
+      t.font = '900 26px ' + FONT; t.fillStyle = '#04101c';
+      t.textAlign = 'center'; t.fillText(String(i + 1), 132, ty + 61); t.textAlign = 'left';
+      t.font = '700 36px ' + FONT; t.fillStyle = '#e2e8f0';
+      var lines = wrapLines(t, String(b).replace(/^\[\d+:\d+\]\s*/, ''), 780, 2);
+      lines.forEach(function (l, j) { t.fillText(l, 172, ty + 56 + j * 44); });
+      ty += boxH + 18;
+    });
+
+    // 하단 태그
+    var bx = 80, byy = ty + 6;
+    (c.pills || []).slice(0, 2).forEach(function (p) {
+      t.font = '800 30px ' + FONT;
+      var w = t.measureText(p).width + 40;
+      if (bx + w > 1000) return;
+      t.fillStyle = hexA(accent, 0.15);
+      roundRect(t, bx, byy, w, 58, 29); t.fill();
+      t.strokeStyle = hexA(accent, 0.5); t.lineWidth = 2; t.stroke();
+      t.fillStyle = '#e2e8f0';
+      t.fillText(p, bx + 20, byy + 40);
+      bx += w + 12;
+    });
+
+    t.fillStyle = 'rgba(148,163,184,0.3)'; t.fillRect(80, 1700, 920, 2);
+    t.font = '800 32px ' + FONT; t.fillStyle = '#94a3b8';
+    t.fillText('연오랑 콘텐츠 스튜디오', 80, 1770);
+    t.font = '700 30px ' + FONT; t.fillStyle = '#64748b';
+    t.fillText(c.source && c.source.asOf ? c.source.asOf : fmtDate(), 80, 1820);
+    /* 쇼츠 UI 안전영역 가이드 */
+    t.strokeStyle = 'rgba(56,189,248,0.20)'; t.setLineDash([16, 14]); t.lineWidth = 2;
+    t.strokeRect(60, 240, 960, 1440); t.setLineDash([]);
+  }
+
+  function hexA(hex, a) {
+    var h = String(hex).replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  function downloadCanvas(canvas, name) {
+    canvas.toBlob(function (blob) {
+      if (!blob) return;
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    }, 'image/png');
+  }
+
+  /* ---------------- 복사 / 다운로드 / TTS ---------------- */
+  function copyText(txt) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(txt).catch(function () { return fallbackCopy(txt); });
+    }
+    return Promise.resolve(fallbackCopy(txt));
+  }
+  function fallbackCopy(txt) {
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+  }
+  function blobDownload(text, name, type) {
+    var blob = new Blob([text], { type: type || 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function slug() {
+    var k = E.kstNow();
+    return 'content-' + k.y + String(k.m).padStart(2, '0') + String(k.d).padStart(2, '0') + '-' + String(k.hh).padStart(2, '0') + String(k.mm).padStart(2, '0');
+  }
+
+  $('btnCopyAll').addEventListener('click', function () {
+    if (!current) return;
+    var txt = '■ 블로그 제목 후보\n' + current.blog.titles.join('\n') + '\n\n' +
+      current.blog.markdown + '\n\n' + E.shortsToText(current.shorts);
+    copyText(txt).then(function () {
+      $('btnCopyAll').textContent = '✅ 복사됨';
+      setTimeout(function () { $('btnCopyAll').textContent = '📋 전체 복사'; }, 1600);
+    });
+  });
+  $('btnDownloadMd').addEventListener('click', function () {
+    if (!current) return;
+    blobDownload(current.blog.markdown, slug() + '-blog.md', 'text/markdown;charset=utf-8');
+  });
+  $('btnDownloadSrt').addEventListener('click', function () {
+    if (!current) return;
+    blobDownload(current.shorts.srt, slug() + '-shorts.srt', 'text/plain;charset=utf-8');
+  });
+  $('btnReset').addEventListener('click', function () {
+    $('result').classList.add('hidden');
+  });
+  $('btnDlWide').addEventListener('click', function () { if (current) downloadCanvas($('thumbWide'), slug() + '-blog-card-1200x630.png'); });
+  $('btnDlTall').addEventListener('click', function () { if (current) downloadCanvas($('thumbTall'), slug() + '-shorts-1080x1920.png'); });
+
+  $('rbody-shorts').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-copy="srt"]');
+    if (!b || !current) return;
+    copyText(current.shorts.srt).then(function () {
+      b.textContent = '✅ 복사됨';
+      setTimeout(function () { b.textContent = '복사'; }, 1500);
+    });
+  });
+
+  var ttsAudio = $('ttsAudio');
+  $('btnTts').addEventListener('click', function () {
+    if (!current) return;
+    var first = current.shorts.blocks[0] ? current.shorts.blocks[0].text : current.summary[0] || '';
+    var text = String(first).slice(0, 110);
+    if (!text) return;
+    $('audioRow').style.display = 'flex';
+    $('ttsHint').textContent = '⏳ 성우 음성 생성 중…';
+    $('btnTts').disabled = true;
+    fetch('/api/tts?lang=ko&text=' + encodeURIComponent(text))
+      .then(function (r) {
+        if (!r.ok) throw new Error('tts ' + r.status);
+        return r.blob();
+      })
+      .then(function (blob) {
+        ttsAudio.src = URL.createObjectURL(blob);
+        ttsAudio.play();
+        $('ttsHint').textContent = '🔊 후킹 3초 구간 미리듣기 (전체 대본은 .txt/.srt로 저장)';
+      })
+      .catch(function () {
+        // 폴백: 기기 음성
+        try {
+          var u = new SpeechSynthesisUtterance(text);
+          u.lang = 'ko-KR'; u.rate = 1.02;
+          window.speechSynthesis.speak(u);
+          $('ttsHint').textContent = '🔈 서버 음성 실패 → 기기 음성으로 재생했습니다.';
+        } catch (e) {
+          $('ttsHint').textContent = '⚠️ 음성을 재생할 수 없습니다.';
+        }
+      })
+      .finally(function () { $('btnTts').disabled = false; });
+  });
+
+  /* ---------------- 이벤트 연결 ---------------- */
+  $('btnStock').addEventListener('click', runStock);
+  $('btnDeals').addEventListener('click', runDeals);
+  $('btnVideo').addEventListener('click', runVideo);
+  $('videoUrl').addEventListener('keydown', function (e) { if (e.key === 'Enter') runVideo(); });
+  $('btnPasteRun').addEventListener('click', runPaste);
+  $('btnTopic').addEventListener('click', runTopic);
+
+  renderPlan();
+  // 폰트 로드 후 캔버스 텍스트가 Pretendard 로 그려지도록
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { if (current) drawThumbs(current); });
+  }
+  window.__CS = { render: render, engine: E };
+})();
+</script>
+</body>
+</html>
