@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="/english-pokemon-manifest.json">
+<link rel="manifest" href="/pokemon/manifest.json">
 <link rel="icon" type="image/svg+xml" href="/english-pokemon-icon.svg">
 <link rel="icon" type="image/png" sizes="192x192" href="/english-pokemon-icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/english-pokemon-icon-180.png">
@@ -3335,7 +3335,7 @@ function bind() {
     btn.addEventListener('click', () => { Sound.ensure(); answer(i); });
   });
   $('#dexBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('dexModal'); });
-  $('#homeBtn').addEventListener('click', () => { Sound.click(); TTS.stop(); location.href = './pokemon-battle.html'; });
+  $('#homeBtn').addEventListener('click', () => { Sound.click(); TTS.stop(); location.href = '/pokemon/pokemon-battle.html'; });
   $('#hintBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); showHint(); });
   $('#rulesBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('helpModal'); });
   $('#fleeBtn').addEventListener('click', () => { Sound.ensure(); fleeWild(); });
@@ -3511,5 +3511,13 @@ boot();
 </script>
 <script src="/pokemon-3rd.js"></script>
 <script src="/pokemon-battle2.js"></script>
+<!-- 포켓몬 배틀 월드 — /pokemon/ 전용 서비스워커 (연오랑 관제탑 PWA와 분리) -->
+<script>
+if ('serviceWorker' in navigator && location.pathname.indexOf('/pokemon/') === 0) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/pokemon/sw.js', { scope: '/pokemon/' }).catch(function () {});
+  });
+}
+</script>
 </body>
 </html>

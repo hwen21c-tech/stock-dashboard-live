@@ -9,6 +9,7 @@
 <meta name="description" content="태블릿 한 화면에서 둘이 함께 — 포켓몬 2인 대결">
 <link rel="icon" type="image/svg+xml" href="./pokemon-battle-icon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="./pokemon-battle-icon-180.png">
+<link rel="manifest" href="/pokemon/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="./pokemon-battle2.css">
@@ -255,7 +256,7 @@
 <body>
 
 <div class="top">
-  <a class="back" href="./pokemon-battle.html">◀ 놀이터</a>
+  <a class="back" href="/pokemon/pokemon-battle.html">◀ 놀이터</a>
   <h1>⚔️ <span>포켓몬 2인 대결</span></h1>
   <button class="icob" id="muteBtn" aria-label="소리 켜기/끄기">🔊</button>
 </div>
@@ -1049,13 +1050,13 @@
       $('#over').classList.remove('on');
       startDuel();
     });
-    $('#villageBtn').addEventListener('click', () => { location.href = './village-pokemon.html'; });
+    $('#villageBtn').addEventListener('click', () => { location.href = '/pokemon/village-pokemon.html'; });
 
     paintSetup();
     bindSetup();
     validate();
 
-    fetch('./pokemon-db.json', { cache: 'no-cache' })
+    fetch('/pokemon-db.json', { cache: 'no-cache' })
       .then((r) => (r.ok ? r.json() : []))
       .then((db) => {
         if (!Array.isArray(db)) return;
@@ -1065,12 +1066,12 @@
       })
       .catch(() => { /* 기본 피카츄로도 대결 가능 */ });
 
-    fetch('./hangul-bank.json', { cache: 'no-cache' })
+    fetch('/hangul-bank.json', { cache: 'no-cache' })
       .then((r) => (r.ok ? r.json() : null))
       .then((o) => { if (o && Array.isArray(o.words)) BANK.hangul = o.words; })
       .catch(() => { /* */ });
 
-    fetch('./english-bank.json', { cache: 'no-cache' })
+    fetch('/english-bank.json', { cache: 'no-cache' })
       .then((r) => (r.ok ? r.json() : null))
       .then((o) => {
         if (!o) return;
@@ -1105,6 +1106,14 @@
     grant: grantReward,
   };
 })();
+</script>
+<!-- 포켓몬 배틀 월드 — /pokemon/ 전용 서비스워커 (연오랑 관제탑 PWA와 분리) -->
+<script>
+if ('serviceWorker' in navigator && location.pathname.indexOf('/pokemon/') === 0) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/pokemon/sw.js', { scope: '/pokemon/' }).catch(function () {});
+  });
+}
 </script>
 </body>
 </html>

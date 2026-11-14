@@ -63,9 +63,28 @@ const server = http.createServer(async (req, res) => {
   }
 
   const rel = pathname === '/' ? '/index.html' : pathname;
-  const filePath = path.join(__dirname, 'public', path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
+  const toDisk = (r) => path.join(__dirname, 'public', path.normalize(r).replace(/^(\.\.[/\\])+/, ''));
+
+  // vercel.json 의 `/pokemon/` rewrite 를 로컬에서도 똑같이 흉내낸다.
+  // (실제 파일이 먼저 — public/pokemon/manifest.json · sw.js 는 그대로 서빙)
+  const candidates = [rel];
+  if (pathname === '/pokemon' || pathname === '/pokemon/') {
+    candidates.push('/pokemon-battle.html');
+  } else if (pathname.startsWith('/pokemon/')) {
+    candidates.push('/' + pathname.slice('/pokemon/'.length));
+  }
+
+  let filePath = null;
+  let buf = null;
+  for (const cand of candidates) {
+    try {
+      buf = await readFile(toDisk(cand));
+      filePath = toDisk(cand);
+      break;
+    } catch (e) { /* 다음 후보 */ }
+  }
   try {
-    const buf = await readFile(filePath);
+    if (!buf) throw new Error('not found');
     res.statusCode = 200;
     res.setHeader('Content-Type', MIME[path.extname(filePath)] || 'application/octet-stream');
     res.setHeader('Cache-Control', 'no-store');

@@ -10,8 +10,10 @@ public/deals.html          패밀리 특가 레이더 — 여행·키즈·캘린
 public/live-api.js         동적 연동 레이어 (15초 지수/감시종목 · 30초 1·3·5탭 · RN존 실시간 종목 조회)
 public/live-extra.js       1·2·3번 탭 잔여 고도화 (신호등 6칩 자동 생성 · NXT 랭킹 · 수급 카드 · 요약 문장)
 public/deals-shopping.js   쇼핑 최저가 Top 5 렌더러 (키 미등록 시 안내 배너로 대체)
-public/sw.js               PWA 서비스워커 (network-first, 캐시 없음)
-public/manifest.json       PWA 매니페스트
+public/sw.js               PWA 서비스워커 (network-first, 캐시 없음) — scope /
+public/manifest.json       PWA 매니페스트 (연오랑 관제탑, scope ./)
+public/pokemon/manifest.json  포켓몬 배틀 월드 매니페스트 (id·start_url·scope = /pokemon/)
+public/pokemon/sw.js          포켓몬 배틀 월드 서비스워커 (scope /pokemon/)
 public/downloads/          앱 아이콘 192/512
 api/stock-live.js          지수·환율·해외선물·종목 현재가
 api/tabs-live.js           1·3·5번 탭 — 8대 테마 32종목·52주 신고가·100억+ 상한가·최신 뉴스 12건(키워드 영향도·수혜주)
@@ -78,7 +80,25 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
   그 아래에는 기존 **정시(평일 14회) AI 심층 브리핑 전문**이 그대로 보존됩니다(시점이 다른 스냅샷임을 명시).
   수치·뉴스는 확인된 응답값만 표시하고, 없는 값은 `—` 로 두며 코멘트·전망 문장을 지어내지 않습니다.
 
-### 2) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
+### 2) 포켓몬 배틀 월드 `/pokemon/` — 관제탑과 분리된 독립 PWA
+
+같은 오리진에 있지만 **홈 화면 앱으로는 완전히 별개**로 설치되도록 스코프를 나눠 두었다.
+
+| | 연오랑 관제탑 | 포켓몬 배틀 월드 |
+|---|---|---|
+| 매니페스트 | `/manifest.json` (`scope: ./` → `/`) | `/pokemon/manifest.json` (`id·start_url·scope` 모두 `/pokemon/`) |
+| 서비스워커 | `/sw.js` (`scope: /`) | `/pokemon/sw.js` (`scope: /pokemon/`, 캐시 접두사 `pkm-world-`) |
+| 진입 | `/` | `/pokemon/` (런처), `/pokemon/{math,hangul,english,versus,village}-pokemon.html` |
+
+- **URL 매핑**: `vercel.json` 의 `rewrites` 가 `/pokemon/` → `/pokemon-battle.html`, `/pokemon/:path*` → `/:path*` 로 넘긴다.
+  HTML 은 `public/` 루트에 한 벌만 두고 두 주소에서 함께 쓴다(사본 없음). `public/pokemon/` 의 실파일(매니페스트·SW)이 항상 우선한다.
+- **기존 주소 호환**: `/pokemon-battle.html` 등 루트 주소도 그대로 200 이고, 안의 링크·매니페스트는 `/pokemon/` 기준이라 열어도 새 앱 스코프로 들어간다.
+- **페이지 사이 이동은 반드시 `/pokemon/...` 안에서** 한다(런처 ↔ 산수/한글/영어/2인대결/마을). 그래야 설치된 앱 창이 풀리지 않는다.
+- 공용 리소스(`/api/tts`, `/pokemon-db.json`, `/hangul-bank.json`, `/english-bank.json`, 아이콘)는 절대경로 그대로 쓰고,
+  같은 오리진이므로 `localStorage`(`pkm.shared.dex.v1.*`, `pkm.quota.v1`, 마을 저장)는 두 앱이 그대로 공유한다.
+- 검증: `BASE=<주소> node /workspace/_tools/e2e/pk4_scope.mjs` (매니페스트·SW scope·5개 페이지 이동·콘솔 에러·localStorage 공유 실측)
+
+### 3) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
 `🔎 여행·키즈 맞춤 검색기` · `✈️ 국내&해외 여행 특가(11건)` · `🎪 키즈카페·박물관(11건)`
 · `📅 다가오는 특가 & 예약 캘린더(9건)` · **`🛒 쇼핑 실시간 최저가 Top 5`(신규)**
 

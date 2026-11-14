@@ -23,6 +23,22 @@
     {
       "source": "/deals.html",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/pokemon/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/pokemon/" }
+      ]
+    },
+    {
+      "source": "/pokemon/manifest.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     }
+  ],
+  "rewrites": [
+    { "source": "/pokemon", "destination": "/pokemon-battle.html" },
+    { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
+    { "source": "/pokemon/:path*", "destination": "/:path*" }
   ]
 }

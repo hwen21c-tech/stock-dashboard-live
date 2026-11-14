@@ -7,7 +7,7 @@
 <title>포켓몬 배틀 월드</title>
 <meta name="theme-color" content="#3aa62b">
 <meta name="description" content="산수·한글·영어를 하나의 도감으로 — 포켓몬 배틀 월드">
-<link rel="manifest" href="./pokemon-battle-manifest.json">
+<link rel="manifest" href="/pokemon/manifest.json">
 <link rel="apple-touch-icon" sizes="180x180" href="./pokemon-battle-icon-180.png">
 <link rel="icon" type="image/svg+xml" href="./pokemon-battle-icon.svg">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -329,7 +329,7 @@
 
   <nav class="games" aria-label="게임 선택">
     <div class="gwrap">
-      <a class="game math" href="./math-pokemon.html">
+      <a class="game math" href="/pokemon/math-pokemon.html">
         <span class="ico" aria-hidden="true">⚡</span>
         <span class="body">
           <span class="ttl">산수 배틀</span>
@@ -341,7 +341,7 @@
       <button class="rulebtn" data-rule="math" aria-label="산수 배틀 규칙">❓</button>
     </div>
     <div class="gwrap">
-      <a class="game hangul" href="./hangul-pokemon.html">
+      <a class="game hangul" href="/pokemon/hangul-pokemon.html">
         <span class="ico" aria-hidden="true">📖</span>
         <span class="body">
           <span class="ttl">한글 배틀</span>
@@ -353,7 +353,7 @@
       <button class="rulebtn" data-rule="hangul" aria-label="한글 배틀 규칙">❓</button>
     </div>
     <div class="gwrap">
-      <a class="game english" href="./english-pokemon.html">
+      <a class="game english" href="/pokemon/english-pokemon.html">
         <span class="ico" aria-hidden="true">🔤</span>
         <span class="body">
           <span class="ttl">영어 배틀</span>
@@ -365,7 +365,7 @@
       <button class="rulebtn" data-rule="english" aria-label="영어 배틀 규칙">❓</button>
     </div>
     <div class="gwrap">
-      <a class="game versus" href="./versus-pokemon.html">
+      <a class="game versus" href="/pokemon/versus-pokemon.html">
         <span class="ico" aria-hidden="true">⚔️</span>
         <span class="body">
           <span class="ttl">2인 대결</span>
@@ -377,7 +377,7 @@
       <button class="rulebtn" data-rule="versus" aria-label="2인 대결 규칙">❓</button>
     </div>
     <div class="gwrap">
-      <a class="game village" href="./village-pokemon.html">
+      <a class="game village" href="/pokemon/village-pokemon.html">
         <span class="ico" aria-hidden="true">🏡</span>
         <span class="body">
           <span class="ttl">포켓몬 마을</span>
@@ -505,7 +505,7 @@
   }
 
   migrate();
-  paint(151);  fetch('./pokemon-db.json', { cache: 'no-cache' })
+  paint(151);  fetch('/pokemon-db.json', { cache: 'no-cache' })
     .then((r) => (r.ok ? r.json() : null))
     .then((db) => { if (Array.isArray(db) && db.length > 200) paint(db.length); })
     .catch(() => { /* 1세대 151로 표시 */ });
@@ -862,6 +862,14 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { paint(); } catch (e) { /* */ } } });
   window.addEventListener('storage', function (e) { if (e && e.key === QK) { try { paint(); } catch (err) { /* */ } } });
 })();
+</script>
+<!-- 포켓몬 배틀 월드 — /pokemon/ 전용 서비스워커 (연오랑 관제탑 PWA와 분리) -->
+<script>
+if ('serviceWorker' in navigator && location.pathname.indexOf('/pokemon/') === 0) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/pokemon/sw.js', { scope: '/pokemon/' }).catch(function () {});
+  });
+}
 </script>
 </body>
 </html>
