@@ -84,7 +84,14 @@
   @keyframes splashout{to{opacity:0;visibility:hidden}}
   .spwrap{display:flex;flex-direction:column;align-items:center;gap:11px;animation:splashpop .45s cubic-bezier(.2,1.4,.5,1) both}
   @keyframes splashpop{from{transform:scale(.75);opacity:0}to{transform:none;opacity:1}}
-  .spball{width:clamp(76px,22vw,104px);height:clamp(76px,22vw,104px);animation:splashdrop .95s cubic-bezier(.3,1.5,.4,1) both}
+  /* 정원 1:1 고정 — 뒤에 오는 .ball{width:100%} 에 밀려 럭비공처럼 찌그러지지 않게(특이도 우선) */
+  .spwrap>.spball{
+    flex:0 0 auto;-webkit-flex-shrink:0;
+    width:clamp(76px,22vw,104px);height:clamp(76px,22vw,104px);
+    min-width:clamp(76px,22vw,104px);min-height:clamp(76px,22vw,104px);
+    aspect-ratio:1 / 1;
+    animation:splashdrop .95s cubic-bezier(.3,1.5,.4,1) both
+  }
   @keyframes splashdrop{0%{transform:translateY(-140px) scale(.7);opacity:0}55%{transform:translateY(10px) scale(1.05)}100%{transform:none;opacity:1}}
   .sprays{
     position:absolute;inset:-30% -30% auto -30%;height:170%;pointer-events:none;opacity:.5;

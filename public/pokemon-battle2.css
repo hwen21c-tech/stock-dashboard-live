@@ -730,6 +730,20 @@
   .pb2-partner{width:clamp(120px,26vh,150px)}
 }
 
+/* 6-b) 넓은 무대(가로 800px~): 양 끝에 붙어 가운데가 휑하던 구도 →
+   파트너·야생을 같은 식으로 안쪽에서 당겨 서로 마주 보게 한다(좌우 대칭 유지).
+   ~800px 에서는 레일 옆자리(min)가 그대로 쓰이고, 넓어질수록 안쪽으로 들어온다. */
+@media (min-width:800px){
+  .pb2-partner{left:clamp(calc(8px + var(--pb2-rail-w) + 22px), calc(44% - 220px), 46%)}
+  .stage .wildzone{right:clamp(24px, calc(44% - 220px), 46%)}
+}
+/* 6-c) 좁은 세로 화면(폰): 파트너를 왼쪽 메뉴 열에 붙여 몬스터볼과 겹침 0,
+   안내 문구는 파트너 머리 위로 올려 글자가 가려지지 않게. */
+@media (max-width:599px) and (orientation:portrait){
+  .pb2-partner{left:8px}
+  #stage .hint{bottom:calc(6% + 156px)}
+}
+
 /* 7) 낮은 화면(폴드8 가로·태블릿 가로)에서 보기 4개가 한 화면에 들어오게 */
 @media (max-height:820px){
   #app{grid-template-rows:auto auto auto minmax(0,1fr) auto}

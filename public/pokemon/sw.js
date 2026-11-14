@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v2';
+const VERSION = PREFIX + 'v3';   /* 2026-11-15 v3: 스플래시 몬스터볼 정원·배틀 무대 배치 수정분 재캐시 */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
