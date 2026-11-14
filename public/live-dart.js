@@ -89,6 +89,24 @@
 
   /* ----------------------------- 화면 반영 ----------------------------- */
 
+  // DART 는 한 번에 100건까지만 준다 — 유형별로 얼마나 봤는지 숨기지 않고 그대로 보여준다
+  function coverageHtml(body) {
+    var cov = (body && body.coverage) || [];
+    if (!cov.length) return '';
+    var rows = cov.map(function (c) {
+      var done = c.complete === true;
+      return '<div style="display:flex; justify-content:space-between; gap:8px; font-size:10px; color:' +
+        (c.error ? '#fb7185' : done ? '#94a3b8' : '#fbbf24') + '; padding:1px 0;">' +
+        '<span>' + esc(c.label) + '</span>' +
+        '<span>' + (c.error ? '실패' : (c.fetched + ' / ' + (c.totalCount === null ? '?' : c.totalCount) + '건' + (done ? ' 전수' : ' 일부'))) + '</span>' +
+      '</div>';
+    }).join('');
+    return '<div style="margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:5px;">' +
+      '<div style="font-size:10px; font-weight:800; color:#94a3b8; margin-bottom:2px;">📋 스캔 범위 (DART 100건/page 한도)</div>' +
+      rows +
+    '</div>';
+  }
+
   function bannerEls() {
     return {
       title: document.getElementById('dartRadarTitle'),
@@ -105,8 +123,7 @@
     };
   }
 
-  function setStateNote(text, color) {
-    var el = bannerEls();
+  function setStateNote(text, color) {    var el = bannerEls();
     if (!el.banner) return;
     var note = document.getElementById('dartKeyState');
     if (!note) {
@@ -159,9 +176,12 @@
       var riskTxt = counts.risk > 0
         ? '<strong style="color:#fb7185;">위험 공시 ' + counts.risk + '건</strong>'
         : '<strong style="color:#34d399;">위험 공시 0건(클린 🟢)</strong>';
+      var scopeTxt = body.riskClassesComplete
+        ? ''
+        : ' <span style="font-size:9.5px; color:#fbbf24;">(위험유형 추가 페이지 미확인)</span>';
       b.body.innerHTML =
-        '공시 ' + (counts.matched || 0) + '건 · ' + riskTxt +
-        ' · 주목 ' + (counts.watch || 0) + '건 · 일반 ' + (counts.info || 0) + '건' +
+        '스캔 ' + (counts.fetched || 0) + '건 → 공시 ' + (counts.matched || 0) + '건 · ' + riskTxt +
+        ' · 주목 ' + (counts.watch || 0) + '건 · 일반 ' + (counts.info || 0) + '건' + scopeTxt +
         ' <span style="font-size:10px; color:#6ee7b7; margin-left:6px;">[⚡ ' + stamp + ' DART OpenAPI 실시간]</span>' +
         (counts.interestRisk > 0 ? ' <span style="font-size:10px; color:#fbbf24;">— 관심종목 위험 공시는 아래 목록 확인</span>' : '');
     }
@@ -193,11 +213,13 @@
         '<div style="background:rgba(16,185,129,0.07); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:10px 12px; margin-bottom:14px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap:8px; flex-wrap:wrap;">' +
           '<span style="font-size:12px; font-weight:800; color:#34d399;">📡 DART 실시간 공시 (최근 ' + (body.lookbackDays || 7) + '일 · 관심 ' + (body.interestCount || 0) + '종목)</span>' +
-          '<span id="dartLiveStamp" style="font-size:10px; color:#6ee7b7; font-weight:800;">⚡ ' + stamp + ' 조회 · 공시 ' + (counts.matched || 0) + '건</span>' +
+          '<span id="dartLiveStamp" style="font-size:10px; color:#6ee7b7; font-weight:800;">⚡ ' + stamp + ' 조회 · 스캔 ' + (counts.fetched || 0) + '건</span>' +
         '</div>' +
         rows +
-        '<div style="font-size:10px; color:#64748b; margin-top:5px;">' +
-          '※ DART OpenAPI list.json 응답만 표시합니다. 유형(위험/주목)은 공시명 키워드로 자동 분류한 것이고 본문 해석이 아닙니다.' +
+        coverageHtml(body) +
+        '<div style="font-size:10px; color:#64748b; margin-top:5px; line-height:1.5;">' +
+          '※ DART OpenAPI list.json 응답만 표시합니다. 유형(위험/주목)은 공시명 키워드로 자동 분류한 것이고 본문 해석이 아닙니다.<br>' +
+          '※ DART 는 한 번에 100건까지만 주므로 최신 공시 + 주요사항보고(B) + 지분공시(D) 를 나눿 스캔합니다. 관심종목을 corp_code 로 직접 조회한 것이 아니므로, 스캔 범위 밖 공시는 이 목록에 없을 수 있습니다.' +
         '</div>' +
         '</div>';
       if (m.host.getAttribute('data-sig') !== mhtml) {
@@ -209,7 +231,7 @@
     if (m.verdict) {
       var txt = counts.interestRisk > 0
         ? '🎯 실시간 DART 조회 결과: 관심 ' + (counts.interest || 0) + '건 중 위험 공시 ' + counts.interestRisk + '건 — 아래 실시간 목록 확인'
-        : '🎯 실시간 DART 조회 결과: 관심 종목 위험 공시 0건 (최근 ' + (body.lookbackDays || 7) + '일 · 공시 ' + (counts.interest || 0) + '건)';
+        : '🎯 실시간 DART 조회 결과: 스캔 범위 내 관심 종목 위험 공시 0건 (최근 ' + (body.lookbackDays || 7) + '일 · 스캔 ' + (counts.fetched || 0) + '건 중 관심 ' + (counts.interest || 0) + '건)';
       var cur = (m.verdict.textContent || '').replace(/\s+/g, ' ').trim();
       if (cur !== txt) m.verdict.textContent = txt;
       m.verdict.style.color = counts.interestRisk > 0 ? '#fb7185' : '#34d399';

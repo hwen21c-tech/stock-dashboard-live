@@ -449,13 +449,15 @@ niOk &= check(
   tlNews.map((n) => `${n.matchedThemes.join('+') || '-'}:${n.beneficiaryStocks.map((s) => s.name).join(',') || '-'}`).slice(0, 4).join(' | '),
 );
 niOk &= check(
-  '매칭 없는 기사는 빈 배열 + 참고 + 일반 속보 (가짜 매칭 금지)',
+  '테마 없는 기사 = 직접 언급 종목만 붙이거나(있으면) 참고·일반 속보(없으면) — 가짜 매칭 금지',
   tlNews.every(
     (n) =>
       n.matchedThemes.length > 0 ||
-      (n.beneficiaryStocks.length === 0 && n.impactLevel === '참고' && n.impactNote.includes('일반 속보')),
+      (n.beneficiaryStocks.length === 0 && n.impactLevel === '참고' && n.impactNote.includes('일반 속보')) ||
+      // 섹터 테마는 없지만 본문이 종목을 직접 지목한 경우(예: 삼성전자·SK하이닉스)는 정상
+      (n.beneficiaryStocks.length > 0 && /직접 언급/.test(n.impactNote)),
   ),
-  `일반 속보 ${tlNews.filter((n) => !n.matchedThemes.length).length}건 / 테마 매칭 ${tlNews.filter((n) => n.matchedThemes.length).length}건`,
+  `일반 속보 ${tlNews.filter((n) => !n.matchedThemes.length && !n.beneficiaryStocks.length).length}건 / 테마 매칭 ${tlNews.filter((n) => n.matchedThemes.length).length}건 / 종목 직접언급만 ${tlNews.filter((n) => !n.matchedThemes.length && n.beneficiaryStocks.length).length}건`,
 );
 niOk &= check(
   '영향도 노트는 "키워드 자동 분석" 표기로 시작',

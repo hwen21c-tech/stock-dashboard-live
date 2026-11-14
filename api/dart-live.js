@@ -146,12 +146,28 @@ function dartUrl(rceptNo) {
 
 const memCache = new Map(); // `${bgn}|${end}` → { at, value }
 
-async function fetchDartList(apiKey, bgnDe, endDe) {
-  const url =
+/**
+ * list.json 은 한 번에 100건까지만 준다(하루 공시가 수천 건).
+ * 그래서 한 장만 받고 '전수'라고 말하지 않는다.
+ *  · 최신 공시 1페이지: 키워드(위험/주목) 스캔용
+ *  · 주요사항보고(B) 2페이지 · 지분공시(D) 1페이지: 위험 공시가 몰리는 유형은 넓게 본다
+ *  · 스캔한 건수와 그 유형의 전체 건수를 같이 내려 화면에서 범위를 밝힌다.
+ */
+const SCANS = [
+  { key: 'recent', label: '최신 공시', pageNo: 1, pblntfTy: null, pageCount: 100 },
+  { key: 'major1', label: '주요사항보고(B) 1p', pageNo: 1, pblntfTy: 'B', pageCount: 100 },
+  { key: 'major2', label: '주요사항보고(B) 2p', pageNo: 2, pblntfTy: 'B', pageCount: 100 },
+  { key: 'equity1', label: '지분공시(D) 1p', pageNo: 1, pblntfTy: 'D', pageCount: 100 },
+];
+
+async function fetchDartPage(apiKey, bgnDe, endDe, scan) {
+  let url =
     'https://opendart.fss.or.kr/api/list.json' +
     `?crtfc_key=${encodeURIComponent(apiKey)}` +
     `&bgn_de=${bgnDe}&end_de=${endDe}` +
-    '&page_count=100&page_no=1&sort=date&sort_mth=desc';
+    `&page_count=${scan.pageCount || 100}&page_no=${scan.pageNo || 1}` +
+    '&sort=date&sort_mth=desc';
+  if (scan.pblntfTy) url += `&pblntf_ty=${scan.pblntfTy}`;
   const data = await fetchJson(url, { timeout: 8000 });
   const status = String((data && data.status) || '');
   // 000 = 정상, 013 = 조회된 데이터 없음
@@ -261,10 +277,32 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const data = await fetchDartList(apiKey, bgnDe, endDe);
-    const items = pickItems(data.rows);
+    const settled = await Promise.allSettled(SCANS.map((s) => fetchDartPage(apiKey, bgnDe, endDe, s)));
+    const rows = [];
+    const coverage = [];
+    const scanErrors = [];
+    settled.forEach((s, i) => {
+      const scan = SCANS[i];
+      if (s.status === 'fulfilled') {
+        rows.push(...s.value.rows);
+        coverage.push({
+          label: scan.label,
+          fetched: s.value.rows.length,
+          totalCount: s.value.totalCount,
+          complete: s.value.rows.length >= s.value.totalCount,
+        });
+      } else {
+        const msg = String((s.reason && s.reason.message) || s.reason);
+        scanErrors.push(`${scan.label}: ${msg}`);
+        coverage.push({ label: scan.label, fetched: 0, totalCount: null, complete: false, error: msg });
+      }
+    });
+    if (!rows.length && scanErrors.length === SCANS.length) {
+      throw new Error(scanErrors[0] || 'DART 응답 없음');
+    }
+    const items = pickItems(rows);
     const counts = {
-      fetched: data.rows.length,
+      fetched: rows.length,
       matched: items.length,
       risk: items.filter((i) => i.kind === 'risk').length,
       watch: items.filter((i) => i.kind === 'watch').length,
@@ -272,6 +310,9 @@ module.exports = async function handler(req, res) {
       interest: items.filter((i) => i.inInterest).length,
       interestRisk: items.filter((i) => i.inInterest && i.kind === 'risk').length,
     };
+    const riskClassesComplete = coverage
+      .filter((c) => /주요사항보고|지분공시/.test(c.label))
+      .every((c) => c.complete);
     const body = {
       ok: true,
       keySet: true,
@@ -279,14 +320,20 @@ module.exports = async function handler(req, res) {
       generatedAtKst: kstLabel(now),
       period: { bgnDe, endDe, days },
       counts,
+      coverage,
+      // 관심종목을 corp_code 로 직접 조회하진 않으므로 '전수'라고 단정하지 않는다
+      interestComplete: false,
+      riskClassesComplete,
       cleanInterest: counts.interestRisk === 0,
       items,
       notes: [
-        'DART OpenAPI list.json(최근 ' + days + '일) 결과 중 관심 종목 공시와 위험·주목 키워드 공시만 표시합니다.',
+        'DART OpenAPI list.json 결과 중 관심 종목 공시와 위험·주목 키워드 공시만 표시합니다.',
         '공시 유형(위험/주목)은 공시명 키워드로 자동 분류한 것이며, 본문 해석·판단은 아닙니다.',
-        '관심 종목: 8번 종베 10 + 6번 RN존 11 (중복 제거 ' + INTEREST.length + '종목)',
+        'DART 는 한 번에 100건까지만 주므로 최신 공시 1p + 주요사항보고(B) 2p + 지분공시(D) 1p 를 스캔합니다.',
+        '관심 종목: 8번 종베 10 + 6번 RN존 11 (중복 제거 ' + INTEREST.length + '종목). 스캔 범위 밖 공시는 이 목록에 없을 수 있습니다.',
       ],
       sources: [{ name: 'opendart-list', ok: true }],
+      errors: scanErrors,
       cacheControl: CACHE_CONTROL,
       elapsedMs: Date.now() - started,
     };
