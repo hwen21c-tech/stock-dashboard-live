@@ -246,6 +246,15 @@
     transition:.15s;
   }
   .diffrow button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);color:#6a3f00;border-color:var(--gold-d);box-shadow:0 2px 0 #00000022}
+  .lvrow{display:flex;gap:3px;margin-top:3px;align-items:stretch}
+  .lvrow button{
+    flex:1 1 0;min-width:0;padding:1px 2px;border-radius:7px;
+    font-size:clamp(8px,2.1vw,10px);font-weight:900;line-height:1.45;letter-spacing:-.04em;
+    background:#e6efda;color:#6b7a3a;border:1.3px solid #ccd9b0;white-space:nowrap;overflow:hidden;
+    transition:.15s;
+  }
+  .lvrow button.on{background:linear-gradient(180deg,#d9efff,#9ed3ff);color:#14456b;border-color:#5aa8dd;box-shadow:0 1px 0 #0000001f}
+  .lvrow .lb{flex:0 0 auto;font-size:8.5px;font-weight:900;color:#7d8f5e;display:grid;place-items:center;padding:0 1px}
   .icobtn{
     flex:0 0 auto;width:38px;border-radius:12px;font-size:17px;line-height:1;
     background:linear-gradient(180deg,#fffef7,#f0ffe0);border:2px solid var(--gold);
@@ -860,6 +869,12 @@
         <button data-diff="mid">🌿2단계</button>
         <button data-diff="hard">⚡3단계</button>
         <button data-diff="mix">🎲섞기</button>
+      </div>
+      <div class="lvrow" id="lvRow" role="group" aria-label="낱말 난이도">
+        <span class="lb">난이도</span>
+        <button data-lv="easy">쉬움</button>
+        <button data-lv="mid">중간</button>
+        <button data-lv="hard">어려움</button>
       </div>
     </div>
     <div class="pcard">
@@ -1525,11 +1540,15 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'hpb.profiles.v1';
 const DEFAULT_PROFILES = [
-  { id: 'p1', name: '둘째', emoji: '🧒', diff: 'easy', range: 'all' },
-  { id: 'p2', name: '첫째', emoji: '👧', diff: 'mid', range: 'all' },
+  { id: 'p1', name: '둘째', emoji: '🧒', diff: 'easy', level: 'easy', range: 'all' },
+  { id: 'p2', name: '첫째', emoji: '👧', diff: 'mid', level: 'mid', range: 'all' },
 ];
 const DIFF_KEYS = ['easy', 'mid', 'hard', 'mix'];
 const DIFF_LABEL = { easy: '🌱 1단계', mid: '🌿 2단계', hard: '⚡ 3단계', mix: '🎲 섞어서' };
+/* 난이도(어휘 레벨) — 단계 선택과 별개로 조합된다 */
+const LEVEL_KEYS = ['easy', 'mid', 'hard'];
+const LEVEL_LABEL = { easy: '쉬움', mid: '중간', hard: '어려움' };
+function levelOfWord(it) { return (it && it.level) || it[2] || 'mid'; }
 function stageLabel(p) { return DIFF_LABEL[p.diff] || DIFF_LABEL.easy; }
 const EMOJIS = ['👧', '🧒', '👦', '👶', '🐣', '⭐', '🐰', '🦊'];
 
@@ -1547,6 +1566,7 @@ const Profiles = {
             name: (p.name || '친구').slice(0, 8),
             emoji: p.emoji || (i === 0 ? '👧' : '🧒'),
             diff: DIFF_KEYS.includes(p.diff) ? p.diff : 'easy',
+            level: ['easy', 'mid', 'hard'].includes(p.level) ? p.level : 'mid',
             range: p.range === 'gen1' ? 'gen1' : 'all',
           })),
         };
@@ -1665,6 +1685,7 @@ const S = {
   screen: 'battle',     // battle | resolving | capturing | caught | fainted
   paused: true,
   diff: 'easy',
+  level: 'mid',          // 난이도(어휘 레벨): easy | mid | hard
   wild: null,
   foeHP: 5,
   myHP: 5,
@@ -2042,6 +2063,7 @@ function renderAll() {
   $('#qCount').textContent = `${S.solved} / ${MAXHP}`;
   $$('.diffrow button').forEach((b) => b.classList.toggle('on', b.dataset.diff === S.diff));
   $('#meName').textContent = Profiles.active().name;
+  $$('#lvRow button').forEach((b) => b.classList.toggle('on', b.dataset.lv === S.level));
 }
 
 /* ---------- 한글 낱말 풀 (내장 폴백 — 외부 은행을 못 받을 때만 사용) ---------- */
@@ -2157,7 +2179,7 @@ async function loadBank(refresh) {
     const o = await res.json();
     const list = (o.words || [])
       .filter((x) => x && typeof x.w === 'string' && x.w.length >= 1 && x.w.length <= 5 && !/\s/.test(x.w))
-      .map((x) => [x.e || '🔤', String(x.w)]);
+      .map((x) => [x.e || '🔤', String(x.w), x.level || 'mid']);
     if (list.length < 100) throw new Error('bank too small ' + list.length);
     WORDS = list;
     BANK_STATE = 'ready';
@@ -2262,6 +2284,11 @@ function mutateWord(word) {
 }
 
 /* ---------- 문제 만들기 ---------- */
+/* 지금 고른 난이도의 낱말만 쓴다(모자라면 전체로 되돌아간다) */
+function levelWords() {
+  const pool = WORDS.filter((it) => (it[2] || 'mid') === S.level);
+  return pool.length >= 10 ? pool : WORDS;
+}
 const STAGES = ['easy', 'mid', 'hard'];
 const STAGE_TAG = { easy: '빈칸 글자', mid: '듣고 고르기', hard: '글자 조립' };
 const stageNow = () => (S.diff === 'mix' ? pick(STAGES) : (STAGES.includes(S.diff) ? S.diff : 'easy'));
@@ -2272,7 +2299,7 @@ function blankHtml(word, bi) {
 
 /* 🌱 1단계 — 그림 + 빈칸 글자 채우기 */
 function makeBlankQ() {
-  const item = takeWord(WORDS, 'blank');
+  const item = takeWord(levelWords(), 'blank:' + S.level);
   const word = item[1];
   const chars = Array.from(word);
   const cand = [];
@@ -2292,8 +2319,10 @@ function makeBlankQ() {
 /* 🌿 2단계 — 읽어 주는 낱말 듣고 고르기 */
 function makeListenQ() {
   // 듣고 고르기는 2~4글자 낱말로 (한 글자 낱말은 1·3단계에서 다뤄요)
-  const pool = WORDS.filter((it) => { const n = Array.from(it[1]).length; return n >= 2 && n <= 4; });
-  const item = takeWord(pool, 'listen');
+  const base = levelWords();
+  let pool = base.filter((it) => { const n = Array.from(it[1]).length; return n >= 2 && n <= 4; });
+  if (pool.length < 8) pool = base;
+  const item = takeWord(pool, 'listen:' + S.level);
   const word = item[1];
   const opts = [word];
   let guard = 0;
@@ -2318,13 +2347,20 @@ function makeListenQ() {
 
 /* ⚡ 3단계 — 자음·모음·받침 조립 */
 function makeAssembleQ() {
-  const pool = WORDS.filter((it) => Array.from(it[1]).some((c) => isSyl(c) && decSyl(c).jong > 0));
+  const base = levelWords();
+  let pool = base.filter((it) => Array.from(it[1]).some((c) => isSyl(c) && decSyl(c).jong > 0));
+  if (pool.length < 8) pool = base;
   const one = pool.filter((it) => it[1].length === 1);
-  const item = takeWord(one.length && Math.random() < 0.4 ? one : pool, 'assemble');
+  const item = takeWord(one.length && Math.random() < 0.4 ? one : pool, 'assemble:' + S.level);
   const chars = Array.from(item[1]);
   const idxs = [];
   for (let i = 0; i < chars.length; i += 1) if (isSyl(chars[i]) && decSyl(chars[i]).jong > 0) idxs.push(i);
-  const bi = pick(idxs);
+  let bi = pick(idxs);
+  if (S.level === 'hard') {
+    /* 어려움: 겹받침(ㄺ·ㄻ·ㅄ …) 글자를 우선 조립하게 한다 — 예) 산기슭 → ㅅ+ㅡ+ㄺ */
+    const dbl = idxs.filter((i) => JONG[decSyl(chars[i]).jong].length === 2);
+    if (dbl.length && Math.random() < 0.75) bi = pick(dbl);
+  }
   const ans = chars[bi];
   const d = decSyl(ans);
   const jamo = `<div class="jrow">`
@@ -3006,6 +3042,7 @@ function saveSettings(patch, pid) {
   renderProfileBar();
   if (p.id === Profiles.data.active) {
     S.diff = DIFF_KEYS.includes(p.diff) ? p.diff : 'easy';
+    S.level = LEVEL_KEYS.includes(p.level) ? p.level : 'mid';
     S.range = p.range === 'gen1' ? 'gen1' : 'all';
     renderAll();
     if (S.screen === 'battle') newQuestion();
@@ -3104,6 +3141,7 @@ function applyProfile(id, opts) {
   Profiles.setActive(id);
   const p = Profiles.active();
   S.diff = DIFF_KEYS.includes(p.diff) ? p.diff : 'easy';
+  S.level = LEVEL_KEYS.includes(p.level) ? p.level : 'mid';
   S.range = p.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(p.id);
   renderProfileBar();
@@ -3177,6 +3215,15 @@ function bind() {
       Sound.click();
       saveSettings({ diff: b.dataset.diff }, Profiles.data.active);
       toast(DIFF_LABEL[b.dataset.diff] + ' 난이도', 'info', 900);
+    });
+  });
+  $$('#lvRow button').forEach((b) => {
+    b.addEventListener('click', () => {
+      Sound.ensure();
+      if (S.level === b.dataset.lv) return;
+      Sound.click();
+      saveSettings({ level: b.dataset.lv }, Profiles.data.active);
+      toast('낱말 난이도 · ' + LEVEL_LABEL[b.dataset.lv], 'info', 1100);
     });
   });
 
@@ -3287,6 +3334,7 @@ function boot() {
   migrateLegacyDex();
   const me = Profiles.active();
   S.diff = DIFF_KEYS.includes(me.diff) ? me.diff : 'easy';
+  S.level = LEVEL_KEYS.includes(me.level) ? me.level : 'mid';
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();

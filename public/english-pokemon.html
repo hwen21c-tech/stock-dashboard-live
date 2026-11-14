@@ -246,6 +246,15 @@
     transition:.15s;
   }
   .diffrow button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);color:#6a3f00;border-color:var(--gold-d);box-shadow:0 2px 0 #00000022}
+  .lvrow{display:flex;gap:3px;margin-top:3px;align-items:stretch}
+  .lvrow button{
+    flex:1 1 0;min-width:0;padding:1px 2px;border-radius:7px;
+    font-size:clamp(8px,2.1vw,10px);font-weight:900;line-height:1.45;letter-spacing:-.04em;
+    background:#e6efda;color:#6b7a3a;border:1.3px solid #ccd9b0;white-space:nowrap;overflow:hidden;
+    transition:.15s;
+  }
+  .lvrow button.on{background:linear-gradient(180deg,#d9efff,#9ed3ff);color:#14456b;border-color:#5aa8dd;box-shadow:0 1px 0 #0000001f}
+  .lvrow .lb{flex:0 0 auto;font-size:8.5px;font-weight:900;color:#7d8f5e;display:grid;place-items:center;padding:0 1px}
   .icobtn{
     flex:0 0 auto;width:38px;border-radius:12px;font-size:17px;line-height:1;
     background:linear-gradient(180deg,#fffef7,#f0ffe0);border:2px solid var(--gold);
@@ -872,6 +881,12 @@
         <button data-diff="mid">🌿2단계</button>
         <button data-diff="hard">⚡3단계</button>
         <button data-diff="mix">🎲섞기</button>
+      </div>
+      <div class="lvrow" id="lvRow" role="group" aria-label="낱말 난이도">
+        <span class="lb">난이도</span>
+        <button data-lv="easy">쉬움</button>
+        <button data-lv="mid">중간</button>
+        <button data-lv="hard">어려움</button>
       </div>
     </div>
     <div class="pcard">
@@ -1537,11 +1552,15 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'epb.profiles.v1';
 const DEFAULT_PROFILES = [
-  { id: 'p1', name: '첫째', emoji: '👧', diff: 'mid', range: 'all' },
-  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'easy', range: 'all' },
+  { id: 'p1', name: '첫째', emoji: '👧', diff: 'mid', level: 'mid', range: 'all' },
+  { id: 'p2', name: '둘째', emoji: '🧒', diff: 'easy', level: 'easy', range: 'all' },
 ];
 const DIFF_KEYS = ['easy', 'mid', 'hard', 'mix'];
 const DIFF_LABEL = { easy: '🌱 1단계', mid: '🌿 2단계', hard: '⚡ 3단계', mix: '🎲 섞어서' };
+/* 난이도(어휘 레벨) — 단계 선택과 별개로 조합된다 */
+const LEVEL_KEYS = ['easy', 'mid', 'hard'];
+const LEVEL_LABEL = { easy: '쉬움', mid: '중간', hard: '어려움' };
+function levelOfWord(it) { return (it && it.level) || it[2] || 'mid'; }
 function stageLabel(p) { return DIFF_LABEL[p.diff] || DIFF_LABEL.easy; }
 const EMOJIS = ['👧', '🧒', '👦', '👶', '🐣', '⭐', '🐰', '🦊'];
 
@@ -1559,6 +1578,7 @@ const Profiles = {
             name: (p.name || '친구').slice(0, 8),
             emoji: p.emoji || (i === 0 ? '👧' : '🧒'),
             diff: DIFF_KEYS.includes(p.diff) ? p.diff : 'easy',
+            level: ['easy', 'mid', 'hard'].includes(p.level) ? p.level : 'mid',
             range: p.range === 'gen1' ? 'gen1' : 'all',
           })),
         };
@@ -1675,6 +1695,7 @@ const S = {
   screen: 'battle',     // battle | resolving | capturing | caught | fainted
   paused: true,
   diff: 'easy',
+  level: 'mid',          // 난이도(어휘 레벨): easy | mid | hard
   wild: null,
   foeHP: 5,
   myHP: 5,
@@ -2052,6 +2073,7 @@ function renderAll() {
   $('#qCount').textContent = `${S.solved} / ${MAXHP}`;
   $$('.diffrow button').forEach((b) => b.classList.toggle('on', b.dataset.diff === S.diff));
   $('#meName').textContent = Profiles.active().name;
+  $$('#lvRow button').forEach((b) => b.classList.toggle('on', b.dataset.lv === S.level));
 }
 
 /* ---------- 초등 필수 영단어 · 생활 문장 (내장 폴백 — 외부 은행을 못 받을 때만 사용) ---------- */
@@ -2150,10 +2172,10 @@ async function loadBank(refresh) {
     const o = await res.json();
     const words = (o.words || [])
       .filter((x) => x && typeof x.en === 'string' && x.en.length >= 1 && x.en.length <= 20 && typeof x.ko === 'string')
-      .map((x) => ({ en: String(x.en), ko: String(x.ko), e: x.e || '🔤', cat: x.cat || 'etc' }));
+      .map((x) => ({ en: String(x.en), ko: String(x.ko), e: x.e || '🔤', cat: x.cat || 'etc', level: x.level || 'mid' }));
     const sents = (o.sentences || [])
       .filter((x) => x && typeof x.q === 'string' && x.q.split('___').length === 2 && typeof x.a === 'string' && Array.isArray(x.o) && x.o.length >= 3)
-      .map((x) => ({ q: String(x.q), a: String(x.a), o: x.o.slice(0, 3).map(String), k: String(x.k || '') }));
+      .map((x) => ({ q: String(x.q), a: String(x.a), o: x.o.slice(0, 3).map(String), k: String(x.k || ''), level: x.level || 'mid' }));
     if (words.length < 100) throw new Error('bank words too small ' + words.length);
     WORDS = words;
     if (sents.length >= 60) SENTS = sents;
@@ -2284,7 +2306,7 @@ const fillChoices = (opts, n, pool) => {
 
 /* 🌱 1단계-A — 그림 + 한국어 뜻 → 영어 단어 고르기 */
 function makePicQ() {
-  const w = takeEnWord(WORDS, 'pic');
+  const w = takeEnWord(levelWords(), 'pic:' + S.level);
   const opts = [w.en];
   sameCat(w).forEach((x) => { if (opts.length < 3 && !opts.includes(x.en)) opts.push(x.en); });
   fillChoices(opts, 4, WORDS);
@@ -2300,7 +2322,7 @@ function makePicQ() {
 
 /* 🌱 1단계-B — 영어 단어 → 한국어 뜻 고르기 */
 function makeKoQ() {
-  const w = takeEnWord(WORDS, 'ko');
+  const w = takeEnWord(levelWords(), 'ko:' + S.level);
   const opts = [w.ko];
   sameCat(w).forEach((x) => { if (opts.length < 3 && !opts.includes(x.ko)) opts.push(x.ko); });
   let guard = 0;
@@ -2321,8 +2343,9 @@ function makeKoQ() {
 
 /* 🌿 2단계-A — 원어민 발음 듣고 바른 철자 고르기 */
 function makeListenQ() {
-  const pool = WORDS.filter((w) => w.en.length >= 4);
-  const w = takeEnWord(pool, 'listen');
+  let pool = levelWords().filter((w) => w.en.length >= 4);
+  if (pool.length < 8) pool = WORDS.filter((w) => w.en.length >= 4);
+  const w = takeEnWord(pool, 'listen:' + S.level);
   const opts = [w.en];
   const muts = mutateEn(w.en);
   for (let i = 0; i < muts.length && opts.length < 4; i += 1) if (!opts.includes(muts[i])) opts.push(muts[i]);
@@ -2343,7 +2366,8 @@ function makeListenQ() {
 function makeSpellQ() {
   let w = null;
   let sp = null;
-  const spellPool = WORDS.filter((x) => x.en.length >= 5 && !x.en.includes(' '));
+  let spellPool = levelWords().filter((x) => x.en.length >= 5 && !x.en.includes(' '));
+  if (spellPool.length < 6) spellPool = WORDS.filter((x) => x.en.length >= 5 && !x.en.includes(' '));
   for (let i = 0; i < 80; i += 1) {
     const cand = takeEnWord(spellPool, 'spell');
     const s = blankSpot(cand.en);
@@ -2365,7 +2389,8 @@ function makeSpellQ() {
 
 /* ⚡ 3단계 — 생활 문장 빈칸 완성 */
 function makeSentQ() {
-  const s = takeSent();
+  const pool = levelSents();
+  const s = pool[Deck.next(`sent:${S.level}|${pool.length}`, pool.length)] || pool[0];
   const opts = shuffleArr([s.a, ...s.o]);
   return {
     stage: 'hard', tag: '문장 완성', cls: 'sent', css: 'words',
@@ -2378,6 +2403,15 @@ function makeSentQ() {
   };
 }
 
+/* 지금 고른 난이도의 단어·문장만 쓴다(모자라면 전체로 되돌아간다) */
+function levelWords() {
+  const pool = WORDS.filter((w) => (w.level || 'mid') === S.level);
+  return pool.length >= 10 ? pool : WORDS;
+}
+function levelSents() {
+  const pool = SENTS.filter((s) => (s.level || 'mid') === S.level);
+  return pool.length >= 8 ? pool : SENTS;
+}
 const STAGES = ['easy', 'mid', 'hard'];
 const stageNow = () => (S.diff === 'mix' ? pick(STAGES) : (STAGES.includes(S.diff) ? S.diff : 'easy'));
 function makeQuestion() {
@@ -3032,6 +3066,7 @@ function saveSettings(patch, pid) {
   renderProfileBar();
   if (p.id === Profiles.data.active) {
     S.diff = DIFF_KEYS.includes(p.diff) ? p.diff : 'easy';
+    S.level = LEVEL_KEYS.includes(p.level) ? p.level : 'mid';
     S.range = p.range === 'gen1' ? 'gen1' : 'all';
     renderAll();
     if (S.screen === 'battle') newQuestion();
@@ -3130,6 +3165,7 @@ function applyProfile(id, opts) {
   Profiles.setActive(id);
   const p = Profiles.active();
   S.diff = DIFF_KEYS.includes(p.diff) ? p.diff : 'easy';
+  S.level = LEVEL_KEYS.includes(p.level) ? p.level : 'mid';
   S.range = p.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(p.id);
   renderProfileBar();
@@ -3203,6 +3239,15 @@ function bind() {
       Sound.click();
       saveSettings({ diff: b.dataset.diff }, Profiles.data.active);
       toast(DIFF_LABEL[b.dataset.diff] + ' 난이도', 'info', 900);
+    });
+  });
+  $$('#lvRow button').forEach((b) => {
+    b.addEventListener('click', () => {
+      Sound.ensure();
+      if (S.level === b.dataset.lv) return;
+      Sound.click();
+      saveSettings({ level: b.dataset.lv }, Profiles.data.active);
+      toast('낱말 난이도 · ' + LEVEL_LABEL[b.dataset.lv], 'info', 1100);
     });
   });
 
@@ -3313,6 +3358,7 @@ function boot() {
   migrateLegacyDex();
   const me = Profiles.active();
   S.diff = DIFF_KEYS.includes(me.diff) ? me.diff : 'easy';
+  S.level = LEVEL_KEYS.includes(me.level) ? me.level : 'mid';
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();
