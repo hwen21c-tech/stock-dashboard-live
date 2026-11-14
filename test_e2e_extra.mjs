@@ -395,6 +395,9 @@ check('외인·기관 순매수 금액은 확정치 그대로 유지(실시간 �
 await page.screenshot({ path: SHOT('supply') });
 
 /* ---------- 6) 정직 라벨(9번 달력·8번 DART) ---------- */
+// DART 는 키 설정 여부에 따라 화면 문구가 달라진다(실시간 조회 / 정적 스캔) — 먼저 모드를 확인한다
+const dartApi = await (await fetch(`${BASE}/api/dart-live`)).json();
+const dartKeySet = Boolean(dartApi && dartApi.ok === true);
 const labels = await page.evaluate(() => {
   const cal = document.getElementById('tabCalendar');
   const jong = document.getElementById('tabJongbe');
@@ -407,12 +410,14 @@ const labels = await page.evaluate(() => {
 check('9번 달력 배지: 정기 백엔드 반영 기준으로 표기',
   /정기 백엔드 반영 기준/.test(labels.calText) && !/실시간 자동 갱신: \d{2}:\d{2}:\d{2}/.test(labels.calText),
   (labels.calText.match(/정기 백엔드 반영 기준[^)]*\)/) || [''])[0]);
-check('8번 DART 배지: 정기 스캔 결과로 표기',
-  /DART 전자공시 정기 스캔 결과/.test(labels.jongText) && /자동 실시간 아님/.test(labels.jongText) &&
-  !/DART 전자공시 실시간 악재 레이더 가동 중/.test(labels.doc));
+check('8번 DART 배지: 실시간/정기 스캔을 사실대로 표기',
+  dartKeySet
+    ? /DART 전자공시 실시간 조회/.test(labels.jongText)
+    : (/DART 전자공시 정기 스캔 결과/.test(labels.jongText) && /자동 실시간 아님/.test(labels.jongText)) &&
+      !/DART 전자공시 실시간 악재 레이더 가동 중/.test(labels.doc),
+  dartKeySet ? '실시간 조회(키 설정)' : '정기 스캔 + 자동 실시간 아님');
 
-/* ---------- 6-1) DART 실시간 레이더 (/api/dart-live) — 키 미설정 폴백이 정직한지 ---------- */
-const dartApi = await (await fetch(`${BASE}/api/dart-live`)).json();
+/* ---------- 6-1) DART 실시간 레이더 (/api/dart-live) ---------- */
 const dartDom = await page.evaluate(() => {
   const note = document.getElementById('dartKeyState');
   return {
@@ -424,7 +429,6 @@ const dartDom = await page.evaluate(() => {
     staticKept: /전 종목 악재 없음|정기 스캔/.test(document.getElementById('dartRadarBody') ? document.getElementById('dartRadarBody').textContent : ''),
   };
 });
-const dartKeySet = Boolean(dartApi && dartApi.ok === true);
 check('8번 DART 레이더 — 실시간 조회 상태를 화면에 표시',
   Boolean(dartDom.keyState) || dartKeySet,
   dartKeySet ? `실시간 조회 ok (공시 ${dartApi.counts && dartApi.counts.matched}건)` : `상태표시 "${dartDom.keyState}"`);
@@ -468,7 +472,7 @@ const jong = await page.evaluate(() => {
   return {
     display: tab ? tab.style.display : null,
     lines: tab ? tab.textContent.replace(/\s+/g, ' ').trim().length : 0,
-    dartText: tab ? /DART 전자공시 정기 스캔 결과/.test(tab.textContent) : false,
+    dartText: tab ? /DART 전자공시 (정기 스캔|실시간 조회)/.test(tab.textContent) : false,
   };
 });
 check('8번 종베 탭 정상 렌더 + DART 정직 라벨', jong.display !== 'none' && jong.lines > 1500 && jong.dartText, `${jong.lines}자 · DART라벨=${jong.dartText}`);
