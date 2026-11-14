@@ -28,6 +28,7 @@ const api = {
   '/api/macro-live': require('./api/macro-live.js'),
   '/api/econ-calendar': require('./api/econ-calendar.js'),
   '/api/stock-trend': require('./api/stock-trend.js'),
+  '/api/tts': require('./api/tts.js'),
 };
 
 const MIME = {

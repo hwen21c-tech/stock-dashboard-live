@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<title>포켓몬 배틀 월드</title>
+<meta name="theme-color" content="#3aa62b">
+<meta name="description" content="산수·한글·영어를 하나의 도감으로 — 포켓몬 배틀 월드">
+<link rel="manifest" href="./pokemon-battle-manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="./pokemon-battle-icon-180.png">
+<link rel="icon" type="image/svg+xml" href="./pokemon-battle-icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="포켓몬배틀">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root{
+    --grass1:#d9f7b0; --grass2:#a8e86b; --grass3:#57bd2f; --deep:#20591a;
+    --gold:#ffcf4d; --gold-d:#c98a10; --ink:#22400f; --ink-soft:#4d6b32;
+    --card:#fffdf3; --line:#cfe6a6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;font-family:"Apple SD Gothic Neo","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink);background:linear-gradient(180deg,#bff0ff 0%,#d8f7ff 26%,var(--grass1) 52%,var(--grass2) 78%,var(--grass3) 100%);
+    min-height:100dvh;overflow-x:hidden;overscroll-behavior-y:contain;
+  }
+  /* 풀숲 배경 */
+  .sky{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+  .cloud{position:absolute;background:#fff;border-radius:50%;filter:blur(.2px);opacity:.92;
+    box-shadow:34px 8px 0 -6px #fff,68px -4px 0 -12px #fff,-30px 6px 0 -8px #fff}
+  .cloud.a{width:64px;height:34px;top:8%;left:-20%;animation:drift 46s linear infinite}
+  .cloud.b{width:46px;height:24px;top:20%;left:-30%;animation:drift 62s linear infinite 6s;opacity:.8}
+  .cloud.c{width:84px;height:44px;top:3%;left:-40%;animation:drift 78s linear infinite 12s;opacity:.7}
+  @keyframes drift{from{transform:translateX(0)}to{transform:translateX(160vw)}}
+  .field{position:fixed;left:0;right:0;bottom:0;height:34%;z-index:0;pointer-events:none}
+  .field svg{width:100%;height:100%;display:block}
+  .grain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.05;
+    background-image:radial-gradient(#0b3b06 1px,transparent 1px);background-size:7px 7px}
+
+  .wrap{position:relative;z-index:2;width:min(1120px,100%);margin:0 auto;
+    padding:calc(14px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom))}
+
+  /* 타이틀 */
+  .hero{text-align:center;padding:10px 0 6px}
+  .ball{position:relative;display:inline-block;width:64px;height:64px;border-radius:50%;
+    background:linear-gradient(180deg,#ff7a5f 0%,#ef4433 46%,#2a2a2a 46%,#1c1c1c 54%,#f7f7f2 54%,#ffffff 100%);
+    border:4px solid #222;box-shadow:0 6px 0 rgba(20,60,10,.28),inset 0 -6px 10px rgba(0,0,0,.12);
+    animation:bob 2.6s ease-in-out infinite}
+  .ball::after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;
+    border-radius:50%;background:#fff;border:4px solid #222;box-shadow:inset 0 0 0 2px #dfe7d2}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
+  h1{margin:10px 0 4px;font-size:clamp(25px,6.2vw,40px);letter-spacing:-.03em;
+    color:#fff;text-shadow:0 3px 0 #2f7a1f,0 6px 12px rgba(20,70,10,.35)}
+  h1 b{color:var(--gold);text-shadow:0 3px 0 #a86f00,0 6px 12px rgba(20,70,10,.35)}
+  .sub{margin:0;font-size:clamp(11.5px,3.1vw,14px);font-weight:900;color:#2c5a17;letter-spacing:-.01em}
+  .sub span{background:rgba(255,255,255,.72);border-radius:999px;padding:3px 10px;display:inline-block;margin-top:6px}
+
+  /* 도감 요약 */
+  .dexbox{margin:16px auto 0;background:rgba(255,255,255,.86);border:2px solid #cbe79f;border-radius:18px;
+    padding:12px 12px 10px;box-shadow:0 6px 16px rgba(40,90,20,.14);max-width:720px}
+  .dexhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 9px}
+  .dexhead b{font-size:clamp(12px,3.2vw,14px);letter-spacing:-.02em}
+  .dexhead span{font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
+  .kids{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .kid{display:flex;align-items:center;gap:9px;background:#fffdf3;border:1.6px solid #e2eecd;
+    border-radius:14px;padding:9px 10px}
+  .kid .av{width:38px;height:38px;flex:0 0 38px;border-radius:12px;display:grid;place-items:center;
+    font-size:21px;background:linear-gradient(180deg,#eafbd6,#d3f0ae);border:1.5px solid #c6e69b}
+  .kid .txt{min-width:0;flex:1}
+  .kid .nm{display:block;font-size:clamp(11.5px,3vw,13px);font-weight:900;letter-spacing:-.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kid .ct{display:block;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#4c7a26}
+  .bar{height:6px;border-radius:99px;background:#e6f2d2;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,#8ce86a,#3fbe2c);transition:width .6s ease}
+
+  /* 게임 카드 */
+  .games{display:grid;grid-template-columns:1fr;gap:12px;margin:16px auto 0;max-width:720px}
+  @media (min-width:700px){ .games{grid-template-columns:repeat(3,1fr);max-width:1040px} }
+  .game{
+    position:relative;display:flex;align-items:center;gap:13px;text-decoration:none;color:inherit;
+    background:linear-gradient(180deg,#ffffff,var(--card));border:2.5px solid var(--line);
+    border-bottom-width:6px;border-radius:20px;padding:14px 14px 13px;overflow:hidden;
+    box-shadow:0 7px 18px rgba(40,90,20,.13);transition:transform .12s ease,box-shadow .12s ease;
+    isolation:isolate;
+  }
+  .game::before{content:"";position:absolute;inset:0;z-index:-1;opacity:.14;
+    background:radial-gradient(circle at 88% 12%,var(--ac) 0%,transparent 62%)}
+  .game:active{transform:translateY(3px);box-shadow:0 3px 10px rgba(40,90,20,.16)}
+  .game .ico{width:56px;height:56px;flex:0 0 56px;border-radius:16px;display:grid;place-items:center;
+    font-size:29px;background:var(--acbg,#fff3c6);border:2px solid var(--acbd,#f0cf6a);
+    box-shadow:inset 0 -3px 0 rgba(0,0,0,.06)}
+  .game .body{min-width:0;flex:1}
+  .game .ttl{display:block;font-size:clamp(16px,4.3vw,20px);font-weight:900;letter-spacing:-.03em}
+  .game .desc{display:block;margin-top:2px;font-size:clamp(10.5px,2.9vw,12px);font-weight:800;
+    color:#6b8547;letter-spacing:-.01em}
+  .game .lv{display:inline-flex;gap:4px;margin-top:6px}
+  .game .lv i{font-style:normal;font-size:9.5px;font-weight:900;color:#5d7a34;background:#f1f9e2;
+    border:1.3px solid #d9e9bd;border-radius:999px;padding:1px 7px}
+  .game .go{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+    font-size:15px;font-weight:900;color:#fff;background:var(--ac);box-shadow:0 3px 0 rgba(0,0,0,.18)}
+  .game.math{--ac:#f0a71c;--acbg:#fff3c6;--acbd:#f0cf6a}
+  .game.hangul{--ac:#3fbe2c;--acbg:#e7fbd8;--acbd:#b6e79a}
+  .game.english{--ac:#3d7ff0;--acbg:#e6efff;--acbd:#a8c6f0}
+
+  .foot{margin:20px auto 0;max-width:720px;text-align:center}
+  .foot p{margin:0 0 6px;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#3c6524;line-height:1.65;
+    background:rgba(255,255,255,.6);border-radius:12px;padding:8px 12px}
+  .foot small{font-size:10px;color:#51703a;font-weight:800}
+  .tip{margin-top:12px;font-size:clamp(10px,2.6vw,11px);font-weight:900;color:#4b7429}
+  @media (max-width:360px){
+    .wrap{padding-left:12px;padding-right:12px}
+    .game .ico{width:48px;height:48px;flex-basis:48px;font-size:25px}
+  }
+</style>
+</head>
+<body>
+<div class="sky">
+  <span class="cloud a"></span><span class="cloud b"></span><span class="cloud c"></span>
+</div>
+<div class="grain"></div>
+<div class="field" aria-hidden="true">
+  <svg viewBox="0 0 1200 300" preserveAspectRatio="none">
+    <path d="M0 128 C120 92 210 150 320 118 C430 86 520 142 640 116 C760 90 850 146 960 118 C1070 90 1140 132 1200 112 L1200 300 L0 300 Z" fill="#7fd24a" opacity=".55"/>
+    <path d="M0 176 C140 142 240 196 360 168 C480 140 580 194 700 170 C820 146 930 198 1040 172 C1110 156 1160 172 1200 164 L1200 300 L0 300 Z" fill="#5cc235" opacity=".75"/>
+    <path d="M0 226 C150 198 260 244 380 222 C500 200 610 246 730 226 C850 206 960 250 1080 228 C1140 217 1175 226 1200 221 L1200 300 L0 300 Z" fill="#39a324"/>
+  </svg>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <span class="ball" aria-hidden="true"></span>
+    <h1>포켓몬 <b>배틀 월드</b></h1>
+    <p class="sub"><span>⚡ 산수 · 📖 한글 · 🔤 영어 — 하나의 도감으로!</span></p>
+  </header>
+
+  <section class="dexbox" aria-label="통합 도감 요약">
+    <div class="dexhead">
+      <b>📕 통합 도감</b>
+      <span id="dexNote">잡은 몬스터는 세 게임이 함께 써요</span>
+    </div>
+    <div class="kids">
+      <div class="kid" id="kidP1">
+        <span class="av" data-emoji>👧</span>
+        <span class="txt">
+          <span class="nm" data-name>첫째</span>
+          <span class="ct" data-count>잡은 0마리</span>
+          <span class="bar"><i data-bar></i></span>
+        </span>
+      </div>
+      <div class="kid" id="kidP2">
+        <span class="av" data-emoji>🧒</span>
+        <span class="txt">
+          <span class="nm" data-name>둘째</span>
+          <span class="ct" data-count>잡은 0마리</span>
+          <span class="bar"><i data-bar></i></span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="games" aria-label="게임 선택">
+    <a class="game math" href="./math-pokemon.html">
+      <span class="ico" aria-hidden="true">⚡</span>
+      <span class="body">
+        <span class="ttl">산수 배틀</span>
+        <span class="desc">숫자와 셈으로 몬스터를 잡아요</span>
+        <span class="lv"><i>덧셈</i><i>뺄셈</i><i>빈칸</i><i>비교</i></span>
+      </span>
+      <span class="go" aria-hidden="true">▶</span>
+    </a>
+    <a class="game hangul" href="./hangul-pokemon.html">
+      <span class="ico" aria-hidden="true">📖</span>
+      <span class="body">
+        <span class="ttl">한글 배틀</span>
+        <span class="desc">글자를 듣고 고르고 조립해요</span>
+        <span class="lv"><i>빈칸 글자</i><i>듣고 고르기</i><i>글자 조립</i></span>
+      </span>
+      <span class="go" aria-hidden="true">▶</span>
+    </a>
+    <a class="game english" href="./english-pokemon.html">
+      <span class="ico" aria-hidden="true">🔤</span>
+      <span class="body">
+        <span class="ttl">영어 배틀</span>
+        <span class="desc">단어·발음·문장을 익혀요</span>
+        <span class="lv"><i>단어</i><i>듣기</i><i>철자</i><i>문장</i></span>
+      </span>
+      <span class="go" aria-hidden="true">▶</span>
+    </a>
+  </nav>
+
+  <div class="foot">
+    <p>잡은 포켓몬은 <b>산수·한글·영어</b>가 함께 쓰는 통합 도감에 저장돼요.<br>어느 게임에서 잡았는지도 도감 상세에 표시됩니다.</p>
+    <div class="tip">💡 홈 화면에 추가하면 앱처럼 열려요</div>
+    <small>문제는 매일 자정(00:00)에 새로 바뀌어요</small>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const SHARED_PREFIX = 'pkm.shared.dex.v1.';
+  const MIGRATED_KEY = 'pkm.shared.dex.v1.migrated';
+  const PROFILE_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
+  const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2' }, hangul: { p1: 'p2', p2: 'p1' }, english: { p1: 'p1', p2: 'p2' } };
+  const LEGACY = [
+    { key: 'mpb.dex.v2.p1', game: 'math', id: 'p1' },
+    { key: 'mpb.dex.v2.p2', game: 'math', id: 'p2' },
+    { key: 'mpb.dex.v1', game: 'math', id: 'p1' },
+    { key: 'hpb.dex.v1.p1', game: 'hangul', id: 'p1' },
+    { key: 'hpb.dex.v1.p2', game: 'hangul', id: 'p2' },
+    { key: 'epb.dex.v1.p1', game: 'english', id: 'p1' },
+    { key: 'epb.dex.v1.p2', game: 'english', id: 'p2' },
+  ];
+
+  function ls(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* */ } }
+  function slotFromName(name) {
+    const n = String(name || '');
+    if (/첫째|아린/.test(n)) return 'p1';
+    if (/둘째/.test(n)) return 'p2';
+    return '';
+  }
+  function profileOf(game, id) {
+    try {
+      const o = JSON.parse(ls(PROFILE_KEYS[game]) || 'null');
+      const p = (o && Array.isArray(o.list) ? o.list : []).find((x) => x && x.id === id);
+      if (p && p.name) return p;
+    } catch (e) { /* */ }
+    return null;
+  }
+  function slotFor(game, id) {
+    const p = profileOf(game, id);
+    return slotFromName(p && p.name) || (SLOT_BY_DEFAULT[game] || SLOT_BY_DEFAULT.math)[id] || 'p1';
+  }
+  function readSlot(slot) {
+    try {
+      const o = JSON.parse(ls(SHARED_PREFIX + slot) || 'null');
+      if (o && Array.isArray(o.ids)) return { ids: o.ids, counts: o.counts || {}, subjects: o.subjects || {} };
+    } catch (e) { /* */ }
+    return { ids: [], counts: {}, subjects: {} };
+  }
+  function writeSlot(slot, dex) {
+    lsSet(SHARED_PREFIX + slot, JSON.stringify({ ids: Array.from(dex.ids), counts: dex.counts, subjects: dex.subjects, v: 1 }));
+  }
+  /* 게임을 한 번도 안 열고 런처를 먼저 열어도 통합 도감 숫자가 맞도록 여기서도 한 번 합친다 */
+  function migrate() {
+    let done = [];
+    try { done = JSON.parse(ls(MIGRATED_KEY) || '[]') || []; } catch (e) { done = []; }
+    const seen = new Set(done);
+    const cache = {};
+    LEGACY.forEach((src) => {
+      if (seen.has(src.key)) return;
+      seen.add(src.key);
+      let o = null;
+      try { o = JSON.parse(ls(src.key) || 'null'); } catch (e) { o = null; }
+      if (!o || !Array.isArray(o.ids)) return;
+      const slot = slotFor(src.game, src.id);
+      if (!cache[slot]) cache[slot] = readSlot(slot);
+      const dex = cache[slot];
+      const set = new Set(dex.ids);
+      o.ids.forEach((id) => {
+        if (!Number.isFinite(id)) return;
+        set.add(id);
+        const c = (o.counts && o.counts[id]) || 0;
+        if (c) dex.counts[id] = (dex.counts[id] || 0) + c;
+        const cur = dex.subjects[id] || [];
+        if (!cur.includes(src.game)) dex.subjects[id] = cur.concat(src.game);
+      });
+      dex.ids = Array.from(set);
+    });
+    Object.keys(cache).forEach((slot) => writeSlot(slot, cache[slot]));
+    lsSet(MIGRATED_KEY, JSON.stringify(Array.from(seen)));
+  }
+
+  function setName(slot, fallback, emoji) {
+    const mathP = profileOf('math', slot === 'p1' ? 'p1' : 'p2');
+    const hgP = profileOf('hangul', slot === 'p1' ? 'p2' : 'p1');
+    const enP = profileOf('english', slot === 'p1' ? 'p1' : 'p2');
+    const pickP = mathP || enP || hgP || null;
+    return { name: (pickP && pickP.name) || fallback, emoji: (pickP && pickP.emoji) || emoji };
+  }
+
+  function paint(total) {
+    [['p1', 'kidP1', '첫째', '👧'], ['p2', 'kidP2', '둘째', '🧒']].forEach(([slot, boxId, fbName, fbEmoji]) => {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      const dex = readSlot(slot);
+      const meta = setName(slot, fbName, fbEmoji);
+      const n = dex.ids.length;
+      const pct = total ? Math.max(2, Math.min(100, Math.round((n / total) * 100))) : 0;
+      const nameEl = box.querySelector('[data-name]');
+      const emojiEl = box.querySelector('[data-emoji]');
+      const countEl = box.querySelector('[data-count]');
+      const barEl = box.querySelector('[data-bar]');
+      if (nameEl) nameEl.textContent = meta.name;
+      if (emojiEl) emojiEl.textContent = meta.emoji;
+      if (countEl) countEl.textContent = total ? `잡은 ${n}마리 / ${total.toLocaleString('ko-KR')}마리` : `잡은 ${n}마리`;
+      if (barEl) barEl.style.width = pct + '%';
+    });
+    const note = document.getElementById('dexNote');
+    if (note && total) note.textContent = `전체 ${total.toLocaleString('ko-KR')}마리 · 세 게임이 함께 써요`;
+  }
+
+  migrate();
+  paint(151);
+  fetch('./pokemon-db.json', { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((db) => { if (Array.isArray(db) && db.length > 200) paint(db.length); })
+    .catch(() => { /* 1세대 151로 표시 */ });
+})();
+</script>
+</body>
+</html>

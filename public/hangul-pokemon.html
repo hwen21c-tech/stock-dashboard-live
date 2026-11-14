@@ -648,6 +648,9 @@
     font-size:clamp(10px,2.8vw,11.5px);font-weight:900;color:#6a4a12;background:#fff3c4;
     border:1.5px solid #ffd166;border-radius:999px;padding:2px 10px
   }
+  .detstats span.subj{color:#2b4a86;background:#e8f1ff;border-color:#a8c6f0}
+  .dextabs.tytabs button.has{background:linear-gradient(180deg,#fffbe6,#fff1bb);border-color:#f0cf6a;color:#7a5a10}
+  .dextabs.tytabs button.has.on{color:#fff}
   .detfoot{display:flex;justify-content:center}
   .detfoot button{
     padding:9px 22px;border-radius:11px;font-weight:900;font-size:clamp(12px,3.3vw,13.5px);
@@ -840,6 +843,7 @@
       <span class="caret">▼</span>
     </button>
     <span class="pstat" id="chipDex">📕 0</span>
+    <button class="icobtn" id="homeBtn" aria-label="과목 선택으로 가기" style="width:34px;height:32px;border-radius:10px;font-size:15px">🏠</button>
     <button class="icobtn" id="setBtn" aria-label="문제 단계 설정" style="width:34px;height:32px;border-radius:10px;font-size:15px">⚙️</button>
     <button class="icobtn" id="muteBtn" aria-label="소리 켜기/끄기" style="width:34px;height:32px;border-radius:10px;font-size:15px">🔊</button>
   </div>
@@ -1253,9 +1257,270 @@ const Sound = {
     this.muted = !this.muted;
     try { localStorage.setItem('hpb.mute', this.muted ? '1' : '0'); } catch (e) { /* */ }
     this.render();
+    BGM.setMuted(this.muted);
     if (!this.muted) { this.ensure(); this.click(); }
   },
 };
+
+/* ============================================================
+   배틀 BGM — Web Audio 칩튠 시퀀서 (외부 음원 파일 없음)
+   야생 포켓몬의 주 타입에 따라 조성·멜로디·리듬·음색이 달라진다.
+   ============================================================ */
+const BGM_KITS = {
+  normal: {
+    bpm: 150, root: 69, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 5, 3, 4],
+    leadWave: 'square', leadGain: 0.13, leadDur: 0.1,
+    mel: [0, 4, 7, 4, 5, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, -3],
+    bass: [0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0],
+    kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
+  },
+  water: {
+    bpm: 150, root: 67, scale: [0, 2, 4, 7, 9], prog: [0, 5, 2, 4],
+    leadWave: 'triangle', leadGain: 0.15, leadDur: 0.13,
+    mel: [0, 2, 4, 7, 4, 2, 0, -3, 2, 4, 7, 9, 7, 4, 2, 0],
+    bass: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+    kick: [0, 8], snare: [4, 12], hat: 2,
+  },
+  electric: {
+    bpm: 165, root: 71, scale: [0, 3, 5, 7, 10], prog: [0, 3, 5, 4],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.08,
+    mel: [0, 0, 7, 0, 10, 0, 7, 5, 0, 0, 7, 12, 10, 7, 5, 3],
+    bass: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    kick: [0, 4, 8, 12], snare: [4, 12], hat: 1,
+  },
+  fire: {
+    bpm: 160, root: 66, scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, 5, 3, 6],
+    leadWave: 'sawtooth', leadGain: 0.1, leadDur: 0.1,
+    mel: [0, 7, 5, 3, 0, 7, 10, 7, 5, 3, 0, -2, 0, 3, 5, 7],
+    bass: [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1],
+    kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
+  },
+  grass: {
+    bpm: 148, root: 72, scale: [0, 2, 4, 7, 9], prog: [0, 4, 5, 3],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.11,
+    mel: [0, 4, 2, 4, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, 0, -3],
+    bass: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
+    kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
+  },
+  psychic: {
+    bpm: 152, root: 69, scale: [0, 2, 3, 5, 7, 9, 10], prog: [0, 2, 5, 3],
+    leadWave: 'triangle', leadGain: 0.16, leadDur: 0.22,
+    mel: [0, null, 3, null, 5, null, 3, 2, 0, null, 7, null, 5, 3, 2, null],
+    bass: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    kick: [0, 10], snare: [8], hat: 4,
+  },
+  rock: {
+    bpm: 146, root: 64, scale: [0, 3, 5, 6, 7, 10], prog: [0, 0, 3, 4],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.14,
+    mel: [0, 0, 3, 0, 5, 5, 3, 0, 7, 7, 5, 3, 0, 0, -2, 0],
+    bass: [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0],
+    kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
+  },
+  boss: {
+    bpm: 162, root: 65, scale: [0, 1, 4, 5, 7, 8, 11], prog: [0, 1, 5, 4],
+    leadWave: 'square', leadGain: 0.13, leadDur: 0.12,
+    mel: [0, 7, 5, 1, 4, 7, 11, 7, 5, 4, 1, 0, -1, 1, 4, 7],
+    bass: [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1],
+    kick: [0, 3, 6, 8, 11, 14], snare: [4, 12], hat: 1, drone: true,
+  },
+};
+
+function bgmTrackFor(p) {
+  const t = (p && p.types && p.types[0]) || '';
+  if (p && (p.leg || p.myth)) return 'boss';
+  if (t === '물') return 'water';
+  if (t === '전기') return 'electric';
+  if (t === '불꽃' || t === '격투') return 'fire';
+  if (t === '풀' || t === '벌레' || t === '비행') return 'grass';
+  if (t === '에스퍼' || t === '고스트' || t === '악') return 'psychic';
+  if (t === '바위' || t === '땅' || t === '강철') return 'rock';
+  if (t === '드래곤') return 'boss';
+  if (t === '얼음') return 'water';
+  if (t === '독') return 'psychic';
+  if (t === '페어리') return 'grass';
+  return 'normal';
+}
+
+const BGM = {
+  ctx: null,
+  master: null,
+  timer: 0,
+  playing: false,
+  paused: false,
+  muted: false,
+  duck: 1,
+  duckT: 0,
+  step: 0,
+  nextTime: 0,
+  kit: null,
+  kitKey: '',
+  noiseBuf: null,
+  VOL: 0.34,
+  ensure() {
+    if (this.ctx) return this.ctx;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0;
+      this.master.connect(this.ctx.destination);
+      const len = Math.floor(this.ctx.sampleRate * 0.25);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < len; i += 1) ch[i] = Math.random() * 2 - 1;
+      this.noiseBuf = buf;
+    } catch (e) { return null; }
+    return this.ctx;
+  },
+  unlock() {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
+    this.applyGain();
+  },
+  setMuted(m) {
+    this.muted = !!m;
+    this.applyGain();
+  },
+  setPaused(p) {
+    this.paused = !!p;
+    if (!p && this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) { /* */ } }
+    this.applyGain();
+  },
+  applyGain() {
+    if (!this.master || !this.ctx) return;
+    const on = this.playing && !this.paused && !this.muted && !document.hidden;
+    const target = on ? this.VOL * this.duck : 0;
+    try { this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.06); } catch (e) { this.master.gain.value = target; }
+  },
+  /* 말소리(TTS)가 나오는 동안 BGM을 잠깐 낮춘다 */
+  duckFor(ms) {
+    this.duck = 0.22;
+    this.applyGain();
+    clearTimeout(this.duckT);
+    this.duckT = setTimeout(() => { this.duck = 1; this.applyGain(); }, Math.max(600, ms || 1200));
+  },
+  play(key) {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    const k = BGM_KITS[key] || BGM_KITS.normal;
+    if (this.playing && this.kitKey === key) { this.kit = k; this.applyGain(); return; }
+    this.stop(true);
+    this.kit = k;
+    this.kitKey = key;
+    this.playing = true;
+    this.step = 0;
+    this.nextTime = ctx.currentTime + 0.08;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.tick(), 25);
+    this.applyGain();
+  },
+  stop(immediate) {
+    this.playing = false;
+    clearInterval(this.timer);
+    this.timer = 0;
+    if (this.master && this.ctx) {
+      try {
+        if (immediate) this.master.gain.value = 0;
+        else this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.08);
+      } catch (e) { /* */ }
+    }
+  },
+  tick() {
+    const ctx = this.ctx;
+    if (!ctx || !this.kit) return;
+    const stepDur = 60 / this.kit.bpm / 4;   // 16분음표
+    while (this.nextTime < ctx.currentTime + 0.14) {
+      this.schedule(this.step, this.nextTime);
+      this.step += 1;
+      this.nextTime += stepDur;
+    }
+  },
+  degToMidi(deg) {
+    const k = this.kit;
+    const sc = k.scale;
+    const n = sc.length;
+    const oct = Math.floor(deg / n);
+    const i = ((deg % n) + n) % n;
+    return k.root + sc[i] + 12 * oct;
+  },
+  blip(midi, t, dur, wave, gain) {
+    const ctx = this.ctx;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = wave || 'square';
+    o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.03);
+  },
+  noise(t, dur, gain, hp) {
+    const ctx = this.ctx;
+    const s = ctx.createBufferSource();
+    s.buffer = this.noiseBuf;
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    f.type = hp ? 'highpass' : 'lowpass';
+    f.frequency.value = hp || 4000;
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f);
+    f.connect(g);
+    g.connect(this.master);
+    s.start(t);
+    s.stop(t + dur + 0.02);
+  },
+  kick(t) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+    g.gain.setValueAtTime(0.42, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + 0.17);
+  },
+  schedule(step, t) {
+    const k = this.kit;
+    const bar = Math.floor(step / 16) % 4;
+    const s = step % 16;
+    const chord = k.prog[bar];
+    const deg = k.mel[s];
+    if (deg !== null && deg !== undefined) {
+      const midi = this.degToMidi(chord + deg);
+      this.blip(midi, t, k.leadDur, k.leadWave, k.leadGain);
+      /* 칩튠 특유의 옥타브 보강 */
+      this.blip(midi + 12, t, k.leadDur * 0.6, k.leadWave, k.leadGain * 0.28);
+    }
+    if (k.bass[s]) {
+      const bmidi = this.degToMidi(chord) - 24;
+      this.blip(bmidi, t, 0.16, 'triangle', 0.2);
+    }
+    if (k.kick.indexOf(s) >= 0) this.kick(t);
+    if (k.snare.indexOf(s) >= 0) this.noise(t, 0.1, 0.13, 1600);
+    if (k.hat && s % k.hat === 0) this.noise(t, 0.03, 0.045, 6500);
+    if (k.drone && s === 0) this.blip(this.degToMidi(chord) - 36, t, 0.9, 'sawtooth', 0.06);
+  },
+};
+document.addEventListener('visibilitychange', () => {
+  const modal = typeof anyModal === 'function' ? anyModal() : false;
+  BGM.setPaused(document.hidden || modal);
+});
+
+['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+  try { window.addEventListener(ev, () => BGM.unlock(), { once: true, passive: true }); } catch (e) { /* */ }
+});
 
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'hpb.profiles.v1';
@@ -1298,23 +1563,102 @@ const Profiles = {
   get(id) { return this.data.list.find((p) => p.id === id); },
   active() { return this.get(this.data.active) || this.data.list[0]; },
   setActive(id) { if (this.get(id)) { this.data.active = id; this.save(); } },
-  dexKey(id) { return 'hpb.dex.v1.' + id; },
-  loadDex(id) {
-    try {
-      const raw = localStorage.getItem(this.dexKey(id));
-      const o = raw ? JSON.parse(raw) : null;
-      if (o && Array.isArray(o.ids)) {
-        return { ids: new Set(o.ids.filter((n) => Number.isFinite(n))), counts: o.counts || {}, dates: o.dates || {} };
-      }
-    } catch (e) { /* */ }
-    return { ids: new Set(), counts: {}, dates: {} };
-  },
-  saveDex(id, dex) {
-    try {
-      localStorage.setItem(this.dexKey(id), JSON.stringify({ ids: Array.from(dex.ids), counts: dex.counts, dates: dex.dates || {}, v: 2 }));
-    } catch (e) { /* */ }
-  },
+  dexKey(id) { return 'hpb.dex.v1.' + id; },   // 예전 개별 도감 키(첫 병합 때만 읽는다)
+  loadDex(id) { return readSlot(slotFor(GAME, id)); },
+  saveDex(id, dex) { writeSlot(slotFor(GAME, id), dex); },
 };
+
+/* ---------- 통합 도감 (산수·한글·영어 3게임이 같은 저장소를 공유) ---------- */
+const GAME = 'hangul';
+const SHARED_PREFIX = 'pkm.shared.dex.v1.';
+const SUBJECT_LABEL = { math: '⚡ 산수', hangul: '📖 한글', english: '🔤 영어' };
+const PROFILE_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
+/* 게임마다 프로필 목록 순서가 달라(한글은 p1이 둘째) 기본 자리표를 따로 둔다 */
+const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2' }, hangul: { p1: 'p2', p2: 'p1' }, english: { p1: 'p1', p2: 'p2' } };
+const LEGACY_DEX_KEYS = [
+  { key: 'mpb.dex.v2.p1', game: 'math', id: 'p1' },
+  { key: 'mpb.dex.v2.p2', game: 'math', id: 'p2' },
+  { key: 'mpb.dex.v1', game: 'math', id: 'p1' },
+  { key: 'hpb.dex.v1.p1', game: 'hangul', id: 'p1' },
+  { key: 'hpb.dex.v1.p2', game: 'hangul', id: 'p2' },
+  { key: 'epb.dex.v1.p1', game: 'english', id: 'p1' },
+  { key: 'epb.dex.v1.p2', game: 'english', id: 'p2' },
+];
+const MIGRATED_KEY = 'pkm.shared.dex.v1.migrated';
+const emptyDex = () => ({ ids: new Set(), counts: {}, dates: {}, subjects: {} });
+
+function slotFromName(name) {
+  const n = String(name || '');
+  if (/첫째|아린/.test(n)) return 'p1';
+  if (/둘째/.test(n)) return 'p2';
+  return '';
+}
+function slotFor(game, profId) {
+  let name = '';
+  try {
+    const o = JSON.parse(localStorage.getItem(PROFILE_KEYS[game]) || 'null');
+    const p = (o && Array.isArray(o.list) ? o.list : []).find((x) => x && x.id === profId);
+    if (p && p.name) name = p.name;
+  } catch (e) { /* */ }
+  if (game === GAME) {
+    const p = Profiles.get(profId);
+    if (p && p.name) name = p.name;
+  }
+  return slotFromName(name) || (SLOT_BY_DEFAULT[game] || SLOT_BY_DEFAULT.math)[profId] || 'p1';
+}
+function readSlot(slot) {
+  try {
+    const o = JSON.parse(localStorage.getItem(SHARED_PREFIX + slot) || 'null');
+    if (o && Array.isArray(o.ids)) {
+      const dex = emptyDex();
+      o.ids.forEach((n) => { if (Number.isFinite(n)) dex.ids.add(n); });
+      dex.counts = o.counts || {};
+      dex.dates = o.dates || {};
+      dex.subjects = o.subjects || {};
+      return dex;
+    }
+  } catch (e) { /* */ }
+  return emptyDex();
+}
+function writeSlot(slot, dex) {
+  try {
+    localStorage.setItem(SHARED_PREFIX + slot, JSON.stringify({
+      ids: Array.from(dex.ids), counts: dex.counts || {}, dates: dex.dates || {}, subjects: dex.subjects || {}, v: 1,
+    }));
+  } catch (e) { /* */ }
+}
+function addSubject(dex, id, subject) {
+  const cur = dex.subjects[id] || [];
+  if (!cur.includes(subject)) dex.subjects[id] = cur.concat(subject);
+}
+/* 예전 게임별 도감을 통합 도감으로 한 번만 옮긴다(유실 0) */
+function migrateLegacyDex() {
+  let done = [];
+  try { done = JSON.parse(localStorage.getItem(MIGRATED_KEY) || '[]') || []; } catch (e) { done = []; }
+  const seen = new Set(done);
+  const cache = {};
+  LEGACY_DEX_KEYS.forEach((src) => {
+    if (seen.has(src.key)) return;
+    seen.add(src.key);
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(src.key) || 'null'); } catch (e) { o = null; }
+    if (!o || !Array.isArray(o.ids)) return;
+    const slot = slotFor(src.game, src.id);
+    if (!cache[slot]) cache[slot] = readSlot(slot);
+    const dex = cache[slot];
+    o.ids.forEach((id) => {
+      if (!Number.isFinite(id)) return;
+      dex.ids.add(id);
+      const c = (o.counts && o.counts[id]) || 0;
+      if (c) dex.counts[id] = (dex.counts[id] || 0) + c;
+      const d = (o.dates && o.dates[id]) || '';
+      if (d && (!dex.dates[id] || d < dex.dates[id])) dex.dates[id] = d;
+      addSubject(dex, id, src.game);
+    });
+  });
+  Object.keys(cache).forEach((slot) => writeSlot(slot, cache[slot]));
+  try { localStorage.setItem(MIGRATED_KEY, JSON.stringify(Array.from(seen))); } catch (e) { /* */ }
+}
 
 /* ---------- 게임 상태 ---------- */
 const S = {
@@ -1430,11 +1774,35 @@ const dexTabDef = () => DEX_TABS.find((t) => t.key === S.dexTab) || DEX_TABS[0];
 const dexList = () => POKEMON
   .filter(dexTabDef().test)
   .filter((p) => !S.dexType || (p.types || []).includes(S.dexType));
+function countByType() {
+  const base = POKEMON.filter(dexTabDef().test);
+  const map = {};
+  let total = 0;
+  base.forEach((p) => {
+    if (!S.dex.ids.has(p.id)) return;
+    total += 1;
+    (p.types || []).forEach((t) => { map[t] = (map[t] || 0) + 1; });
+  });
+  return { map, total };
+}
+/* 타입 칩에 지금 목록 기준으로 잡은 마릿수를 붙인다 — 전체(3) · 노말(1) · 물(2) */
+function refreshTypeCounts() {
+  const host = $('#dexTypeTabs');
+  if (!host) return;
+  const { map, total } = countByType();
+  $$('button', host).forEach((b) => {
+    const t = b.dataset.type || '';
+    const n = t ? (map[t] || 0) : total;
+    const i = b.querySelector('i');
+    if (i) i.textContent = `(${n})`;
+    b.classList.toggle('has', !!t && n > 0);
+  });
+}
 function renderTypeTabs() {
   const host = $('#dexTypeTabs');
   if (!host) return;
-  host.innerHTML = `<button data-type="" class="on">전체 타입</button>`
-    + TYPES.map((t) => `<button data-type="${t}" style="--tc:${TYPE_COLOR[t]}">${t}</button>`).join('');
+  host.innerHTML = `<button data-type="" class="on">전체<i>(0)</i></button>`
+    + TYPES.map((t) => `<button data-type="${t}" style="--tc:${TYPE_COLOR[t]}">${t}<i>(0)</i></button>`).join('');
   $$('button', host).forEach((b) => {
     b.addEventListener('click', () => {
       Sound.ensure(); Sound.click();
@@ -1445,6 +1813,7 @@ function renderTypeTabs() {
       $('#dexGrid').parentElement.scrollTop = 0;
     });
   });
+  refreshTypeCounts();
   syncTypeTabs();
 }
 function syncTypeTabs() {
@@ -1460,17 +1829,18 @@ function updateDexTabs() {
     const i = b.querySelector('i');
     if (i) i.textContent = list.length.toLocaleString('ko-KR');
   });
+  refreshTypeCounts();
   syncTypeTabs();
 }
 function renderDexNote() {
   const el = $('#dexNote');
   if (!el) return;
   if (DB_STATE === 'ready') {
-    el.textContent = `전체 도감 ${POKEMON.length.toLocaleString('ko-KR')}마리 · 잡은 몬스터는 친구별로 이 기기에 자동 저장`;
+    el.textContent = `전체 도감 ${POKEMON.length.toLocaleString('ko-KR')}마리 · 산수·한글·영어가 함께 쓰는 통합 도감(이 기기에 자동 저장)`;
   } else if (DB_STATE === 'loading') {
-    el.textContent = '전체 도감을 불러오는 중… (지금은 1세대 151마리) · 친구별로 이 기기에 자동 저장';
+    el.textContent = '전체 도감을 불러오는 중… (지금은 1세대 151마리) · 산수·한글·영어 통합 도감';
   } else {
-    el.textContent = '전체 도감을 불러오지 못해 1세대 151마리로 놀고 있어요 · 친구별로 이 기기에 자동 저장';
+    el.textContent = '전체 도감을 불러오지 못해 1세대 151마리로 놀고 있어요 · 산수·한글·영어 통합 도감';
   }
 }
 
@@ -1501,12 +1871,26 @@ function setWildImages(p) {
   wrap.classList.remove('noimg');
   art.style.cssText = '';
   spr.style.cssText = '';
-  // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
-  spr.style.opacity = '1';
-  art.style.opacity = '0';
-  art.style.transition = 'opacity .22s';
-  art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
-  art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+  const isBoss = !!(p.leg || p.myth);
+  if (isBoss) {
+    /* 전설·환상은 정체를 가리지 않는다 — 일러스트와 이름을 처음부터 선명하게 */
+    spr.style.display = 'none';
+    art.style.display = '';
+    art.style.opacity = '1';
+    art.style.transition = 'none';
+    art.style.filter = '';
+    art.style.width = '';
+    art.onload = null;
+    art.onerror = () => { art.style.display = 'none'; spr.style.display = ''; spr.style.opacity = '1'; spr.style.width = '86%'; };
+  } else {
+    spr.style.display = '';
+    // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
+    spr.style.opacity = '1';
+    art.style.opacity = '0';
+    art.style.transition = 'opacity .22s';
+    art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
+    art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+  }
   spr.onerror = () => {
     spr.style.display = 'none';
     art.style.display = 'none';
@@ -1556,6 +1940,7 @@ function updateLegendScene(p) {
     banner.style.animation = 'none';
     void banner.offsetWidth;
     banner.style.animation = '';
+    flashScreen();   // 반짝! 하고 등장을 알린다
   }
 }
 
@@ -1587,11 +1972,17 @@ function wildPool() {
 }
 /* 최근 등장 기억 — 바로 전/최근 몬스터가 또 나오지 않게 */
 const recentWild = [];
+/* 전설·환상은 3% 정도만 — 균등 랜덤(9%대)이면 너무 흔해진다 */
+const LEGEND_RATE = 0.03;
 function pickWild(excludeId) {
   const all = wildPool();
-  let pool = all.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
-  if (pool.length < 5) pool = all.filter((p) => p.id !== excludeId);
-  if (!pool.length) pool = POKEMON.filter((p) => p.id !== excludeId);
+  const plain = all.filter((p) => !p.leg && !p.myth);
+  const rare = all.filter((p) => p.leg || p.myth);
+  const wantRare = rare.length > 0 && Math.random() < LEGEND_RATE;
+  const base = (wantRare ? rare : plain).length ? (wantRare ? rare : plain) : all;
+  let pool = base.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
+  if (pool.length < 5) pool = base.filter((p) => p.id !== excludeId);
+  if (!pool.length) pool = base;
   if (!pool.length) pool = all;
   const p = pick(pool);
   recentWild.push(p.id);
@@ -1631,8 +2022,9 @@ async function newEncounter(opts) {
   }
   S.screen = 'battle';
   S.locked = false;
-  if ((S.wild.leg || S.wild.myth) && o.sound !== false) Sound.legend();
   newQuestion();
+  BGM.play(bgmTrackFor(S.wild));
+  if ((S.wild.leg || S.wild.myth) && o.sound !== false) Sound.legend();
 }
 
 function renderAll() {
@@ -1652,8 +2044,8 @@ function renderAll() {
   $('#meName').textContent = Profiles.active().name;
 }
 
-/* ---------- 한글 낱말 풀 (6살 눈높이 · 105가지) ---------- */
-const WORDS = [
+/* ---------- 한글 낱말 풀 (내장 폴백 — 외부 은행을 못 받을 때만 사용) ---------- */
+let WORDS = [
   ['🍎','사과'],['🍌','바나나'],['🍇','포도'],['🍓','딸기'],['🍊','오렌지'],
   ['🍉','수박'],['🥕','당근'],['🥔','감자'],['🌽','옥수수'],['🍄','버섯'],
   ['🐘','코끼리'],['🐯','호랑이'],['🦁','사자'],['🐰','토끼'],['🐻','곰'],
@@ -1677,6 +2069,127 @@ const WORDS = [
   ['🦒','기린'],['🐧','펭귄'],['🐳','고래'],['🦓','얼룩말'],['🐑','양'],
   ['🌶️','고추'],['🍋','레몬'],['🥦','브로콜리'],['🍅','토마토'],['🐊','악어'],
 ];
+
+/* ---------- 외부 문제 은행 + 매일 자정 로테이션 + 셔플 덱 ---------- */
+const HANGUL_BANK_URL = './hangul-bank.json';
+let BANK_STATE = 'loading';   // loading | ready | fallback
+
+function seoulDay() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch (e) {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+}
+function hashSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function rngOf(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* 오늘의 덱: 날짜(KST) 시드로 순서가 정해지고, 한 바퀴를 다 돌기 전에 같은 문제가 나오지 않는다 */
+const DECK_KEY = 'pkm.deck.v1.hangul';
+const Deck = {
+  day: seoulDay(),
+  pos: {},
+  load() {
+    try {
+      const o = JSON.parse(localStorage.getItem(DECK_KEY) || 'null');
+      if (o && o.day === this.day && o.pos) this.pos = o.pos;
+    } catch (e) { this.pos = {}; }
+  },
+  save() {
+    try { localStorage.setItem(DECK_KEY, JSON.stringify({ day: this.day, pos: this.pos })); } catch (e) { /* */ }
+  },
+  order(key, n) {
+    const rnd = rngOf(hashSeed(`${this.day}|${key}|v1`));
+    const arr = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i -= 1) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  },
+  next(key, n) {
+    if (!n) return -1;
+    this.rotateIfNeeded();
+    const ord = this.order(key, n);
+    let p = this.pos[key] || 0;
+    if (p >= n) p = 0;
+    const idx = ord[p];
+    this.pos[key] = p + 1;
+    this.save();
+    return idx;
+  },
+  rotateIfNeeded() {
+    const d = seoulDay();
+    if (d === this.day) return false;
+    this.day = d;
+    this.pos = {};
+    this.save();
+    return true;
+  },
+  reset() { this.day = seoulDay(); this.pos = {}; this.save(); },
+};
+Deck.load();
+
+function takeWord(pool, key) {
+  if (!pool || !pool.length) return ['🔤', '가'];
+  const i = Deck.next(`${key}|${pool.length}`, pool.length);
+  return pool[i] || pool[0];
+}
+
+async function loadBank(refresh) {
+  try {
+    const res = await fetch(HANGUL_BANK_URL + (refresh ? `?t=${Date.now()}` : ''), { cache: refresh ? 'no-store' : 'default' });
+    if (!res.ok) throw new Error('bank ' + res.status);
+    const o = await res.json();
+    const list = (o.words || [])
+      .filter((x) => x && typeof x.w === 'string' && x.w.length >= 1 && x.w.length <= 5 && !/\s/.test(x.w))
+      .map((x) => [x.e || '🔤', String(x.w)]);
+    if (list.length < 100) throw new Error('bank too small ' + list.length);
+    WORDS = list;
+    BANK_STATE = 'ready';
+    if (refresh) Deck.reset();
+    return true;
+  } catch (e) {
+    BANK_STATE = 'fallback';
+    return false;
+  }
+}
+
+/* 자정이 지나면 오늘의 덱이 자동으로 바뀐다 */
+function startDayRotation() {
+  let last = seoulDay();
+  setInterval(() => {
+    const now = seoulDay();
+    if (now === last) return;
+    last = now;
+    Deck.reset();
+    loadBank(true).then(() => {
+      if (S.wild && S.screen === 'battle') newQuestion();
+      toast('🌅 자정이 지나 오늘의 새 문제로 바뀌었어요', 'info', 2200);
+    });
+  }, 20000);
+  /* 잠자다 돌아온 기기: 화면이 다시 보이면 즉시 확인 */
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (Deck.rotateIfNeeded()) {
+      loadBank(true).then(() => { if (S.wild && S.screen === 'battle') newQuestion(); });
+    }
+  });
+}
 
 /* ---------- 자모 분해 · 조합 ---------- */
 const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -1759,7 +2272,7 @@ function blankHtml(word, bi) {
 
 /* 🌱 1단계 — 그림 + 빈칸 글자 채우기 */
 function makeBlankQ() {
-  const item = pick(WORDS);
+  const item = takeWord(WORDS, 'blank');
   const word = item[1];
   const chars = Array.from(word);
   const cand = [];
@@ -1780,7 +2293,7 @@ function makeBlankQ() {
 function makeListenQ() {
   // 듣고 고르기는 2~4글자 낱말로 (한 글자 낱말은 1·3단계에서 다뤄요)
   const pool = WORDS.filter((it) => { const n = Array.from(it[1]).length; return n >= 2 && n <= 4; });
-  const item = pick(pool);
+  const item = takeWord(pool, 'listen');
   const word = item[1];
   const opts = [word];
   let guard = 0;
@@ -1807,7 +2320,7 @@ function makeListenQ() {
 function makeAssembleQ() {
   const pool = WORDS.filter((it) => Array.from(it[1]).some((c) => isSyl(c) && decSyl(c).jong > 0));
   const one = pool.filter((it) => it[1].length === 1);
-  const item = pick(one.length && Math.random() < 0.4 ? one : pool);
+  const item = takeWord(one.length && Math.random() < 0.4 ? one : pool, 'assemble');
   const chars = Array.from(item[1]);
   const idxs = [];
   for (let i = 0; i < chars.length; i += 1) if (isSyl(chars[i]) && decSyl(chars[i]).jong > 0) idxs.push(i);
@@ -1839,8 +2352,10 @@ function makeQuestion() {
   return makeAssembleQ();
 }
 
-/* ---------- 읽어 주기 (한국어 TTS) ---------- */
+/* ---------- 읽어 주기 (서버 오디오 /api/tts 우선 · 기기 음성 폴백) ---------- */
+const SILENT_WAV = 'data:audio/wav;base64,UklGRhQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 const TTS = {
+  lang: 'ko',
   supported: (() => {
     try {
       return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
@@ -1848,6 +2363,10 @@ const TTS = {
   })(),
   voice: null,
   started: false,
+  audio: null,
+  token: 0,
+  fellBack: -1,
+  guard: 0,
   pick() {
     if (!this.supported) return null;
     try {
@@ -1856,24 +2375,74 @@ const TTS = {
     } catch (e) { this.voice = null; }
     return this.voice;
   },
-  stop() {
-    try { if (this.supported) window.speechSynthesis.cancel(); } catch (e) { /* */ }
-    this.started = false;
-  },
-  say(text, onStart) {
-    if (!this.supported) return false;
+  /* 첫 사용자 터치에서 <audio> 재생을 허용시켜 둔다(모바일 자동재생 차단 우회) */
+  unlock() {
+    if (this.audio) return;
     try {
-      this.stop();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ko-KR';
-      u.rate = 0.82;
-      u.pitch = 1.05;
-      const v = this.voice || this.pick();
-      if (v) u.voice = v;
-      if (onStart) u.addEventListener('start', onStart);
-      window.speechSynthesis.speak(u);
-      return true;
-    } catch (e) { return false; }
+      const a = new Audio();
+      a.preload = 'auto';
+      a.src = SILENT_WAV;
+      a.volume = 0.001;
+      this.audio = a;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => { /* */ });
+    } catch (e) { /* */ }
+  },
+  stop() {
+    this.token += 1;
+    this.started = false;
+    clearTimeout(this.guard);
+    try { if (this.audio) { this.audio.onplaying = null; this.audio.onerror = null; this.audio.pause(); } } catch (e) { /* */ }
+    try { if (this.supported) window.speechSynthesis.cancel(); } catch (e) { /* */ }
+  },
+  /* /api/tts MP3를 최우선 재생, 네트워크·재생 실패 시에만 기기 음성으로 폴백 */
+  say(text, onStart) {
+    const body = String(text || '').slice(0, 110);
+    if (!body) return false;
+    const token = (this.token += 1);
+    this.started = false;
+    BGM.duckFor(Math.max(900, body.length * 150));   // 말소리가 묻히지 않게
+    try { if (this.supported) window.speechSynthesis.cancel(); } catch (e) { /* */ }
+    const a = this.audio || (this.audio = new Audio());
+    this.audio = a;
+    a.onplaying = () => {
+      if (token !== this.token) return;
+      this.started = true;
+      clearTimeout(this.guard);
+      if (onStart) onStart();
+    };
+    a.onerror = () => this.fallback(body, token, onStart);
+    a.onstalled = a.onerror;
+    try { a.pause(); } catch (e) { /* */ }
+    a.volume = 1;
+    a.src = `/api/tts?lang=${this.lang}&text=${encodeURIComponent(body)}`;
+    try {
+      const p = a.play();
+      if (p && p.catch) p.catch(() => this.fallback(body, token, onStart));
+    } catch (e) { this.fallback(body, token, onStart); }
+    clearTimeout(this.guard);
+    this.guard = setTimeout(() => { if (!this.started && token === this.token) this.fallback(body, token, onStart); }, 1100);
+    return true;
+  },
+  fallback(text, token, onStart) {
+    if (token !== this.token || this.fellBack === token) return;
+    this.fellBack = token;
+    if (!this.supported) return;
+    try { window.speechSynthesis.cancel(); } catch (e) { /* */ }
+    setTimeout(() => {
+      if (token !== this.token) return;
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ko-KR';
+        u.rate = 0.82;
+        u.pitch = 1.05;
+        const v = this.voice || this.pick();
+        if (v) u.voice = v;
+        u.addEventListener('start', () => { if (token === this.token) { this.started = true; } });
+        if (onStart) u.addEventListener('start', onStart);
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* */ }
+    }, 60); /* cancel() 직후 바로 말하면 끊기는 기기가 있어 60ms 쉰다 */
   },
 };
 if (TTS.supported) {
@@ -1882,6 +2451,9 @@ if (TTS.supported) {
     TTS.pick();
   } catch (e) { /* */ }
 }
+['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+  try { window.addEventListener(ev, () => TTS.unlock(), { once: true, passive: true }); } catch (e) { /* */ }
+});
 
 function revealHint(on) {
   const pic = $('#hintPic');
@@ -2133,6 +2705,7 @@ async function fleeWild() {
 /* ---------- 전투불능 ---------- */
 async function faint() {
   S.screen = 'fainted';
+  BGM.stop();
   Sound.faint();
   const w = $('#wildWrap');
   w.getAnimations().forEach((a) => a.cancel());
@@ -2148,6 +2721,7 @@ async function faint() {
 /* ---------- 포획 ---------- */
 async function captureSequence() {
   S.screen = 'capturing';
+  BGM.stop();          // 포획 연출 동안 BGM을 멈추고 팡파레로
   S.captureProfile = Profiles.data.active;
   TTS.stop();
   $('#app').classList.add('capturing');
@@ -2243,12 +2817,14 @@ async function captureSequence() {
     S.dex.ids.add(S.wild.id);
     S.dex.counts[S.wild.id] = (S.dex.counts[S.wild.id] || 0) + 1;
     if (!S.dex.dates[S.wild.id]) S.dex.dates[S.wild.id] = stamp;
+    addSubject(S.dex, S.wild.id, GAME);
     Profiles.saveDex(pid, S.dex);
   } else {
     const d = Profiles.loadDex(pid);
     d.ids.add(S.wild.id);
     d.counts[S.wild.id] = (d.counts[S.wild.id] || 0) + 1;
     if (!d.dates[S.wild.id]) d.dates[S.wild.id] = stamp;
+    addSubject(d, S.wild.id, GAME);
     Profiles.saveDex(pid, d);
   }
   renderDexBadge();
@@ -2348,9 +2924,11 @@ function openDetail(id) {
   dEl.textContent = desc;
   const times = S.dex.counts[p.id] || 1;
   const first = (S.dex.dates || {})[p.id] || '';
+  const subs = (S.dex.subjects || {})[p.id] || [];
   $('#detStats').innerHTML = [
     `<span>🎯 잡은 횟수 ${times}번</span>`,
     first ? `<span>📅 처음 잡은 날 ${first}</span>` : '',
+    subs.length ? `<span class="subj">${subs.map((s) => SUBJECT_LABEL[s] || s).join(' ')}에서 잡음</span>` : '',
   ].filter(Boolean).join('');
   openModal('detailModal');
 }
@@ -2389,6 +2967,7 @@ function renderDexBadge() {
   const list = dexList();
   const caughtN = list.reduce((acc, p) => acc + (S.dex.ids.has(p.id) ? 1 : 0), 0);
   $('#dexCount').textContent = `${caughtN} / ${list.length.toLocaleString('ko-KR')}`;
+  refreshTypeCounts();
 }
 
 /* ---------- 놀이 친구 UI ---------- */
@@ -2443,7 +3022,7 @@ function openReset() {
 }
 function doReset() {
   const p = Profiles.active();
-  S.dex = { ids: new Set(), counts: {}, dates: {} };
+  S.dex = { ids: new Set(), counts: {}, dates: {}, subjects: {} };
   Profiles.saveDex(p.id, S.dex);
   renderDex(false);
   renderDexBadge();
@@ -2559,7 +3138,7 @@ function closeModal(id) {
   syncPause();
 }
 function anyModal() { return $$('.modal').some((m) => !m.hidden); }
-function syncPause() { S.paused = !!document.hidden || anyModal(); }
+function syncPause() { S.paused = !!document.hidden || anyModal(); BGM.setPaused(S.paused); }
 
 /* ---------- 초기화 ---------- */
 function bind() {
@@ -2567,6 +3146,7 @@ function bind() {
     btn.addEventListener('click', () => { Sound.ensure(); answer(i); });
   });
   $('#dexBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('dexModal'); });
+  $('#homeBtn').addEventListener('click', () => { Sound.click(); TTS.stop(); location.href = './pokemon-battle.html'; });
   $('#helpBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('helpModal'); });
   $('#fleeBtn').addEventListener('click', () => { Sound.ensure(); fleeWild(); });
   $('#muteBtn').addEventListener('click', () => {
@@ -2702,7 +3282,9 @@ function bind() {
 
 function boot() {
   Sound.init();
+  BGM.setMuted(Sound.muted);
   Profiles.load();
+  migrateLegacyDex();
   const me = Profiles.active();
   S.diff = DIFF_KEYS.includes(me.diff) ? me.diff : 'easy';
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
@@ -2717,6 +3299,8 @@ function boot() {
   renderAll();
   renderDexBadge();
   bootPreload();
+  loadBank(false);
+  startDayRotation();
   newEncounter({ silent: true });
   openModal('startModal');
   loadFullDex();

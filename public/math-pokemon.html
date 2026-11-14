@@ -648,6 +648,9 @@
     font-size:clamp(10px,2.8vw,11.5px);font-weight:900;color:#6a4a12;background:#fff3c4;
     border:1.5px solid #ffd166;border-radius:999px;padding:2px 10px
   }
+  .detstats span.subj{color:#2b4a86;background:#e8f1ff;border-color:#a8c6f0}
+  .dextabs.tytabs button.has{background:linear-gradient(180deg,#fffbe6,#fff1bb);border-color:#f0cf6a;color:#7a5a10}
+  .dextabs.tytabs button.has.on{color:#fff}
   .detfoot{display:flex;justify-content:center}
   .detfoot button{
     padding:9px 22px;border-radius:11px;font-weight:900;font-size:clamp(12px,3.3vw,13.5px);
@@ -795,6 +798,7 @@
       <span class="caret">▼</span>
     </button>
     <span class="pstat" id="chipDex">📕 0</span>
+    <button class="icobtn" id="homeBtn" aria-label="과목 선택으로 가기" style="width:34px;height:32px;border-radius:10px;font-size:15px">🏠</button>
     <button class="icobtn" id="setBtn" aria-label="연산·난이도 설정" style="width:34px;height:32px;border-radius:10px;font-size:15px">⚙️</button>
     <button class="icobtn" id="muteBtn" aria-label="소리 켜기/끄기" style="width:34px;height:32px;border-radius:10px;font-size:15px">🔊</button>
   </div>
@@ -1216,9 +1220,270 @@ const Sound = {
     this.muted = !this.muted;
     try { localStorage.setItem('mpb.mute', this.muted ? '1' : '0'); } catch (e) { /* */ }
     this.render();
+    BGM.setMuted(this.muted);
     if (!this.muted) { this.ensure(); this.click(); }
   },
 };
+
+/* ============================================================
+   배틀 BGM — Web Audio 칩튠 시퀀서 (외부 음원 파일 없음)
+   야생 포켓몬의 주 타입에 따라 조성·멜로디·리듬·음색이 달라진다.
+   ============================================================ */
+const BGM_KITS = {
+  normal: {
+    bpm: 150, root: 69, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 5, 3, 4],
+    leadWave: 'square', leadGain: 0.13, leadDur: 0.1,
+    mel: [0, 4, 7, 4, 5, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, -3],
+    bass: [0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0],
+    kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
+  },
+  water: {
+    bpm: 150, root: 67, scale: [0, 2, 4, 7, 9], prog: [0, 5, 2, 4],
+    leadWave: 'triangle', leadGain: 0.15, leadDur: 0.13,
+    mel: [0, 2, 4, 7, 4, 2, 0, -3, 2, 4, 7, 9, 7, 4, 2, 0],
+    bass: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+    kick: [0, 8], snare: [4, 12], hat: 2,
+  },
+  electric: {
+    bpm: 165, root: 71, scale: [0, 3, 5, 7, 10], prog: [0, 3, 5, 4],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.08,
+    mel: [0, 0, 7, 0, 10, 0, 7, 5, 0, 0, 7, 12, 10, 7, 5, 3],
+    bass: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+    kick: [0, 4, 8, 12], snare: [4, 12], hat: 1,
+  },
+  fire: {
+    bpm: 160, root: 66, scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, 5, 3, 6],
+    leadWave: 'sawtooth', leadGain: 0.1, leadDur: 0.1,
+    mel: [0, 7, 5, 3, 0, 7, 10, 7, 5, 3, 0, -2, 0, 3, 5, 7],
+    bass: [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1],
+    kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
+  },
+  grass: {
+    bpm: 148, root: 72, scale: [0, 2, 4, 7, 9], prog: [0, 4, 5, 3],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.11,
+    mel: [0, 4, 2, 4, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, 0, -3],
+    bass: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
+    kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
+  },
+  psychic: {
+    bpm: 152, root: 69, scale: [0, 2, 3, 5, 7, 9, 10], prog: [0, 2, 5, 3],
+    leadWave: 'triangle', leadGain: 0.16, leadDur: 0.22,
+    mel: [0, null, 3, null, 5, null, 3, 2, 0, null, 7, null, 5, 3, 2, null],
+    bass: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    kick: [0, 10], snare: [8], hat: 4,
+  },
+  rock: {
+    bpm: 146, root: 64, scale: [0, 3, 5, 6, 7, 10], prog: [0, 0, 3, 4],
+    leadWave: 'square', leadGain: 0.12, leadDur: 0.14,
+    mel: [0, 0, 3, 0, 5, 5, 3, 0, 7, 7, 5, 3, 0, 0, -2, 0],
+    bass: [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0],
+    kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
+  },
+  boss: {
+    bpm: 162, root: 65, scale: [0, 1, 4, 5, 7, 8, 11], prog: [0, 1, 5, 4],
+    leadWave: 'square', leadGain: 0.13, leadDur: 0.12,
+    mel: [0, 7, 5, 1, 4, 7, 11, 7, 5, 4, 1, 0, -1, 1, 4, 7],
+    bass: [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1],
+    kick: [0, 3, 6, 8, 11, 14], snare: [4, 12], hat: 1, drone: true,
+  },
+};
+
+function bgmTrackFor(p) {
+  const t = (p && p.types && p.types[0]) || '';
+  if (p && (p.leg || p.myth)) return 'boss';
+  if (t === '물') return 'water';
+  if (t === '전기') return 'electric';
+  if (t === '불꽃' || t === '격투') return 'fire';
+  if (t === '풀' || t === '벌레' || t === '비행') return 'grass';
+  if (t === '에스퍼' || t === '고스트' || t === '악') return 'psychic';
+  if (t === '바위' || t === '땅' || t === '강철') return 'rock';
+  if (t === '드래곤') return 'boss';
+  if (t === '얼음') return 'water';
+  if (t === '독') return 'psychic';
+  if (t === '페어리') return 'grass';
+  return 'normal';
+}
+
+const BGM = {
+  ctx: null,
+  master: null,
+  timer: 0,
+  playing: false,
+  paused: false,
+  muted: false,
+  duck: 1,
+  duckT: 0,
+  step: 0,
+  nextTime: 0,
+  kit: null,
+  kitKey: '',
+  noiseBuf: null,
+  VOL: 0.34,
+  ensure() {
+    if (this.ctx) return this.ctx;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0;
+      this.master.connect(this.ctx.destination);
+      const len = Math.floor(this.ctx.sampleRate * 0.25);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < len; i += 1) ch[i] = Math.random() * 2 - 1;
+      this.noiseBuf = buf;
+    } catch (e) { return null; }
+    return this.ctx;
+  },
+  unlock() {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
+    this.applyGain();
+  },
+  setMuted(m) {
+    this.muted = !!m;
+    this.applyGain();
+  },
+  setPaused(p) {
+    this.paused = !!p;
+    if (!p && this.ctx && this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) { /* */ } }
+    this.applyGain();
+  },
+  applyGain() {
+    if (!this.master || !this.ctx) return;
+    const on = this.playing && !this.paused && !this.muted && !document.hidden;
+    const target = on ? this.VOL * this.duck : 0;
+    try { this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.06); } catch (e) { this.master.gain.value = target; }
+  },
+  /* 말소리(TTS)가 나오는 동안 BGM을 잠깐 낮춘다 */
+  duckFor(ms) {
+    this.duck = 0.22;
+    this.applyGain();
+    clearTimeout(this.duckT);
+    this.duckT = setTimeout(() => { this.duck = 1; this.applyGain(); }, Math.max(600, ms || 1200));
+  },
+  play(key) {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    const k = BGM_KITS[key] || BGM_KITS.normal;
+    if (this.playing && this.kitKey === key) { this.kit = k; this.applyGain(); return; }
+    this.stop(true);
+    this.kit = k;
+    this.kitKey = key;
+    this.playing = true;
+    this.step = 0;
+    this.nextTime = ctx.currentTime + 0.08;
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.tick(), 25);
+    this.applyGain();
+  },
+  stop(immediate) {
+    this.playing = false;
+    clearInterval(this.timer);
+    this.timer = 0;
+    if (this.master && this.ctx) {
+      try {
+        if (immediate) this.master.gain.value = 0;
+        else this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.08);
+      } catch (e) { /* */ }
+    }
+  },
+  tick() {
+    const ctx = this.ctx;
+    if (!ctx || !this.kit) return;
+    const stepDur = 60 / this.kit.bpm / 4;   // 16분음표
+    while (this.nextTime < ctx.currentTime + 0.14) {
+      this.schedule(this.step, this.nextTime);
+      this.step += 1;
+      this.nextTime += stepDur;
+    }
+  },
+  degToMidi(deg) {
+    const k = this.kit;
+    const sc = k.scale;
+    const n = sc.length;
+    const oct = Math.floor(deg / n);
+    const i = ((deg % n) + n) % n;
+    return k.root + sc[i] + 12 * oct;
+  },
+  blip(midi, t, dur, wave, gain) {
+    const ctx = this.ctx;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = wave || 'square';
+    o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.03);
+  },
+  noise(t, dur, gain, hp) {
+    const ctx = this.ctx;
+    const s = ctx.createBufferSource();
+    s.buffer = this.noiseBuf;
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    f.type = hp ? 'highpass' : 'lowpass';
+    f.frequency.value = hp || 4000;
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f);
+    f.connect(g);
+    g.connect(this.master);
+    s.start(t);
+    s.stop(t + dur + 0.02);
+  },
+  kick(t) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+    g.gain.setValueAtTime(0.42, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + 0.17);
+  },
+  schedule(step, t) {
+    const k = this.kit;
+    const bar = Math.floor(step / 16) % 4;
+    const s = step % 16;
+    const chord = k.prog[bar];
+    const deg = k.mel[s];
+    if (deg !== null && deg !== undefined) {
+      const midi = this.degToMidi(chord + deg);
+      this.blip(midi, t, k.leadDur, k.leadWave, k.leadGain);
+      /* 칩튠 특유의 옥타브 보강 */
+      this.blip(midi + 12, t, k.leadDur * 0.6, k.leadWave, k.leadGain * 0.28);
+    }
+    if (k.bass[s]) {
+      const bmidi = this.degToMidi(chord) - 24;
+      this.blip(bmidi, t, 0.16, 'triangle', 0.2);
+    }
+    if (k.kick.indexOf(s) >= 0) this.kick(t);
+    if (k.snare.indexOf(s) >= 0) this.noise(t, 0.1, 0.13, 1600);
+    if (k.hat && s % k.hat === 0) this.noise(t, 0.03, 0.045, 6500);
+    if (k.drone && s === 0) this.blip(this.degToMidi(chord) - 36, t, 0.9, 'sawtooth', 0.06);
+  },
+};
+document.addEventListener('visibilitychange', () => {
+  const modal = typeof anyModal === 'function' ? anyModal() : false;
+  BGM.setPaused(document.hidden || modal);
+});
+
+['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+  try { window.addEventListener(ev, () => BGM.unlock(), { once: true, passive: true }); } catch (e) { /* */ }
+});
 
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'mpb.profiles.v1';
@@ -1268,22 +1533,9 @@ const Profiles = {
   get(id) { return this.data.list.find((p) => p.id === id); },
   active() { return this.get(this.data.active) || this.data.list[0]; },
   setActive(id) { if (this.get(id)) { this.data.active = id; this.save(); } },
-  dexKey(id) { return 'mpb.dex.v2.' + id; },
-  loadDex(id) {
-    try {
-      const raw = localStorage.getItem(this.dexKey(id));
-      const o = raw ? JSON.parse(raw) : null;
-      if (o && Array.isArray(o.ids)) {
-        return { ids: new Set(o.ids.filter((n) => Number.isFinite(n))), counts: o.counts || {}, dates: o.dates || {} };
-      }
-    } catch (e) { /* */ }
-    return { ids: new Set(), counts: {}, dates: {} };
-  },
-  saveDex(id, dex) {
-    try {
-      localStorage.setItem(this.dexKey(id), JSON.stringify({ ids: Array.from(dex.ids), counts: dex.counts, dates: dex.dates || {}, v: 2 }));
-    } catch (e) { /* */ }
-  },
+  dexKey(id) { return 'mpb.dex.v2.' + id; },   // 예전 개별 도감 키(첫 병합 때만 읽는다)
+  loadDex(id) { return readSlot(slotFor(GAME, id)); },
+  saveDex(id, dex) { writeSlot(slotFor(GAME, id), dex); },
   /* 예전 단일 도감(mpb.dex.v1)이 남아 있으면 현재 친구 도감으로 한 번만 옮긴다 */
   migrateLegacy() {
     try {
@@ -1297,6 +1549,96 @@ const Profiles = {
     } catch (e) { /* */ }
   },
 };
+
+/* ---------- 통합 도감 (산수·한글·영어 3게임이 같은 저장소를 공유) ---------- */
+const GAME = 'math';
+const SHARED_PREFIX = 'pkm.shared.dex.v1.';
+const SUBJECT_LABEL = { math: '⚡ 산수', hangul: '📖 한글', english: '🔤 영어' };
+const PROFILE_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
+const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2' }, hangul: { p1: 'p2', p2: 'p1' }, english: { p1: 'p1', p2: 'p2' } };
+const LEGACY_DEX_KEYS = [
+  { key: 'mpb.dex.v2.p1', game: 'math', id: 'p1' },
+  { key: 'mpb.dex.v2.p2', game: 'math', id: 'p2' },
+  { key: 'mpb.dex.v1', game: 'math', id: 'p1' },
+  { key: 'hpb.dex.v1.p1', game: 'hangul', id: 'p1' },
+  { key: 'hpb.dex.v1.p2', game: 'hangul', id: 'p2' },
+  { key: 'epb.dex.v1.p1', game: 'english', id: 'p1' },
+  { key: 'epb.dex.v1.p2', game: 'english', id: 'p2' },
+];
+const MIGRATED_KEY = 'pkm.shared.dex.v1.migrated';
+const emptyDex = () => ({ ids: new Set(), counts: {}, dates: {}, subjects: {} });
+
+function slotFromName(name) {
+  const n = String(name || '');
+  if (/첫째|아린/.test(n)) return 'p1';
+  if (/둘째/.test(n)) return 'p2';
+  return '';
+}
+function slotFor(game, profId) {
+  let name = '';
+  try {
+    const o = JSON.parse(localStorage.getItem(PROFILE_KEYS[game]) || 'null');
+    const p = (o && Array.isArray(o.list) ? o.list : []).find((x) => x && x.id === profId);
+    if (p && p.name) name = p.name;
+  } catch (e) { /* */ }
+  if (game === GAME) {
+    const p = Profiles.get(profId);
+    if (p && p.name) name = p.name;
+  }
+  return slotFromName(name) || (SLOT_BY_DEFAULT[game] || SLOT_BY_DEFAULT.math)[profId] || 'p1';
+}
+function readSlot(slot) {
+  try {
+    const o = JSON.parse(localStorage.getItem(SHARED_PREFIX + slot) || 'null');
+    if (o && Array.isArray(o.ids)) {
+      const dex = emptyDex();
+      o.ids.forEach((n) => { if (Number.isFinite(n)) dex.ids.add(n); });
+      dex.counts = o.counts || {};
+      dex.dates = o.dates || {};
+      dex.subjects = o.subjects || {};
+      return dex;
+    }
+  } catch (e) { /* */ }
+  return emptyDex();
+}
+function writeSlot(slot, dex) {
+  try {
+    localStorage.setItem(SHARED_PREFIX + slot, JSON.stringify({
+      ids: Array.from(dex.ids), counts: dex.counts || {}, dates: dex.dates || {}, subjects: dex.subjects || {}, v: 1,
+    }));
+  } catch (e) { /* */ }
+}
+function addSubject(dex, id, subject) {
+  const cur = dex.subjects[id] || [];
+  if (!cur.includes(subject)) dex.subjects[id] = cur.concat(subject);
+}
+function migrateLegacyDex() {
+  let done = [];
+  try { done = JSON.parse(localStorage.getItem(MIGRATED_KEY) || '[]') || []; } catch (e) { done = []; }
+  const seen = new Set(done);
+  const cache = {};
+  LEGACY_DEX_KEYS.forEach((src) => {
+    if (seen.has(src.key)) return;
+    seen.add(src.key);
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(src.key) || 'null'); } catch (e) { o = null; }
+    if (!o || !Array.isArray(o.ids)) return;
+    const slot = slotFor(src.game, src.id);
+    if (!cache[slot]) cache[slot] = readSlot(slot);
+    const dex = cache[slot];
+    o.ids.forEach((id) => {
+      if (!Number.isFinite(id)) return;
+      dex.ids.add(id);
+      const c = (o.counts && o.counts[id]) || 0;
+      if (c) dex.counts[id] = (dex.counts[id] || 0) + c;
+      const d = (o.dates && o.dates[id]) || '';
+      if (d && (!dex.dates[id] || d < dex.dates[id])) dex.dates[id] = d;
+      addSubject(dex, id, src.game);
+    });
+  });
+  Object.keys(cache).forEach((slot) => writeSlot(slot, cache[slot]));
+  try { localStorage.setItem(MIGRATED_KEY, JSON.stringify(Array.from(seen))); } catch (e) { /* */ }
+}
 
 /* ---------- 게임 상태 ---------- */
 const S = {
@@ -1414,11 +1756,35 @@ const dexTabDef = () => DEX_TABS.find((t) => t.key === S.dexTab) || DEX_TABS[0];
 const dexList = () => POKEMON
   .filter(dexTabDef().test)
   .filter((p) => !S.dexType || (p.types || []).includes(S.dexType));
+function countByType() {
+  const base = POKEMON.filter(dexTabDef().test);
+  const map = {};
+  let total = 0;
+  base.forEach((p) => {
+    if (!S.dex.ids.has(p.id)) return;
+    total += 1;
+    (p.types || []).forEach((t) => { map[t] = (map[t] || 0) + 1; });
+  });
+  return { map, total };
+}
+/* 타입 칩에 지금 목록 기준으로 잡은 마릿수를 붙인다 — 전체(3) · 노말(1) · 물(2) */
+function refreshTypeCounts() {
+  const host = $('#dexTypeTabs');
+  if (!host) return;
+  const { map, total } = countByType();
+  $$('button', host).forEach((b) => {
+    const t = b.dataset.type || '';
+    const n = t ? (map[t] || 0) : total;
+    const i = b.querySelector('i');
+    if (i) i.textContent = `(${n})`;
+    b.classList.toggle('has', !!t && n > 0);
+  });
+}
 function renderTypeTabs() {
   const host = $('#dexTypeTabs');
   if (!host) return;
-  host.innerHTML = `<button data-type="" class="on">전체 타입</button>`
-    + TYPES.map((t) => `<button data-type="${t}" style="--tc:${TYPE_COLOR[t]}">${t}</button>`).join('');
+  host.innerHTML = `<button data-type="" class="on">전체<i>(0)</i></button>`
+    + TYPES.map((t) => `<button data-type="${t}" style="--tc:${TYPE_COLOR[t]}">${t}<i>(0)</i></button>`).join('');
   $$('button', host).forEach((b) => {
     b.addEventListener('click', () => {
       Sound.ensure(); Sound.click();
@@ -1429,6 +1795,7 @@ function renderTypeTabs() {
       $('#dexGrid').parentElement.scrollTop = 0;
     });
   });
+  refreshTypeCounts();
   syncTypeTabs();
 }
 function syncTypeTabs() {
@@ -1444,17 +1811,18 @@ function updateDexTabs() {
     const i = b.querySelector('i');
     if (i) i.textContent = list.length.toLocaleString('ko-KR');
   });
+  refreshTypeCounts();
   syncTypeTabs();
 }
 function renderDexNote() {
   const el = $('#dexNote');
   if (!el) return;
   if (DB_STATE === 'ready') {
-    el.textContent = `전체 도감 ${POKEMON.length.toLocaleString('ko-KR')}마리 · 잡은 몬스터는 친구별로 이 기기에 자동 저장`;
+    el.textContent = `전체 도감 ${POKEMON.length.toLocaleString('ko-KR')}마리 · 산수·한글·영어가 함께 쓰는 통합 도감(이 기기에 자동 저장)`;
   } else if (DB_STATE === 'loading') {
-    el.textContent = '전체 도감을 불러오는 중… (지금은 1세대 151마리) · 친구별로 이 기기에 자동 저장';
+    el.textContent = '전체 도감을 불러오는 중… (지금은 1세대 151마리) · 산수·한글·영어 통합 도감';
   } else {
-    el.textContent = '전체 도감을 불러오지 못해 1세대 151마리로 놀고 있어요 · 친구별로 이 기기에 자동 저장';
+    el.textContent = '전체 도감을 불러오지 못해 1세대 151마리로 놀고 있어요 · 산수·한글·영어 통합 도감';
   }
 }
 
@@ -1485,12 +1853,26 @@ function setWildImages(p) {
   wrap.classList.remove('noimg');
   art.style.cssText = '';
   spr.style.cssText = '';
-  // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
-  spr.style.opacity = '1';
-  art.style.opacity = '0';
-  art.style.transition = 'opacity .22s';
-  art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
-  art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+  const isBoss = !!(p.leg || p.myth);
+  if (isBoss) {
+    /* 전설·환상은 정체를 가리지 않는다 — 일러스트와 이름을 처음부터 선명하게 */
+    spr.style.display = 'none';
+    art.style.display = '';
+    art.style.opacity = '1';
+    art.style.transition = 'none';
+    art.style.filter = '';
+    art.style.width = '';
+    art.onload = null;
+    art.onerror = () => { art.style.display = 'none'; spr.style.display = ''; spr.style.opacity = '1'; spr.style.width = '86%'; };
+  } else {
+    spr.style.display = '';
+    // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
+    spr.style.opacity = '1';
+    art.style.opacity = '0';
+    art.style.transition = 'opacity .22s';
+    art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
+    art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+  }
   spr.onerror = () => {
     spr.style.display = 'none';
     art.style.display = 'none';
@@ -1540,6 +1922,7 @@ function updateLegendScene(p) {
     banner.style.animation = 'none';
     void banner.offsetWidth;
     banner.style.animation = '';
+    flashScreen();   // 반짝! 하고 등장을 알린다
   }
 }
 
@@ -1571,11 +1954,17 @@ function wildPool() {
 }
 /* 최근 등장 기억 — 바로 전/최근 몬스터가 또 나오지 않게 */
 const recentWild = [];
+/* 전설·환상은 3% 정도만 — 균등 랜덤(9%대)이면 너무 흔해진다 */
+const LEGEND_RATE = 0.03;
 function pickWild(excludeId) {
   const all = wildPool();
-  let pool = all.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
-  if (pool.length < 5) pool = all.filter((p) => p.id !== excludeId);
-  if (!pool.length) pool = POKEMON.filter((p) => p.id !== excludeId);
+  const plain = all.filter((p) => !p.leg && !p.myth);
+  const rare = all.filter((p) => p.leg || p.myth);
+  const wantRare = rare.length > 0 && Math.random() < LEGEND_RATE;
+  const base = (wantRare ? rare : plain).length ? (wantRare ? rare : plain) : all;
+  let pool = base.filter((p) => p.id !== excludeId && !recentWild.includes(p.id));
+  if (pool.length < 5) pool = base.filter((p) => p.id !== excludeId);
+  if (!pool.length) pool = base;
   if (!pool.length) pool = all;
   const p = pick(pool);
   recentWild.push(p.id);
@@ -1615,8 +2004,9 @@ async function newEncounter(opts) {
   }
   S.screen = 'battle';
   S.locked = false;
-  if ((S.wild.leg || S.wild.myth) && o.sound !== false) Sound.legend();
   newQuestion();
+  BGM.play(bgmTrackFor(S.wild));
+  if ((S.wild.leg || S.wild.myth) && o.sound !== false) Sound.legend();
 }
 
 function renderAll() {
@@ -1702,11 +2092,170 @@ function makeChoices(kind, ans, d) {
   return list;
 }
 
-function makeQuestion() {
+/* ---------- 문제 유형: 기본 · 빈칸 · 세 수 · 비교 ---------- */
+function calc(kind, a, b) {
+  return kind === 'add' ? a + b : kind === 'sub' ? a - b : kind === 'mul' ? a * b : a / b;
+}
+
+function seoulDay() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch (e) {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+}
+function hashSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function rngOf(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* 오늘의 유형 덱: 날짜(KST) 시드로 문제 유형 순서가 매일 자정에 새로 섞인다 */
+const QTYPE_CYCLE = ['plain', 'plain', 'blank', 'plain', 'triple', 'blank', 'plain', 'compare', 'triple', 'plain'];
+const QDeck = {
+  day: '',
+  seq: [],
+  pos: 0,
+  nonce: 0,
+  ensure() {
+    const d = seoulDay();
+    if (d !== this.day) { this.day = d; this.seq = []; this.pos = 0; this.nonce = 0; }
+    if (this.pos >= this.seq.length) {
+      const rnd = rngOf(hashSeed(`${this.day}|qtype|${this.nonce}`));
+      const base = [];
+      for (let i = 0; i < 6; i += 1) base.push(...QTYPE_CYCLE);
+      for (let i = base.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rnd() * (i + 1));
+        const t = base[i]; base[i] = base[j]; base[j] = t;
+      }
+      this.seq = base;
+      this.pos = 0;
+      this.nonce += 1;
+    }
+  },
+  nextType() {
+    this.ensure();
+    const t = this.seq[this.pos];
+    this.pos += 1;
+    return t;
+  },
+  reset() { this.day = ''; this.seq = []; this.pos = 0; this.nonce = 0; },
+};
+
+/* 자정이 지나면 오늘의 새 유형 순서로 바뀐다 */
+function startDayRotation() {
+  let last = seoulDay();
+  setInterval(() => {
+    const now = seoulDay();
+    if (now === last) return;
+    last = now;
+    QDeck.reset();
+    recentQ.length = 0;
+    if (S.wild && S.screen === 'battle') newQuestion();
+    toast('🌅 자정이 지나 오늘의 새 문제로 바뀌었어요', 'info', 2200);
+  }, 20000);
+}
+
+/* 최근 30문제는 다시 나오지 않는다 */
+const recentQ = [];
+function rememberQ(sig) {
+  recentQ.push(sig);
+  while (recentQ.length > 30) recentQ.shift();
+}
+
+function qPlain() {
   const kind = pickKind();
   const [a, b] = genNumbers(kind);
-  const ans = kind === 'add' ? a + b : kind === 'sub' ? a - b : kind === 'mul' ? a * b : a / b;
+  const ans = calc(kind, a, b);
   return { kind, text: `${a} ${KIND_OP[kind]} ${b} = ?`, ans, choices: makeChoices(kind, ans, S.diff) };
+}
+
+/* 빈칸 수식: 3 + □ = 8 · □ − 4 = 5 */
+function qBlank() {
+  const kind = pickKind();
+  const [a, b] = genNumbers(kind);
+  const c = calc(kind, a, b);
+  const leftBlank = Math.random() < 0.5;
+  const ans = leftBlank ? a : b;
+  const text = leftBlank
+    ? `□ ${KIND_OP[kind]} ${b} = ${c}`
+    : `${a} ${KIND_OP[kind]} □ = ${c}`;
+  return { kind, text, ans, choices: makeChoices(kind, ans, S.diff) };
+}
+
+/* 세 수 식: 2 + 3 + 4 = ? · 23 + 15 − 8 = ? */
+function qTriple() {
+  const d = S.diff;
+  const lo = d === 'easy' ? 1 : d === 'mid' ? 11 : 101;
+  const hi = d === 'easy' ? 9 : d === 'mid' ? 49 : 399;
+  const maxC = d === 'easy' ? 9 : d === 'mid' ? 40 : 150;
+  for (let i = 0; i < 30; i += 1) {
+    const a = rand(lo, hi);
+    const b = rand(lo, hi);
+    const c = rand(1, maxC);
+    const minus = Math.random() < 0.55;
+    const ans = minus ? a + b - c : a + b + c;
+    if (ans < 0) continue;
+    return {
+      kind: 'add',
+      text: `${a} + ${b} ${minus ? '−' : '+'} ${c} = ?`,
+      ans,
+      choices: makeChoices('add', ans, d),
+    };
+  }
+  return qPlain();
+}
+
+/* 비교: 7 + 2 □ 10 — 보기는 < · > · = */
+function qCompare() {
+  const d = S.diff;
+  for (let i = 0; i < 30; i += 1) {
+    let a; let b; let right;
+    if (d === 'easy') { a = rand(1, 9); b = rand(1, 9); right = rand(2, 18); }
+    else if (d === 'mid') { a = rand(11, 49); b = rand(11, 49); right = rand(20, 99); }
+    else { a = rand(101, 399); b = rand(101, 299); right = rand(200, 699); }
+    const left = a + b;
+    if (Math.random() < 0.12) right = left;   // 가끔 '=' 도 나온다
+    if (left === right) {
+      return { kind: 'cmp', text: `${a} + ${b} □ ${right}`, ans: '=', choices: shuffleSymbols() };
+    }
+    const ans = left > right ? '>' : '<';
+    return { kind: 'cmp', text: `${a} + ${b} □ ${right}`, ans, choices: shuffleSymbols() };
+  }
+  return qPlain();
+}
+function shuffleSymbols() {
+  const arr = ['<', '>', '='];
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+function makeQuestion() {
+  const type = QDeck.nextType();
+  for (let i = 0; i < 60; i += 1) {
+    const q = type === 'blank' ? qBlank() : type === 'triple' ? qTriple() : type === 'compare' ? qCompare() : qPlain();
+    if (!recentQ.includes(q.text)) {
+      rememberQ(q.text);
+      return q;
+    }
+  }
+  const q = qPlain();
+  rememberQ(q.text);
+  return q;
 }
 
 function newQuestion() {
@@ -1720,9 +2269,11 @@ function newQuestion() {
   void q.offsetWidth;
   q.classList.add('flash');
   $$('#choices .choice').forEach((btn, i) => {
+    const c = S.q.choices[i];
     btn.className = 'choice';
     btn.disabled = false;
-    $('.v', btn).textContent = S.q.choices[i];
+    btn.style.display = c === undefined ? 'none' : '';
+    $('.v', btn).textContent = c === undefined ? '' : c;
   });
   $('#qCount').textContent = `${S.solved} / ${MAXHP}`;
   renderAll();
@@ -1822,13 +2373,14 @@ function flashScreen() {
 /* ---------- 정답/오답 ---------- */
 function answer(idx) {
   if (S.screen !== 'battle' || S.locked || !S.q) return;
+  const btn = $$('#choices .choice')[idx];
+  if (!btn || btn.style.display === 'none') return;
   S.locked = true;
   S.screen = 'resolving';
   const gen = S.gen;
   cancelAnimationFrame(S.raf);
-  const btn = $$('#choices .choice')[idx];
-  const val = Number($('.v', btn).textContent);
-  const ok = val === S.q.ans;
+  const val = $('.v', btn).textContent.trim();
+  const ok = String(S.q.ans).trim() === val;
   $$('#choices .choice').forEach((b) => { b.disabled = true; });
   if (ok) {
     btn.classList.add('correct');
@@ -1911,6 +2463,7 @@ async function fleeWild() {
 /* ---------- 전투불능 ---------- */
 async function faint() {
   S.screen = 'fainted';
+  BGM.stop();
   Sound.faint();
   const w = $('#wildWrap');
   w.getAnimations().forEach((a) => a.cancel());
@@ -1926,6 +2479,7 @@ async function faint() {
 /* ---------- 포획 ---------- */
 async function captureSequence() {
   S.screen = 'capturing';
+  BGM.stop();          // 포획 연출 동안 BGM을 멈추고 팡파레로
   S.captureProfile = Profiles.data.active;
   $('#app').classList.add('capturing');
   cancelAnimationFrame(S.raf);
@@ -2020,12 +2574,14 @@ async function captureSequence() {
     S.dex.ids.add(S.wild.id);
     S.dex.counts[S.wild.id] = (S.dex.counts[S.wild.id] || 0) + 1;
     if (!S.dex.dates[S.wild.id]) S.dex.dates[S.wild.id] = stamp;
+    addSubject(S.dex, S.wild.id, GAME);
     Profiles.saveDex(pid, S.dex);
   } else {
     const d = Profiles.loadDex(pid);
     d.ids.add(S.wild.id);
     d.counts[S.wild.id] = (d.counts[S.wild.id] || 0) + 1;
     if (!d.dates[S.wild.id]) d.dates[S.wild.id] = stamp;
+    addSubject(d, S.wild.id, GAME);
     Profiles.saveDex(pid, d);
   }
   renderDexBadge();
@@ -2125,9 +2681,11 @@ function openDetail(id) {
   dEl.textContent = desc;
   const times = S.dex.counts[p.id] || 1;
   const first = (S.dex.dates || {})[p.id] || '';
+  const subs = (S.dex.subjects || {})[p.id] || [];
   $('#detStats').innerHTML = [
     `<span>🎯 잡은 횟수 ${times}번</span>`,
     first ? `<span>📅 처음 잡은 날 ${first}</span>` : '',
+    subs.length ? `<span class="subj">${subs.map((s) => SUBJECT_LABEL[s] || s).join(' ')}에서 잡음</span>` : '',
   ].filter(Boolean).join('');
   openModal('detailModal');
 }
@@ -2166,6 +2724,7 @@ function renderDexBadge() {
   const list = dexList();
   const caughtN = list.reduce((acc, p) => acc + (S.dex.ids.has(p.id) ? 1 : 0), 0);
   $('#dexCount').textContent = `${caughtN} / ${list.length.toLocaleString('ko-KR')}`;
+  refreshTypeCounts();
 }
 
 /* ---------- 놀이 친구 UI ---------- */
@@ -2210,6 +2769,8 @@ function saveSettings(patch, pid) {
     S.op = p.op;
     S.mixMode = p.mix;
     S.range = p.range === 'gen1' ? 'gen1' : 'all';
+    QDeck.reset();
+    recentQ.length = 0;
     renderAll();
     if (S.screen === 'battle') newQuestion();
   }
@@ -2225,7 +2786,7 @@ function openReset() {
 }
 function doReset() {
   const p = Profiles.active();
-  S.dex = { ids: new Set(), counts: {}, dates: {} };
+  S.dex = { ids: new Set(), counts: {}, dates: {}, subjects: {} };
   Profiles.saveDex(p.id, S.dex);
   renderDex(false);
   renderDexBadge();
@@ -2342,7 +2903,7 @@ function closeModal(id) {
   syncPause();
 }
 function anyModal() { return $$('.modal').some((m) => !m.hidden); }
-function syncPause() { S.paused = !!document.hidden || anyModal(); }
+function syncPause() { S.paused = !!document.hidden || anyModal(); BGM.setPaused(S.paused); }
 
 /* ---------- 초기화 ---------- */
 function bind() {
@@ -2350,6 +2911,7 @@ function bind() {
     btn.addEventListener('click', () => { Sound.ensure(); answer(i); });
   });
   $('#dexBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('dexModal'); });
+  $('#homeBtn').addEventListener('click', () => { Sound.click(); location.href = './pokemon-battle.html'; });
   $('#helpBtn').addEventListener('click', () => { Sound.ensure(); Sound.click(); openModal('helpModal'); });
   $('#fleeBtn').addEventListener('click', () => { Sound.ensure(); fleeWild(); });
   $('#muteBtn').addEventListener('click', () => Sound.toggle());
@@ -2489,8 +3051,10 @@ function bind() {
 
 function boot() {
   Sound.init();
+  BGM.setMuted(Sound.muted);
   Profiles.load();
   Profiles.migrateLegacy();
+  migrateLegacyDex();
   const me = Profiles.active();
   S.diff = me.diff === 'elem' ? 'mid' : (DIFF_KEYS.includes(me.diff) ? me.diff : 'easy');
   S.op = OP_KEYS.includes(me.op) ? me.op : 'mix';
@@ -2507,6 +3071,7 @@ function boot() {
   renderAll();
   renderDexBadge();
   bootPreload();
+  startDayRotation();
   newEncounter({ silent: true });
   openModal('startModal');
   loadFullDex();
