@@ -7,12 +7,13 @@ GitHub Pages로 서빙하던 **정적 관제탑**(`deploy_repo/`)의 **9대 탭 
 ```
 public/index.html          증시 실시간 관제탑 — 9대 탭 풀버전 (3.5MB 단일 파일, 차트·브리핑 모달·데이터셋 그대로)
 public/deals.html          패밀리 특가 레이더 — 여행·키즈·캘린더 + 🛒 쇼핑 최저가 탭
-public/live-api.js         동적 연동 레이어 (15초 폴링 · 지수/감시종목 갱신 · RN존 실시간 종목 조회)
+public/live-api.js         동적 연동 레이어 (15초 지수/감시종목 · 30초 1·3·5탭 · RN존 실시간 종목 조회)
 public/deals-shopping.js   쇼핑 최저가 Top 5 렌더러 (키 미등록 시 안내 배너로 대체)
 public/sw.js               PWA 서비스워커 (network-first, 캐시 없음)
 public/manifest.json       PWA 매니페스트
 public/downloads/          앱 아이콘 192/512
 api/stock-live.js          지수·환율·해외선물·종목 현재가
+api/tabs-live.js           1·3·5번 탭 — 8대 테마 32종목·52주 신고가·100억+ 상한가·최신 뉴스 12건
 api/live-briefing.js       ⚡ 클릭 순간 실시간 팩트 브리핑 (지수·선물·환율·급등/대금 상위·최신 뉴스)
 api/stock-chart.js         종목명/코드 → 60거래일 일봉 + RN 지지/저항
 api/deals-shopping.js      네이버 쇼핑 최저가 Top 5
@@ -34,7 +35,16 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 - 페이지 로드 직후 + **15초마다** `/api/stock-live` 호출 →
   상단 티커의 **코스피 · 코스닥 · 나스닥선물(NQ=F) · 원/달러**를 실시간 값으로 갱신하고,
   **S&P500선물(ES=F)** 타일은 동적 값이 들어올 때만 나스닥선물 옆에 새로 표시됩니다.
-- 세션 레이더 바에 **`⚡ 동적 LIVE HH:MM:SS 갱신`** 배지: 정상(초록) / 실패(주황).
+- 페이지 로드 직후 + **30초마다**(+ **`🔄 즉시 새로고침`** 클릭 시 `?fresh=1`) `/api/tabs-live` 호출 →
+  **1 · 3 · 5번 탭**이 실시간으로 갱신됩니다.
+  - **1번 메인 탭**: 8대 테마 **32종목 카드 전체**의 현재가·등락률·시/고/저·거래대금,
+    테마 헤더의 **평균 등락률 / 합산 거래대금**, **52주 신고가 돌파** 카드, **거래대금 100억+ 진성 상한가 · +25% 임박** 카드가
+    실시간 재구성됩니다(카드를 누르면 열리는 상세 모달 인자도 실시간 값으로 다시 씌워집니다).
+    상한가/임박은 **`상승률 +25% 이상 & 거래대금 100억 이상`** 만 인정하고 **100억 미만 소형주는 제외 목록**으로 분리합니다.
+  - **3번 애프터마켓 · 5번 시간별 뉴스 탭**: 탭 **최상단**에 **최신 증시 속보 12건**(시간·언론사·제목·요약·기사 원문 링크)이 실시간 렌더됩니다.
+    기존 타임라인·과거 유사사례 섹션은 그대로 보존됩니다.
+- 세션 레이더 바에 **`⚡ 동적 LIVE HH:MM:SS 갱신`** 배지 + **`⚡ 1·3·5탭 LIVE HH:MM:SS 갱신`** 배지: 정상(초록) / 실패(주황).
+- **주말·휴장 표기 수정**: 토·일에는 세션 레이더가 `🌙 [주말 휴장]`(다음 정규장 월요일 09:00)으로 표시됩니다(기존에는 주말에도 `[정규장 진행 중]`).
 - **RN존 감시 종목 11종목**의 현재가·등락률·통합 거래대금을 실시간 갱신
   (카드마다 `당일 대금` 줄, 차트 헤더 옆 `당일 대금` 칩).
 - **RN존 탭 상단 🔎 실시간 종목 조회**: 종목명/6자리 코드 입력 → `/api/stock-chart` 로
@@ -65,12 +75,15 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 | `GET /api/stock-chart?code=005930` | 코드 직접 지정 | 동일 |
 | `GET /api/deals-shopping?q=돼지고기 국내산 1kg` | 네이버 쇼핑 최저가순 Top 5 | `s-maxage=300, swr=600` |
 | `GET /api/live-briefing` | 클릭 순간 실시간 팩트 브리핑 — 지수·선물·환율·급등/거래대금 상위 6종목·최신 뉴스 5건 + `marketPhase`/`headline` 구조화 JSON | `s-maxage=15, swr=30` (`?fresh=1` → 5/10) |
+| `GET /api/tabs-live` | **1·3·5번 탭 실시간** — 8대 테마 32종목 시세(시/고/저·통합 거래대금), 52주 신고가(대금순·상승률순), 거래대금 100억+ 진성 상한가·+25% 임박·관찰·제외, 최신 뉴스 12건 | `s-maxage=15, swr=30` (`?fresh=1` → 5/10) |
 
 옵션: `stock-live?codes=005930,000660`(종목 지정), `?fresh=1`(메모리 캐시 무시),
 `stock-chart?count=120`(봉 수 20~200), `deals-shopping?sort=asc|sim|date|dsc`.
 
 ### 데이터 소스
 - 지수·국내종목: `polling.finance.naver.com/api/realtime` (키 불필요)
+- 52주 신고가: `m.stock.naver.com/api/stocks/high52week/{KOSPI,KOSDAQ}`
+- 급등·상한가: `m.stock.naver.com/api/stocks/up/{KOSPI,KOSDAQ}` (+100억·+25% 엄격 필터)
 - 환율: `m.stock.naver.com/front-api/marketIndex/prices` → 실패 시 Yahoo `KRW=X`
 - 해외선물: Yahoo `query1.finance.yahoo.com/v8/finance/chart/{NQ=F,ES=F}`
 - 급등·거래대금 상위: `stock.naver.com/api/domestic/market/stock/default?orderType=up|priceTop` (KRX·KOSPI+KOSDAQ)
@@ -83,7 +96,7 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 
 ```bash
 npm run check                 # 모든 서버·프론트 JS 구문 검사
-node test_local.mjs           # 실제 네이버·야후 응답으로 41개 항목 검증
+node test_local.mjs           # 실제 네이버·야후 응답으로 53개 항목 검증 (stock-live/chart/deals/live-briefing/tabs-live)
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)
 ```
 

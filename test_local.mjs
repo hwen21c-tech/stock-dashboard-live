@@ -19,6 +19,7 @@ const handlers = {
   'stock-chart': require('./api/stock-chart.js'),
   'deals-shopping': require('./api/deals-shopping.js'),
   'live-briefing': require('./api/live-briefing.js'),
+  'tabs-live': require('./api/tabs-live.js'),
 };
 
 function makeReq(urlPath, method = 'GET') {
@@ -255,6 +256,42 @@ summary.liveBriefing = {
   news: (lb.json && lb.json.news) || [],
   dataBasis: lb.json && lb.json.dataBasis,
   errors: (lb.json && lb.json.errors) || [],
+};
+
+/* ------------------------------ 5) tabs-live ------------------------------ */
+console.log('\n▶ [8] /api/tabs-live?fresh=1 (1·3·5번 탭 실시간)');
+const tl = await call('tabs-live', '/api/tabs-live?fresh=1');
+const tlJson = tl.json || {};
+const tlThemes = tlJson.themes || [];
+const tlStocks = tlThemes.reduce((acc, t) => acc.concat(t.stocks || []), []);
+const tlHigh = tlJson.high52 || {};
+const tlUpper = tlJson.upperLimit || {};
+const tlUpperAll = [].concat(tlUpper.confirmed || [], tlUpper.near || []);
+const tlNews = tlJson.news || [];
+
+check('status 200 / ok:true', tl.status === 200 && tlJson.ok === true, `ms=${tl.ms} session=${tlJson.sessionPhase}`);
+check('8대 테마 32종목 전부 시세 확보', tlThemes.length === 8 && tlStocks.length === 32 && tlStocks.every((s) => typeof s.price === 'number'), `${tlThemes.length}테마 / ${tlStocks.length}종목`);
+check('32종목 시/고/저·거래대금·통합 대금', tlStocks.every((s) => typeof s.high === 'number' && typeof s.low === 'number' && Boolean(s.valueText) && Boolean(s.valueBasis)), `통합 기준 ${tlStocks.filter((s) => s.valueBasis === '통합(KRX+NXT)').length}종목`);
+check('테마 평균 등락률·합산 대금', tlThemes.every((t) => typeof t.avgPct === 'number' && Boolean(t.sumValueText)), tlThemes.map((t) => `${t.rank}위 ${t.avgPct}%/${t.sumValueText}`).join(' '));
+check('52주 신고가 대금순·상승률순', (tlHigh.byValue || []).length > 0 && (tlHigh.byPct || []).length > 0, (tlHigh.byValue || []).map((s) => `${s.name} ${s.valueText}`).join(' / '));
+check('52주 신고가 당일 고가 확보', (tlHigh.byValue || []).length > 0 && tlHigh.byValue.every((s) => typeof s.high === 'number'), (tlHigh.byValue || []).map((s) => `${s.name} 고가 ${s.high}`).join(' / '));
+check('상한가·임박은 +25% 이상 & 100억 이상', tlUpperAll.length > 0 && tlUpperAll.every((s) => s.changePct >= 25 && s.value >= 100 * 1e8), tlUpperAll.map((s) => `${s.name} ${s.changePct}% ${s.valueText}`).join(' / '));
+check('100억 미만 소형주 제외 목록 분리', (tlUpper.excluded || []).length > 0 && tlUpper.excluded.every((s) => s.value < 100 * 1e8), (tlUpper.excluded || []).map((s) => `${s.name} ${s.changePct}% ${s.valueText}`).join(' / '));
+check('상한가 확정 vs +25% 돌파 구분', (tlUpper.confirmed || []).every((s) => s.upperLimit === true) && (tlUpper.near || []).every((s) => s.upperLimit !== true), `확정 ${(tlUpper.confirmed || []).length} · 임박 ${(tlUpper.near || []).length}`);
+check('최신 증시 뉴스 12건 + 링크', tlNews.length === 12 && tlNews.every((n) => n.title && /^https:\/\/n\.news\.naver\.com\//.test(n.url || '')), tlNews.slice(0, 3).map((n) => `${n.time} ${n.title.slice(0, 18)}`).join(' / '));
+check('tabs-live 부분 실패 0건', (tlJson.errors || []).length === 0, (tlJson.errors || []).join(' · ') || 'none');
+const tlCache = await call('tabs-live', '/api/tabs-live');
+check('Cache-Control = s-maxage=15, swr=30', /s-maxage=15/.test(tlCache.headers['cache-control'] || '') && /stale-while-revalidate=30/.test(tlCache.headers['cache-control'] || ''), tlCache.headers['cache-control']);
+summary.tabsLive = {
+  status: tl.status,
+  ms: tl.ms,
+  sessionPhase: tlJson.sessionPhase,
+  generatedAtKst: tlJson.generatedAtKst,
+  themes: tlThemes.map((t) => ({ rank: t.rank, name: t.name, avgPct: t.avgPct, sumValueText: t.sumValueText })),
+  high52: tlHigh,
+  upperLimit: tlUpper,
+  news: tlNews,
+  errors: tlJson.errors || [],
 };
 
 /* -------------------------------- 결과 저장 -------------------------------- */

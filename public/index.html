@@ -9960,11 +9960,15 @@ function openDetail(title, v1, v2, desc) {
       var kstHours = now.getHours();
       var kstMins = now.getMinutes();
       var timeVal = kstHours * 60 + kstMins;
+      var kstDay = now.getDay(); // 0=일 6=토
 
       var statusTxt = '';
       var countdownTxt = '';
 
-      if (timeVal >= 540 && timeVal < 930) { // 09:00 ~ 15:30
+      if (kstDay === 0 || kstDay === 6) { // 토·일 주말 휴장 (국내 정규장 없음)
+        statusTxt = '🌙 [주말 휴장] 국내 증시 휴장 — 직전 거래일 종가 표시 중';
+        countdownTxt = '(다음 정규장 월요일 09:00 개장 | 주말에는 시세가 금요일 확정 종가입니다)';
+      } else if (timeVal >= 540 && timeVal < 930) { // 09:00 ~ 15:30
         statusTxt = '🟢 [정규장 진행 중] 국내 증시 실시간 거래';
         var remMins = 930 - timeVal;
         countdownTxt = '(15:30 정규장 마감까지 ' + Math.floor(remMins / 60) + '시간 ' + (remMins % 60) + '분)';

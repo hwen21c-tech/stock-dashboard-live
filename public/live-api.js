@@ -729,3 +729,698 @@
     boot();
   }
 })();
+/* ============================================================================
+ * ⚡ 1·3·5번 탭 실시간 API 연동  (/api/tabs-live)
+ * ----------------------------------------------------------------------------
+ *  · 페이지 로드 직후 + 30초마다 + 상단 🔄 즉시 새로고침 시  /api/tabs-live 호출
+ *
+ *   [1번 메인 탭]
+ *     - 8대 테마 32종목 카드: 종가(현재가)·등락률·시/고/저·거래대금 실시간 갱신
+ *       + 테마 헤더의 평균 등락률 / 합산 거래대금 갱신
+ *     - 52주 신고가 돌파 카드 영역 재구축(대금순 · 당일 고가 기준)
+ *     - 거래대금 100억+ 진성 상한가 / +25% 임박 / 관찰 후보 / 제외(100억 미만) 재구축
+ *   [3번 애프터마켓 · 5번 시간별 뉴스 탭]
+ *     - 탭 상단에 "실시간 최신 증시 속보 12건" 리스트를 실시간 렌더
+ *       (기존 스타일·과거 유사사례 섹션은 그대로 보존)
+ *
+ *  · 원칙: API 가 실패하면 화면을 지우지 않는다. 내장(정적) 데이터를 그대로 유지하고
+ *    배지만 '⚠️ 1·3·5탭 API 실패' 로 바꾼다. 확인된 응답값만 표시하고 없는 값은 '—'.
+ * ==========================================================================*/
+(function () {
+  'use strict';
+
+  var TABS_URL = '/api/tabs-live';
+  var POLL_MS = 30000;
+
+  var state = {
+    polling: false,
+    ok: null,
+    timer: null,
+    lastAt: null,
+    lastBody: null,
+    applied: 0,
+    mounted: { news: false, after: false },
+    reqId: 0
+  };
+
+  /* ------------------------------ 포맷 유틸 ------------------------------ */
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function fmt(n) { return isNum(n) ? Math.round(n).toLocaleString('ko-KR') : '—'; }
+  function fmt2(n) {
+    return isNum(n) ? n.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '—';
+  }
+  function pctTxt(p) {
+    if (!isNum(p)) return '—';
+    return (p > 0 ? '+' : '') + p.toFixed(2) + '%';
+  }
+  function colFor(p) {
+    if (!isNum(p) || p === 0) return '#e2e8f0';
+    return p > 0 ? '#f43f5e' : '#38bdf8';
+  }
+  function nowHms() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function norm(s) {
+    return String(s || '').replace(/[★☆\s\u00a0]/g, '').replace(/[()]/g, '').toUpperCase();
+  }
+
+  /* ------------------------------ 상태 배지 ------------------------------ */
+
+  function badgeHost() {
+    return $('.srb-right') || $('.session-radar-bar');
+  }
+
+  function ensureBadge() {
+    var existing = document.getElementById('tabsLiveBadge');
+    if (existing) return existing;
+    var host = badgeHost();
+    if (!host) return null;
+    var el = document.createElement('span');
+    el.id = 'tabsLiveBadge';
+    el.style.cssText = 'padding:3px 8px; font-size:10.5px; font-weight:800; border-radius:4px; ' +
+      'background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.35); white-space:nowrap;';
+    el.textContent = '⚡ 1·3·5탭 연결 중…';
+    var anchor = document.getElementById('liveApiBadge') || document.getElementById('lastSyncTxt');
+    if (anchor && anchor.parentNode === host) host.insertBefore(el, anchor.nextSibling);
+    else host.appendChild(el);
+    return el;
+  }
+
+  function setBadge(ok, text) {
+    var el = ensureBadge();
+    if (!el) return;
+    el.textContent = text;
+    if (ok === true) {
+      el.style.background = 'rgba(16,185,129,0.15)';
+      el.style.color = '#34d399';
+      el.style.borderColor = 'rgba(16,185,129,0.35)';
+    } else if (ok === false) {
+      el.style.background = 'rgba(245,158,11,0.15)';
+      el.style.color = '#fbbf24';
+      el.style.borderColor = 'rgba(245,158,11,0.4)';
+    } else {
+      el.style.background = 'rgba(148,163,184,0.15)';
+      el.style.color = '#94a3b8';
+      el.style.borderColor = 'rgba(148,163,184,0.35)';
+    }
+  }
+
+  /* --------------------- openDetail(...) onclick 재작성 --------------------- */
+
+  function parseCallArgs(str) {
+    var s = String(str || '').trim();
+    var m = s.match(/^openDetail\(([\s\S]*)\);?$/);
+    if (!m) return null;
+    var body = m[1];
+    var args = [];
+    var cur = '';
+    var quote = null;
+    for (var i = 0; i < body.length; i += 1) {
+      var ch = body.charAt(i);
+      if (quote) {
+        if (ch === quote) quote = null;
+        else cur += ch;
+      } else if (ch === "'" || ch === '"') {
+        quote = ch;
+      } else if (ch === ',') {
+        args.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    args.push(cur);
+    return args.map(function (a) { return a.trim(); });
+  }
+
+  function buildOnclick(name, changeText, metaText, reason) {
+    var clean = function (v) { return String(v === undefined || v === null ? '' : v).replace(/'/g, ''); };
+    return "openDetail('" + clean(name) + "', '" + clean(changeText) + "', '" + clean(metaText) + "', '" + clean(reason) + "')";
+  }
+
+  function refreshTileOnclick(tile, name, changeText, metaText) {
+    var cur = tile.getAttribute('onclick');
+    if (!cur) return;
+    var args = parseCallArgs(cur);
+    if (!args || args.length < 2) return;
+    var reason = args.length > 3 ? args[3] : (args[2] || '');
+    var next = buildOnclick(name, changeText, metaText, reason);
+    tile.setAttribute('onclick', next);
+  }
+
+  /* --------------------------- [1탭] 테마 타일 --------------------------- */
+
+  function themeBlocks() {
+    return $$('#tabOverview .theme-grid-8 .theme-block');
+  }
+
+  function findThemeBlock(theme, index) {
+    var blocks = themeBlocks();
+    if (!blocks.length) return null;
+    var kw = norm(theme.keyword || '');
+    for (var i = 0; i < blocks.length; i += 1) {
+      var nameEl = blocks[i].querySelector('.theme-name');
+      if (!nameEl) continue;
+      var nm = norm(nameEl.textContent);
+      if (kw && nm.indexOf(kw) >= 0) return blocks[i];
+    }
+    var byIndex = blocks[(theme.rank || index + 1) - 1] || blocks[index] || null;
+    return byIndex;
+  }
+
+  function applyTile(tile, stock) {
+    if (!tile || !stock) return 0;
+    var hits = 0;
+
+    var changeEl = tile.querySelector('.st-change');
+    if (changeEl && isNum(stock.changePct)) {
+      changeEl.textContent = pctTxt(stock.changePct);
+      changeEl.style.color = colFor(stock.changePct);
+      hits += 1;
+    }
+
+    var ohlcEl = tile.querySelector('.st-ohlc');
+    if (ohlcEl && isNum(stock.price)) {
+      ohlcEl.innerHTML =
+        '종 <strong>' + esc(fmt(stock.price)) + '</strong> | 시 ' + esc(fmt(stock.open)) +
+        ' 고 ' + esc(fmt(stock.high)) + ' 저 ' + esc(fmt(stock.low));
+      hits += 1;
+    }
+
+    var volEl = tile.querySelector('.st-vol');
+    if (volEl && stock.valueText) {
+      volEl.textContent = stock.valueText;
+      volEl.title = '거래대금 ' + stock.valueText + ' (' + (stock.valueBasis || '통합') + ')';
+      hits += 1;
+    }
+
+    if (isNum(stock.price)) {
+      var nameEl = tile.querySelector('.st-name');
+      var shownName = nameEl ? nameEl.textContent.replace(/[★☆\s]/g, '') : (stock.tileName || stock.name);
+      refreshTileOnclick(
+        tile,
+        shownName,
+        pctTxt(stock.changePct),
+        '대금 ' + (stock.valueText || '—') + ' | 현재가 ' + fmt(stock.price) + '원'
+      );
+    }
+
+    if (stock.upperLimit) tile.setAttribute('data-live-upper', '1');
+    else tile.removeAttribute('data-live-upper');
+    tile.setAttribute('data-live', '1');
+    return hits;
+  }
+
+  function applyTheme(theme, block) {
+    if (!block) return 0;
+    var avgEl = block.querySelector('.theme-avg');
+    if (avgEl) {
+      avgEl.style.color = colFor(theme.avgPct);
+      avgEl.innerHTML = esc(pctTxt(theme.avgPct)) +
+        ' <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 ' +
+        esc(theme.sumValueText || '—') + ')</span>';
+      block.setAttribute('data-live-avg', '1');
+    }
+
+    var tiles = $$('.stock-tiles .stock-tile', block);
+    if (!tiles.length) return 0;
+    var byName = {};
+    (theme.stocks || []).forEach(function (s) {
+      if (!s) return;
+      byName[norm(s.tileName)] = s;
+      byName[norm(s.name)] = s;
+    });
+
+    var applied = 0;
+    var sameLen = tiles.length === (theme.stocks || []).length;
+    for (var i = 0; i < tiles.length; i += 1) {
+      var nameEl = tiles[i].querySelector('.st-name');
+      var key = nameEl ? norm(nameEl.textContent) : '';
+      var stock = byName[key] || (sameLen ? theme.stocks[i] : null);
+      if (!stock || stock.missing) continue;
+      if (applyTile(tiles[i], stock) > 0) applied += 1;
+    }
+    return applied;
+  }
+
+  /* ----------------------- [1탭] 52주 신고가 패널 ----------------------- */
+
+  function overviewPanels() {
+    var grid = $('#tabOverview .main-bottom-grid');
+    if (!grid) return { gold: null, red: null };
+    return {
+      gold: grid.querySelector('.panel-box.gold'),
+      red: grid.querySelector('.panel-box.red')
+    };
+  }
+
+  // 패널의 정적 자식(sec-head 제외)을 모두 제거 — 실시간 블록으로 대체
+  function clearPanel(panel, keepId) {
+    Array.prototype.slice.call(panel.children).forEach(function (el) {
+      if (el.id === keepId) return;
+      if (el.className && String(el.className).indexOf('sec-head') >= 0) return;
+      el.remove();
+    });
+  }
+
+  function high52ItemHtml(s) {
+    var highTxt = isNum(s.high) ? fmt(s.high) + '원' : null;
+    var neg = isNum(s.changePct) && s.changePct < 0;
+    var reason = highTxt
+      ? (neg
+        ? '당일 고가 ' + highTxt + '으로 52주 신고가를 터치한 뒤 종가 기준 ' + pctTxt(s.changePct) + '로 밀림 · 거래대금 ' + (s.valueText || '—')
+        : '당일 고가 ' + highTxt + '으로 52주 신고가 경신 · 거래대금 ' + (s.valueText || '—') + ' 유입 (네이버 증권 52주 신고가 목록)')
+      : '당일 52주 신고가 목록 편입 · 거래대금 ' + (s.valueText || '—');
+    var metaTxt = '대금 ' + (s.valueText || '—') + (highTxt ? ' | 고가 ' + highTxt : '') +
+      ' (52주 신고가' + (neg ? ' 터치 후 하락' : '') + ')';
+    return '' +
+      '<div class="reason-item" data-live="1" onclick="' +
+        esc(buildOnclick(s.name + ' (' + s.code + ')', fmt(s.price) + '원 (' + pctTxt(s.changePct) + ')', metaTxt, reason)) + '">' +
+        '<div class="ri-head"><span>★ ' + esc(s.name) + (neg ? ' <span style="font-size:9.5px; color:#94a3b8;">(신고가 터치 후 하락)</span>' : '') + '</span>' +
+          '<span style="color:' + colFor(s.changePct) + ';">' + esc(fmt(s.price)) + '원 (' + esc(pctTxt(s.changePct)) + ')</span></div>' +
+        '<div class="ri-meta">' + esc(metaTxt) + '</div>' +
+        '<div class="ri-reason gold">' + esc(reason) + '</div>' +
+      '</div>';
+  }
+
+  function renderHigh52(panel, data, stamp) {
+    if (!panel || !data) return 0;
+    var head = panel.querySelector('.sec-head');
+    var sub = head ? head.querySelector('.sub') : null;
+    if (sub) sub.textContent = '네이버 52주 신고가 목록 · 대금순 · ⚡ ' + stamp + ' 갱신';
+
+    var list = (data.byValue && data.byValue.length ? data.byValue : data.byPct) || [];
+    if (!list.length) return 0;
+
+    var host = panel.querySelector('#tabsLiveHigh52');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'tabsLiveHigh52';
+      clearPanel(panel, 'tabsLiveHigh52');
+      if (head && head.nextSibling) panel.insertBefore(host, head.nextSibling);
+      else panel.appendChild(host);
+    }
+
+    var html = list.map(high52ItemHtml).join('');
+    html += '<div style="font-size:10px; color:#64748b; margin-top:6px;">' +
+      '※ 네이버 증권 52주 신고가 목록(당일 신고가 터치 종목) · 코스피 ' +
+      esc(String((data.counts && data.counts.KOSPI) || 0)) + '종목 · 코스닥 ' +
+      esc(String((data.counts && data.counts.KOSDAQ) || 0)) + '종목 중 거래대금 상위.<br>' +
+      '※ 거래대금은 통합(KRX+NXT·시간외 포함) 기준입니다.</div>';
+
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+    }
+    panel.setAttribute('data-live', '1');
+    return list.length;
+  }
+
+  /* --------------------- [1탭] 100억+ 상한가 패널 --------------------- */
+
+  function upperItemHtml(s, kind) {
+    var isUpper = kind === 'confirmed';
+    var badge = isUpper
+      ? '👑 ★ '
+      : (kind === 'near' ? '🚨 ★ ' : '★ ');
+    var gap = isNum(s.gapToLimit) ? s.gapToLimit : null;
+    var changeLabel = isUpper
+      ? pctTxt(s.changePct) + ' (100억+ 진성 상한가 🚀)'
+      : (kind === 'near'
+        ? pctTxt(s.changePct) + ' (+25% 돌파 · 상한가 임박 🚨)'
+        : pctTxt(s.changePct) + ' (25% 돌파까지 ' + (gap !== null && gap > 0 ? '+' + gap.toFixed(2) + '%p 남음' : '—') + ')');
+    var changeCol = isUpper ? '#f43f5e' : (kind === 'near' ? '#fbbf24' : '#fde047');
+    var border = kind === 'watch' ? '#fbbf24' : '#f43f5e';
+    var bg = kind === 'watch' ? 'rgba(251,191,36,0.05)' : 'rgba(244,63,94,0.06)';
+    var metaTxt = '거래대금 ' + (s.valueText || '—') + ' | 현재가 ' + fmt(s.price) + '원' +
+      (isNum(s.high) ? ' | 고가 ' + fmt(s.high) + '원' : '');
+    var reason = isUpper
+      ? '당일 거래대금 ' + (s.valueText || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' 상한가 안착.'
+      : (kind === 'near'
+        ? '당일 거래대금 ' + (s.valueText || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' — +25% 상한가 임박 기준을 돌파한 상태입니다.'
+        : '당일 거래대금 ' + (s.valueText || '—') + ' 유입 · 25% 돌파까지 ' +
+          (gap !== null && gap > 0 ? '+' + gap.toFixed(2) + '%p 남음' : '—'));
+
+    return '' +
+      '<div class="reason-item" data-live="1" style="border-left: 3px solid ' + border + '; background: ' + bg + ';" onclick="' +
+        esc(buildOnclick(s.name + ' (' + s.code + ')', fmt(s.price) + '원 (' + pctTxt(s.changePct) + ')', metaTxt, reason)) + '">' +
+        '<div class="ri-head"><span style="color:#ffffff; font-weight:800;">' + badge + esc(s.name) + '</span> ' +
+          '<span style="color:' + changeCol + '; font-weight:800; font-size:' + (kind === 'watch' ? '11.5px' : '12px') + ';">' +
+          esc(changeLabel) + '</span></div>' +
+        '<div class="ri-meta"' + (isUpper ? ' style="color:#fca5a5; font-weight:700;"' : '') + '>' + esc(metaTxt) + '</div>' +
+        (kind === 'watch' ? '' : '<div class="ri-reason red">' + esc(reason) + '</div>') +
+      '</div>';
+  }
+
+  function renderUpperLimit(panel, data, stamp) {
+    if (!panel || !data) return 0;
+    var head = panel.querySelector('.sec-head');
+    var sub = head ? head.querySelector('.sub') : null;
+    if (sub) sub.textContent = '100억+ & +25% 엄격 기준 · ⚡ ' + stamp + ' 갱신';
+
+    var confirmed = data.confirmed || [];
+    var near = data.near || [];
+    var watch = data.watch || [];
+    var excluded = data.excluded || [];
+    if (!confirmed.length && !near.length && !watch.length && !excluded.length) return 0;
+
+    var html = '';
+    html += confirmed.map(function (s) { return upperItemHtml(s, 'confirmed'); }).join('');
+    html += near.map(function (s) { return upperItemHtml(s, 'near'); }).join('');
+
+    if (watch.length) {
+      html += '<div style="font-size: 11px; font-weight: 800; color: #fbbf24; margin: 8px 0 4px 2px;">' +
+        '👀 +25% 상한가 임박 돌파 관찰 후보 (거래대금 100억+ 유입)</div>';
+      html += watch.map(function (s) { return upperItemHtml(s, 'watch'); }).join('');
+    }
+
+    var note = '※ <strong>상한가·임박 기준은 \'상승률 +25% 이상 &amp; 거래대금 100억 이상\'</strong>에만 부여됩니다 (현재 판정: 진성 상한가 ' +
+      confirmed.length + ' · 임박 ' + near.length + ' · 관찰 ' + watch.length + ').<br>';
+    if (excluded.length) {
+      note += '※ 거래대금 100억 미만 소형주 ' + excluded.length + '종목은 진성 기준에서 제외: ' +
+        excluded.map(function (s) {
+          return esc(s.name) + '(' + esc(pctTxt(s.changePct)) + ', ' + esc(s.valueText || '—') + ')';
+        }).join(', ') + '. 장중 100억 돌파 시 즉시 자동 편입됩니다.<br>';
+    }
+    note += '※ 거래대금은 통합(KRX+NXT·시간외 포함) 기준입니다.';
+
+    var host = panel.querySelector('#tabsLiveUpper');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'tabsLiveUpper';
+      clearPanel(panel, 'tabsLiveUpper');
+      if (head && head.nextSibling) panel.insertBefore(host, head.nextSibling);
+      else panel.appendChild(host);
+    }
+
+    html += '<div style="font-size: 10px; color: #64748b; margin-top: 6px;">' + note + '</div>';
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+    }
+    panel.setAttribute('data-live', '1');
+    return confirmed.length + near.length + watch.length;
+  }
+
+  /* ------------------------ [3·5탭] 실시간 뉴스 ------------------------ */
+
+  function newsMeta(n) {
+    var bits = [];
+    if (n.date) bits.push(n.date);
+    if (n.time) bits.push(n.time);
+    if (n.press) bits.push(n.press);
+    return bits.join(' · ');
+  }
+
+  function newsNewsCard(n) {
+    var href = n.url ? esc(n.url) : '';
+    var link = href
+      ? '<a href="' + href + '" target="_blank" rel="noopener noreferrer" style="font-size:10.5px; background:rgba(56,189,248,0.15); color:#7dd3fc; border:1px solid rgba(56,189,248,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>'
+      : '';
+    var onclick = href
+      ? esc(buildOnclick(n.title, (n.time || '') + ' 속보', href, '네이버 증권 실시간 뉴스 · ' + (n.press || '')))
+      : '';
+    return '' +
+      '<div class="news-timeline-card" data-live="1" style="border-left-color:#38bdf8;"' +
+        (onclick ? ' onclick="' + onclick + '"' : '') + '>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">' +
+          '<div style="display:flex; align-items:center; gap:6px;">' +
+            '<span class="nt-time" style="background:#0c4a6e; color:#bae6fd;">' + esc(n.time || '—') + ' 실시간 속보 ⚡</span>' +
+            '<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-weight:700;">🏷️ ' + esc(n.press || '증시') + '</span>' +
+          '</div>' + link +
+        '</div>' +
+        '<div class="nt-title">' + esc(n.title) + '</div>' +
+        (n.summary ? '<div class="nt-history">' + esc(n.summary) + '</div>' : '') +
+        '<div class="nt-beneficiary">🕒 ' + esc(newsMeta(n)) + ' · 네이버 증권 실시간 뉴스</div>' +
+      '</div>';
+  }
+
+  function afNewsCard(n) {
+    var href = n.url ? esc(n.url) : '';
+    var link = href
+      ? '<a href="' + href + '" target="_blank" rel="noopener noreferrer" style="font-size:10px; background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.4); padding:2px 7px; border-radius:4px; text-decoration:none; font-weight:800;" onclick="event.stopPropagation()">🔗 기사 원문 ↗</a>'
+      : '';
+    var onclick = href
+      ? esc(buildOnclick(n.title, (n.time || '') + ' 속보', href, '네이버 증권 실시간 뉴스 · ' + (n.press || '')))
+      : '';
+    return '' +
+      '<div class="af-card" data-live="1" style="border-left: 3px solid #a855f7;"' +
+        (onclick ? ' onclick="' + onclick + '"' : '') + '>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">' +
+          '<span class="af-time">' + esc(n.time || '—') + ' 실시간 속보 ⚡</span>' + link +
+        '</div>' +
+        '<div class="af-title">' + esc(n.title) + '</div>' +
+        (n.summary ? '<div class="af-move">' + esc(n.summary) + '</div>' : '') +
+        '<div class="af-history">🕒 ' + esc(newsMeta(n)) + ' · 네이버 증권 실시간 뉴스</div>' +
+      '</div>';
+  }
+
+  function newsBoxHtml(inner, list, stamp, titleSuffix, accent) {
+    return '' +
+      '<div class="panel-box" style="background:#111827; border-color:' + accent.border + '; margin-bottom:12px;">' +
+        '<div class="sec-head" style="border-bottom-color:' + accent.border + '; color:' + accent.color + '; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">' +
+          '<span style="font-weight:800; font-size:12.5px;">📡 실시간 최신 증시 속보 ' + list.length + '건 ' + esc(titleSuffix) + '</span>' +
+          '<span class="sub" style="color:' + accent.color + ';">⚡ ' + esc(stamp) + ' 갱신 · 네이버 증권</span>' +
+        '</div>' + inner +
+        '<div style="font-size:10px; color:#64748b; margin-top:6px;">' +
+          '※ 네이버 증권 실시간 뉴스 목록에서 방금 받아온 최신 속보입니다. 아래 기존 타임라인·과거 유사사례 섹션은 그대로 유지됩니다.' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderNewsInto(tabEl, mountId, list, stamp, buildCard, accent, titleSuffix) {
+    if (!tabEl || !list.length) return 0;
+    var host = document.getElementById(mountId);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = mountId;
+      tabEl.insertBefore(host, tabEl.firstChild);
+    }
+    var inner = list.map(buildCard).join('');
+    var html = newsBoxHtml(inner, list, stamp, titleSuffix, accent);
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+    }
+    host.setAttribute('data-live', '1');
+    return list.length;
+  }
+
+  function renderNews(body, stamp) {
+    var news = body.news || [];
+    if (!news.length) return 0;
+    var a = renderNewsInto(
+      document.getElementById('tabAftermarket'),
+      'tabsLiveAfterNews',
+      news,
+      stamp,
+      afNewsCard,
+      { border: '#9333ea', color: '#c084fc' },
+      '(애프터마켓 · 장마감 후)'
+    );
+    var b = renderNewsInto(
+      document.getElementById('tabNews'),
+      'tabsLiveNewsTab',
+      news,
+      stamp,
+      newsNewsCard,
+      { border: '#9333ea', color: '#c084fc' },
+      '(시간별 뉴스)'
+    );
+    state.mounted.after = a > 0;
+    state.mounted.news = b > 0;
+    return a + b;
+  }
+
+  /* ------------------ 주말/휴장 표현 정정 (정적 문구) ------------------ */
+
+  function fixSessionWording(phase) {
+    if (phase !== '주말휴장') return;
+    var roots = [document.getElementById('tabAftermarket'), document.getElementById('tabOverview')];
+    roots.forEach(function (root) {
+      if (!root) return;
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      var hits = [];
+      var node;
+      while ((node = walker.nextNode())) {
+        var t = node.nodeValue || '';
+        if (t.indexOf('정규장 진행 중') >= 0) hits.push(node);
+      }
+      hits.forEach(function (n) {
+        n.nodeValue = n.nodeValue.replace(/정규장 진행 중/g, '주말 휴장');
+      });
+    });
+  }
+
+  /* ------------------------------ 적용 총괄 ------------------------------ */
+
+  function markThemeHead(stamp) {
+    var grid = document.querySelector('#tabOverview .theme-grid-8');
+    if (!grid) return;
+    var head = grid.previousElementSibling;
+    var sub = head && head.querySelector ? head.querySelector('.sub') : null;
+    if (!sub) return;
+    var base = '스탁이지 · 주맵 실시간 체결 검증';
+    sub.textContent = base + ' · ⚡ ' + stamp + ' 갱신';
+    sub.setAttribute('data-live', '1');
+  }
+
+  function apply(body) {
+    var stamp = body.generatedAtKst || nowHms();
+    var applied = 0;
+
+    // 1번 탭 — 8대 테마
+    var themes = body.themes || [];
+    themes.forEach(function (t, i) {
+      var block = findThemeBlock(t, i);
+      if (block) applied += applyTheme(t, block);
+    });
+    if (themes.length) markThemeHead(stamp);
+
+    // 1번 탭 — 52주 신고가 / 100억+ 상한가
+    var panels = overviewPanels();
+    applied += renderHigh52(panels.gold, body.high52, stamp);
+    applied += renderUpperLimit(panels.red, body.upperLimit, stamp);
+
+    // 3·5번 탭 — 실시간 뉴스
+    applied += renderNews(body, stamp);
+
+    // 주말 휴장 문구 정정
+    fixSessionWording(body.sessionPhase);
+
+    state.applied = applied;
+    return applied;
+  }
+
+  /* ------------------------------ 폴링 ------------------------------ */
+
+  function poll(fresh) {
+    if (state.polling) return;
+    state.polling = true;
+    state.reqId += 1;
+    var reqId = state.reqId;
+
+    var controller = null;
+    var timer = null;
+    try { controller = new AbortController(); } catch (e) { controller = null; }
+    if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, 14000);
+
+    var url = TABS_URL + (fresh ? '?fresh=1' : '');
+    fetch(url, controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var json = null;
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+          return { status: res.status, body: json };
+        });
+      })
+      .then(function (out) {
+        if (timer) clearTimeout(timer);
+        state.polling = false;
+        if (reqId !== state.reqId) return;
+        var body = out.body;
+        if (!body || body.ok !== true) {
+          state.ok = false;
+          setBadge(false, '⚠️ 1·3·5탭 API 응답 없음 · 내장 데이터 유지');
+          console.warn('[TabsLive] API 실패 (HTTP ' + out.status + ') — 내장 데이터 유지');
+          return;
+        }
+        var applied = apply(body);
+        state.lastBody = body;
+        if (applied > 0) {
+          state.ok = true;
+          state.lastAt = nowHms();
+          setBadge(true, '⚡ 1·3·5탭 LIVE ' + state.lastAt + ' 갱신');
+          console.log('[TabsLive] ' + body.generatedAtKst + ' ' + body.sessionPhase +
+            ' 테마=' + (body.themes || []).length +
+            ' 52주=' + (body.high52 ? (body.high52.byValue || []).length : 0) +
+            ' 상한가=' + (body.upperLimit ? (body.upperLimit.confirmed || []).length : 0) +
+            ' 임박=' + (body.upperLimit ? (body.upperLimit.near || []).length : 0) +
+            ' 뉴스=' + (body.news || []).length + ' applied=' + applied +
+            ' errors=' + (body.errors || []).length);
+        } else {
+          state.ok = false;
+          setBadge(false, '⚠️ 1·3·5탭 갱신 항목 없음 · 내장 데이터 유지');
+        }
+      })
+      .catch(function (err) {
+        if (timer) clearTimeout(timer);
+        state.polling = false;
+        if (reqId !== state.reqId) return;
+        state.ok = false;
+        var reason = err && err.name === 'AbortError' ? '응답 시간 초과' : (err && err.message ? err.message : String(err));
+        setBadge(false, '⚠️ 1·3·5탭 API 연결 실패 · 내장 데이터 유지');
+        console.warn('[TabsLive] 호출 실패: ' + reason);
+      });
+  }
+
+  function start() {
+    poll(false);
+    if (state.timer) clearInterval(state.timer);
+    state.timer = setInterval(function () {
+      if (document.hidden) return;
+      poll(false);
+    }, POLL_MS);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) poll(false);
+    });
+  }
+
+  /* --------------- 🔄 즉시 새로고침 — 누르면 tabs-live 도 갱신 --------------- */
+
+  function patchForceRefresh() {
+    var orig = window.forceLiveRefresh;
+    if (typeof orig !== 'function') return false;
+    if (orig.__tabsPatched) return true;
+    var patched = function () {
+      try {
+        console.log('[TabsLive] 🔄 즉시 새로고침 → /api/tabs-live?fresh=1');
+        poll(true);
+      } catch (e) { /* noop */ }
+      return orig.apply(this, arguments);
+    };
+    patched.__tabsPatched = true;
+    window.forceLiveRefresh = patched;
+    return true;
+  }
+
+  window.TabsLive = {
+    poll: poll,
+    start: start,
+    apply: apply,
+    refresh: function () { poll(true); },
+    state: state,
+    _applyTheme: applyTheme,
+    _renderHigh52: renderHigh52,
+    _renderUpperLimit: renderUpperLimit,
+    _renderNews: renderNews
+  };
+
+  function boot() {
+    if (!patchForceRefresh()) {
+      var tries = 0;
+      var t = setInterval(function () {
+        tries += 1;
+        if (patchForceRefresh() || tries > 20) clearInterval(t);
+      }, 250);
+    }
+    start();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
