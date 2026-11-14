@@ -792,7 +792,7 @@
       { kind: 'foreign', re: /^외인|^외국인/ },
       { kind: 'organ', re: /^기관/ },
       // '−8,720억 원' 처럼 숫자만 적힌 배지(외국인 순매도 패널)는 있으면 갱신만 한다
-      { kind: 'foreign', re: /^-?[\d,]+(\.\d+)?\s*억\s*원?$/, create: false }
+      { kind: 'foreign', re: /^-?[\d,]+(\.\d+)?\s*억\s*원?$/, create: false, plain: true }
     ];
     targets.forEach(function (t) {
       var badge = null;
@@ -801,6 +801,8 @@
       }
       var text = trendBadgeText(t.kind, row);
       if (!text) return;
+      // 숫자만 있던 배지는 접두어 없이 금액만 (같은 카드에 '외인 …' 배지가 이미 있을 수 있다)
+      if (t.plain) text = signedEok(t.kind === 'organ' ? row.organAmount : row.foreignAmount);
       if (!badge) {
         if (t.create === false) return;   // 숫자만 있던 배지는 새로 만들지 않는다
         badge = document.createElement('span');
@@ -901,7 +903,7 @@
       if (!span) return;
       var t = span.textContent || '';
       var shortBasis = String(basisLabel || '').replace(/\([^)]*\)/, '').trim();
-      var next = t.replace(/\(\d{1,2}\/\d{1,2}\s*실시간 관제\)/, '(' + shortBasis + ' 확정 · 자동 갱신)');
+      var next = t.replace(/\(\d{1,2}\/\d{1,2}\s*실시간 관제\)/, '(' + shortBasis + ' 확정)');
       if (next !== t) {
         span.textContent = next;
         span.setAttribute('data-live', '1');
