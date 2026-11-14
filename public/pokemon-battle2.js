@@ -1102,9 +1102,11 @@
         fn.__pb2fx = true;
         window.shakeScreen = fn;
       }
-      /* 몬스터볼이 흔들릴 때마다(1·2·3) 공 주변에 작은 스파크 */
+      /* 몬스터볼이 흔들릴 때마다(1·2·3) 공 주변에 작은 스파크
+         (페이지의 Sound 는 top-level const 라 window 에는 없고 이름으로만 닿는다) */
       try {
-        const snd = window.Sound;
+        let snd = null;
+        try { snd = Sound; } catch (e0) { snd = window.Sound || null; }
         if (snd && typeof snd.shake === 'function' && !snd.shake.__pb2fx) {
           const orig = snd.shake;
           const fn = function () {
