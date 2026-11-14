@@ -8,7 +8,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
-      return Promise.all(keys.map((key) => caches.delete(key)));
+      // 포켓몬 배틀 월드(/pokemon/, 접두사 pkm-world-)의 오프라인 캐시는 건드리지 않는다 — 독립 앱.
+      return Promise.all(keys.filter((key) => !key.startsWith('pkm-world-')).map((key) => caches.delete(key)));
     }).then(() => self.clients.claim())
   );
 });
