@@ -313,7 +313,7 @@
   var RN_BATCH = 4;           // 배치당 종목 수
   var RN_GAP_MS = 400;        // 종목 사이 간격
   var RN_CYCLE_MS = 300000;   // RN 탭을 보는 동안 5분마다 백그라운드 갱신
-  var rnRefresh = { running: false, ok: 0, fail: 0, total: 0, lastAt: null, timer: null, promise: null };
+  var rnRefresh = { running: false, ok: 0, fail: 0, total: 0, lastAt: null, lastMs: null, timer: null, promise: null };
 
   function sleep(ms) {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -379,6 +379,11 @@
   function refreshRnList(opts) {
     opts = opts || {};
     if (rnRefresh.running) return rnRefresh.promise || Promise.resolve({ skipped: true });
+    // 60초 안에 끝난 실측값이 있으면 같은 데이터를 다시 받지 않는다(수동 새로고침은 force:true)
+    var quietMs = typeof opts.withinMs === 'number' ? opts.withinMs : 60000;
+    if (!opts.force && rnRefresh.lastMs && (Date.now() - rnRefresh.lastMs) < quietMs) {
+      return Promise.resolve({ skipped: true, fresh: true, lastAt: rnRefresh.lastAt });
+    }
     var all = rnCodes();
     if (!all.length) return Promise.resolve({ ok: 0, fail: 0, total: 0 });
 
@@ -403,6 +408,7 @@
       function finish() {
         rnRefresh.running = false;
         rnRefresh.lastAt = nowText();
+        rnRefresh.lastMs = Date.now();
         // RN 실측값이 갱신되면 1번 탭 '실전 타점 신호등' 칩도 다시 만든다
         try { if (window.LiveExtra && typeof window.LiveExtra.renderChips === 'function') window.LiveExtra.renderChips(); } catch (e) { /* noop */ }
         if (rnRefresh.fail === 0) {
@@ -457,9 +463,13 @@
       var out = orig.apply(this, arguments);
       try {
         if (view === 'rnzone') {
-          refreshRnList({ onlySelected: true })
-            .then(function () { return sleep(700); })
-            .then(function () { if (isRnTabVisible()) refreshRnList(); });
+          // 방금(60초 이내) 실측 갱신이 끝났으면 같은 데이터를 또 받지 않는다 — 불필요한 API 호출·진행률 0/11 깜빡임 방지
+          var justRefreshed = rnRefresh.lastMs && (Date.now() - rnRefresh.lastMs) < 60000;
+          if (!justRefreshed) {
+            refreshRnList({ onlySelected: true })
+              .then(function () { return sleep(700); })
+              .then(function () { if (isRnTabVisible()) refreshRnList(); });
+          }
         }
       } catch (e) { /* noop */ }
       return out;
@@ -477,7 +487,7 @@
       try {
         poll();
         manjuMap(true);
-        if (isRnTabVisible()) refreshRnList();
+        if (isRnTabVisible()) refreshRnList({ force: true });
       } catch (e) { /* noop */ }
       return orig.apply(this, arguments);
     };
