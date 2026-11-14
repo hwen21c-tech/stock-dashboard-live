@@ -1144,6 +1144,93 @@
     return bits.join(' · ');
   }
 
+  /* -------- 속보 영향도·테마·수혜주 배지 (키워드 자동 분석 결과 표시) -------- */
+
+  var IMPACT_STYLE = {
+    '호재': { icon: '📈', bg: 'rgba(244,63,94,0.16)', color: '#fb7185', border: 'rgba(244,63,94,0.45)' },
+    '주의': { icon: '⚠️', bg: 'rgba(251,191,36,0.16)', color: '#fbbf24', border: 'rgba(251,191,36,0.45)' },
+    '중립': { icon: '➖', bg: 'rgba(148,163,184,0.14)', color: '#cbd5e1', border: 'rgba(148,163,184,0.4)' }
+  };
+  var NEUTRAL_STYLE = { bg: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: 'rgba(148,163,184,0.35)' };
+
+  function cleanArg(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/['"\\\r\n]/g, '');
+  }
+
+  function impactBadge(n) {
+    var lvl = n.impactLevel || '참고';
+    var dir = n.impactDirection || '중립';
+    var st = IMPACT_STYLE[dir] || IMPACT_STYLE['중립'];
+    var neutral = lvl === '참고';
+    var text = neutral ? '📌 참고' : st.icon + ' ' + dir + ' · ' + lvl;
+    var bg = neutral ? NEUTRAL_STYLE.bg : st.bg;
+    var color = neutral ? NEUTRAL_STYLE.color : st.color;
+    var border = neutral ? NEUTRAL_STYLE.border : st.border;
+    var kw = (n.matchedKeywords || []).join('·');
+    var tip = '키워드 자동 분석 · 영향도 ' + lvl + ' / 방향 ' + dir + (kw ? ' / 키워드 ' + kw : '');
+    return '<span title="' + esc(tip) + '" style="font-size:10px; font-weight:800; display:inline-block; padding:2px 7px; border-radius:4px; background:' +
+      bg + '; color:' + color + '; border:1px solid ' + border + '; white-space:nowrap;">' + esc(text) + '</span>';
+  }
+
+  function impactThemeChips(n) {
+    var themes = n.matchedThemes || [];
+    if (!themes.length) return '';
+    return '<div style="display:flex; flex-wrap:wrap; gap:4px; margin:5px 0 3px 0;">' +
+      themes.map(function (t) {
+        return '<span style="font-size:10px; font-weight:800; color:#c4b5fd; background:rgba(168,85,247,0.14); border:1px solid rgba(168,85,247,0.38); padding:2px 6px; border-radius:4px; white-space:nowrap;">🏷️ ' + esc(t) + '</span>';
+      }).join('') + '</div>';
+  }
+
+  function impactStockChips(n) {
+    var list = n.beneficiaryStocks || [];
+    if (!list.length) return '';
+    var chips = list.map(function (s) {
+      var code = cleanArg(s.code);
+      var name = cleanArg(s.name);
+      return '<span onclick="event.stopPropagation();tabsLiveOpenStock(\'' + name + '\', \'' + code + '\')"' +
+        ' title="종목코드 ' + esc(code) + ' · 누르면 RN존 실전 차트로 이동"' +
+        ' style="font-size:10px; font-weight:800; color:#6ee7b7; background:rgba(16,185,129,0.13); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">' +
+        '🎯 ' + esc(s.name) + ' <span style="font-size:9px; opacity:.7; font-weight:700;">' + esc(s.code) + '</span>' +
+        '<a href="https://m.stock.naver.com/item/' + encodeURIComponent(code) + '" target="_blank" rel="noopener noreferrer"' +
+        ' onclick="event.stopPropagation()" title="네이버 증권 호가창 (새 탭)"' +
+        ' style="color:#6ee7b7; text-decoration:none; opacity:.75; font-weight:900; padding-left:2px;">↗</a></span>';
+    }).join('');
+    return '<div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin:2px 0 3px 0;">' +
+      '<span style="font-size:10px; font-weight:800; color:#34d399;">수혜·관련주</span>' + chips + '</div>';
+  }
+
+  function impactNoteLine(n) {
+    if (!n.impactNote) return '';
+    return '<div style="font-size:10px; color:#94a3b8; line-height:1.45; margin:3px 0 4px 0; padding-top:3px; border-top:1px dashed rgba(148,163,184,0.22);">🔎 ' +
+      esc(n.impactNote) + '</div>';
+  }
+
+  /* 종목 칩 → RN존 실전 차트(실시간 60일봉 + RN 지지/저항). 실패 시 네이버 호가창으로 대체. */
+  function openStockFromNews(name, code) {
+    var fallback = function () {
+      try { window.open('https://m.stock.naver.com/item/' + encodeURIComponent(code), '_blank', 'noopener'); } catch (e) { /* noop */ }
+    };
+    try {
+      var input = document.getElementById('liveStockQuery');
+      var canRn = input && window.RnZone && window.LiveAPI &&
+        typeof window.LiveAPI.searchStock === 'function' && typeof window.switchView === 'function';
+      if (!canRn) { fallback(); return; }
+      input.value = String(code || '');
+      window.switchView('rnzone', null);
+      setTimeout(function () { try { window.LiveAPI.searchStock(); } catch (e) { fallback(); } }, 60);
+    } catch (e) { fallback(); }
+  }
+  window.tabsLiveOpenStock = openStockFromNews;
+
+  function impactCounts(list) {
+    var c = { '상': 0, '중': 0, '참고': 0 };
+    (list || []).forEach(function (n) {
+      var l = n && n.impactLevel;
+      if (c[l] === undefined) c['참고'] += 1; else c[l] += 1;
+    });
+    return c;
+  }
+
   function newsNewsCard(n) {
     var href = n.url ? esc(n.url) : '';
     var link = href
@@ -1155,14 +1242,18 @@
     return '' +
       '<div class="news-timeline-card" data-live="1" style="border-left-color:#38bdf8;"' +
         (onclick ? ' onclick="' + onclick + '"' : '') + '>' +
-        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">' +
-          '<div style="display:flex; align-items:center; gap:6px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:5px;">' +
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
             '<span class="nt-time" style="background:#0c4a6e; color:#bae6fd;">' + esc(n.time || '—') + ' 실시간 속보 ⚡</span>' +
             '<span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-weight:700;">🏷️ ' + esc(n.press || '증시') + '</span>' +
+            impactBadge(n) +
           '</div>' + link +
         '</div>' +
         '<div class="nt-title">' + esc(n.title) + '</div>' +
         (n.summary ? '<div class="nt-history">' + esc(n.summary) + '</div>' : '') +
+        impactThemeChips(n) +
+        impactStockChips(n) +
+        impactNoteLine(n) +
         '<div class="nt-beneficiary">🕒 ' + esc(newsMeta(n)) + ' · 네이버 증권 실시간 뉴스</div>' +
       '</div>';
   }
@@ -1178,24 +1269,37 @@
     return '' +
       '<div class="af-card" data-live="1" style="border-left: 3px solid #a855f7;"' +
         (onclick ? ' onclick="' + onclick + '"' : '') + '>' +
-        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">' +
-          '<span class="af-time">' + esc(n.time || '—') + ' 실시간 속보 ⚡</span>' + link +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:5px;">' +
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
+            '<span class="af-time">' + esc(n.time || '—') + ' 실시간 속보 ⚡</span>' +
+            impactBadge(n) +
+          '</div>' + link +
         '</div>' +
         '<div class="af-title">' + esc(n.title) + '</div>' +
         (n.summary ? '<div class="af-move">' + esc(n.summary) + '</div>' : '') +
+        impactThemeChips(n) +
+        impactStockChips(n) +
+        impactNoteLine(n) +
         '<div class="af-history">🕒 ' + esc(newsMeta(n)) + ' · 네이버 증권 실시간 뉴스</div>' +
       '</div>';
   }
 
   function newsBoxHtml(inner, list, stamp, titleSuffix, accent) {
+    var c = impactCounts(list);
     return '' +
       '<div class="panel-box" style="background:#111827; border-color:' + accent.border + '; margin-bottom:12px;">' +
         '<div class="sec-head" style="border-bottom-color:' + accent.border + '; color:' + accent.color + '; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">' +
           '<span style="font-weight:800; font-size:12.5px;">📡 실시간 최신 증시 속보 ' + list.length + '건 ' + esc(titleSuffix) + '</span>' +
           '<span class="sub" style="color:' + accent.color + ';">⚡ ' + esc(stamp) + ' 갱신 · 네이버 증권</span>' +
-        '</div>' + inner +
+        '</div>' +
+        '<div style="font-size:10px; color:#94a3b8; margin-bottom:8px;">' +
+          '🔎 키워드 자동 분석 — 영향도 <strong style="color:#fb7185;">상 ' + c['상'] + '</strong> · ' +
+          '<strong style="color:#fbbf24;">중 ' + c['중'] + '</strong> · ' +
+          '<strong style="color:#94a3b8;">참고 ' + c['참고'] + '</strong> / 테마·수혜주는 매칭된 기사에만 표기' +
+        '</div>' +
+        inner +
         '<div style="font-size:10px; color:#64748b; margin-top:6px;">' +
-          '※ 네이버 증권 실시간 뉴스 목록에서 방금 받아온 최신 속보입니다. 아래 기존 타임라인·과거 유사사례 섹션은 그대로 유지됩니다.' +
+          '※ 네이버 증권 실시간 뉴스 목록에서 방금 받아온 최신 속보입니다. 영향도·테마·수혜주는 제목·요약 키워드 자동 분석 결과이며(정시 AI 심층 분석과 구분), 섹터 키워드가 없는 기사는 종목을 붙이지 않고 수혜·관련주를 비웁니다. 아래 기존 타임라인·과거 유사사례 섹션은 그대로 유지됩니다.' +
         '</div>' +
       '</div>';
   }

@@ -10,6 +10,9 @@
  *  2) 52주 신고가 돌파 종목              : m.stock.naver.com/api/stocks/high52week/{KOSPI,KOSDAQ}
  *  3) 거래대금 100억+ 진성 상한가 & 임박  : m.stock.naver.com/api/stocks/up/{KOSPI,KOSDAQ}
  *  4) 최신 증시 속보 뉴스 12건            : stock.naver.com/api/domestic/news/list
+ *     - 각 속보는 제목·요약 키워드 규칙(lib/news-impact.js)으로
+ *       impactLevel · impactDirection · matchedThemes · beneficiaryStocks · impactNote 를 붙인다.
+ *       섹터·종목 키워드가 없는 기사는 빈 배열 + '참고' + '일반 속보' 로 남긴다(가짜 매칭 금지).
  *
  *  원칙
  *   - 확인된 응답값만 담는다. 없는 값은 null 로 두고 사유·전망 문장을 만들지 않는다.
@@ -30,6 +33,7 @@ const {
   sendJson,
   getQuery,
 } = require('../lib/http');
+const { analyzeNewsItem } = require('../lib/news-impact');
 
 const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
 const REFRESH_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=10';
@@ -373,19 +377,23 @@ async function fetchNews() {
       .map((n) => {
         const dt = String(n.datetime || '');
         const m = dt.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
-        return {
-          title: String(n.title).replace(/\s+/g, ' ').trim(),
+        const title = String(n.title).replace(/\s+/g, ' ').trim();
+        // 분석은 잘리기 전 원문 요약으로, 화면 표시는 160자로 자른다.
+        const fullSummary = n.subcontent ? String(n.subcontent).replace(/\s+/g, ' ').trim() : null;
+        const item = {
+          title,
           press: n.officeHname || n.officeName || null,
           datetime: dt || null,
           date: m ? `${m[1]}-${m[2]}-${m[3]}` : null,
           time: m ? `${m[4]}:${m[5]}` : null,
-          summary: n.subcontent ? String(n.subcontent).replace(/\s+/g, ' ').trim().slice(0, 160) : null,
+          summary: fullSummary ? fullSummary.slice(0, 160) : null,
           url:
             n.officeId && n.articleId
               ? `https://n.news.naver.com/article/${n.officeId}/${n.articleId}`
               : null,
           source: 'naver-news',
         };
+        return { ...item, ...analyzeNewsItem({ title, summary: fullSummary }) };
       })
       .slice(0, NEWS_COUNT);
 

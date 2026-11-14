@@ -294,6 +294,154 @@ summary.tabsLive = {
   errors: tlJson.errors || [],
 };
 
+/* ------------------- 6) 뉴스 영향도·테마·수혜주 키워드 매칭 ------------------- */
+console.log('\n▶ [9] 속보 키워드 자동 분석 (영향도·테마·수혜주)');
+const { analyzeNewsItem, NEWS_THEMES } = require('./lib/news-impact.js');
+let niOk = true;
+const THEME_NAMES = NEWS_THEMES.map((t) => t.name);
+const LEVELS = ['상', '중', '참고'];
+const DIRS = ['호재', '주의', '중립'];
+
+niOk &= check(
+  '12건 전부 5개 필드 보유',
+  tlNews.length === 12 &&
+    tlNews.every(
+      (n) =>
+        LEVELS.includes(n.impactLevel) &&
+        DIRS.includes(n.impactDirection) &&
+        Array.isArray(n.matchedThemes) &&
+        Array.isArray(n.beneficiaryStocks) &&
+        typeof n.impactNote === 'string' && n.impactNote.length > 10,
+    ),
+  tlNews.map((n) => `${n.impactLevel}/${n.impactDirection}`).join(' '),
+);
+niOk &= check(
+  '테마·종목은 정의된 테마명·6자리 코드만',
+  tlNews.every(
+    (n) =>
+      n.matchedThemes.every((t) => THEME_NAMES.includes(t)) &&
+      n.beneficiaryStocks.every((s) => s && s.name && /^[0-9A-Z]{6}$/.test(s.code || '')),
+  ),
+  tlNews.map((n) => `${n.matchedThemes.join('+') || '-'}:${n.beneficiaryStocks.map((s) => s.name).join(',') || '-'}`).slice(0, 4).join(' | '),
+);
+niOk &= check(
+  '매칭 없는 기사는 빈 배열 + 참고 + 일반 속보 (가짜 매칭 금지)',
+  tlNews.every(
+    (n) =>
+      n.matchedThemes.length > 0 ||
+      (n.beneficiaryStocks.length === 0 && n.impactLevel === '참고' && n.impactNote.includes('일반 속보')),
+  ),
+  `일반 속보 ${tlNews.filter((n) => !n.matchedThemes.length).length}건 / 테마 매칭 ${tlNews.filter((n) => n.matchedThemes.length).length}건`,
+);
+niOk &= check(
+  '영향도 노트는 "키워드 자동 분석" 표기로 시작',
+  tlNews.every((n) => n.impactNote.startsWith('키워드 자동 분석')),
+  tlNews[0] && tlNews[0].impactNote,
+);
+niOk &= check(
+  '테마가 있는 기사는 수혜·관련주 최소 1종목',
+  tlNews.every((n) => n.matchedThemes.length === 0 || n.beneficiaryStocks.length > 0),
+  `최대 ${Math.max(0, ...tlNews.map((n) => n.beneficiaryStocks.length))}종목`,
+);
+
+/* 규칙 단위 테스트 — 합성 문장 */
+const unitCases = [
+  {
+    label: '수주·계약 → 시스템반도체 테마 / 호재·상',
+    title: '가온칩스, 시스템반도체 수주 계약 체결',
+    summary: '디자인하우스 부문 수주 확대',
+    expect: (a) =>
+      a.impactLevel === '상' &&
+      a.impactDirection === '호재' &&
+      a.matchedThemes.includes('시스템반도체 · 디자인하우스') &&
+      a.beneficiaryStocks[0].name === '가온칩스',
+  },
+  {
+    label: '유상증자·급락 → 건설 테마 / 주의·상',
+    title: '금호건설 유상증자 결정에 주가 급락',
+    summary: '건설주 투자심리 위축',
+    expect: (a) =>
+      a.impactLevel === '상' &&
+      a.impactDirection === '주의' &&
+      a.matchedThemes.includes('건설 중소형 · 인프라 재건') &&
+      a.beneficiaryStocks.some((s) => s.name === '금호건설'),
+  },
+  {
+    label: '로봇·자동화 → 지능형 로봇 테마',
+    title: '레인보우로보틱스, 협동로봇 공급 확대',
+    summary: '로봇·자동화 수주',
+    expect: (a) => a.matchedThemes.includes('지능형 로봇 · AI 제조'),
+  },
+  {
+    label: 'FDA 승인 → 바이오 테마 / 호재·상',
+    title: '알테오젠 FDA 승인 획득',
+    summary: '비만치료제 임상 성공',
+    expect: (a) =>
+      a.matchedThemes.includes('바이오 · 비만치료제') &&
+      a.impactDirection === '호재' &&
+      a.impactLevel === '상' &&
+      a.beneficiaryStocks[0].name === '알테오젠',
+  },
+  {
+    label: '관세 → 자동차 테마 / 주의',
+    title: '美 관세 부과에 현대차·기아 타격',
+    summary: '자동차 수출 우려',
+    expect: (a) =>
+      a.matchedThemes.includes('자동차 · 관세') &&
+      a.impactDirection === '주의' &&
+      ['현대차', '기아'].every((n) => a.beneficiaryStocks.some((s) => s.name === n)),
+  },
+  {
+    label: '시스템반도체 기사에 반도체·HBM 태그 중복 방지',
+    title: '시스템반도체 디자인하우스 수주',
+    summary: '팹리스 ASIC 계약',
+    expect: (a) =>
+      a.matchedThemes.includes('시스템반도체 · 디자인하우스') &&
+      !a.matchedThemes.includes('반도체 · HBM'),
+  },
+  {
+    label: '섹터 키워드 없는 일반 기사 → 테마·종목 없음',
+    title: '코스피 적정가는 6,390...그런데 상승 어렵다는 이유',
+    summary: '실적 전망 하향과 수급 악화로 상승 동력을 찾기 어렵다',
+    expect: (a) =>
+      a.matchedThemes.length === 0 &&
+      a.beneficiaryStocks.length === 0 &&
+      a.impactLevel === '참고' &&
+      a.impactNote.includes('일반 속보'),
+  },
+  {
+    label: '완전 무관 기사 → 억지 매칭 없음',
+    title: '오늘 서울 낮 최고 19도, 맑음',
+    summary: '주말 나들이하기 좋은 날씨',
+    expect: (a) => a.matchedThemes.length === 0 && a.beneficiaryStocks.length === 0,
+  },
+];
+
+unitCases.forEach((c) => {
+  const a = analyzeNewsItem({ title: c.title, summary: c.summary });
+  niOk &= check(
+    c.label,
+    c.expect(a),
+    `${a.impactLevel}/${a.impactDirection} ${a.matchedThemes.join('+') || '-'} [${a.beneficiaryStocks.map((s) => s.name).join(',')}]`,
+  );
+});
+niOk &= check(
+  '같은 입력은 항상 같은 결과(결정론적)',
+  JSON.stringify(analyzeNewsItem({ title: '금호건설 수주 계약', summary: '건설' })) ===
+    JSON.stringify(analyzeNewsItem({ title: '금호건설 수주 계약', summary: '건설' })),
+);
+summary.newsImpact = {
+  items: tlNews.map((n) => ({
+    time: n.time,
+    title: n.title,
+    impactLevel: n.impactLevel,
+    impactDirection: n.impactDirection,
+    matchedThemes: n.matchedThemes,
+    beneficiaryStocks: n.beneficiaryStocks,
+    impactNote: n.impactNote,
+  })),
+};
+
 /* -------------------------------- 결과 저장 -------------------------------- */
 const total = results.length;
 const passed = results.filter((r) => r.ok).length;

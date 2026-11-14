@@ -7,3 +7,4 @@ e2e_results.json
 preview_*.png
 live_*.png
 .DS_Store
+news_impact_e2e_results.json
