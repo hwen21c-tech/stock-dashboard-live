@@ -697,6 +697,14 @@ const jong = await page.evaluate(() => {
   };
 });
 check('8번 종베 탭 정상 렌더 + DART 정직 라벨', jong.display !== 'none' && jong.lines > 1500 && jong.dartText, `${jong.lines}자 · DART라벨=${jong.dartText}`);
+{
+  const stale = await page.evaluate(() => {
+    const t = (document.getElementById('tabJongbe') || {}).textContent || '';
+    const bad = ['61,700원', '2,150억', '35,550원', '178,500원', '340,000~341,000원'].filter((x) => t.indexOf(x) >= 0);
+    return { bad, sample: (t.match(/매수 타점[^]{0,120}/) || [''])[0] };
+  });
+  check('8번 종베 카드 타점·수치가 실시간 가격과 어긋나지 않음 (옛 가격 문구 소거)', stale.bad.length === 0, stale.bad.join(',') || '옛 가격 문구 없음');
+}
 await page.screenshot({ path: SHOT('jongbe') });
 
 await page.evaluate(() => {
