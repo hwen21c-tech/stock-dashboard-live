@@ -609,8 +609,11 @@
       nxtEl.textContent = '⚡ ' + stamp + ' 조회 · 현재가·등락률·통합대금(KRX+NXT) 실시간' + phaseTxt;
     }
     if (supplyEl) {
+      // 확정 수급(/api/stock-trend)이 반영됐으면 그 기준일을 함께 적는다 — 20초 폴링이 문구를 되돌리지 않게
+      var basis = state.trend && state.trend.basisLabel ? state.trend.basisLabel : null;
       supplyEl.textContent = '⚡ ' + stamp + ' 조회 현재가·등락률 실시간 (/api/stock-live)' + phaseTxt +
-        ' — 외인·기관·연기금 순매수 금액은 KRX 장마감 확정치이며 실시간이 아닙니다.';
+        ' — 외인·기관 순매수 금액은 거래소 확정치' + (basis ? '(' + basis + ') 자동 반영' : '(아직 미반영)') +
+        '이며 실시간이 아닙니다.';
     }
     if (payload && payload.generatedAtKst) state.lastAt = stamp;
   }
