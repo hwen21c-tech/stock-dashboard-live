@@ -1029,6 +1029,12 @@
       if (document.hidden) return;
       renderChips();
     }, CHIP_MS);
+    // 확정 수급(/api/stock-trend)을 아직 못 받았으면 1분마다 재시도한다(성공하면 30분 캐시)
+    if (state.trendTimer) clearInterval(state.trendTimer);
+    state.trendTimer = setInterval(function () {
+      if (document.hidden) return;
+      if (!state.trend) loadTrend(false);
+    }, 60000);
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) return;
       poll();
