@@ -71,7 +71,7 @@
   .kid .txt{min-width:0;flex:1}
   .kid .nm{display:block;font-size:clamp(11.5px,3vw,13px);font-weight:900;letter-spacing:-.02em;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .kid .ct{display:block;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#4c7a26}
+  .kid .ct{display:block;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#4c7a26;white-space:nowrap}
   .bar{height:6px;border-radius:99px;background:#e6f2d2;overflow:hidden;margin-top:5px}
   .bar i{display:block;height:100%;width:0;border-radius:99px;
     background:linear-gradient(90deg,#8ce86a,#3fbe2c);transition:width .6s ease}
@@ -339,7 +339,7 @@
       const barEl = box.querySelector('[data-bar]');
       if (nameEl) nameEl.textContent = meta.name;
       if (emojiEl) emojiEl.textContent = meta.emoji;
-      if (countEl) countEl.textContent = total ? `잡은 ${n}마리 / ${total.toLocaleString('ko-KR')}마리` : `잡은 ${n}마리`;
+      if (countEl) countEl.textContent = `잡은 ${n}마리`;
       if (barEl) barEl.style.width = pct + '%';
     });
     const note = document.getElementById('dexNote');
