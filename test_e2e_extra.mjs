@@ -29,7 +29,12 @@ let puppeteer;
 try {
   puppeteer = createRequire(import.meta.url)('puppeteer');
 } catch (_) {
-  puppeteer = createRequire('/workspace/_tools/e2e/run.mjs')('puppeteer');
+  try {
+    puppeteer = createRequire('/workspace/_tools/e2e/run.mjs')('puppeteer');
+  } catch (e2) {
+    console.error('puppeteer 가 필요합니다:  npm i -D puppeteer  (또는 PUPPETEER 실행 환경 필요)');
+    process.exit(2);
+  }
 }
 
 const EXTERNAL = process.env.BASE || null;
