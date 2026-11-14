@@ -72,6 +72,8 @@
     box-shadow:0 2px 0 rgba(30,80,150,.22)}
   .meadow{position:relative;border-radius:20px;overflow:hidden;isolation:isolate;
     min-height:clamp(320px, calc(100dvh - 296px), 760px);border:2.5px solid rgba(255,255,255,.78);
+    /* 그림이 정사각 맵이라, 무대가 지나치게 넓적해지면 맵 위아래가 잘린다 — 1.30 비율까지만 넓힌다 */
+    max-width:calc((100dvh - 296px) * 1.30);margin:0 auto;
     box-shadow:0 8px 22px rgba(20,60,10,.2),inset 0 0 40px rgba(0,0,0,.06);
     transition:background .5s ease}
   .meadow .floor{position:absolute;inset:0;z-index:1}
