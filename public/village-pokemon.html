@@ -111,6 +111,9 @@
      그림이 준비되면(data-art) 위에 있던 CSS 가짜 지형·해·구름은 모두 끄고
      그림 속 실제 연못·언덕·배틀터만 보이게 한다. 판정 좌표는 그림에 맞춰 계산한다. */
   .meadow{background-size:cover;background-position:50% 50%;background-repeat:no-repeat}
+  /* 시간대 규칙보다 뒤에 두고 선택자 무게도 같게 — background 단축 속성이 size 를 되돌리지 않게 */
+  .meadow.t-day,.meadow.t-sunset,.meadow.t-night{
+    background-size:cover;background-position:50% 50%;background-repeat:no-repeat}
   .meadow.t-day{background-image:url("/art/village-day.webp")}
   .meadow.t-sunset{background-image:url("/art/village-sunset.webp")}
   .meadow.t-night{background-image:url("/art/village-night.webp")}
@@ -563,9 +566,9 @@
      mapFit()/boxToMap() 으로 서로 바꿔 판정한다 — 화면 비율이 달라져도 위치가 어긋나지 않는다. */
   const MAP_S = 1000;   /* 그림 좌표계 한 변(정사각) — 비율만 쓰므로 임의 단위 */
   const TERRAIN = [
-    { k: 'pond', emoji: '💧', name: '연못', cx: 27, cy: 53, rx: 16.5, ry: 9.5 },
-    { k: 'hill', emoji: '😴', name: '언덕', cx: 62, cy: 26, rx: 15, ry: 10 },
-    { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 49, cy: 79, rx: 15, ry: 8.5 },
+    { k: 'pond', emoji: '💧', name: '연못', cx: 27, cy: 54, rx: 16, ry: 9.5 },
+    { k: 'hill', emoji: '😴', name: '언덕', cx: 72, cy: 26, rx: 14, ry: 10 },
+    { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 53, cy: 79, rx: 15.5, ry: 8 },
   ];
   let MAP_FIT = null;
   /* 마을 무대에 그림이 cover 로 깔릴 때의 배율과 여백(px) */
