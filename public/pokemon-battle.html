@@ -81,7 +81,8 @@
 
   /* 게임 카드 */
   .games{display:grid;grid-template-columns:1fr;gap:12px;margin:16px auto 0;max-width:720px}
-  @media (min-width:700px){ .games{grid-template-columns:repeat(3,1fr);max-width:1040px} }
+  @media (min-width:700px){ .games{grid-template-columns:repeat(3,minmax(0,1fr));max-width:1040px} }
+  .games .gwrap{min-width:0}
   .game{
     position:relative;display:flex;align-items:center;gap:13px;text-decoration:none;color:inherit;
     background:linear-gradient(180deg,#ffffff,var(--card));border:2.5px solid var(--line);
@@ -99,7 +100,8 @@
   .game .ttl{display:block;font-size:clamp(16px,4.3vw,20px);font-weight:900;letter-spacing:-.03em}
   .game .desc{display:block;margin-top:2px;font-size:clamp(10.5px,2.9vw,12px);font-weight:800;
     color:#6b8547;letter-spacing:-.01em}
-  .game .lv{display:inline-flex;gap:4px;margin-top:6px}
+  .game .lv{display:inline-flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+  .game{min-width:0}
   .game .lv i{font-style:normal;font-size:9.5px;font-weight:900;color:#5d7a34;background:#f1f9e2;
     border:1.3px solid #d9e9bd;border-radius:999px;padding:1px 7px}
   .game .go{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
@@ -107,6 +109,9 @@
   .game.math{--ac:#f0a71c;--acbg:#fff3c6;--acbd:#f0cf6a}
   .game.hangul{--ac:#3fbe2c;--acbg:#e7fbd8;--acbd:#b6e79a}
   .game.english{--ac:#3d7ff0;--acbg:#e6efff;--acbd:#a8c6f0}
+  .game.versus{--ac:#e0453c;--acbg:#ffe4de;--acbd:#f0a89c}
+  .game.village{--ac:#2f9e7e;--acbg:#ddfbef;--acbd:#a6e6cd}
+  .game .lv i.new3{color:#7a3c00;background:#fff2cf;border-color:#f0cf6a}
   .gwrap{position:relative}
   .rulebtn{
     position:absolute;top:-12px;right:12px;z-index:3;width:28px;height:28px;border-radius:50%;
@@ -271,6 +276,30 @@
       </a>
       <button class="rulebtn" data-rule="english" aria-label="영어 배틀 규칙">❓</button>
     </div>
+    <div class="gwrap">
+      <a class="game versus" href="./versus-pokemon.html">
+        <span class="ico" aria-hidden="true">⚔️</span>
+        <span class="body">
+          <span class="ttl">2인 대결</span>
+          <span class="desc">태블릿 한 화면에서 둘이 겨뤄요</span>
+          <span class="lv"><i class="new3">반반 배경</i><i class="new3">파트너 공격</i><i class="new3">승자 보상</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="versus" aria-label="2인 대결 규칙">❓</button>
+    </div>
+    <div class="gwrap">
+      <a class="game village" href="./village-pokemon.html">
+        <span class="ico" aria-hidden="true">🏡</span>
+        <span class="body">
+          <span class="ttl">포켓몬 마을</span>
+          <span class="desc">잡은 친구들과 나만의 마을을 꾸며요</span>
+          <span class="lv"><i class="new3">4구역</i><i class="new3">최대 8마리</i><i class="new3">꾸미기</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="village" aria-label="포켓몬 마을 규칙">❓</button>
+    </div>
   </nav>
 
   <div class="foot">
@@ -424,6 +453,23 @@
         + '<h3>🌱 난이도</h3><ul><li>HUD의 <b>쉬움·중간·어려움</b>으로 단어·문장 수준을 골라요.</li></ul>'
         + '<h3>💡 힌트 · 🏃 도망</h3><ul><li><b>힌트</b>는 한 판에 <b>3번</b>, 문제마다 1번 — 첫 글자·뜻·문법을 알려줘요.</li>'
         + '<li><b>도망간다</b>도 3번까지, 도망가면 새 문제로 바뀌어요.</li></ul>',
+    },
+    versus: {
+      title: '⚔️ 2인 대결 규칙',
+      html: '<h3>🎯 목표</h3><ul><li>둘 다 한 화면에서 <b>동시에</b> 문제를 풀어요. 먼저 상대 파트너 HP를 <b>0</b>으로 만들면 승리!</li>'
+        + '<li>화면 절반씩 <b>각자 파트너 타입 배경</b>이 깔리고, 정답을 맞히면 내 파트너가 상대 파트너에게 <b>타입 공격</b>을 날려요.</li></ul>'
+        + '<h3>💥 타입 상성</h3><ul><li>내 파트너 타입이 상대에게 유리하면 <b>효과가 굉장했다!</b> — 한 칸을 더 깎아요(2칸).</li></ul>'
+        + '<h3>🌱 내 설정</h3><ul><li>사람마다 <b>누구(첫째·둘째·게스트) · 과목(산수·한글·영어) · 난이도</b>를 따로 고르고, 고른 설정은 다음에도 기억해요.</li></ul>'
+        + '<h3>🏆 승자 보상</h3><ul><li>이긴 사람만 <b>🔵 슈퍼볼 1개</b> 또는 <b>🏡 마을 꾸미기 아이템 1개</b> 중 하나를 골라 받아요. 진 사람은 보상이 없어요.</li></ul>',
+    },
+    village: {
+      title: '🏡 포켓몬 마을 규칙',
+      html: '<h3>🎯 네 구역</h3><ul><li><b>🌿 풀숲 놀이터 · 💧 물가 연못 · 😴 낮잠 언덕 · ⚔️ 작은 배틀 연습장</b></li>'
+        + '<li>놀이터·연못·연습장에서는 천천히 돌아다니고, <b>낮잠 언덕</b>에서는 Zzz 자요. 연습장에서는 둘이 장난으로 겨뤄요.</li></ul>'
+        + '<h3>👆 터치 반응</h3><ul><li>포켓몬을 톡톡 두드리면 <b>펄쩍 뛰며 ❤️/🎵</b> 말풍선, <b>진짜 울음소리</b>, 그리고 <b>🍓 열매</b>를 줘요.</li></ul>'
+        + '<h3>🐾 배치</h3><ul><li>도감에서 잡은 포켓몬만 <b>최대 8마리</b>까지. 자리가 꽉 차면 <b>바꿀 친구를 골라 교체</b>해요.</li>'
+        + '<li>꾸미기 아이템도 <b>최대 8개</b>까지 — 2인 대결 승리 보상이나 배틀 포획 때 나오는 <b>🎁 깜짝 선물 상자</b>로 모아요.</li></ul>'
+        + '<h3>🎁 아빠 선물</h3><ul><li>어른이 <b>가족 PIN</b>을 한 번 확인한 뒤, 첫째·둘째·게스트 중 누구에게든 아이템·볼을 선물할 수 있어요.</li></ul>',
     },
   };
 

@@ -916,6 +916,24 @@
     if (PB.wrong.length > 12) PB.wrong.shift();
   }
 
+  /* ---------- 3탄 공통 헬퍼 (선언 끌어올림) ---------- */
+  function superHit() {
+    try {
+      if (!window.POK3 || !S.wild) return false;
+      const p = partner();
+      if (!p || !p.types) return false;
+      return !!window.POK3.strongPair(p.types, S.wild.types || []);
+    } catch (e) { return false; }
+  }
+
+  function bossSyncCount() {
+    try {
+      if (!S.wild || !S.wild.__boss) return;
+      const qc = q('#qCount');
+      if (qc) qc.textContent = S.solved + ' / ' + 7;
+    } catch (e) { /* */ }
+  }
+
   function applyDamage(extra) {
     if (!(extra > 0)) return;
     const before = S.foeHP;
@@ -943,9 +961,16 @@
             PB.combo += 1;
             if (PB.combo > PB.bestCombo) PB.bestCombo = PB.combo;
             const crit = PB.combo > 0 && PB.combo % 3 === 0;
-            applyDamage(ballDmg() - 1 + (crit ? 1 : 0));
-            partnerAttack(crit);
+            /* 3탄: 파트너 타입이 야생에게 유리하면 한 칸 더 */
+            const se = superHit();
+            applyDamage(ballDmg() - 1 + (crit ? 1 : 0) + (se ? 1 : 0));
+            bossSyncCount();
+            partnerAttack(crit || se);
             UI.combo();
+            if (se) {
+              UI.banner('super', '💥 효과가 굉장했다! +1칸', 1600);
+              try { flashScreen(); } catch (e) { /* */ }
+            }
             if (crit) {
               Balls.add({ super: 1 }, true);
               UI.banner('combo', '🔥 ' + PB.combo + ' 콤보 크리티컬! HP 2칸!', 1200);
@@ -993,6 +1018,10 @@
       const origPick = window.pickWild;
       if (typeof origPick === 'function' && !origPick.__pb2) {
         const pickW = function (excludeId) {
+          try {
+            const boss = rollBoss(excludeId);
+            if (boss) return boss;
+          } catch (e) { warn('pickWild boss', e); }
           try {
             const evo = SpawnHook.rollEvo(excludeId);
             if (evo) return evo;
@@ -1068,6 +1097,12 @@
         UI.evo(p);
       } else if (p.shiny) {
         UI.banner('shiny', '✨ 이로치!', 2400);
+      }
+      if (p.__boss) applyBoss();
+      else {
+        const st = q('#stage');
+        if (st) st.classList.remove('pb3-boss');
+        bossChip();
       }
       try { if (o && o.silent) return; } catch (e) { /* */ }
       if (p.evolved || p.shiny) { try { flashScreen(); } catch (e) { /* */ } }
@@ -1152,6 +1187,9 @@
       UI.reviewBtn('catchModal');
       const dexm = q('#dexModal');
       if (dexm && !dexm.hidden) { try { renderDex(false); } catch (e) { /* */ } }
+      try { bossClear(); } catch (e) { warn('bossClear', e); }
+      try { checkRankUp(); } catch (e) { warn('rankUp', e); }
+      try { maybeDropItem(); } catch (e) { warn('dropItem', e); }
       void used;
     },
   };
@@ -1173,6 +1211,7 @@
         const r = function () {
           const out = origDex.apply(this, arguments);
           try { DexHook.mark(); } catch (e) { warn('dex mark', e); }
+          try { DexHook.sortCaught(); } catch (e) { warn('dex sort', e); }
           return out;
         };
         r.__pb2 = true;
@@ -1219,6 +1258,29 @@
         s.__pb2 = true;
         window.openSettings = s;
       }
+    },
+
+    /* 잡은 포켓몬을 항상 목록 맨 앞으로 — 못 잡은 ??? 는 그 뒤에 */
+    sortCaught() {
+      const grid = q('#dexGrid');
+      if (!grid) return;
+      const cells = qa('.dexcell', grid);
+      if (cells.length < 2) return;
+      const ids = (S.dex && S.dex.ids) || new Set();
+      const owns = (c) => ids.has(Number(c.dataset.id));
+      const mine = [];
+      const rest = [];
+      cells.forEach((c) => { (owns(c) ? mine : rest).push(c); });
+      if (!mine.length || !rest.length) return;
+      const order = mine.concat(rest);
+      let same = true;
+      for (let i = 0; i < order.length; i += 1) {
+        if (cells[i] !== order[i]) { same = false; break; }
+      }
+      if (same) return;
+      const frag = document.createDocumentFragment();
+      order.forEach((c) => frag.appendChild(c));
+      grid.appendChild(frag);
     },
 
     mark() {
@@ -1380,6 +1442,467 @@
     },
   };
 
+  /* ============================================================
+     15. 3탄 — 💥 타입 상성 · 👑 주말 보스 레이드 · 🏅 등급 승급 · 🎁 마을 아이템
+     ============================================================ */
+  const BOSS_RATE = 0.24;
+  /* 깜짝 선물: 기본 11% → 한 번도 안 틀린 완벽한 판이면 최대 30% */
+  const DROP_BASE = 0.11;
+  const DROP_MAX = 0.30;
+  const BOSS_HP = 7;
+  const RANKS = [
+    { at: 0, emoji: '🌱', label: '초보' },
+    { at: 10, emoji: '🥈', label: '실버' },
+    { at: 30, emoji: '🥇', label: '골드' },
+    { at: 100, emoji: '👑', label: '마스터' },
+  ];
+  const K_BOSS = (s) => 'pkm.boss.v1.' + s;
+  const K_RANK = (s) => 'pkm.rank.v1.' + s;
+  const K_INV = (s) => 'pkm.village.inv.v1.' + s;
+
+  function rankIdx(n) {
+    let i = 0;
+    RANKS.forEach((r, k) => { if (n >= r.at) i = k; });
+    return i;
+  }
+  function dexCount() {
+    try { return (S.dex && S.dex.ids) ? S.dex.ids.size : 0; } catch (e) { return 0; }
+  }
+  function isWeekend() {
+    const d = new Date().getDay();
+    return d === 0 || d === 6;
+  }
+  function bossMode() {
+    if (!window.POK3) return false;
+    try { if (slotId() === 'guest') return true; } catch (e) { /* */ }
+    return isWeekend();
+  }
+  /* 주말·게스트 테스트 모드에서 일정 확률로 7칸짜리 보스 등장 */
+  function rollBoss(excludeId) {
+    if (!bossMode()) return null;
+    if (Math.random() > BOSS_RATE) return null;
+    let pool = [];
+    try {
+      pool = POKEMON.filter((p) => p && p.id !== excludeId
+        && (p.leg || p.myth || (p.tag && String(p.tag).indexOf('거다이맥스') >= 0)));
+    } catch (e) { return null; }
+    if (!pool.length) return null;
+    const caught = (S.dex && S.dex.ids) || new Set();
+    const uncaught = pool.filter((p) => !caught.has(p.id));
+    const p = pick(uncaught.length && Math.random() < 0.72 ? uncaught : pool);
+    return Object.assign({}, p, { level: rand(40, 72), cp: rand(900, 1600), __boss: true });
+  }
+
+  function bossStage() {
+    const stage = q('#stage');
+    if (!stage || q('#pb3BossChip')) return;
+    const chip = document.createElement('div');
+    chip.className = 'pb3-bosschip';
+    chip.id = 'pb3BossChip';
+    chip.hidden = true;
+    chip.innerHTML = '<b>👑</b><span id="pb3BossChipText">주말 보스</span>';
+    stage.appendChild(chip);
+  }
+
+  function bossChip() {
+    bossStage();
+    const chip = q('#pb3BossChip');
+    const txt = q('#pb3BossChipText');
+    if (!chip) return;
+    const on = !!(S.wild && S.wild.__boss);
+    const rec = lsGet(K_BOSS(slotId()), { count: 0 });
+    const n = (rec && rec.count) || 0;
+    if (on) {
+      chip.hidden = false;
+      chip.classList.add('live');
+      if (txt) txt.textContent = '주말 보스 레이드 · ' + BOSS_HP + '칸';
+    } else if (n > 0) {
+      chip.hidden = false;
+      chip.classList.remove('live');
+      if (txt) txt.textContent = '보스 뱃지 ×' + n;
+    } else {
+      chip.hidden = true;
+      chip.classList.remove('live');
+    }
+  }
+
+  function applyBoss() {
+    const p = S.wild;
+    if (!p || !p.__boss) return;
+    S.foeHP = BOSS_HP;
+    try { renderHp(q('#foeHp'), BOSS_HP, BOSS_HP); } catch (e) { warn('boss hp', e); }
+    const qc = q('#qCount');
+    if (qc) qc.textContent = '0 / ' + BOSS_HP;
+    bossChip();
+    UI.banner('boss', '👑 주말 보스 레이드! ' + (p.short || p.name), 3200);
+    try {
+      const stage = q('#stage');
+      if (stage) {
+        stage.classList.remove('pb3-boss');
+        void stage.offsetWidth;
+        stage.classList.add('pb3-boss');
+      }
+      flashScreen();
+      Sound.ensure();
+      Sound.tone(150, 0.5, 'sawtooth', 0.08, 60, 300);
+    } catch (e) { /* */ }
+    setTimeout(() => playCry(p.id, true), 320);
+  }
+
+  function bossClear() {
+    const p = S.wild;
+    if (!p || !p.__boss) return;
+    const rec = lsGet(K_BOSS(slotId()), { count: 0, last: '' });
+    rec.count = (rec.count || 0) + 1;
+    rec.last = todayKey();
+    lsSet(K_BOSS(slotId()), rec);
+    bossChip();
+    UI.toast('👑 주말 보스 뱃지 획득! (×' + rec.count + ')', 'good', 2800);
+  }
+
+  function rankStage() {
+    if (q('#pb3RankUp')) return;
+    const el = document.createElement('div');
+    el.className = 'pb3-rankup';
+    el.id = 'pb3RankUp';
+    el.hidden = true;
+    el.setAttribute('aria-live', 'assertive');
+    el.innerHTML = '<div class="ru-in">'
+      + '<div class="ru-k">트레이너 등급 승급</div>'
+      + '<div class="ru-row"><span class="ru-from" id="pb3RuFrom">🥈 실버</span>'
+      + '<span class="ru-flash">✨</span>'
+      + '<span class="ru-to" id="pb3RuTo">🥇 골드 승급!!</span></div>'
+      + '<div class="ru-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>'
+      + '</div>';
+    (document.body || document.documentElement).appendChild(el);
+  }
+
+  function showRankUp(from, to) {
+    rankStage();
+    const el = q('#pb3RankUp');
+    const f = q('#pb3RuFrom');
+    const t = q('#pb3RuTo');
+    if (!el || !RANKS[from] || !RANKS[to]) return;
+    if (f) f.textContent = RANKS[from].emoji + ' ' + RANKS[from].label;
+    if (t) t.textContent = RANKS[to].emoji + ' ' + RANKS[to].label + ' 승급!!';
+    el.hidden = false;
+    el.classList.remove('play');
+    void el.offsetWidth;
+    el.classList.add('play');
+    try { Sound.fanfare(); } catch (e) { /* */ }
+    try { flashScreen(); } catch (e) { /* */ }
+    try {
+      const st = q('#stage');
+      if (st) {
+        const r = st.getBoundingClientRect();
+        burst(r.left + r.width / 2, r.top + r.height / 2, 30, 200);
+      }
+    } catch (e) { /* */ }
+    clearTimeout(showRankUp._t);
+    showRankUp._t = setTimeout(() => { el.hidden = true; el.classList.remove('play'); }, 3800);
+  }
+
+  /* 등급 승급 감시 — 처음 저장될 때는 조용히 지금 등급을 기준으로 삼는다 */
+  function checkRankUp() {
+    const n = dexCount();
+    const cur = rankIdx(n);
+    const key = K_RANK(slotId());
+    const seen = lsGet(key, null);
+    if (typeof seen !== 'number') { lsSet(key, cur); return; }
+    if (cur > seen) {
+      lsSet(key, cur);
+      showRankUp(seen, cur);
+    }
+  }
+  function initRankSeen() {
+    const key = K_RANK(slotId());
+    if (typeof lsGet(key, null) !== 'number') lsSet(key, rankIdx(dexCount()));
+  }
+
+  function grantVillageItem(n) {
+    const out = [];
+    if (!window.POK3) return out;
+    const keys = window.POK3.itemKeys();
+    const inv = lsGet(K_INV(slotId()), {}) || {};
+    for (let i = 0; i < (n || 1); i += 1) {
+      const k = keys[Math.floor(Math.random() * keys.length)];
+      inv[k] = (inv[k] || 0) + 1;
+      out.push(window.POK3.item(k));
+    }
+    lsSet(K_INV(slotId()), inv);
+    return out;
+  }
+
+  /* 이번 판이 얼마나 완벽했는지 — 연속 정답(콤보)이 살아 있을수록 확률이 올라간다 */
+  function dropChance() {
+    const solved = Math.max(0, S.solved || 0);
+    const combo = Math.max(0, PB.combo || 0);
+    const acc = solved ? Math.min(1, combo / solved) : 0;
+    const prog = Math.min(1, solved / MAXHP);
+    return DROP_BASE + (DROP_MAX - DROP_BASE) * acc * (0.45 + 0.55 * prog);
+  }
+
+  /* 선물 상자 내용물 — 마을 꾸미기 아이템 60% · 슈퍼볼 28% · 하이퍼볼 12% */
+  function rollGift() {
+    const r = Math.random();
+    if (r < 0.6) {
+      const got = grantVillageItem(1);
+      const it = got && got[0];
+      return it ? { emoji: it.emoji, name: it.name } : null;
+    }
+    if (r < 0.88) {
+      Balls.add({ super: 1 }, true);
+      return { emoji: '🔵', name: '슈퍼볼 1개' };
+    }
+    Balls.add({ hyper: 1 }, true);
+    return { emoji: '🟡', name: '하이퍼볼 1개' };
+  }
+
+  /* 포획할 때마다 확률로 깜짝 선물 상자 → 아이템 또는 볼 */
+  function maybeDropItem() {
+    if (!window.POK3) return;
+    if (Math.random() >= dropChance()) return;
+    const got = rollGift();
+    if (!got) return;
+    setTimeout(() => {
+      UI.toast('🎁 깜짝 선물 상자! ' + got.emoji + ' ' + got.name + ' 획득', 'good', 3000);
+    }, 1100);
+  }
+
+  /* ---------- 가족 PIN 확인 (도감 초기화 · 카드 삭제) ---------- */
+  const PIN_KEY = 'pkm.family.pin.v1';
+  const PinGate = {
+    el: null,
+    buf: '',
+    fails: 0,
+    onOk: null,
+    build() {
+      if (this.el || q('#pb3Pin')) return;
+      const box = document.createElement('div');
+      box.className = 'pb3-pin';
+      box.id = 'pb3Pin';
+      box.hidden = true;
+      box.innerHTML = '<div class="pin-card" role="dialog" aria-modal="true" aria-label="가족 PIN 확인">'
+        + '<div class="pin-head"><b id="pb3PinTitle">가족 PIN</b>'
+        + '<button class="pin-x" id="pb3PinClose" aria-label="닫기">✕</button></div>'
+        + '<p class="pin-desc" id="pb3PinDesc">가족 PIN 4자리를 눌러 주세요</p>'
+        + '<div class="pin-dots" id="pb3PinDots"><i></i><i></i><i></i><i></i></div>'
+        + '<p class="pin-msg" id="pb3PinMsg"> </p>'
+        + '<div class="pin-pad" id="pb3PinPad"></div>'
+        + '</div>';
+      (document.body || document.documentElement).appendChild(box);
+      const pad = q('#pb3PinPad', box);
+      let keys = '';
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach((n) => { keys += '<button type="button" data-d="' + n + '">' + n + '</button>'; });
+      keys += '<button type="button" class="wide" data-act="back">⌫</button>'
+        + '<button type="button" data-d="0">0</button>'
+        + '<button type="button" class="blank" tabindex="-1" aria-hidden="true"></button>';
+      pad.innerHTML = keys;
+      pad.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        try { Sound.ensure(); } catch (err) { /* */ }
+        if (b.dataset.d !== undefined) this.press(b.dataset.d);
+        else if (b.dataset.act === 'back') this.back();
+      });
+      const x = q('#pb3PinClose', box);
+      if (x) x.addEventListener('click', () => this.close());
+      box.addEventListener('click', (e) => { if (e.target === box) this.close(); });
+      this.el = box;
+    },
+    pin() {
+      const raw = (function () { try { return localStorage.getItem(PIN_KEY); } catch (e) { return null; } })();
+      return /^\d{4}$/.test(raw || '') ? raw : '0623';
+    },
+    dots() {
+      const host = q('#pb3PinDots');
+      if (!host) return;
+      Array.prototype.forEach.call(host.children, (d, i) => d.classList.toggle('on', i < this.buf.length));
+    },
+    open(mode, title, desc, onOk) {
+      this.build();
+      this.mode = mode;
+      this.buf = '';
+      this.fails = 0;
+      this.onOk = onOk;
+      const t = q('#pb3PinTitle');
+      const d = q('#pb3PinDesc');
+      const m = q('#pb3PinMsg');
+      if (t) t.textContent = title || '가족 PIN';
+      if (d) d.textContent = desc || '가족 PIN 4자리를 눌러 주세요';
+      if (m) { m.className = 'pin-msg'; m.textContent = ' '; }
+      if (this.el) this.el.hidden = false;
+      this.dots();
+    },
+    close() {
+      if (this.el) this.el.hidden = true;
+      this.buf = '';
+      this.onOk = null;
+      this.dots();
+    },
+    press(d) {
+      if (this.buf.length >= 4) return;
+      this.buf += d;
+      this.dots();
+      try { Sound.tone(660 + this.buf.length * 60, 0.07, 'triangle', 0.04); } catch (e) { /* */ }
+      if (this.buf.length === 4) setTimeout(() => this.check(), 90);
+    },
+    back() { this.buf = this.buf.slice(0, -1); this.dots(); },
+    check() {
+      const m = q('#pb3PinMsg');
+      if (this.buf === this.pin()) {
+        const fn = this.onOk;
+        this.close();
+        try { Sound.tone(1180, 0.16, 'triangle', 0.05); } catch (e) { /* */ }
+        if (fn) { try { fn(); } catch (e) { warn('pin ok', e); } }
+        return;
+      }
+      this.fails += 1;
+      this.buf = '';
+      this.dots();
+      if (m) {
+        m.className = 'pin-msg bad';
+        m.textContent = this.fails >= 5
+          ? 'PIN을 5번 틀렸어요. 잠시 뒤 다시 해 보세요.'
+          : 'PIN이 달라요. 다시 눌러 주세요 (' + this.fails + '/5)';
+      }
+      try { Sound.tone(220, 0.16, 'sawtooth', 0.05, 120); } catch (e) { /* */ }
+      if (this.fails >= 5) {
+        const pad = q('#pb3PinPad');
+        if (pad) qa('button', pad).forEach((b) => { b.disabled = true; });
+        setTimeout(() => {
+          this.fails = 0;
+          if (pad) qa('button', pad).forEach((b) => { b.disabled = false; });
+          if (m) { m.className = 'pin-msg'; m.textContent = ' '; }
+        }, 7000);
+      }
+    },
+  };
+
+  /* 도감 초기화는 PIN을 통과해야 실행된다 */
+  const ResetGate = {
+    attach() {
+      const orig = window.doReset;
+      if (typeof orig !== 'function' || orig.__pb3) return;
+      const wrapped = function () {
+        const p = (function () { try { return Profiles.active(); } catch (e) { return { name: '이 친구' }; } })();
+        PinGate.open('reset', '🧹 도감 초기화', p.name + '의 도감을 초기화하려면 가족 PIN 4자리를 눌러 주세요', () => {
+          try { orig.apply(this, arguments); } catch (e) { warn('doReset', e); }
+        });
+      };
+      wrapped.__pb3 = true;
+      window.doReset = wrapped;
+    },
+  };
+
+  /* 도감 카드 600ms 길게 누르기 → 그 포켓몬 1마리만 삭제 (PIN 필요) */
+  const DexDelete = {
+    bind() {
+      const grid = q('#dexGrid');
+      if (!grid || grid.__pb3) return;
+      grid.__pb3 = true;
+      let timer = 0;
+      let fired = false;
+      let startX = 0;
+      let startY = 0;
+      const clear = () => { if (timer) { clearTimeout(timer); timer = 0; } };
+      grid.addEventListener('pointerdown', (e) => {
+        const cell = e.target.closest ? e.target.closest('.dexcell') : null;
+        if (!cell) return;
+        const id = Number(cell.dataset.id);
+        if (!id || !S.dex || !S.dex.ids || !S.dex.ids.has(id)) return;
+        fired = false;
+        startX = e.clientX || 0;
+        startY = e.clientY || 0;
+        clear();
+        timer = setTimeout(() => {
+          timer = 0;
+          fired = true;
+          DexDelete.ask(id);
+        }, 600);
+      }, true);
+      grid.addEventListener('pointermove', (e) => {
+        if (!timer) return;
+        if (Math.abs((e.clientX || 0) - startX) > 9 || Math.abs((e.clientY || 0) - startY) > 9) clear();
+      }, true);
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => {
+        grid.addEventListener(ev, () => { clear(); }, true);
+      });
+      grid.addEventListener('click', (e) => {
+        if (!fired) return;
+        fired = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+    },
+
+    ask(id) {
+      const p = byId(id);
+      if (!p) return;
+      const nm = p.short || p.name;
+      PinGate.open('delete', '🗑️ ' + nm + ' 도감에서 지우기',
+        nm + '을(를) 도감에서 지우려면 가족 PIN 4자리를 눌러 주세요', () => DexDelete.run(id));
+    },
+
+    run(id) {
+      const p = byId(id);
+      if (!p) return;
+      try {
+        S.dex.ids.delete(id);
+        delete S.dex.counts[id];
+        delete S.dex.dates[id];
+        delete S.dex.subjects[id];
+        Profiles.saveDex(Profiles.data.active, S.dex);
+      } catch (e) { warn('dex delete', e); }
+      /* 파트너였다면 파트너도 비운다 */
+      try {
+        if (PB.partnerId === id) {
+          PB.partnerId = 0;
+          lsSet(Partner.key(), 0);
+          Partner.load();
+          UI.partner();
+        }
+      } catch (e) { warn('partner clear', e); }
+      /* 마을에 놓여 있었다면 그 자리도 정리 */
+      try {
+        const vkey = 'pkm.village.v1.' + slotId();
+        const v = lsGet(vkey, null);
+        if (v && Array.isArray(v.poke)) {
+          const before = v.poke.length;
+          v.poke = v.poke.filter((x) => Number(x.id) !== Number(id));
+          if (v.poke.length !== before) lsSet(vkey, v);
+        }
+      } catch (e) { warn('village clear', e); }
+      try { renderDex(false); renderDexBadge(); } catch (e) { /* */ }
+      try { UI.rank(); UI.combo(); } catch (e) { /* */ }
+      UI.toast('🗑️ ' + (p.short || p.name) + '을(를) 도감에서 지웠어요', 'info', 1900);
+    },
+  };
+
+  /* 보스 7칸 HP 가 보이도록 renderHp 를 7칸까지 그리게 바꾼다 */
+  function installHp() {
+    const orig = window.renderHp;
+    if (typeof orig !== 'function' || orig.__pb3) return;
+    const wrapped = function (el, hp, cap) {
+      try {
+        if (!el) return orig.apply(this, arguments);
+        const max = el.id === 'myHp' ? MAXHP : (S.wild && S.wild.__boss ? BOSS_HP : MAXHP);
+        const seg = Math.max(2, Math.min(max, cap || max));
+        if (el.children.length !== seg) {
+          el.innerHTML = '';
+          for (let i = 0; i < seg; i += 1) el.appendChild(document.createElement('i'));
+        }
+        Array.prototype.forEach.call(el.children, (c, i) => { c.className = i < hp ? 'on' : ''; });
+        el.classList.remove('warn', 'crit');
+        if (hp <= 1) el.classList.add('crit');
+        else if (hp <= 2) el.classList.add('warn');
+        return undefined;
+      } catch (e) { return orig.apply(this, arguments); }
+    };
+    wrapped.__pb3 = true;
+    window.renderHp = wrapped;
+  }
+
   /* ---------- 15. 데이터 · 초기화 ---------- */
   function loadEvoMap() {
     fetch('./evo-map.json', { cache: 'no-cache' })
@@ -1395,13 +1918,21 @@
   }
 
   function init() {
+    installHp();
+    PinGate.build();
+    ResetGate.attach();
+    DexDelete.bind();
     UI.stage();
+    bossStage();
+    rankStage();
     UI.balls();
     UI.missionBtn();
     UI.modals();
     UI.timerGrid();
     UI.rank();
     loadAll();
+    initRankSeen();
+    bossChip();
     UI.partner();
     UI.missionBadge();
     UI.timer();
@@ -1427,6 +1958,8 @@
           UI.rank();
           UI.missionBadge();
           UI.timer();
+          initRankSeen();
+          bossChip();
         } catch (e) { warn('applyProfile', e); }
         return out;
       };
@@ -1483,5 +2016,29 @@
     reviewState() { return PB.rv; },
     markMission(g) { return Mission.mark(g || GAME); },
     settingsConfirm() { const b = q('#pb2SetConfirm'); if (b) b.click(); },
+    /* 3탄 검증용 */
+    bossMode: () => bossMode(),
+    bossRecord: () => lsGet(K_BOSS(slotId()), { count: 0 }),
+    forceBoss(id) {
+      const t = byId(id || 150) || byId(25);
+      const orig = window.pickWild;
+      window.pickWild = function () { return Object.assign({}, t, { level: 50, cp: 1200, __boss: true }); };
+      try { newEncounter({ silent: false }); } finally { window.pickWild = orig; }
+    },
+    itemInv: () => lsGet(K_INV(slotId()), {}),
+    dropChance: () => dropChance(),
+    rollGift: () => rollGift(),
+    grantItem(n) { return grantVillageItem(n || 1).map((x) => x && x.k); },
+    superHit: () => superHit(),
+    showRankUp(a, b) { showRankUp(a === undefined ? 0 : a, b === undefined ? 1 : b); },
+    pin: {
+      open(mode, title, desc, fn) { PinGate.open(mode, title, desc, fn); },
+      press(d) { PinGate.press(d); },
+      state() { return { open: PinGate.el ? !PinGate.el.hidden : false, buf: PinGate.buf, fails: PinGate.fails, mode: PinGate.mode }; },
+      close() { PinGate.close(); },
+    },
+    deleteCaught(id) { DexDelete.ask(id); },
+    dexCount: () => dexCount(),
+    rankIdx: () => rankIdx(dexCount()),
   };
 })();

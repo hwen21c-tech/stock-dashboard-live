@@ -1,7 +1,8 @@
 /* ============================================================
    포켓몬 배틀 월드 — 가족 전용 4자리 PIN 잠금
    4개 페이지(런처 · 산수 · 한글 · 영어) 공통. <head>에서 가장 먼저 실행.
-   ─ 기본 PIN 0623 / localStorage['pkm.family.unlocked.v1']='1' 이면 통과
+   ─ 기본 PIN 0623 / sessionStorage['pkm.family.unlocked.v1']='1' 이면 통과
+     (앱을 닫으면 지워져 다음에 열 때 다시 PIN을 묻는다)
    ─ 잠금 상태에서는 화면·키보드 입력을 모두 막고, 해제 후 완전히 제거한다.
    ============================================================ */
 (function () {
@@ -21,11 +22,19 @@
   function write(k, v) {
     try { localStorage.setItem(k, v); } catch (e) { /* */ }
   }
+  function ssRead(k, d) {
+    try { var v = sessionStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; }
+  }
+  function ssWrite(k, v) {
+    try { sessionStorage.setItem(k, v); } catch (e) { /* */ }
+  }
   function pin() {
     var p = read(PIN_KEY, DEFAULT_PIN);
     return /^\d{4}$/.test(p) ? p : DEFAULT_PIN;
   }
-  function isUnlocked() { return read(STORE, '') === '1'; }
+  /* 이전 버전(localStorage)으로 한 번 열어 둔 기록은 지운다 — 새로 열면 PIN부터 */
+  try { localStorage.removeItem(STORE); } catch (e) { /* */ }
+  function isUnlocked() { return ssRead(STORE, '') === '1'; }
 
   var CSS = [
     '.pkm-lock{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;',
@@ -126,7 +135,7 @@
 
   function check() {
     if (buf === pin()) {
-      write(STORE, '1');
+      ssWrite(STORE, '1');
       locked = false;
       msg('반가워요! 들어가요 🎉', false);
       if (el) {
@@ -264,8 +273,11 @@
     isLocked: function () { return locked; },
     isUnlocked: isUnlocked,
     lock: lock,
-    unlock: function () { write(STORE, '1'); locked = false; },
-    reset: function () { try { localStorage.removeItem(STORE); } catch (e) { /* */ } },
+    unlock: function () { ssWrite(STORE, '1'); locked = false; },
+    reset: function () {
+      try { sessionStorage.removeItem(STORE); } catch (e) { /* */ }
+      try { localStorage.removeItem(STORE); } catch (e) { /* */ }
+    },
     setPin: function (p) {
       if (/^\d{4}$/.test(String(p || ''))) { write(PIN_KEY, String(p)); return true; }
       return false;

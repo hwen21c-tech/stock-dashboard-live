@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<title>포켓몬 2인 대결 — 배틀 월드 3탄</title>
+<meta name="theme-color" content="#3aa62b">
+<meta name="description" content="태블릿 한 화면에서 둘이 함께 — 포켓몬 2인 대결">
+<link rel="icon" type="image/svg+xml" href="./pokemon-battle-icon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="./pokemon-battle-icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="./pokemon-battle2.css">
+<script src="/pokemon-lock.js"></script>
+<script src="/pokemon-3rd.js"></script>
+<style>
+  :root{
+    --grass1:#d9f7b0; --grass2:#a8e86b; --grass3:#57bd2f; --deep:#20591a;
+    --gold:#ffcf4d; --ink:#22400f; --ink-soft:#4d6b32; --card:#fffdf3; --line:#cfe6a6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;font-family:"Apple SD Gothic Neo","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink);background:linear-gradient(180deg,#bff0ff 0%,#d8f7ff 22%,var(--grass1) 46%,var(--grass2) 72%,var(--grass3) 100%);
+    min-height:100dvh;overflow-x:hidden;overscroll-behavior-y:contain;
+  }
+  button{font-family:inherit;color:inherit;cursor:pointer}
+  .top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:8px;
+    padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:rgba(255,255,255,.82);
+    border-bottom:2px solid rgba(160,210,120,.7);backdrop-filter:blur(6px)}
+  .top h1{margin:0;font-size:clamp(14px,4vw,19px);letter-spacing:-.03em;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .top h1 span{color:#2f7a1f}
+  .back{flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:6px 11px;border-radius:999px;text-decoration:none;
+    font-size:clamp(10.5px,2.9vw,12px);font-weight:900;color:#2f4a16;background:#fff;border:2px solid var(--line);
+    box-shadow:0 2px 0 rgba(60,110,30,.18)}
+  .icob{flex:0 0 auto;width:34px;height:32px;border-radius:10px;border:2px solid var(--line);background:#fff;
+    font-size:15px;font-weight:900}
+
+  /* ---------- 준비 화면 ---------- */
+  .setup{padding:14px 12px calc(24px + env(safe-area-inset-bottom));max-width:980px;margin:0 auto}
+  .lead{text-align:center;margin:6px 0 14px}
+  .lead b{display:block;font-size:clamp(17px,4.8vw,26px);letter-spacing:-.03em}
+  .lead span{display:block;margin-top:4px;font-size:clamp(10.5px,2.9vw,13px);font-weight:900;color:#4d6b32}
+  .cards{display:grid;grid-template-columns:1fr;gap:12px}
+  @media (min-width:760px){ .cards{grid-template-columns:1fr 1fr} }
+  .scard{background:linear-gradient(180deg,#fff,#fffdf3);border:2.5px solid var(--line);border-bottom-width:6px;
+    border-radius:20px;padding:12px;box-shadow:0 8px 20px rgba(40,90,20,.13)}
+  .scard.p2{border-color:#c7d9f7}
+  .scard .head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .scard .tag{font-size:clamp(10px,2.8vw,11.5px);font-weight:900;color:#fff;background:#3fbe2c;
+    border-radius:999px;padding:2px 10px}
+  .scard.p2 .tag{background:#3d7ff0}
+  .scard .nm{font-size:clamp(14px,3.9vw,18px);font-weight:900;letter-spacing:-.02em;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rows{display:grid;gap:8px}
+  .row{display:flex;align-items:center;gap:6px}
+  .row .lb{flex:0 0 46px;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
+  .seg{display:flex;gap:4px;flex:1 1 auto;min-width:0}
+  .seg button{flex:1 1 0;min-width:0;padding:6px 2px;border-radius:11px;font-size:clamp(10px,2.8vw,12.5px);
+    font-weight:900;background:#f4fbe8;border:1.8px solid #dcebc4;color:#5c7a34;letter-spacing:-.03em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .seg button.on{background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a;color:#1c4a0e;
+    box-shadow:0 2px 0 rgba(60,120,30,.22)}
+  .prev{display:flex;align-items:center;gap:8px;margin-top:9px;padding:8px 9px;border-radius:14px;
+    background:linear-gradient(180deg,#f7fdf0,#eef8dd);border:1.6px solid #e2eecd}
+  .prev img{width:44px;height:44px;object-fit:contain;image-rendering:pixelated;flex:0 0 44px}
+  .prev .pi{min-width:0;flex:1}
+  .prev b{display:block;font-size:clamp(10.5px,2.9vw,12.5px);letter-spacing:-.02em}
+  .prev span{display:block;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
+  .startwrap{margin:16px auto 0;max-width:520px;text-align:center}
+  .startbtn{width:100%;padding:14px;border:none;border-radius:18px;font-size:clamp(16px,4.6vw,21px);font-weight:900;
+    color:#fff;background:linear-gradient(180deg,#ffb02e,#e8760a);letter-spacing:-.02em;
+    box-shadow:0 6px 0 #a5520a,0 10px 22px rgba(120,60,0,.3)}
+  .startbtn:active{transform:translateY(3px);box-shadow:0 3px 0 #a5520a}
+  .startbtn[disabled]{filter:grayscale(.65);opacity:.7;box-shadow:0 4px 0 #8b8b7a}
+  .hint{margin:8px 0 0;font-size:clamp(10px,2.7vw,12px);font-weight:900;color:#8a4b00;min-height:16px}
+
+  /* ---------- 대결 화면 ---------- */
+  #duel{display:none;flex-direction:column;height:calc(100dvh - 50px);min-height:0;
+    padding:6px 7px calc(6px + env(safe-area-inset-bottom))}
+  #duel.on{display:flex}
+  .dhud{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:stretch}
+  .hside{min-width:0;background:rgba(255,255,255,.94);border:2px solid var(--line);border-radius:14px;
+    padding:5px 8px;box-shadow:0 3px 10px rgba(40,90,20,.14)}
+  .hside.p2{text-align:right}
+  .hside .l1{display:flex;align-items:center;gap:5px;min-width:0}
+  .hside.p2 .l1{justify-content:flex-end}
+  .hside .who{font-size:clamp(10px,2.8vw,12px);font-weight:900;color:#2f4a16;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .hside .pt{font-size:clamp(8.5px,2.3vw,10px);font-weight:900;color:#7d8a63;white-space:nowrap}
+  .pips{display:flex;gap:3px;margin-top:4px}
+  .hside.p2 .pips{justify-content:flex-end}
+  .pips i{flex:1 1 0;max-width:22px;height:9px;border-radius:99px;background:#e6f2d2;border:1px solid #cfe6a6}
+  .pips i.on{background:linear-gradient(90deg,#8ce86a,#35b522);border-color:#2ea11c}
+  .pips.crit i.on{background:linear-gradient(90deg,#ff9a5c,#e23c1c);border-color:#c02a10}
+  .mid{display:grid;place-items:center;padding:0 2px}
+  .mid b{font-size:clamp(11px,3vw,15px);font-weight:900;color:#fff;background:#2f7a1f;
+    border-radius:999px;padding:4px 8px;box-shadow:0 3px 0 rgba(0,0,0,.2)}
+
+  .field{position:relative;flex:1 1 auto;min-height:132px;margin-top:6px;border-radius:16px;overflow:hidden;
+    border:2.5px solid #bfe29a;box-shadow:inset 0 0 24px rgba(20,60,10,.18),0 6px 16px rgba(40,90,20,.16);
+    display:flex}
+  .half{position:relative;flex:1 1 50%;min-width:0;overflow:hidden}
+  .half::after{content:"";position:absolute;inset:auto 0 0 0;height:38%;
+    background:linear-gradient(180deg,transparent,rgba(20,60,10,.16))}
+  .cut{position:absolute;left:50%;top:0;bottom:0;width:3px;z-index:4;transform:translateX(-50%);
+    background:linear-gradient(180deg,transparent,rgba(255,255,255,.9) 20%,rgba(255,255,255,.9) 80%,transparent)}
+  .fighter{position:absolute;bottom:9%;left:50%;z-index:3;width:clamp(84px,20vw,150px);
+    transform:translateX(-50%);transition:filter .2s}
+  .fighter img{width:100%;display:block;image-rendering:pixelated;
+    filter:drop-shadow(0 6px 6px rgba(10,40,4,.35))}
+  .half.left .fighter img{transform:scaleX(-1)}
+  .fighter .fnm{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);
+    font-size:clamp(8.5px,2.4vw,11px);font-weight:900;color:#fff;white-space:nowrap;
+    background:rgba(20,50,10,.68);border:1.4px solid rgba(255,255,255,.7);border-radius:999px;
+    padding:0 7px;line-height:1.6}
+  .fighter.hurt img{animation:vshurt .55s steps(1)}
+  @keyframes vshurt{0%{filter:brightness(3) saturate(.2)}40%{filter:brightness(.4)}70%{filter:brightness(2.4)}100%{filter:none}}
+  .fighter.jump img{animation:vsjump .55s cubic-bezier(.2,1.5,.4,1)}
+  @keyframes vsjump{0%{transform:translateY(0) scale(1)}35%{transform:translateY(-26px) scale(1.06)}100%{transform:translateY(0) scale(1)}}
+  .fighter.out img{animation:vsout .9s ease-in forwards}
+  @keyframes vsout{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.25) translateY(30px) rotate(24deg)}}
+  .dmgpop{position:absolute;left:50%;top:24%;transform:translateX(-50%);z-index:6;
+    font-size:clamp(15px,4.6vw,24px);font-weight:900;color:#ff3b1f;text-shadow:0 2px 0 #fff,0 0 10px rgba(255,120,80,.8);
+    animation:dmgpop .9s ease-out forwards;pointer-events:none}
+  @keyframes dmgpop{0%{opacity:0;transform:translate(-50%,10px) scale(.6)}
+    35%{opacity:1;transform:translate(-50%,-6px) scale(1.15)}100%{opacity:0;transform:translate(-50%,-34px) scale(1)}}
+  .sebanner{position:absolute;left:50%;top:9%;transform:translateX(-50%);z-index:7;white-space:nowrap;
+    font-size:clamp(10px,2.9vw,14px);font-weight:900;color:#fff;padding:3px 11px;border-radius:999px;
+    background:linear-gradient(180deg,#ff6a3d,#c81f0c);border:2px solid #ffd0b0;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);animation:sepop .35s cubic-bezier(.2,1.6,.4,1) both}
+  @keyframes sepop{from{opacity:0;transform:translate(-50%,-8px) scale(.7)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+  .centerflash{position:fixed;inset:0;z-index:50;pointer-events:none;background:#fff;opacity:0}
+  .centerflash.go{animation:cflash .5s ease-out}
+  @keyframes cflash{0%{opacity:.85}100%{opacity:0}}
+
+  .qwrap{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px}
+  @media (max-width:700px){
+    .qwrap{grid-template-columns:1fr;gap:6px}
+    .field{min-height:104px;margin-top:5px}
+    .qpanel{padding:5px 7px 6px;border-bottom-width:4px}
+    .qbody{padding:3px 2px 2px;min-height:34px}
+    .qtext{font-size:clamp(14px,4.1vw,20px)}
+    .choice{min-height:37px;padding:3px 3px;border-bottom-width:3px;font-size:clamp(13px,3.6vw,17px)}
+    .qtop .qn{font-size:9px}
+    .dhud{gap:4px}
+    .hside{padding:4px 6px}
+    .fighter{width:clamp(72px,19vw,104px);bottom:8%}
+  }
+  .qpanel{min-width:0;background:linear-gradient(180deg,#fff,#fffdf3);border:2.5px solid var(--line);
+    border-bottom-width:5px;border-radius:16px;padding:7px 8px 9px;display:flex;flex-direction:column;
+    box-shadow:0 5px 14px rgba(40,90,20,.12)}
+  .qpanel.p2{border-color:#c7d9f7}
+  .qpanel.cool{opacity:.65}
+  .qtop{display:flex;align-items:center;gap:5px;min-width:0}
+  .qtop .qn{flex:0 0 auto;font-size:clamp(8.5px,2.4vw,10.5px);font-weight:900;color:#fff;
+    background:#3fbe2c;border-radius:999px;padding:1px 7px;white-space:nowrap;
+    max-width:44%;overflow:hidden;text-overflow:ellipsis}
+  .qpanel.p2 .qtop .qn{background:#3d7ff0}
+  .qtop .combo{flex:0 0 auto;font-size:clamp(8.5px,2.4vw,10.5px);font-weight:900;color:#a8560a}
+  .tbar{flex:1 1 auto;height:6px;border-radius:99px;background:#e9f3d8;overflow:hidden;min-width:24px}
+  .tbar i{display:block;height:100%;width:100%;border-radius:99px;background:linear-gradient(90deg,#8ce86a,#3fbe2c)}
+  .tbar i.warn{background:linear-gradient(90deg,#ffcf4d,#e8890a)}
+  .tbar i.crit{background:linear-gradient(90deg,#ff8a5c,#e2231c)}
+  .qbody{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 2px 4px;min-height:44px}
+  .qemoji{font-size:clamp(22px,6.6vw,34px);line-height:1;flex:0 0 auto}
+  .qtext{font-size:clamp(15px,4.4vw,25px);font-weight:900;letter-spacing:-.02em;text-align:center;
+    word-break:keep-all;overflow-wrap:anywhere;line-height:1.25}
+  .qsub{font-size:clamp(9.5px,2.6vw,11.5px);font-weight:900;color:#7d8a63;text-align:center;margin-top:-2px}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .choice{min-height:42px;padding:6px 4px;border-radius:12px;background:linear-gradient(180deg,#fff,#f4fbe8);
+    border:2px solid #dcebc4;border-bottom-width:4px;font-size:clamp(14px,3.9vw,20px);font-weight:900;
+    color:#22400f;display:flex;align-items:center;justify-content:center;gap:5px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.02em}
+  .choice .n{font-style:normal;font-size:clamp(8.5px,2.4vw,10px);color:#8fa878;flex:0 0 auto}
+  .choice:active{transform:translateY(2px)}
+  .choice.ok{background:linear-gradient(180deg,#c8f6a6,#7fd94f);border-color:#4fae28;color:#12400a}
+  .choice.no{background:linear-gradient(180deg,#ffd0c4,#f09c8a);border-color:#d05a3c;color:#6a1a0a}
+  .choice[disabled]{opacity:.9}
+
+  /* ---------- 결과 ---------- */
+  .over{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:14px;
+    background:rgba(12,36,6,.55);backdrop-filter:blur(3px)}
+  .over.on{display:grid}
+  .ocard{width:min(430px,100%);max-height:92dvh;overflow:auto;text-align:center;
+    background:linear-gradient(180deg,#fffdf3,#f2ffe0);border:3px solid var(--line);border-radius:22px;
+    padding:16px 14px;box-shadow:0 18px 40px rgba(10,40,4,.45);animation:cardin .4s cubic-bezier(.2,1.5,.4,1) both}
+  @keyframes cardin{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+  .ocard .cup{font-size:clamp(38px,12vw,56px);line-height:1}
+  .ocard h2{margin:6px 0 2px;font-size:clamp(19px,5.4vw,26px);letter-spacing:-.03em}
+  .ocard .who{font-size:clamp(11px,3vw,13px);font-weight:900;color:#4d6b32}
+  .ocard .picklb{margin:14px 0 8px;font-size:clamp(11px,3vw,13px);font-weight:900;color:#8a4b00}
+  .picks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .pick{display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 6px;border-radius:16px;
+    background:linear-gradient(180deg,#fff,#f6fbea);border:2.5px solid #dcebc4;border-bottom-width:5px;
+    font-size:clamp(10.5px,2.9vw,12.5px);font-weight:900;letter-spacing:-.02em}
+  .pick .em{font-size:clamp(24px,7vw,32px);line-height:1}
+  .pick:active{transform:translateY(2px)}
+  .pick[disabled]{opacity:.55}
+  .got{margin-top:12px;padding:10px;border-radius:14px;background:#eef8dd;border:1.6px solid #cfe6a6;
+    font-size:clamp(11px,3vw,13px);font-weight:900;color:#2f4a16;display:none}
+  .got.on{display:block}
+  .after{display:none;gap:8px;margin-top:12px;grid-template-columns:1fr 1fr}
+  .after.on{display:grid}
+  .after button{padding:11px 6px;border-radius:14px;font-size:clamp(11.5px,3.1vw,13.5px);font-weight:900;
+    background:#fff;border:2.5px solid var(--line);border-bottom-width:5px}
+  .after button.main{background:linear-gradient(180deg,#a8e86b,#57bd2f);border-color:#3f9b22;color:#0f3a06}
+  .footnote{margin:10px 0 0;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
+
+  #fx{position:fixed;inset:0;z-index:45;pointer-events:none;overflow:hidden}
+  .proj{position:fixed;width:24px;height:24px;border-radius:50%;margin:-12px 0 0 -12px;
+    background:radial-gradient(circle,#fff,#59c7ff 45%,#1168b8);box-shadow:0 0 16px rgba(120,220,255,.9)}
+  .proj.fire{background:radial-gradient(circle,#fff8cf,#ff9a3c 45%,#c02a00);box-shadow:0 0 18px rgba(255,140,60,.9)}
+  .proj.elec{background:radial-gradient(circle,#fffde0,#ffe14d 45%,#d99a00);box-shadow:0 0 20px rgba(255,230,90,.95);
+    border-radius:3px;clip-path:polygon(50% 0,62% 36%,98% 38%,70% 60%,82% 100%,50% 74%,18% 100%,30% 60%,2% 38%,38% 36%)}
+  .proj.grass{background:radial-gradient(circle,#f0ffd0,#7fd24a 45%,#2f7a1f);box-shadow:0 0 16px rgba(140,230,90,.9)}
+  .proj.ice{background:radial-gradient(circle,#fff,#bdf3ff 45%,#2a9fc0);box-shadow:0 0 16px rgba(180,240,255,.95);
+    border-radius:4px;clip-path:polygon(50% 0,72% 30%,100% 50%,72% 70%,50% 100%,28% 70%,0 50%,28% 30%)}
+  .proj.poison{background:radial-gradient(circle,#f4c8ff,#a444c4 50%,#48104f);box-shadow:0 0 16px rgba(200,110,230,.9)}
+  .proj.fairy{background:radial-gradient(circle,#fff,#ffc8ea 45%,#e0559f);box-shadow:0 0 18px rgba(255,170,220,.95)}
+  .proj.psychic{background:radial-gradient(circle,#fff,#ff9ad6 45%,#9a1f8a);box-shadow:0 0 18px rgba(255,140,220,.9)}
+  .proj.ghost{background:radial-gradient(circle,#e8d4ff,#7a44c4 45%,#2a0c4a);box-shadow:0 0 16px rgba(160,110,240,.95)}
+  .proj.dark{background:radial-gradient(circle,#b7a8c8,#3a2a4a 50%,#100810);box-shadow:0 0 16px rgba(120,90,150,.9)}
+  .proj.dragon{background:radial-gradient(circle,#fff,#7a9cff 45%,#1f2a8a);box-shadow:0 0 18px rgba(120,150,255,.95)}
+  .proj.steel{background:radial-gradient(circle,#fff,#c9d6e6 45%,#64748b);box-shadow:0 0 14px rgba(200,215,230,.9);
+    border-radius:3px;clip-path:polygon(0 30%,70% 0,100% 50%,70% 100%,0 70%)}
+  .proj.fight{background:radial-gradient(circle,#ffe0c2,#e5493a 50%,#7a1a10);box-shadow:0 0 16px rgba(255,110,80,.9)}
+  .proj.flying{background:radial-gradient(circle,#fff,#c8f0ff 45%,#5aa9c8);box-shadow:0 0 16px rgba(190,240,255,.9)}
+  .proj.ground{background:radial-gradient(circle,#fff2cc,#c89a52 45%,#6b4517);box-shadow:0 0 14px rgba(210,170,90,.9)}
+  .proj.rock{background:radial-gradient(circle,#fff,#b8a27a 45%,#5d4a26);box-shadow:0 0 14px rgba(200,180,120,.9);
+    border-radius:4px}
+  .proj.bug{background:radial-gradient(circle,#f2ffb0,#8bc34a 50%,#3f6a10);box-shadow:0 0 14px rgba(160,220,90,.9)}
+  .proj.normal{background:radial-gradient(circle,#fff,#ffe9a8 50%,#c8a13a);box-shadow:0 0 14px rgba(255,230,160,.9)}
+  .proj.big{width:56px;height:56px;margin:-28px 0 0 -28px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a class="back" href="./pokemon-battle.html">◀ 놀이터</a>
+  <h1>⚔️ <span>포켓몬 2인 대결</span></h1>
+  <button class="icob" id="muteBtn" aria-label="소리 켜기/끄기">🔊</button>
+</div>
+
+<!-- ================= 준비 화면 ================= -->
+<section class="setup" id="setup">
+  <div class="lead">
+    <b>태블릿 하나로 둘이 겨루기!</b>
+    <span>각자 과목·난이도를 고르고, 먼저 상대 파트너의 HP를 0으로 만들면 승리 🏆</span>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="startwrap">
+    <button class="startbtn" id="startBtn">⚔️ 대결 시작!</button>
+    <p class="hint" id="setHint"></p>
+  </div>
+</section>
+
+<!-- ================= 대결 화면 ================= -->
+<section id="duel" aria-label="2인 대결">
+  <div class="dhud">
+    <div class="hside p1" id="hud1">
+      <div class="l1"><span class="who" id="hud1Name">첫째</span><span class="pt" id="hud1Pt"></span></div>
+      <div class="pips" id="hp1"></div>
+    </div>
+    <div class="mid"><b>VS</b></div>
+    <div class="hside p2" id="hud2">
+      <div class="l1"><span class="pt" id="hud2Pt"></span><span class="who" id="hud2Name">둘째</span></div>
+      <div class="pips" id="hp2"></div>
+    </div>
+  </div>
+
+  <main class="field" id="field">
+    <div class="half left" id="half1">
+      <div class="pb2-bg" data-theme="forest" id="bg1"><i class="pb2-sky"></i><i class="pb2-far"></i><i class="pb2-mid"></i><i class="pb2-ground"></i><i class="pb2-motes" id="motes1"></i></div>
+      <div class="fighter" id="f1"><img alt="" decoding="async"><b class="fnm" id="f1nm"></b></div>
+    </div>
+    <div class="cut" aria-hidden="true"></div>
+    <div class="half right" id="half2">
+      <div class="pb2-bg" data-theme="forest" id="bg2"><i class="pb2-sky"></i><i class="pb2-far"></i><i class="pb2-mid"></i><i class="pb2-ground"></i><i class="pb2-motes" id="motes2"></i></div>
+      <div class="fighter" id="f2"><img alt="" decoding="async"><b class="fnm" id="f2nm"></b></div>
+    </div>
+  </main>
+
+  <div class="qwrap">
+    <div class="qpanel p1" id="qp1">
+      <div class="qtop">
+        <span class="qn" id="qn1">첫째</span>
+        <span class="combo" id="combo1"></span>
+        <span class="tbar"><i id="tb1"></i></span>
+      </div>
+      <div class="qbody"><span class="qemoji" id="qe1"></span><span class="qtext" id="qt1">…</span></div>
+      <div class="choices" id="ch1"></div>
+    </div>
+    <div class="qpanel p2" id="qp2">
+      <div class="qtop">
+        <span class="qn" id="qn2">둘째</span>
+        <span class="combo" id="combo2"></span>
+        <span class="tbar"><i id="tb2"></i></span>
+      </div>
+      <div class="qbody"><span class="qemoji" id="qe2"></span><span class="qtext" id="qt2">…</span></div>
+      <div class="choices" id="ch2"></div>
+    </div>
+  </div>
+</section>
+
+<div id="fx" aria-hidden="true"></div>
+<div class="centerflash" id="flash" aria-hidden="true"></div>
+
+<!-- ================= 결과 ================= -->
+<div class="over" id="over">
+  <div class="ocard" role="dialog" aria-modal="true" aria-labelledby="overTitle">
+    <div class="cup" id="overCup">🏆</div>
+    <h2 id="overTitle">첫째 승리!</h2>
+    <div class="who" id="overWho"></div>
+    <div class="picklb" id="pickLabel">이긴 사람만 받는 보상 — 하나를 골라요!</div>
+    <div class="picks" id="picks">
+      <button class="pick" data-pick="ball"><span class="em">🔵</span><span>슈퍼볼 1개</span></button>
+      <button class="pick" data-pick="item"><span class="em">🏡</span><span>마을 꾸미기 아이템 1개</span></button>
+    </div>
+    <div class="got" id="got"></div>
+    <div class="after" id="after">
+      <button id="againBtn">🔁 한 번 더</button>
+      <button class="main" id="villageBtn">🏡 마을로</button>
+    </div>
+    <p class="footnote">패자에게는 보상이 없어요 — 다음 판에 다시 도전!</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 작은 도구 ---------- */
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pickOf = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = (arr) => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  };
+  const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* */ } };
+  const SPR = (id) => 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + id + '.png';
+  const CRY = (id) => 'https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/' + id + '.ogg';
+  const ART = (id) => 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/' + id + '.png';
+
+  const SLOTS = [
+    { k: 'p1', fb: '첫째', emoji: '👧' },
+    { k: 'p2', fb: '둘째', emoji: '🧒' },
+    { k: 'guest', fb: '게스트', emoji: '🧪' },
+  ];
+  const SUBS = [
+    { k: 'math', name: '⚡ 산수' },
+    { k: 'hangul', name: '📖 한글' },
+    { k: 'english', name: '🔤 영어' },
+  ];
+  const DIFFS = [
+    { k: 'easy', name: '쉬움' },
+    { k: 'mid', name: '중간' },
+    { k: 'hard', name: '어려움' },
+  ];
+  const THEME_OF = {
+    '물': 'lake', '얼음': 'lake', '불꽃': 'volcano', '드래곤': 'volcano',
+    '전기': 'power', '강철': 'power', '에스퍼': 'ruins', '고스트': 'ruins', '악': 'ruins',
+    '바위': 'canyon', '땅': 'canyon', '격투': 'canyon', '비행': 'sky', '페어리': 'sky',
+    '풀': 'forest', '벌레': 'forest', '독': 'forest', '노말': 'forest',
+  };
+  const PROJ = {
+    '물': 'water', '불꽃': 'fire', '전기': 'elec', '풀': 'grass', '얼음': 'ice',
+    '독': 'poison', '페어리': 'fairy', '에스퍼': 'psychic', '고스트': 'ghost', '악': 'dark',
+    '드래곤': 'dragon', '강철': 'steel', '격투': 'fight', '비행': 'flying',
+    '땅': 'ground', '바위': 'rock', '벌레': 'bug', '노말': 'normal',
+  };
+
+  /* ---------- 소리 ---------- */
+  const Sfx = {
+    ctx: null,
+    muted: lsGet('pkm.mute.v1', false) === true,
+    ensure() {
+      if (this.muted) return null;
+      try {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return this.ctx;
+      } catch (e) { return null; }
+    },
+    tone(f, d, type, v, f2) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      try {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = type || 'triangle';
+        o.frequency.setValueAtTime(f, ctx.currentTime);
+        if (f2) o.frequency.exponentialRampToValueAtTime(f2, ctx.currentTime + (d || 0.12));
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(v || 0.06, ctx.currentTime + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (d || 0.12));
+        o.connect(g).connect(ctx.destination);
+        o.start();
+        o.stop(ctx.currentTime + (d || 0.12) + 0.02);
+      } catch (e) { /* */ }
+    },
+    click() { this.tone(660, 0.06, 'square', 0.035, 880); },
+    correct() { this.tone(880, 0.09, 'square', 0.06, 1320); },
+    wrong() { this.tone(220, 0.18, 'sawtooth', 0.05, 120); },
+    hit(type) {
+      const f = { '전기': 1200, '불꽃': 320, '물': 560, '풀': 760, '얼음': 900 }[type] || 500;
+      this.tone(f, 0.12, 'triangle', 0.06, f * 1.6);
+    },
+    fanfare() {
+      [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.22, 'triangle', 0.07), i * 130));
+    },
+    cry(id) {
+      if (this.muted) return;
+      try {
+        const a = new Audio(CRY(id));
+        a.volume = 0.5;
+        const pr = a.play();
+        if (pr && pr.catch) pr.catch(() => { /* */ });
+      } catch (e) { /* */ }
+    },
+  };
+
+  /* ---------- 데이터 ---------- */
+  const DB = { list: [], byId: {} };
+  const BANK = { hangul: [], english: [], sentences: [] };
+  let POK3 = window.POK3 || null;
+
+  function profileName(slot, game) {
+    const key = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' }[game];
+    const o = lsGet(key, null);
+    const list = (o && Array.isArray(o.list)) ? o.list : [];
+    const want = slot === 'guest' ? 'p3' : slot === 'p1' ? 'p1' : 'p2';
+    const p = list.find((x) => x && x.id === want);
+    return (p && p.name) || '';
+  }
+  function slotName(slot) {
+    const nm = profileName(slot, 'math') || profileName(slot, 'english') || profileName(slot, 'hangul');
+    if (nm) return nm.slice(0, 8);
+    return (SLOTS.find((s) => s.k === slot) || {}).fb || '친구';
+  }
+  function dexIds(slot) {
+    const o = lsGet('pkm.shared.dex.v1.' + slot, null);
+    return o && Array.isArray(o.ids) ? o.ids.filter((n) => Number.isFinite(n)) : [];
+  }
+  function partnerId(slot) {
+    const ids = dexIds(slot);
+    const raw = lsGet('pkm.partner.v1.' + slot, 0);
+    const id = Number(raw);
+    if (id && ids.indexOf(id) >= 0) return id;
+    return ids.length ? ids[0] : 0;
+  }
+  function byId(id) { return DB.byId[id] || null; }
+  function cfgOf(slot) {
+    const saved = lsGet('pkm.versus.cfg.v1.' + slot, null);
+    const def = { subj: 'math', diff: 'mid' };
+    if (saved && typeof saved === 'object') {
+      return {
+        subj: SUBS.some((s) => s.k === saved.subj) ? saved.subj : def.subj,
+        diff: DIFFS.some((d) => d.k === saved.diff) ? saved.diff : def.diff,
+      };
+    }
+    return def;
+  }
+
+  /* ---------- 문제 만들기 ---------- */
+  function uniqChoices(ans, makers, n) {
+    const out = [ans];
+    let guard = 0;
+    while (out.length < (n || 4) && guard < 90) {
+      guard += 1;
+      const c = makers(out);
+      if (c == null) continue;
+      const s = String(c);
+      if (s !== String(ans) && out.every((x) => String(x) !== s)) out.push(s);
+    }
+    while (out.length < (n || 4)) out.push(String(Number(ans) + out.length + 1));
+    return shuffle(out.map(String));
+  }
+
+  function mathQ(diff) {
+    let a, b, ans, text;
+    if (diff === 'easy') {
+      if (Math.random() < 0.5) { a = rnd(1, 9); b = rnd(1, 9); ans = a + b; text = a + ' + ' + b + ' = ?'; }
+      else { a = rnd(3, 15); b = rnd(1, a); ans = a - b; text = a + ' − ' + b + ' = ?'; }
+    } else if (diff === 'mid') {
+      const t = Math.random();
+      if (t < 0.34) { a = rnd(12, 89); b = rnd(6, 60); ans = a + b; text = a + ' + ' + b + ' = ?'; }
+      else if (t < 0.68) { a = rnd(30, 99); b = rnd(4, 29); ans = a - b; text = a + ' − ' + b + ' = ?'; }
+      else { a = rnd(2, 9); b = rnd(2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
+    } else {
+      const t = Math.random();
+      if (t < 0.4) { a = rnd(12, 49); b = rnd(2, 9); ans = a * b; text = a + ' × ' + b + ' = ?'; }
+      else if (t < 0.75) { b = rnd(2, 9); ans = rnd(3, 12); a = b * ans; text = a + ' ÷ ' + b + ' = ?'; }
+      else { a = rnd(10, 40); b = rnd(5, 30); const c = rnd(2, 20); ans = a + b - c; text = a + ' + ' + b + ' − ' + c + ' = ?'; }
+    }
+    const choices = uniqChoices(ans, (cur) => {
+      const delta = rnd(1, diff === 'easy' ? 4 : 12) * (Math.random() < 0.5 ? -1 : 1);
+      const v = Number(ans) + delta;
+      return v >= 0 && Math.abs(v - Number(ans)) <= 30 && cur.indexOf(String(v)) < 0 ? v : null;
+    });
+    return { prompt: text, emoji: '⚡', sub: '', ans: String(ans), choices };
+  }
+
+  function hangulQ(diff) {
+    const pool = BANK.hangul.filter((w) => w && w.w && w.w.length >= 2 && (w.level || 'mid') === diff);
+    const fallback = BANK.hangul.filter((w) => w && w.w && w.w.length >= 2);
+    const src = pool.length >= 4 ? pool : fallback;
+    if (!src.length) return mathQ(diff);
+    const it = pickOf(src);
+    const chars = Array.from(it.w);
+    const at = rnd(0, chars.length - 1);
+    const ansCh = chars[at];
+    const shown = chars.map((c, i) => (i === at ? '○' : c)).join('');
+    const pool2 = [];
+    BANK.hangul.forEach((w) => {
+      if (!w || !w.w || w.w === it.w) return;
+      Array.from(w.w).forEach((c) => { if (c !== ansCh && pool2.indexOf(c) < 0 && !/[○\s]/.test(c)) pool2.push(c); });
+    });
+    const choices = uniqChoices(ansCh, () => (pool2.length ? pickOf(pool2) : null));
+    return { prompt: shown, emoji: it.e || '📖', sub: '빈칸에 들어갈 글자는?', ans: ansCh, choices };
+  }
+
+  function englishQ(diff) {
+    if (diff === 'hard' && BANK.sentences.length) {
+      const pool = BANK.sentences.filter((s) => (s.level || 'mid') === diff);
+      const src = pool.length ? pool : BANK.sentences;
+      const it = pickOf(src);
+      const ans = String(it.a);
+      const opts = [ans].concat((it.o || []).map(String));
+      const uniq = [];
+      opts.forEach((o) => { if (uniq.indexOf(o) < 0) uniq.push(o); });
+      while (uniq.length < 4) uniq.push(String(Math.random()).slice(2, 4));
+      return { prompt: it.q, emoji: '🔤', sub: it.k || '빈칸에 알맞은 말은?', ans, choices: shuffle(uniq) };
+    }
+    const pool = BANK.english.filter((w) => w && w.en && (w.level || 'mid') === diff);
+    const src = pool.length >= 4 ? pool : BANK.english;
+    if (!src.length) return mathQ(diff);
+    const it = pickOf(src);
+    const ans = String(it.en);
+    const choices = uniqChoices(ans, () => {
+      const o = pickOf(src);
+      return o && o.en && o.en !== ans ? o.en : null;
+    });
+    return { prompt: it.ko || it.en, emoji: it.e || '🔤', sub: '알맞은 영어 단어는?', ans, choices };
+  }
+
+  function makeQ(side) {
+    const cfg = side.cfg;
+    try {
+      if (cfg.subj === 'hangul') return hangulQ(cfg.diff);
+      if (cfg.subj === 'english') return englishQ(cfg.diff);
+      return mathQ(cfg.diff);
+    } catch (e) {
+      return mathQ(cfg.diff);
+    }
+  }
+
+  /* ---------- 대결 상태 ---------- */
+  const D = {
+    on: false, over: false,
+    s: { p1: null, p2: null },
+  };
+  const MAXHP = 5;
+
+  function makeSide(slot, cfg, pos) {
+    const ids = dexIds(slot);
+    let pid = partnerId(slot);
+    let practice = false;
+    if (!pid) { pid = 25; practice = true; }
+    const p = byId(pid) || { id: 25, name: '피카츄', types: ['전기'] };
+    return {
+      pos, slot, cfg, practice,
+      name: slotName(slot),
+      partner: p,
+      hp: MAXHP,
+      q: null,
+      locked: false,
+      timer: 0,
+      tleft: 30,
+      combo: 0,
+      right: 0,
+      wrong: 0,
+      caught: ids.length,
+    };
+  }
+  function other(side) { return side.pos === 'p1' ? D.s.p2 : D.s.p1; }
+
+  /* ---------- 화면: 준비 ---------- */
+  function paintSetup() {
+    const host = $('#cards');
+    host.innerHTML = ['p1', 'p2'].map((slot) => {
+      const cfg = cfgOf(slot);
+      const nm = slotName(slot);
+      const ids = dexIds(slot);
+      const pid = partnerId(slot);
+      const p = pid ? byId(pid) : null;
+      return '<div class="scard ' + slot + '" data-side="' + slot + '">'
+        + '<div class="head"><span class="tag">' + (slot === 'p1' ? '플레이어 1' : '플레이어 2') + '</span>'
+        + '<span class="nm">' + nm + '</span></div>'
+        + '<div class="rows">'
+        + '<div class="row"><span class="lb">누구?</span><span class="seg" data-k="slot">'
+        + SLOTS.map((s) => '<button data-v="' + s.k + '" class="' + (s.k === slot ? 'on' : '') + '">'
+          + s.emoji + ' ' + slotName(s.k) + '</button>').join('')
+        + '</span></div>'
+        + '<div class="row"><span class="lb">과목</span><span class="seg" data-k="subj">'
+        + SUBS.map((s) => '<button data-v="' + s.k + '" class="' + (s.k === cfg.subj ? 'on' : '') + '">' + s.name + '</button>').join('')
+        + '</span></div>'
+        + '<div class="row"><span class="lb">난이도</span><span class="seg" data-k="diff">'
+        + DIFFS.map((s) => '<button data-v="' + s.k + '" class="' + (s.k === cfg.diff ? 'on' : '') + '">' + s.name + '</button>').join('')
+        + '</span></div>'
+        + '</div>'
+        + '<div class="prev">'
+        + (p
+          ? '<img src="' + SPR(p.id) + '" alt=""><span class="pi"><b>' + p.name + '</b>'
+            + '<span>' + (p.types || []).join(' · ') + ' · 도감 ' + ids.length + '마리</span></span>'
+          : '<img src="' + SPR(25) + '" alt=""><span class="pi"><b>연습 피카츄</b>'
+            + '<span>아직 잡은 포켓몬이 없어 연습 파트너로 나가요</span></span>')
+        + '</div></div>';
+    }).join('');
+
+    validate();
+  }
+
+  /* 선택된 슬롯 추적 (기본은 화면 자리 그대로) */
+  D.chosen = { p1: 'p1', p2: 'p2' };
+
+  function validate() {
+    const hint = $('#setHint');
+    const btn = $('#startBtn');
+    const same = D.chosen.p1 === D.chosen.p2;
+    btn.disabled = same;
+    if (same) hint.textContent = '두 사람이 같은 친구를 골랐어요. 한 명을 바꿔 주세요!';
+    else hint.textContent = '';
+  }
+
+  /* ---------- 화면: 대결 ---------- */
+  function paintHud() {
+    [['p1', 'hud1Name', 'hud1Pt', 'hp1'], ['p2', 'hud2Name', 'hud2Pt', 'hp2']].forEach((row) => {
+      const s = D.s[row[0]];
+      $('#' + row[1]).textContent = s.name;
+      const p = s.partner;
+      $('#' + row[2]).textContent = (p ? p.name : '') + (s.practice ? ' (연습)' : '');
+      const pips = $('#' + row[3]);
+      let html = '';
+      for (let i = 0; i < MAXHP; i += 1) html += '<i class="' + (i < s.hp ? 'on' : '') + '"></i>';
+      pips.innerHTML = html;
+      pips.classList.toggle('crit', s.hp <= 2);
+    });
+  }
+
+  function paintTheme() {
+    [['p1', 'bg1', 'motes1'], ['p2', 'bg2', 'motes2']].forEach((row) => {
+      const s = D.s[row[0]];
+      const t = (s.partner && s.partner.types && s.partner.types[0]) || '노말';
+      const key = THEME_OF[t] || 'forest';
+      const bg = $('#' + row[1]);
+      bg.dataset.theme = key;
+      const host = $('#' + row[2]);
+      host.innerHTML = '';
+      const n = 7;
+      for (let i = 0; i < n; i += 1) {
+        const d = document.createElement('i');
+        d.className = 'pb2-mote';
+        const w = 3 + Math.random() * 4;
+        d.style.cssText = 'left:' + (Math.random() * 96).toFixed(1) + '%;top:' + (10 + Math.random() * 70).toFixed(1)
+          + '%;width:' + w.toFixed(1) + 'px;height:' + w.toFixed(1) + 'px;background:#fffdf0;'
+          + 'animation:pb2-' + (i % 2 ? 'down' : 'up') + ' ' + (3.6 + Math.random() * 3).toFixed(2) + 's linear '
+          + (Math.random() * 3).toFixed(2) + 's infinite';
+        host.appendChild(d);
+      }
+      $('#' + (row[0] === 'p1' ? 'f1' : 'f2')).className = 'fighter';
+    });
+    ['f1', 'f2'].forEach((id) => {
+      const wrap = $('#' + id);
+      const s = D.s[id === 'f1' ? 'p1' : 'p2'];
+      const img = wrap.querySelector('img');
+      img.onerror = () => { img.onerror = null; img.src = SPR(s.partner.id); };
+      img.src = ART(s.partner.id);
+      img.alt = s.partner.name;
+      wrap.querySelector('.fnm').textContent = s.partner.name;
+    });
+  }
+
+  function paintQ(side, opts) {
+    const n = side.pos === 'p1' ? '1' : '2';
+    const q = side.q;
+    $('#qn' + n).textContent = side.name;
+    $('#combo' + n).textContent = side.combo > 1 ? '🔥' + side.combo : '';
+    $('#qp' + n).classList.toggle('cool', !!side.locked);
+    if (!q) return;
+    $('#qe' + n).textContent = q.emoji || '';
+    $('#qt' + n).textContent = q.prompt || '';
+    const host = $('#ch' + n);
+    host.innerHTML = q.choices.map((c, i) =>
+      '<button class="choice" data-i="' + i + '"><i class="n">' + (i + 1) + '</i><span>' + String(c) + '</span></button>').join('');
+    if (!opts || !opts.keepLock) {
+      $$('.choice', host).forEach((b) => {
+        b.addEventListener('click', () => answer(side, Number(b.dataset.i)));
+      });
+    }
+  }
+
+  function paintTimer(side) {
+    const n = side.pos === 'p1' ? '1' : '2';
+    const bar = $('#tb' + n);
+    const pct = clamp(side.tleft / 30, 0, 1) * 100;
+    bar.style.width = pct + '%';
+    bar.className = side.tleft <= 6 ? 'crit' : side.tleft <= 12 ? 'warn' : '';
+  }
+
+  function startTimer(side) {
+    clearInterval(side.timer);
+    side.tleft = 30;
+    paintTimer(side);
+    side.timer = setInterval(() => {
+      if (!D.on || D.over) { clearInterval(side.timer); return; }
+      side.tleft -= 0.1;
+      if (side.tleft <= 0) {
+        side.tleft = 0;
+        paintTimer(side);
+        clearInterval(side.timer);
+        timeout(side);
+        return;
+      }
+      paintTimer(side);
+    }, 100);
+  }
+
+  function nextQ(side) {
+    side.locked = false;
+    side.q = makeQ(side);
+    paintQ(side);
+    startTimer(side);
+  }
+
+  function timeout(side) {
+    if (!D.on || D.over || side.locked) return;
+    side.locked = true;
+    side.combo = 0;
+    side.wrong += 1;
+    Sfx.wrong();
+    reveal(side, -1);
+    selfHurt(side, '⏰ 시간 초과!');
+  }
+
+  function answer(side, idx) {
+    if (!D.on || D.over || side.locked || !side.q) return;
+    side.locked = true;
+    clearInterval(side.timer);
+    const ok = String(side.q.choices[idx]) === String(side.q.ans);
+    const host = $('#ch' + (side.pos === 'p1' ? '1' : '2'));
+    $$('.choice', host).forEach((b, i) => {
+      b.disabled = true;
+      if (String(side.q.choices[i]) === String(side.q.ans)) b.classList.add('ok');
+      else if (i === idx) b.classList.add('no');
+    });
+    if (ok) {
+      side.combo += 1;
+      side.right += 1;
+      Sfx.correct();
+      $('#combo' + (side.pos === 'p1' ? '1' : '2')).textContent = side.combo > 1 ? '🔥' + side.combo : '';
+      strike(side, other(side));
+    } else {
+      side.combo = 0;
+      side.wrong += 1;
+      Sfx.wrong();
+      selfHurt(side);
+    }
+  }
+
+  function reveal(side, idx) {
+    const host = $('#ch' + (side.pos === 'p1' ? '1' : '2'));
+    $$('.choice', host).forEach((b, i) => {
+      b.disabled = true;
+      if (String(side.q.choices[i]) === String(side.q.ans)) b.classList.add('ok');
+      else if (i === idx) b.classList.add('no');
+    });
+  }
+
+  function popDmg(side, amount, se) {
+    const half = $('#half' + (side.pos === 'p1' ? '1' : '2'));
+    const el = document.createElement('div');
+    el.className = 'dmgpop';
+    el.textContent = '−' + amount;
+    half.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+    if (se) {
+      const b = document.createElement('div');
+      b.className = 'sebanner';
+      b.textContent = '💥 효과가 굉장했다!';
+      half.appendChild(b);
+      setTimeout(() => b.remove(), 1500);
+    }
+  }
+
+  function selfHurt(side, msg) {
+    side.hp = Math.max(0, side.hp - 1);
+    popDmg(side, 1, false);
+    const f = $('#f' + (side.pos === 'p1' ? '1' : '2'));
+    f.classList.remove('hurt'); void f.offsetWidth; f.classList.add('hurt');
+    setTimeout(() => f.classList.remove('hurt'), 620);
+    paintHud();
+    if (side.hp <= 0) { finish(other(side)); return; }
+    setTimeout(() => { if (D.on && !D.over) nextQ(side); }, 760);
+  }
+
+  function strike(att, def) {
+    const fromEl = $('#f' + (att.pos === 'p1' ? '1' : '2'));
+    const toEl = $('#f' + (def.pos === 'p1' ? '1' : '2'));
+    const type = (att.partner.types && att.partner.types[0]) || '노말';
+    const strong = !!(POK3 && POK3.strongPair(att.partner.types || [], def.partner.types || []));
+    const dmg = strong ? 2 : 1;
+    const a = fromEl.getBoundingClientRect();
+    const b = toEl.getBoundingClientRect();
+    const x0 = a.left + a.width / 2;
+    const y0 = a.top + a.height * 0.45;
+    const x1 = b.left + b.width / 2;
+    const y1 = b.top + b.height * 0.5;
+    Sfx.hit(type);
+    try {
+      fromEl.classList.remove('jump'); void fromEl.offsetWidth; fromEl.classList.add('jump');
+      setTimeout(() => fromEl.classList.remove('jump'), 600);
+      const p = document.createElement('div');
+      p.className = 'proj ' + (PROJ[type] || 'normal') + (strong ? ' big' : '');
+      p.style.left = x0 + 'px';
+      p.style.top = y0 + 'px';
+      $('#fx').appendChild(p);
+      const dur = clamp(Math.abs(x1 - x0) * 0.85 + 260, 280, 620);
+      p.animate([
+        { transform: 'translate(0,0) scale(.6)', opacity: 0 },
+        { transform: 'translate(' + (x1 - x0) * 0.5 + 'px,' + ((y1 - y0) * 0.5 - 46) + 'px) scale(1)', opacity: 1, offset: 0.5 },
+        { transform: 'translate(' + (x1 - x0) + 'px,' + (y1 - y0) + 'px) scale(1.1)', opacity: 1 },
+      ], { duration: dur, easing: 'cubic-bezier(.3,.05,.5,1)' }).finished
+        .then(() => p.remove()).catch(() => p.remove());
+    } catch (e) { /* */ }
+
+    setTimeout(() => {
+      if (!D.on) return;
+      def.hp = Math.max(0, def.hp - dmg);
+      popDmg(def, dmg, strong);
+      const f = $('#f' + (def.pos === 'p1' ? '1' : '2'));
+      f.classList.remove('hurt'); void f.offsetWidth; f.classList.add('hurt');
+      setTimeout(() => f.classList.remove('hurt'), 620);
+      if (strong) flashScreen();
+      paintHud();
+      if (def.hp <= 0) { finish(att); return; }
+      setTimeout(() => { if (D.on && !D.over) nextQ(att); }, 620);
+    }, clamp(Math.abs(x1 - x0) * 0.6 + 180, 260, 560));
+  }
+
+  function flashScreen() {
+    const f = $('#flash');
+    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  }
+
+  function finish(winner) {
+    if (D.over) return;
+    D.over = true;
+    clearInterval(D.s.p1.timer);
+    clearInterval(D.s.p2.timer);
+    const loser = other(winner);
+    const lf = $('#f' + (loser.pos === 'p1' ? '1' : '2'));
+    lf.classList.add('out');
+    flashScreen();
+    Sfx.fanfare();
+    setTimeout(() => openOver(winner), 900);
+  }
+
+  /* ---------- 보상 ---------- */
+  function openOver(winner) {
+    D.winner = winner;
+    $('#overCup').textContent = '🏆';
+    $('#overTitle').textContent = winner.name + ' 승리!';
+    const lp = other(winner).partner;
+    $('#overWho').textContent = winner.partner.name + ' vs ' + (lp ? lp.name : '') + ' · ' + winner.right + '문제 정답';
+    $('#pickLabel').textContent = winner.name + '님만 받는 보상 — 하나를 골라요!';
+    $('#picks').style.display = '';
+    $('#got').classList.remove('on');
+    $('#got').textContent = '';
+    $('#after').classList.remove('on');
+    $$('#picks .pick').forEach((b) => { b.disabled = false; });
+    $('#over').classList.add('on');
+  }
+
+  function grantReward(kind) {
+    const w = D.winner;
+    if (!w) return null;
+    if (kind === 'ball') {
+      const key = 'pkm.balls.v1.' + w.slot;
+      const b = lsGet(key, null) || { super: 2, hyper: 0, master: 0 };
+      b.super = (Number(b.super) || 0) + 1;
+      lsSet(key, b);
+      return { emoji: '🔵', text: '슈퍼볼 1개를 받았어요! (지금 ' + b.super + '개)' };
+    }
+    const inv = lsGet('pkm.village.inv.v1.' + w.slot, {}) || {};
+    const keys = POK3 ? POK3.itemKeys() : ['tent'];
+    const k = keys[Math.floor(Math.random() * keys.length)];
+    inv[k] = (inv[k] || 0) + 1;
+    lsSet('pkm.village.inv.v1.' + w.slot, inv);
+    const it = POK3 ? POK3.item(k) : { emoji: '🏡', name: '마을 아이템' };
+    return { emoji: it.emoji, text: it.name + ' 1개를 받았어요! 마을에 놓아 보세요' };
+  }
+
+  /* ---------- 시작 / 다시 ---------- */
+  function startDuel() {
+    if (D.chosen.p1 === D.chosen.p2) { validate(); return; }
+    Sfx.ensure();
+    Sfx.click();
+    D.s.p1 = makeSide(D.chosen.p1, cfgOf(D.chosen.p1), 'p1');
+    D.s.p2 = makeSide(D.chosen.p2, cfgOf(D.chosen.p2), 'p2');
+    D.on = true; D.over = false; D.winner = null;
+    $('#setup').style.display = 'none';
+    $('#duel').classList.add('on');
+    $('#over').classList.remove('on');
+    $('#f1').className = 'fighter';
+    $('#f2').className = 'fighter';
+    paintHud();
+    paintTheme();
+    nextQ(D.s.p1);
+    nextQ(D.s.p2);
+    setTimeout(() => Sfx.cry(D.s.p1.partner.id), 200);
+    setTimeout(() => Sfx.cry(D.s.p2.partner.id), 700);
+  }
+
+  /* ---------- 준비 화면 인터랙션 보정 ---------- */
+  /* 카드별 선택 슬롯(누구?)은 카드가 기억한다 */
+  function bindSetup() {
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('#cards .seg button');
+      if (!b) return;
+      const seg = b.closest('.seg');
+      const card = b.closest('.scard');
+      const side = card.dataset.side;
+      const kind = seg.dataset.k;
+      if (kind === 'slot') {
+        const next = b.dataset.v;
+        const otherSide = side === 'p2' ? D.chosen.p1 : D.chosen.p2;
+        if (next === otherSide) {
+          $('#setHint').textContent = '두 사람은 서로 다른 친구를 골라 주세요!';
+          setTimeout(() => { if ($('#setHint').textContent.indexOf('서로 다른') === 0) $('#setHint').textContent = ''; }, 2200);
+          return;
+        }
+        D.chosen[side] = next;
+        lsSet('pkm.versus.cfg.v1.' + next, cfgOf(next));
+      } else {
+        const cfg = cfgOf(D.chosen[side]);
+        cfg[kind] = b.dataset.v;
+        lsSet('pkm.versus.cfg.v1.' + D.chosen[side], cfg);
+      }
+      Sfx.click();
+      paintCardsOnly();
+      validate();
+    });
+  }
+
+  function paintCardsOnly() {
+    ['p1', 'p2'].forEach((side) => {
+      const card = document.querySelector('#cards .scard[data-side="' + side + '"]');
+      if (!card) return;
+      const slot = D.chosen[side];
+      const cfg = cfgOf(slot);
+      const ids = dexIds(slot);
+      const pid = partnerId(slot);
+      const p = pid ? byId(pid) : null;
+      card.querySelector('.nm').textContent = slotName(slot);
+      card.querySelector('.prev').innerHTML = p
+        ? '<img src="' + SPR(p.id) + '" alt=""><span class="pi"><b>' + p.name + '</b>'
+          + '<span>' + (p.types || []).join(' · ') + ' · 도감 ' + ids.length + '마리</span></span>'
+        : '<img src="' + SPR(25) + '" alt=""><span class="pi"><b>연습 피카츄</b>'
+          + '<span>아직 잡은 포켓몬이 없어 연습 파트너로 나가요</span></span>';
+      card.querySelectorAll('.seg').forEach((seg) => {
+        const kind = seg.dataset.k;
+        seg.querySelectorAll('button').forEach((b) => {
+          const on = kind === 'slot' ? b.dataset.v === slot : b.dataset.v === cfg[kind];
+          b.classList.toggle('on', on);
+        });
+      });
+    });
+  }
+
+  /* ---------- 부팅 ---------- */
+  function boot() {
+    $('#muteBtn').textContent = Sfx.muted ? '🔇' : '🔊';
+    $('#muteBtn').addEventListener('click', () => {
+      Sfx.muted = !Sfx.muted;
+      lsSet('pkm.mute.v1', Sfx.muted);
+      $('#muteBtn').textContent = Sfx.muted ? '🔇' : '🔊';
+    });
+    $('#startBtn').addEventListener('click', startDuel);
+    $$('#picks .pick').forEach((b) => {
+      b.addEventListener('click', () => {
+        const got = grantReward(b.dataset.pick);
+        $$('#picks .pick').forEach((x) => { x.disabled = true; });
+        const box = $('#got');
+        box.textContent = got ? got.emoji + ' ' + got.text : '';
+        box.classList.add('on');
+        $('#pickLabel').textContent = '보상 받았어요!';
+        $('#after').classList.add('on');
+        Sfx.fanfare();
+      });
+    });
+    $('#againBtn').addEventListener('click', () => {
+      $('#over').classList.remove('on');
+      startDuel();
+    });
+    $('#villageBtn').addEventListener('click', () => { location.href = './village-pokemon.html'; });
+
+    paintSetup();
+    bindSetup();
+    validate();
+
+    fetch('./pokemon-db.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((db) => {
+        if (!Array.isArray(db)) return;
+        DB.list = db;
+        db.forEach((p) => { DB.byId[p.id] = p; });
+        paintCardsOnly();
+      })
+      .catch(() => { /* 기본 피카츄로도 대결 가능 */ });
+
+    fetch('./hangul-bank.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((o) => { if (o && Array.isArray(o.words)) BANK.hangul = o.words; })
+      .catch(() => { /* */ });
+
+    fetch('./english-bank.json', { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((o) => {
+        if (!o) return;
+        if (Array.isArray(o.words)) BANK.english = o.words;
+        if (Array.isArray(o.sentences)) BANK.sentences = o.sentences;
+      })
+      .catch(() => { /* */ });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  /* 검증용 최소 API */
+  window.VS = {
+    state: D,
+    start: startDuel,
+    setSlot(side, slot) { D.chosen[side] = slot; paintCardsOnly(); validate(); },
+    setCfg(slot, cfg) { lsSet('pkm.versus.cfg.v1.' + slot, cfg); paintCardsOnly(); },
+    answer(side, idx) { answer(D.s[side], idx); },
+    auto(side) {
+      const s = D.s[side];
+      if (!s || !s.q) return -1;
+      const i = s.q.choices.indexOf(String(s.q.ans));
+      answer(s, i);
+      return i;
+    },
+    hp: () => ({ p1: D.s.p1 && D.s.p1.hp, p2: D.s.p2 && D.s.p2.hp }),
+    over: () => D.over,
+    theme: () => ({ p1: $('#bg1').dataset.theme, p2: $('#bg2').dataset.theme }),
+    partner: () => ({ p1: D.s.p1 && D.s.p1.partner.name, p2: D.s.p2 && D.s.p2.partner.name }),
+    cfg: cfgOf,
+    grant: grantReward,
+  };
+})();
+</script>
+</body>
+</html>
