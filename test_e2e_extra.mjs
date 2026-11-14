@@ -324,6 +324,7 @@ const afterPanel = await page.evaluate(() => {
     metas: rows.slice(0, 2).map((r) => (r.querySelector('.ri-meta') || {}).textContent || ''),
     sub: title ? ((title.querySelector('.sub') || {}).textContent || null) : null,
     head: title ? (title.textContent || '').replace(/\s+/g, ' ').trim() : null,
+    bodyTop: host ? ((host.querySelector('div') || {}).textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160) : null,
     hasStaticStale: /11\/13 실체결/.test(host.parentNode ? host.parentNode.textContent : ''),
     note: (Array.from(host.querySelectorAll('div')).find((d) => /시간외 대금 =/.test(d.textContent || '')) || {}).textContent || null,
   };
@@ -335,8 +336,9 @@ check('순위 행에 종목명·코드·시간외 대금·체결가·정규장 �
   afterPanel.rows > 0 && afterPanel.texts.some((t) => /(억|조)/.test(t)) && afterPanel.metas.every((m) => /시간외 체결 [\d,]+원/.test(m)),
   `${afterPanel.texts[0]} || ${afterPanel.metas[0]}`);
 check('시간외 세션 여부·직전 거래일 기준을 헤더에 명시',
-  /(직전 거래일|시간외 세션 진행 중)/.test(afterPanel.sub || '') && /\d{2}:\d{2}:\d{2} 갱신/.test(afterPanel.sub || ''),
-  afterPanel.sub);
+  /(직전 거래일|시간외 세션 진행 중)/.test((afterPanel.sub || '') + ' ' + (afterPanel.bodyTop || '')) &&
+    /\d{2}:\d{2}:\d{2} 갱신/.test(afterPanel.sub || ''),
+  `${afterPanel.sub} || ${afterPanel.bodyTop}`);
 check('정적 "11/13 실체결" 카드가 실시간 순위로 교체', !afterPanel.hasStaticStale, afterPanel.hasStaticStale ? '정적 카드 남음' : '정적 카드 제거됨');
 check('시간외 대금 산정 기준(통합−정규장)을 화면에 설명', /시간외 대금 =/.test(afterPanel.note || ''), (afterPanel.note || '').slice(0, 90));
 

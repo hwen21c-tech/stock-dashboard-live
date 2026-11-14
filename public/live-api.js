@@ -2173,16 +2173,17 @@
 
     var head = panel.querySelector('.sec-head');
     var sub = head ? head.querySelector('.sub') : null;
-    var basisTxt = af.inSession
-      ? '시간외 세션 진행 중 · ⚡ ' + stamp + ' 갱신'
-      : '직전 거래일' + (af.basisLabel ? ' ' + af.basisLabel : '') + ' 시간외 마감값 · ⚡ ' + stamp + ' 갱신';
+    var basisTxt = (af.inSession ? '시간외 세션 진행 중' : '시간외 세션 아님') + ' · ⚡ ' + stamp + ' 갱신';
     if (sub) {
       sub.textContent = basisTxt;
       sub.setAttribute('data-live', '1');
     }
 
     var html = '';
-    html += '<div style="font-size:10.5px; color:#94a3b8; margin:0 0 6px 2px;">' +
+    html += '<div style="font-size:10.5px; color:#94a3b8; margin:0 0 6px 2px; line-height:1.5;">' +
+      (af.inSession
+        ? '<strong style="color:#34d399;">시간외 세션 진행 중</strong> — 시간외 대금이 계속 늘어납니다 · '
+        : '<strong style="color:#cbd5e1;">직전 거래일 ' + esc(af.basisLabel || '—') + ' 시간외 마감값</strong> · ') +
       '감시군 ' + esc(String(af.universe || 0)) + '종목(테마·RN존·종베) 중 <strong style="color:#34d399;">시간외 체결 ' +
       esc(String(af.withAfterCount || 0)) + '종목</strong> 기준 · ' +
       '시간외 체결 데이터 없는 ' + esc(String(af.noAfterCount || 0)) + '종목은 순위에서 제외</div>';
