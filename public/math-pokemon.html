@@ -2237,6 +2237,7 @@ function opHintHtml(kind, a, b) {
   if (kind === 'add') return `<span class="hb-emoji">${hbGroup(a)}</span> + <span class="hb-emoji">${hbGroup(b)}</span><br>모두 몇 개일까요?`;
   if (kind === 'sub') {
     const keep = Math.max(0, a - b);
+    if (keep === 0) return `<span class="hb-emoji hb-cut">${hbGroup(a)}</span><br>${a}개에서 ${b}개를 <b>모두</b> 뺐어요.`;
     return `<span class="hb-emoji">${hbGroup(keep)}</span><span class="hb-emoji hb-cut">${hbGroup(b)}</span><br>${a}개에서 ${b}개를 뺐어요. 남은 사과는?`;
   }
   if (kind === 'mul') {
