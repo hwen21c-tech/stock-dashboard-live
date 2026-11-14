@@ -944,6 +944,45 @@
     }
   }
 
+  const TIME_NOW = () => Date.now();
+  /* 짧은 응원 목소리 — 3연속 정답 같은 순간에 가끔 한마디
+     · 음소거면 재생하지 않는다 · 실패(네트워크·재생 거부)는 조용히 무시한다 */
+  const Cheer = {
+    words: ['최고야!', '멋져!', '와 대단해!'],
+    audio: null,
+    last: 0,
+    idx: 0,
+    muted() { try { return !!(Sound && Sound.muted); } catch (e) { return false; } },
+    unlock() {
+      if (this.audio) return;
+      try {
+        const a = new Audio();
+        a.preload = 'auto';
+        this.audio = a;
+      } catch (e) { this.audio = null; }
+    },
+    play() {
+      if (this.muted()) return false;
+      const now = TIME_NOW();
+      if (now - this.last < 7000) return false;
+      this.last = now;
+      this.unlock();
+      if (!this.audio) return false;
+      const w = this.words[this.idx % this.words.length];
+      this.idx += 1;
+      try {
+        const a = this.audio;
+        a.onerror = () => { /* 조용히 무시 */ };
+        a.onstalled = a.onerror;
+        a.volume = 0.92;
+        a.src = '/api/tts?lang=ko&text=' + encodeURIComponent(w);
+        const pr = a.play();
+        if (pr && pr.catch) pr.catch(() => { /* 자동재생 차단은 무시 */ });
+        return true;
+      } catch (e) { return false; }
+    },
+  };
+
   const AnswerHook = {
     attach() {
       const orig = window.answer;
@@ -974,6 +1013,8 @@
             if (crit) {
               Balls.add({ super: 1 }, true);
               UI.banner('combo', '🔥 ' + PB.combo + ' 콤보 크리티컬! HP 2칸!', 1200);
+              /* 3연속 정답 순간에 가끔 짧은 응원 한마디 */
+              if (Math.random() < 0.6) Cheer.play();
             }
           } else {
             PB.combo = 0;
@@ -1013,10 +1054,42 @@
   };
 
   /* ---------- 10. 등장(진화·이로치·배경·파트너·울음) ---------- */
+  /* 이미 잡은 포켓몬 재등장 확률 — 20% → 45%
+     1,215마리 도감이 너무 빨리 소진되지 않고, 2회 포획→진화 조건도 자연스럽게
+     발동하도록 "잡은 몬스터 / 못 잡은 몬스터"를 45 : 55 로 섞는다.
+     게임 본체의 pickWild 를 부르되, 그 순간의 풀(POKEMON)만 잠시 좁혀서
+     본체 규칙(전설 3% · 최근 등장 제외 · 폼 제외)은 그대로 지키게 한다. */
+  const RECATCH_NEW = 0.45;
+  let basePickOrigin = null;   /* 게임 본체의 순수한 pickWild (검증용) */
+  function pickWildRecatch(orig, args) {
+    try {
+      const ids = (typeof S !== 'undefined' && S && S.dex && S.dex.ids) ? S.dex.ids : null;
+      if (!ids || !ids.size) return orig.apply(null, args);
+      if (typeof POKEMON === 'undefined' || !Array.isArray(POKEMON) || !POKEMON.length) return orig.apply(null, args);
+      const base = POKEMON.filter((p) => p && !p.form);
+      if (!base.length) return orig.apply(null, args);
+      const owned = base.filter((p) => ids.has(p.id));
+      const uncaught = base.filter((p) => !ids.has(p.id));
+      /* 한쪽이 비어 있으면 섞을 것이 없다(본체가 알아서 고른다) */
+      if (!owned.length || !uncaught.length) return orig.apply(null, args);
+      const saved = POKEMON;
+      try {
+        POKEMON = (Math.random() < RECATCH_NEW) ? owned : uncaught;
+        return orig.apply(null, args);
+      } finally {
+        POKEMON = saved;
+      }
+    } catch (e) {
+      warn('recatch', e);
+      try { return orig.apply(null, args); } catch (e2) { throw e2; }
+    }
+  }
+
   const SpawnHook = {
     attach() {
       const origPick = window.pickWild;
       if (typeof origPick === 'function' && !origPick.__pb2) {
+        basePickOrigin = origPick;
         const pickW = function (excludeId) {
           try {
             const boss = rollBoss(excludeId);
@@ -1028,7 +1101,7 @@
             const boost = legendBoost();
             if (boost) return boost;
           } catch (e) { warn('pickWild pre', e); }
-          const w = origPick.apply(this, arguments);
+          const w = pickWildRecatch(origPick, arguments);
           try {
             if (w && Math.random() < SHINY_RATE) w.shiny = true;
           } catch (e) { /* */ }
@@ -1155,6 +1228,7 @@
           const r = origF.apply(this, arguments);
           const after = () => {
             try { UI.reviewBtn('faintModal'); } catch (e) { /* */ }
+            try { QuotaLock.onPlay('faint'); } catch (e) { warn('quota faint', e); }
           };
           if (r && typeof r.then === 'function') r.then(after, after); else after();
           return r;
@@ -1190,6 +1264,8 @@
       try { bossClear(); } catch (e) { warn('bossClear', e); }
       try { checkRankUp(); } catch (e) { warn('rankUp', e); }
       try { maybeDropItem(); } catch (e) { warn('dropItem', e); }
+      /* 공정 횟수 — 포획 1마리 = 1판 (게스트 제외) */
+      try { QuotaLock.onPlay('capture'); } catch (e) { warn('quota capture', e); }
       void used;
     },
   };
@@ -1879,6 +1955,304 @@
     },
   };
 
+  /* ============================================================
+     16. 공정 횟수 제한 — 아빠 PIN(0623) 관리
+     ─ 첫째(p1)·둘째(p2)의 오늘 판수를 한국시간 날짜별로 저장
+     ─ 🧪 게스트는 테스트용이라 언제나 제한 없음(집계도 하지 않음)
+     ─ 몫을 다 채우면 잠금 오버레이 · 아빠 PIN 으로만 초기화/추가
+     ============================================================ */
+  const QK = 'pkm.quota.v1';
+  const QUOTA_DEFAULT = 5;
+  const QUOTA_OPTS = [3, 5, 10, 0];        // 0 = 무제한
+  const SLOT_ROLE = { p1: '첫째', p2: '둘째', guest: '게스트' };
+
+  /* 기기 시간대와 상관없이 한국시간 날짜로 센다 */
+  function kstDate(t) {
+    const d = new Date((t == null ? Date.now() : t) + 9 * 3600 * 1000);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  const quotaLimitOf = (v) => (QUOTA_OPTS.indexOf(Number(v)) >= 0 ? Number(v) : QUOTA_DEFAULT);
+
+  const Quota = {
+    /* 이 게임의 프로필 → 같은 아이를 가리키는 공통 열쇠(p1·p2·guest)
+       ─ 이름에 '아린·첫째·둘째·게스트'가 있으면 이름으로
+       ─ 이름을 바꿔 두었어도, 같은 게임의 다른 프로필이 패턴에 맞으면 반대편으로
+         (한글 게임은 기본 프로필 순서가 뒤집혀 있어 이 보정이 필요하다) */
+    keyOfProfile(profId) {
+      let name = '';
+      try {
+        const p = Profiles.get(profId);
+        name = (p && p.name) || '';
+      } catch (e) { /* */ }
+      const pat = slotFromName(name);
+      if (pat) return pat;
+      try {
+        const list = (Profiles.data && Profiles.data.list) || [];
+        const others = list.filter((x) => x && x.id !== profId)
+          .map((x) => slotFromName(x.name || ''))
+          .filter((s) => s === 'p1' || s === 'p2');
+        if (others.length === 1) return others[0] === 'p1' ? 'p2' : 'p1';
+      } catch (e) { /* */ }
+      try {
+        const map = (typeof SLOT_BY_DEFAULT !== 'undefined' && SLOT_BY_DEFAULT[GAME]) || null;
+        if (map && map[profId]) return map[profId];
+      } catch (e) { /* */ }
+      return slotId();
+    },
+    kid() {
+      try { return Quota.keyOfProfile(Profiles.data.active); } catch (e) { return slotId(); }
+    },
+    read() {
+      const raw = lsGet(QK, null);
+      const o = (raw && typeof raw === 'object') ? raw : {};
+      const plays = (o.plays && typeof o.plays === 'object') ? o.plays : {};
+      const out = { v: 1, date: typeof o.date === 'string' ? o.date : kstDate(), limit: quotaLimitOf(o.limit), plays };
+      /* 날짜가 바뀌면 오늘 판수는 0부터 */
+      if (out.date !== kstDate()) {
+        out.date = kstDate();
+        out.plays = {};
+        lsSet(QK, out);
+      }
+      return out;
+    },
+    write(o) { lsSet(QK, o); return o; },
+    limit() { return Quota.read().limit; },
+    isGuest(slot) { return String(slot) === 'guest'; },
+    count(slot) {
+      const o = Quota.read();
+      return Math.max(0, Number((o.plays || {})[slot]) || 0);
+    },
+    blocked(slot) {
+      if (Quota.isGuest(slot)) return false;
+      const o = Quota.read();
+      if (!o.limit) return false;
+      return Quota.count(slot) >= o.limit;
+    },
+    add(slot, n) {
+      if (Quota.isGuest(slot)) return { slot: slot, count: 0, limit: Quota.limit(), blocked: false, guest: true };
+      const o = Quota.read();
+      o.plays = o.plays || {};
+      o.plays[slot] = Math.max(0, (Number(o.plays[slot]) || 0) + (n === undefined ? 1 : n));
+      Quota.write(o);
+      return { slot: slot, count: o.plays[slot], limit: o.limit, blocked: !!o.limit && o.plays[slot] >= o.limit, guest: false };
+    },
+    setLimit(n) {
+      const o = Quota.read();
+      o.limit = quotaLimitOf(n);
+      Quota.write(o);
+      return o.limit;
+    },
+    reset(slot) {
+      const o = Quota.read();
+      o.plays = o.plays || {};
+      o.plays[slot] = 0;
+      Quota.write(o);
+      return 0;
+    },
+    remain(slot) {
+      const o = Quota.read();
+      if (!o.limit) return Infinity;
+      return Math.max(0, o.limit - Quota.count(slot));
+    },
+    roleOf(slot) { return SLOT_ROLE[slot] || '친구'; },
+    otherSlot(slot) { return String(slot) === 'p2' ? 'p1' : 'p2'; },
+    profileIdOf(slot) {
+      try {
+        const list = (Profiles.data && Profiles.data.list) || [];
+        const p = list.find((x) => x && Quota.keyOfProfile(x.id) === slot);
+        return p ? p.id : '';
+      } catch (e) { return ''; }
+    },
+    text(slot) {
+      const o = Quota.read();
+      const n = Quota.count(slot);
+      return o.limit ? n + '/' + o.limit + '판' : n + '판 (무제한)';
+    },
+    summary() {
+      const o = Quota.read();
+      return { date: o.date, limit: o.limit, p1: Quota.count('p1'), p2: Quota.count('p2') };
+    },
+  };
+
+  /* 잠금 오버레이 — 몫을 다 채우면 배틀 화면 위로 올라온다 */
+  const QuotaLock = {
+    el: null,
+    timer: 0,
+    build() {
+      if (this.el || q('#pkmQuota')) { this.el = q('#pkmQuota'); return; }
+      const box = document.createElement('div');
+      box.className = 'modal pkq';
+      box.id = 'pkmQuota';
+      box.hidden = true;
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-label', '오늘 판수 잠금');
+      box.innerHTML = '<div class="pkq-sheet">'
+        + '<div class="pkq-badge" aria-hidden="true">🔒</div>'
+        + '<h2 id="pkqTitle">오늘 몫을 다 채웠어요</h2>'
+        + '<p class="pkq-sub" id="pkqSub">이제 다른 친구 차례예요</p>'
+        + '<div class="pkq-rows" id="pkqRows"></div>'
+        + '<div class="pkq-acts" id="pkqActs">'
+        + '<button type="button" class="pkq-main" data-act="switch" id="pkqSwitch">➡️ 둘째 차례로 바꾸기</button>'
+        + '<button type="button" class="pkq-pin" data-act="pin">🔓 아빠 PIN (횟수 초기화·추가)</button>'
+        + '<a class="pkq-home" href="./pokemon-battle.html">🏠 처음 화면으로</a>'
+        + '</div>'
+        + '<div class="pkq-admin" id="pkqAdmin" hidden>'
+        + '<p class="pkq-adminh">🔓 아빠 확인 완료 — 어떻게 할까요?</p>'
+        + '<button type="button" class="pkq-adm" data-adm="reset">🔁 오늘 횟수 0으로 초기화</button>'
+        + '<button type="button" class="pkq-adm" data-adm="more1">➕ 한 판 더 ( +1 )</button>'
+        + '<button type="button" class="pkq-adm" data-adm="more5">➕ 5판 더 추가</button>'
+        + '</div>'
+        + '</div>';
+      (document.body || document.documentElement).appendChild(box);
+      box.addEventListener('click', (e) => {
+        const b = e.target && e.target.closest ? e.target.closest('button') : null;
+        if (!b || !box.contains(b)) return;
+        e.preventDefault();
+        try { Sound.ensure(); } catch (err) { /* */ }
+        if (b.dataset.act === 'switch') this.toOther();
+        else if (b.dataset.act === 'pin') this.openPin();
+        else if (b.dataset.adm) this.admin(b.dataset.adm);
+      });
+      this.el = box;
+    },
+
+    rowsHtml() {
+      const me = Quota.kid();
+      return ['p1', 'p2'].map((s) => {
+        const full = Quota.blocked(s);
+        const mine = s === me;
+        return '<div class="pkq-row' + (full ? ' done' : '') + (mine ? ' me' : '') + '">'
+          + '<span class="who">' + (mine ? '👉 ' : '') + Quota.roleOf(s) + '</span>'
+          + '<span class="cnt">' + Quota.text(s) + '</span>'
+          + '<span class="st">' + (full ? '🔒 오늘 완료' : '남은 ' + Quota.remain(s) + '판') + '</span>'
+          + '</div>';
+      }).join('') + '<p class="pkq-note">🧪 게스트는 테스트용이라 횟수 제한이 없어요</p>';
+    },
+
+    refresh() {
+      this.build();
+      if (!this.el) return;
+      const slot = Quota.kid();
+      if (Quota.isGuest(slot) || !Quota.blocked(slot)) { this.hide(); return; }
+      const other = Quota.otherSlot(slot);
+      const lim = Math.max(1, Quota.limit());
+      const t = q('#pkqTitle');
+      const s = q('#pkqSub');
+      const sw = q('#pkqSwitch');
+      if (t) t.textContent = '🔒 ' + Quota.roleOf(slot) + ' 오늘 ' + Quota.count(slot) + '/' + lim + '판 완료!';
+      if (s) {
+        s.textContent = Quota.blocked(other)
+          ? Quota.roleOf(other) + '도 오늘 몫을 다 채웠어요 — 내일 다시 만나요!'
+          : '이제 ' + Quota.roleOf(other) + ' 차례예요';
+      }
+      if (sw) {
+        sw.textContent = '➡️ ' + Quota.roleOf(other) + ' 차례로 바꾸기';
+        sw.hidden = false;
+      }
+      const rows = q('#pkqRows');
+      if (rows) rows.innerHTML = this.rowsHtml();
+      const adm = q('#pkqAdmin');
+      const acts = q('#pkqActs');
+      if (adm) adm.hidden = true;
+      if (acts) acts.hidden = false;
+      if (this.el.hidden) {
+        this.el.hidden = false;
+        try { Sound.tone(420, 0.12, 'triangle', 0.05); } catch (e) { /* */ }
+        setTimeout(() => { try { Sound.tone(300, 0.16, 'triangle', 0.05); } catch (e) { /* */ } }, 150);
+      }
+      try { if (typeof syncPause === 'function') syncPause(); } catch (e) { /* */ }
+    },
+
+    show() { this.refresh(); return !!(this.el && !this.el.hidden); },
+
+    hide() {
+      if (this.el) this.el.hidden = true;
+      const adm = q('#pkqAdmin');
+      const acts = q('#pkqActs');
+      if (adm) adm.hidden = true;
+      if (acts) acts.hidden = false;
+      try { if (typeof syncPause === 'function') syncPause(); } catch (e) { /* */ }
+    },
+
+    /* 판이 끝났을 때(포획·전투불능) 한 판으로 센다 — 게스트는 세지 않는다 */
+    onPlay(kind) {
+      const slot = Quota.kid();
+      if (Quota.isGuest(slot)) return false;
+      const r = Quota.add(slot, 1);
+      if (!r.blocked) return false;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => {
+        try {
+          /* 결과 창을 잠깐 보여 준 뒤 잠그기 */
+          this.refresh();
+        } catch (e) { warn('quota show', e); }
+      }, kind === 'faint' ? 900 : 1700);
+      return true;
+    },
+
+    toOther() {
+      const mine = Quota.kid();
+      const other = Quota.otherSlot(mine);
+      const id = Quota.profileIdOf(other);
+      this.hide();
+      if (!id) { UI.toast('다른 친구 프로필을 찾지 못했어요', 'info', 1600); return; }
+      try {
+        if (typeof chooseProfile === 'function') chooseProfile(id);
+        else if (typeof applyProfile === 'function') applyProfile(id, {});
+      } catch (e) { warn('quota switch', e); }
+      const nm = Quota.roleOf(other);
+      UI.toast(nm + ' 차례예요! ' + Quota.text(other) + ' 남았어요', 'good', 1800);
+      setTimeout(() => { try { this.refresh(); } catch (e) { /* */ } }, 420);
+    },
+
+    openPin() {
+      PinGate.open('quota', '🔓 아빠 횟수 관리',
+        Quota.roleOf(Quota.kid()) + '의 오늘 판수를 초기화하거나 더 추가하려면 아빠 PIN 4자리를 눌러 주세요',
+        () => {
+          const adm = q('#pkqAdmin');
+          const acts = q('#pkqActs');
+          if (adm) adm.hidden = false;
+          if (acts) acts.hidden = true;
+          try { Sound.tone(1180, 0.16, 'triangle', 0.05); } catch (e) { /* */ }
+        });
+    },
+
+    admin(kind) {
+      const slot = Quota.kid();
+      if (kind === 'reset') Quota.reset(slot);
+      else if (kind === 'more1') Quota.add(slot, -1);
+      else if (kind === 'more5') Quota.add(slot, -5);
+      UI.toast(kind === 'reset' ? '🔁 오늘 횟수를 0으로 맞췄어요'
+        : '➕ ' + Quota.roleOf(slot) + ' 오늘 ' + Quota.text(slot) + ' — 더 놀 수 있어요!', 'good', 2000);
+      this.hide();
+      setTimeout(() => { try { this.refresh(); } catch (e) { /* */ } }, 260);
+      /* 결과 창이 떠 있으면 그대로, 아니면 새 판을 시작할 수 있게 둔다 */
+    },
+
+    /* 현재 프로필이 잠겼는지 보고, 잠겼으면 올린다 */
+    check() {
+      this.build();
+      const slot = Quota.kid();
+      if (Quota.isGuest(slot) || !Quota.blocked(slot)) { this.hide(); return false; }
+      this.refresh();
+      return true;
+    },
+
+    attach() {
+      this.build();
+      /* ESC 로는 닫히지 않게 (게임 쪽 ESC 핸들러 차단) */
+      window.addEventListener('keydown', (e) => {
+        if (!this.el || this.el.hidden) return;
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
+      setTimeout(() => { try { this.check(); } catch (e) { warn('quota init', e); } }, 700);
+    },
+  };
+
   /* 보스 7칸 HP 가 보이도록 renderHp 를 7칸까지 그리게 바꾼다 */
   function installHp() {
     const orig = window.renderHp;
@@ -1922,6 +2296,13 @@
     PinGate.build();
     ResetGate.attach();
     DexDelete.bind();
+    QuotaLock.attach();
+    /* 첫 터치에서 응원 목소리용 <audio> 를 한 번 열어 둔다(모바일 자동재생 차단 대비) */
+    try {
+      const warm = () => { try { Cheer.unlock(); } catch (e) { /* */ } };
+      window.addEventListener('pointerdown', warm, { once: true, capture: true });
+      window.addEventListener('touchstart', warm, { once: true, capture: true });
+    } catch (e) { /* */ }
     UI.stage();
     bossStage();
     rankStage();
@@ -1960,6 +2341,7 @@
           UI.timer();
           initRankSeen();
           bossChip();
+          try { QuotaLock.check(); } catch (e) { warn('quota switch', e); }
         } catch (e) { warn('applyProfile', e); }
         return out;
       };
@@ -2040,5 +2422,43 @@
     deleteCaught(id) { DexDelete.ask(id); },
     dexCount: () => dexCount(),
     rankIdx: () => rankIdx(dexCount()),
+    /* 4탄 검증용 — 공정 횟수 & 재등장 확률 */
+    quota: {
+      state: () => Quota.summary(),
+      kid: () => Quota.kid(),
+      keyOf: (profId) => Quota.keyOfProfile(profId),
+      plays: () => Quota.read().plays,
+      limit: () => Quota.limit(),
+      text: (slot) => Quota.text(slot || Quota.kid()),
+      blocked: (slot) => Quota.blocked(slot || Quota.kid()),
+      setLimit(n) { const v = Quota.setLimit(n); QuotaLock.refresh(); return v; },
+      add(n) { const r = Quota.add(Quota.kid(), n === undefined ? 1 : n); QuotaLock.check(); return r; },
+      reset(slot) { const v = Quota.reset(slot || Quota.kid()); QuotaLock.check(); return v; },
+      onPlay: (kind) => QuotaLock.onPlay(kind || 'capture'),
+      open: () => QuotaLock.show(),
+      hide: () => QuotaLock.hide(),
+      openPin: () => QuotaLock.openPin(),
+      isOpen: () => !!(QuotaLock.el && !QuotaLock.el.hidden),
+      admin(kind) { QuotaLock.admin(kind); return Quota.read(); },
+      clear() { try { lsSet(QK, { v: 1, date: kstDate(), limit: QUOTA_DEFAULT, plays: {} }); } catch (e) { /* */ } },
+      date: () => kstDate(),
+    },
+    recatchRate: () => RECATCH_NEW,
+    cheer: {
+      play: () => Cheer.play(),
+      words: () => Cheer.words.slice(),
+      lastAt: () => Cheer.last,
+      muted: () => Cheer.muted(),
+      lastSrc: () => { try { return Cheer.audio ? Cheer.audio.src : ''; } catch (e) { return ''; } },
+    },
+    /* 검증용 — 보스·진화·전설 보정 없이, 재등장 섞기만 적용된 기본 등장 */
+    basePick(n) {
+      const out = [];
+      if (!basePickOrigin) return out;
+      for (let i = 0; i < (n || 200); i += 1) {
+        try { out.push(pickWildRecatch(basePickOrigin, [-1])); } catch (e) { break; }
+      }
+      return out.map((p) => (p && p.id) || 0);
+    },
   };
 })();

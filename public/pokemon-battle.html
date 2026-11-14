@@ -141,6 +141,52 @@
     background:rgba(255,255,255,.6);border-radius:12px;padding:8px 12px}
   .foot small{font-size:10px;color:#51703a;font-weight:800}
   .tip{margin-top:12px;font-size:clamp(10px,2.6vw,11px);font-weight:900;color:#4b7429}
+
+  /* 4탄: 오늘의 판수 (공정 횟수 · 아빠 PIN 관리) */
+  .quotabox{margin:14px auto 0;background:rgba(255,255,255,.9);border:2px solid #cbe79f;border-radius:18px;
+    padding:10px 12px 9px;box-shadow:0 6px 16px rgba(40,90,20,.14);max-width:720px}
+  .quotabox .qhead{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 2px 7px}
+  .quotabox .qhead b{font-size:clamp(12px,3.2vw,14px);letter-spacing:-.02em;flex:0 0 auto}
+  .quotabox .qhead span{font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547;flex:1 1 auto;text-align:right}
+  .qset{flex:0 0 auto;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6a3f00;
+    background:linear-gradient(180deg,#fff8db,#ffe9a8);border:1.6px solid #e8c25a;border-radius:999px;
+    padding:4px 9px;box-shadow:0 2px 0 rgba(150,100,10,.24);white-space:nowrap}
+  .qset:active{transform:translateY(2px);box-shadow:none}
+  .qrows{display:grid;gap:6px}
+  @media (min-width:560px){ .qrows{grid-template-columns:1fr 1fr} }
+  .qrow{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:12px;
+    background:linear-gradient(180deg,#fffdf3,#f4fbe8);border:1.6px solid #e2eecd;min-width:0}
+  .qrow.full{background:#eef2e6;border-color:#dde5d0}
+  .qrow .qav{flex:0 0 auto;font-size:15px}
+  .qrow .qname{flex:0 0 auto;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:clamp(10.5px,2.8vw,12px);font-weight:900;color:#33501a}
+  .qrow .qcnt{flex:1 1 auto;text-align:right;font-size:clamp(10.5px,2.8vw,12px);font-weight:900;
+    color:#22400f;font-variant-numeric:tabular-nums}
+  .qrow .qst{flex:0 0 auto;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#7a4a00}
+  .qrow.full .qst{color:#93a87a}
+  .qnote{margin:6px 0 0;text-align:center;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#93a87a}
+  /* PIN 설정 시트 */
+  .qp-desc{margin:0 0 6px;font-weight:900;color:#5c7a34}
+  .qp-dots{display:flex;justify-content:center;gap:11px;margin:2px 0 4px}
+  .qp-dots i{width:13px;height:13px;border-radius:50%;background:#e9f3d8;border:2px solid #cfe6a6;transition:.12s}
+  .qp-dots i.on{background:linear-gradient(180deg,#8ef06a,#3fc22a);border-color:#2ea11c;transform:scale(1.1)}
+  .qp-msg{min-height:15px;margin:2px 0 7px;text-align:center;font-size:clamp(9.5px,2.7vw,11px);font-weight:900;color:#6b8547}
+  .qp-msg.bad{color:#c0392b}
+  .qp-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .qp-pad button{height:clamp(42px,11.5vw,52px);border-radius:14px;font-weight:900;font-size:clamp(16px,4.8vw,20px);
+    color:#2f4a16;background:linear-gradient(180deg,#fff,#eaf8d0);border:2.5px solid #cfe7a2;
+    box-shadow:0 3px 0 rgba(70,120,30,.3);transition:transform .06s}
+  .qp-pad button:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(70,120,30,.3)}
+  .qp-pad button.wide{font-size:clamp(12px,3.4vw,15px);color:#5c7a34;background:linear-gradient(180deg,#fff,#f4f4e8);border-color:#dcdcd0}
+  .qp-pad button.blank{visibility:hidden}
+  .qopts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+  .qopts button{flex:1 1 auto;min-width:64px;padding:9px 8px;border-radius:12px;font-weight:900;
+    font-size:clamp(11px,3vw,12.5px);color:#33501a;background:linear-gradient(180deg,#fff,#f1f9e2);
+    border:2px solid #d9e9bd;box-shadow:0 2px 0 rgba(70,120,30,.18)}
+  .qopts button.on{background:linear-gradient(180deg,#8ce86a,#3fbe2c);border-color:#2ea11c;color:#10340a;
+    box-shadow:0 2px 0 rgba(30,90,10,.3)}
+  .qopts button:active{transform:translateY(2px);box-shadow:none}
+  .qbody h3{margin:10px 0 2px;font-size:clamp(11.5px,3vw,13px);color:#2f4a16;letter-spacing:-.02em}
   /* 2탄: 트레이너 뱃지 · 오늘의 미션 */
   .kid .rk{display:inline-block;margin-top:3px;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;
     color:#6b4212;background:linear-gradient(180deg,#fff8d8,#ffe9a8);border:1.4px solid #e8c25a;
@@ -187,12 +233,54 @@
   </div>
 </div>
 
+<div class="modal" id="qPinModal" hidden>
+  <div class="msheet">
+    <div class="mhead">
+      <h2 id="qPinTitle">⚙️ 아빠 횟수 설정</h2>
+      <button class="mx" id="qPinClose" aria-label="닫기">✕</button>
+    </div>
+    <div class="mbody qbody" id="qPinBody">
+      <div id="qPinStep">
+        <p class="qp-desc">아빠 PIN 4자리를 눌러 주세요</p>
+        <div class="qp-dots" id="qPinDots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <p class="qp-msg" id="qPinMsg"> </p>
+        <div class="qp-pad" id="qPinPad"></div>
+      </div>
+      <div id="qSetStep" hidden>
+        <h3>하루 몇 판?</h3>
+        <div class="qopts" id="qOpts">
+          <button type="button" data-lim="3">3판</button>
+          <button type="button" data-lim="5">5판</button>
+          <button type="button" data-lim="10">10판</button>
+          <button type="button" data-lim="0">무제한</button>
+        </div>
+        <h3>오늘 횟수 초기화</h3>
+        <div class="qopts" id="qReset">
+          <button type="button" data-reset="p1">첫째 0으로</button>
+          <button type="button" data-reset="p2">둘째 0으로</button>
+        </div>
+        <p class="qp-msg" id="qSetMsg">바꾸면 바로 적용돼요</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="hero">
     <span class="ball" aria-hidden="true"></span>
     <h1>포켓몬 <b>배틀 월드</b></h1>
     <p class="sub"><span>⚡ 산수 · 📖 한글 · 🔤 영어 — 하나의 도감으로!</span></p>
   </header>
+
+  <section class="quotabox" aria-label="오늘의 판수">
+    <div class="qhead">
+      <b>🎫 오늘의 판수</b>
+      <span id="qNote">하루 5판씩</span>
+      <button class="qset" id="qSetBtn" type="button">⚙️ 아빠 횟수 설정</button>
+    </div>
+    <div class="qrows" id="qRows"></div>
+    <p class="qnote" id="qFoot">🧪 게스트는 테스트용이라 횟수 제한이 없어요</p>
+  </section>
 
   <section class="dexbox" aria-label="통합 도감 요약">
     <div class="dexhead">
@@ -429,7 +517,7 @@
         + '<li>한 문제당 <b>30초</b> · 틀리거나 시간이 지나면 내 HP가 1칸 줄어요.</li></ul>'
         + '<h3>🧮 단계 · 연산</h3><ul><li>맨 위 <b>1·2·3단계</b>로 난이도를 바꾸고 <b>🎲섬기</b>로 섮을 수 있어요.</li>'
         + '<li>⚙️에서 <b>덧셈·뺄셈·곱셈·나눗셈</b>을 여러 개 골라 섮어서 내요. (최소 1개)</li></ul>'
-        + '<h3>🧩 문제 종류</h3><ul><li>기본식 · 빈칸식(<b>3 + □ = 8</b>) · 세 수식 · 크기 비교(<b>&gt; &lt; =</b>)</li></ul>'
+        + '<h3>🧩 문제 종류</h3><ul><li>기본식 · 빈칸식(<b>3 + □ = 8</b>) · 크기 비교(<b>&gt; &lt; =</b>) — 항상 <b>2개 숫자</b>로만 내요</li></ul>'
         + '<h3>💡 힌트 · 🏃 도망</h3><ul><li><b>힌트</b>는 한 판에 <b>3번</b>, 문제마다 1번 — 그림으로 풀이를 도와줘요.</li>'
         + '<li><b>도망간다</b>도 한 판에 <b>3번</b>까지. 도망가면 새 문제로 바뀌어요.</li></ul>',
     },
@@ -464,11 +552,13 @@
     },
     village: {
       title: '🏡 포켓몬 마을 규칙',
-      html: '<h3>🎯 네 구역</h3><ul><li><b>🌿 풀숲 놀이터 · 💧 물가 연못 · 😴 낮잠 언덕 · ⚔️ 작은 배틀 연습장</b></li>'
-        + '<li>놀이터·연못·연습장에서는 천천히 돌아다니고, <b>낮잠 언덕</b>에서는 Zzz 자요. 연습장에서는 둘이 장난으로 겨뤄요.</li></ul>'
-        + '<h3>👆 터치 반응</h3><ul><li>포켓몬을 톡톡 두드리면 <b>펄쩍 뛰며 ❤️/🎵</b> 말풍선, <b>진짜 울음소리</b>, 그리고 <b>🍓 열매</b>를 줘요.</li></ul>'
-        + '<h3>🐾 배치</h3><ul><li>도감에서 잡은 포켓몬만 <b>최대 8마리</b>까지. 자리가 꽉 차면 <b>바꿀 친구를 골라 교체</b>해요.</li>'
-        + '<li>꾸미기 아이템도 <b>최대 8개</b>까지 — 2인 대결 승리 보상이나 배틀 포획 때 나오는 <b>🎁 깜짝 선물 상자</b>로 모아요.</li></ul>'
+      html: '<h3>🌿 하나의 큰 풀밭</h3><ul><li>넓은 풀밭 한 곳에 포켓몬 <b>최대 8마리</b>·꾸미기 <b>최대 8개</b>를 놓아요. 자리가 꽉 차면 <b>바꿀 것을 골라 교체</b>해요.</li>'
+        + '<li><b>💧 물가 연못 · 😴 낮잠 언덕 · ⚔️ 작은 배틀 연습장</b>도 꾸미기 아이템이라 원하는 자리에 직접 놓을 수 있어요(기본 해금).</li></ul>'
+        + '<h3>🎨 꾸미기 크기·이동</h3><ul><li>놓은 아이템을 <b>톡 누르면</b> 아래에 조작 바가 떠요 — <b>➕ 크게 / ➖ 작게</b>(0.7x~1.8x).</li>'
+        + '<li>아이템을 <b>끌어서</b> 옮기거나, 아이템을 고른 뒤 <b>빈 풀밭을 톡</b> 누르면 그 자리로 이동해요.</li></ul>'
+        + '<h3>👆 터치 반응</h3><ul><li>포켓몬을 톡톡 두드리면 <b>펄쩍 뛰며 ❤️/🎵</b> 말풍선, <b>진짜 울음소리</b>, <b>🍓 열매</b>를 줘요.</li></ul>'
+        + '<h3>☀️🌅🌙 시간대 · 📸 사진</h3><ul><li>시간에 따라 <b>낮(06~16시) · 노을(17~19시) · 밤(20~05시)</b>으로 하늘·별빛·불빛이 바뀌어요. 위 버튼으로 언제든 바꿔 볼 수 있어요.</li>'
+        + '<li><b>📸 사진</b>을 누르면 지금 마을을 그림으로 담아 <b>PNG</b>로 저장해요.</li></ul>'
         + '<h3>🎁 아빠 선물</h3><ul><li>어른이 <b>가족 PIN</b>을 한 번 확인한 뒤, 첫째·둘째·게스트 중 누구에게든 아이템·볼을 선물할 수 있어요.</li></ul>',
     },
   };
@@ -563,6 +653,214 @@
   }
   try { paintRanks(); paintMission(); } catch (e) { /* */ }
   window.addEventListener('pageshow', () => { try { paintRanks(); paintMission(); } catch (e) { /* */ } });
+})();
+
+/* ---------- 4탄: 오늘의 판수 (공정 횟수 · 아빠 PIN 관리) ---------- */
+(function () {
+  'use strict';
+  var QK = 'pkm.quota.v1';
+  var DEF = 5;
+  var OPTS = [3, 5, 10, 0];              /* 0 = 무제한 */
+  var PIN_KEY = 'pkm.family.pin.v1';
+  var PROF_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
+  var ROLE = { p1: '첫째', p2: '둘째', guest: '게스트' };
+  var buf = '';
+  var fails = 0;
+
+  function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* */ } }
+  function j(k, d) { try { var v = ls(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+  /* 기기 시간대와 상관없이 한국시간 날짜로 센다 */
+  function kstDate(t) {
+    var d = new Date((t == null ? Date.now() : t) + 9 * 3600 * 1000);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  function limitOf(v) { return OPTS.indexOf(Number(v)) >= 0 ? Number(v) : DEF; }
+  function read() {
+    var o = j(QK, null) || {};
+    var out = { v: 1, date: typeof o.date === 'string' ? o.date : kstDate(), limit: limitOf(o.limit), plays: (o.plays && typeof o.plays === 'object') ? o.plays : {} };
+    if (out.date !== kstDate()) { out.date = kstDate(); out.plays = {}; lsSet(QK, JSON.stringify(out)); }
+    return out;
+  }
+  function write(o) { lsSet(QK, JSON.stringify(o)); return o; }
+  function count(slot) { var o = read(); return Math.max(0, Number((o.plays || {})[slot]) || 0); }
+  function blocked(slot) { var o = read(); return !!o.limit && count(slot) >= o.limit; }
+  function reset(slot) { var o = read(); o.plays = o.plays || {}; o.plays[slot] = 0; write(o); }
+  function setLimit(n) { var o = read(); o.limit = limitOf(n); write(o); return o.limit; }
+  function pin() { var p = ls(PIN_KEY); return /^\d{4}$/.test(p || '') ? p : '0623'; }
+  function nameOf(slot) {
+    var id = slot === 'p1' ? 'p1' : 'p2';
+    var order = ['math', 'english', 'hangul'];
+    for (var i = 0; i < order.length; i += 1) {
+      var o = j(PROF_KEYS[order[i]], null);
+      var pid = order[i] === 'hangul' ? (slot === 'p1' ? 'p2' : 'p1') : id;
+      var p = (o && Array.isArray(o.list) ? o.list : []).filter(function (x) { return x && x.id === pid; })[0];
+      if (p && p.name) return p.name;
+    }
+    return ROLE[slot] || '친구';
+  }
+  function emojiOf(slot) {
+    var id = slot === 'p1' ? 'p1' : 'p2';
+    var o = j(PROF_KEYS.math, null);
+    var p = (o && Array.isArray(o.list) ? o.list : []).filter(function (x) { return x && x.id === id; })[0];
+    return (p && p.emoji) || (slot === 'p1' ? '👧' : '🧒');
+  }
+
+  function paint() {
+    var o = read();
+    var host = document.getElementById('qRows');
+    var note = document.getElementById('qNote');
+    if (note) note.textContent = o.limit ? '하루 ' + o.limit + '판씩' : '오늘은 무제한';
+    if (!host) return;
+    host.innerHTML = ['p1', 'p2'].map(function (slot) {
+      var n = count(slot);
+      var full = blocked(slot);
+      var num = o.limit ? (n + '/' + o.limit + '판') : (n + '판');
+      var st = !o.limit ? '제한 없음' : (full ? '🔒 오늘 완료' : '남은 ' + Math.max(0, o.limit - n) + '판');
+      return '<div class="qrow' + (full ? ' full' : '') + '" data-slot="' + slot + '">'
+        + '<span class="qav" aria-hidden="true">' + emojiOf(slot) + '</span>'
+        + '<span class="qname">' + nameOf(slot) + '</span>'
+        + '<span class="qcnt">' + num + '</span>'
+        + '<span class="qst">' + st + '</span>'
+        + '</div>';
+    }).join('');
+    var foot = document.getElementById('qFoot');
+    if (foot) {
+      foot.textContent = blocked('p1') && blocked('p2')
+        ? '🔒 오늘은 둘 다 다 놀았어요 — 아빠 PIN 으로 풀 수 있어요'
+        : '🧪 게스트는 테스트용이라 횟수 제한이 없어요';
+    }
+  }
+
+  /* ---- PIN 시트 ---- */
+  var modal = document.getElementById('qPinModal');
+  var pad = document.getElementById('qPinPad');
+  var dots = document.getElementById('qPinDots');
+  var msg = document.getElementById('qPinMsg');
+  var stepPin = document.getElementById('qPinStep');
+  var stepSet = document.getElementById('qSetStep');
+
+  function paintDots() {
+    if (!dots) return;
+    Array.prototype.forEach.call(dots.children, function (d, i) { d.classList.toggle('on', i < buf.length); });
+  }
+  function setMsg(text, bad) {
+    if (!msg) return;
+    msg.textContent = text || ' ';
+    msg.className = 'qp-msg' + (bad ? ' bad' : '');
+  }
+  function buildPad() {
+    if (!pad || pad.__built) return;
+    pad.__built = true;
+    var keys = '';
+    [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(function (n) { keys += '<button type="button" data-d="' + n + '">' + n + '</button>'; });
+    keys += '<button type="button" class="wide" data-act="back">⌫</button>'
+      + '<button type="button" data-d="0">0</button>'
+      + '<button type="button" class="blank" tabindex="-1" aria-hidden="true"></button>';
+    pad.innerHTML = keys;
+    pad.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      e.preventDefault();
+      if (b.dataset.d !== undefined) press(b.dataset.d);
+      else if (b.dataset.act === 'back') { buf = buf.slice(0, -1); paintDots(); }
+    });
+  }
+  function press(d) {
+    if (buf.length >= 4) return;
+    buf += d;
+    paintDots();
+    if (buf.length === 4) setTimeout(checkPin, 90);
+  }
+  function checkPin() {
+    if (buf === pin()) {
+      buf = '';
+      paintDots();
+      setMsg('반가워요! 설정을 바꿀 수 있어요', false);
+      openSettings();
+      return;
+    }
+    fails += 1;
+    buf = '';
+    paintDots();
+    setMsg(fails >= 5 ? 'PIN을 5번 틀렸어요. 잠시 뒤 다시 해 보세요.' : 'PIN이 달라요. 다시 눌러 주세요 (' + fails + '/5)', true);
+    if (fails >= 5) {
+      Array.prototype.forEach.call(pad.querySelectorAll('button'), function (b) { b.disabled = true; });
+      setTimeout(function () {
+        fails = 0;
+        Array.prototype.forEach.call(pad.querySelectorAll('button'), function (b) { b.disabled = false; });
+        setMsg(' ', false);
+      }, 7000);
+    }
+  }
+  function openSettings() {
+    if (stepPin) stepPin.hidden = true;
+    if (stepSet) stepSet.hidden = false;
+    paintOpts();
+  }
+  function paintOpts() {
+    var o = read();
+    var host = document.getElementById('qOpts');
+    if (!host) return;
+    Array.prototype.forEach.call(host.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', Number(b.dataset.lim) === o.limit);
+    });
+    var rs = document.getElementById('qReset');
+    if (rs) {
+      var p1 = rs.querySelector('[data-reset="p1"]');
+      var p2 = rs.querySelector('[data-reset="p2"]');
+      if (p1) p1.textContent = nameOf('p1') + ' 0으로';
+      if (p2) p2.textContent = nameOf('p2') + ' 0으로';
+    }
+  }
+  function openPin() {
+    if (!modal) return;
+    buildPad();
+    buf = '';
+    fails = 0;
+    if (stepPin) stepPin.hidden = false;
+    if (stepSet) stepSet.hidden = true;
+    setMsg(' ', false);
+    paintDots();
+    modal.hidden = false;
+  }
+  function closePin() { if (modal) modal.hidden = true; buf = ''; paintDots(); }
+
+  var setBtn = document.getElementById('qSetBtn');
+  if (setBtn) setBtn.addEventListener('click', openPin);
+  var closeBtn = document.getElementById('qPinClose');
+  if (closeBtn) closeBtn.addEventListener('click', closePin);
+  if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closePin(); });
+
+  var optHost = document.getElementById('qOpts');
+  if (optHost) {
+    optHost.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var n = setLimit(b.dataset.lim);
+      paintOpts();
+      paint();
+      var sm = document.getElementById('qSetMsg');
+      if (sm) sm.textContent = n ? '이제 하루 ' + n + '판씩 놀이요' : '오늘은 제한 없이 놀 수 있어요';
+    });
+  }
+  var resetHost = document.getElementById('qReset');
+  if (resetHost) {
+    resetHost.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var slot = b.dataset.reset;
+      reset(slot);
+      paint();
+      var sm = document.getElementById('qSetMsg');
+      if (sm) sm.textContent = nameOf(slot) + '의 오늘 횟수를 0으로 맞췄어요';
+    });
+  }
+
+  try { read(); paint(); } catch (e) { /* */ }
+  window.addEventListener('pageshow', function () { try { paint(); } catch (e) { /* */ } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { paint(); } catch (e) { /* */ } } });
+  window.addEventListener('storage', function (e) { if (e && e.key === QK) { try { paint(); } catch (err) { /* */ } } });
 })();
 </script>
 </body>

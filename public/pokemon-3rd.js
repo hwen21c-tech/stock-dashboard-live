@@ -29,8 +29,12 @@
     '페어리': ['격투', '드래곤', '악'],
   };
 
-  /* 마을 꾸미기 아이템 23종 — zone 은 처음 놓일 기본 구역 */
+  /* 마을 꾸미기 아이템 — zone 은 기본 느낌(한 풀밭에서는 모두 자유 배치),
+     env:true 는 '환경 아이템'이라 가방 소모 없이 언제든 놓을 수 있다 */
   var ITEMS = [
+    { k: 'pond', name: '물가 연못', emoji: '💧', zone: 'grass', env: true, desc: '반짝이는 연못을 풀밭에 직접' },
+    { k: 'hill', name: '낮잠 언덕', emoji: '😴', zone: 'grass', env: true, desc: '둥글둥글 잔디 언덕' },
+    { k: 'arena', name: '작은 배틀 연습장', emoji: '⚔️', zone: 'grass', env: true, desc: '모래로 다진 연습장' },
     { k: 'tent', name: '포켓몬센터 텐트', emoji: '⛺', zone: 'grass', desc: '빨간 지붕의 작은 치료소' },
     { k: 'statue', name: '피카츄 동상', emoji: '🗿', zone: 'grass', desc: '번쩍번쩍 돌로 만든 피카츄' },
     { k: 'cushion', name: '잠만보 쿠션', emoji: '🛋️', zone: 'hill', desc: '폭신폭신 낮잠 쿠션' },

@@ -48,7 +48,8 @@
   .stats{flex:0 0 auto;font-size:clamp(9px,2.5vw,11px);font-weight:900;color:#3c6524;
     background:rgba(255,255,255,.8);border-radius:999px;padding:3px 9px;border:1.5px solid #dcebc4}
 
-  .acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:7px 10px 0;max-width:760px;margin:0 auto;width:100%}
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:7px 10px 0;max-width:760px;margin:0 auto;width:100%}
+  @media (min-width:560px){ .acts{grid-template-columns:repeat(4,1fr)} }
   .acts button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border-radius:13px;
     font-size:clamp(9.5px,2.7vw,11.5px);font-weight:900;letter-spacing:-.03em;
     background:linear-gradient(180deg,#fff,#f6fbea);border:2px solid var(--line);border-bottom-width:4px;
@@ -57,59 +58,55 @@
   .acts button:active{transform:translateY(2px)}
   .acts button.gift{background:linear-gradient(180deg,#fff6f0,#ffe6dc);border-color:#f3c1ac;color:#8a3a12}
 
-  /* ---------- 마을 ---------- */
-  .village{display:grid;grid-template-columns:1fr;gap:8px;padding:9px 10px calc(14px + env(safe-area-inset-bottom));
-    max-width:820px;margin:0 auto}
-  @media (min-width:620px){ .village{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(150px,1fr);
-    min-height:calc(100dvh - 148px)} }
-  .zone{position:relative;border-radius:18px;overflow:hidden;min-height:clamp(122px,18.5vh,178px);
-    border:2.5px solid rgba(255,255,255,.8);box-shadow:0 6px 16px rgba(30,70,15,.18),inset 0 0 30px rgba(0,0,0,.06);
-    isolation:isolate}
-  .zone .zt{position:absolute;left:8px;top:7px;z-index:6;font-size:clamp(9.5px,2.7vw,11.5px);font-weight:900;
-    color:#fff;background:rgba(20,50,10,.42);border:1.4px solid rgba(255,255,255,.6);border-radius:999px;
-    padding:1px 8px;letter-spacing:-.02em;pointer-events:none}
-  .zone .floor{position:absolute;inset:0;z-index:1}
-
-  /* 풀숲 놀이터 */
-  .z-grass{background:
-    radial-gradient(120% 80% at 50% 0%,#d8ffa8 0%,#8fe15a 45%,#4aad2a 100%)}
-  .z-grass .floor::before{content:"";position:absolute;inset:0;
-    background-image:radial-gradient(circle at 20% 30%,#fff6a8 2.5px,transparent 3px),
-      radial-gradient(circle at 68% 22%,#ffd0e8 2.5px,transparent 3px),
-      radial-gradient(circle at 42% 70%,#fff 2px,transparent 2.5px),
-      radial-gradient(circle at 84% 62%,#fff6a8 2.5px,transparent 3px),
-      radial-gradient(circle at 12% 82%,#ffd0e8 2px,transparent 2.5px);
-    background-size:100% 100%;opacity:.85}
-  .z-grass .floor::after{content:"";position:absolute;left:0;right:0;bottom:0;height:38%;
-    background:linear-gradient(180deg,transparent,rgba(35,110,20,.35))}
-
-  /* 물가 연못 */
-  .z-pond{background:radial-gradient(120% 90% at 50% 0%,#d9f7ff 0%,#8ddcf2 40%,#3aa6c8 100%)}
-  .z-pond .floor::before{content:"";position:absolute;left:8%;right:8%;top:34%;bottom:12%;border-radius:50%;
-    background:radial-gradient(ellipse at 50% 40%,#bff2ff 0%,#63c8e8 55%,#1e7fa8 100%);
-    box-shadow:inset 0 6px 16px rgba(255,255,255,.6),0 5px 14px rgba(10,60,80,.28)}
-  .z-pond .floor::after{content:"";position:absolute;left:20%;right:20%;top:52%;height:10px;border-radius:50%;
-    border:2px solid rgba(255,255,255,.65);animation:ripple 3.4s ease-in-out infinite}
-  @keyframes ripple{0%,100%{transform:scale(.7);opacity:.2}50%{transform:scale(1.15);opacity:.85}}
-
-  /* 낮잠 언덕 */
-  .z-hill{background:linear-gradient(180deg,#e8ffd0 0%,#b6e884 45%,#7bc94f 100%)}
-  .z-hill .floor::before{content:"";position:absolute;left:-12%;right:-12%;top:38%;height:90%;
-    border-radius:50% 50% 0 0;background:radial-gradient(ellipse at 50% 0%,#cdf3a0,#6dbb3d 70%,#4f9c2c);
-    box-shadow:inset 0 -8px 18px rgba(30,80,10,.18)}
-  .z-hill .floor::after{content:"🌳";position:absolute;right:12%;top:22%;font-size:clamp(18px,5vw,26px);opacity:.85}
-
-  /* 작은 배틀 연습장 */
-  .z-arena{background:linear-gradient(180deg,#fff0c8 0%,#f3d79a 46%,#d9ae64 100%)}
-  .z-arena .floor::before{content:"";position:absolute;left:6%;right:6%;top:30%;bottom:10%;border-radius:14px;
-    background:repeating-linear-gradient(45deg,rgba(255,255,255,.16) 0 8px,transparent 8px 16px),
-      radial-gradient(ellipse at 50% 40%,#fff6dd,#e5c07a 70%,#c99a4e);
-    box-shadow:inset 0 0 18px rgba(120,80,20,.25)}
-  .z-arena .floor::after{content:"";position:absolute;left:8%;right:8%;top:24%;height:5px;border-radius:99px;
-    background:repeating-linear-gradient(90deg,#b98a45 0 7px,transparent 7px 14px)}
+  /* ---------- 마을: 하나의 큰 풀밭 무대 ---------- */
+  .village{padding:7px 9px calc(10px + env(safe-area-inset-bottom));max-width:1120px;margin:0 auto}
+  .vbar2{display:flex;align-items:center;gap:6px;padding:6px 10px 0;max-width:1120px;margin:0 auto;width:100%}
+  .tod{display:flex;gap:4px;flex:1 1 auto;overflow-x:auto;padding-bottom:1px}
+  .tod button{flex:0 0 auto;padding:5px 9px;border-radius:999px;font-weight:900;
+    font-size:clamp(9.5px,2.6vw,11px);background:#fffdf3;border:2px solid var(--line);color:#4f6b33;white-space:nowrap}
+  .tod button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:#e8c25a;color:#6a3f00}
+  .shot{flex:0 0 auto;padding:6px 11px;border-radius:999px;font-weight:900;font-size:clamp(10px,2.8vw,12px);
+    background:linear-gradient(180deg,#e8f2ff,#c9e0ff);border:2px solid #a8c6f0;color:#1d3f6b;
+    box-shadow:0 2px 0 rgba(30,80,150,.22)}
+  .meadow{position:relative;border-radius:20px;overflow:hidden;isolation:isolate;
+    min-height:clamp(320px, calc(100dvh - 296px), 760px);border:2.5px solid rgba(255,255,255,.78);
+    box-shadow:0 8px 22px rgba(20,60,10,.2),inset 0 0 40px rgba(0,0,0,.06);
+    transition:background .5s ease}
+  .meadow .floor{position:absolute;inset:0;z-index:1}
+  .meadow .sky{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .meadow .sun{position:absolute;right:12%;top:9%;width:clamp(38px,8vw,72px);aspect-ratio:1;border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,#fffde3,#ffe066 55%,#ffc93c 100%);
+    box-shadow:0 0 26px rgba(255,214,80,.75);transition:.6s}
+  .meadow .stars{position:absolute;inset:0;opacity:0;transition:opacity .8s;
+    background-image:radial-gradient(1.6px 1.6px at 20% 18%,#fff,transparent),radial-gradient(1.4px 1.4px at 42% 9%,#fff,transparent),
+      radial-gradient(1.8px 1.8px at 63% 22%,#fff,transparent),radial-gradient(1.4px 1.4px at 78% 12%,#fff,transparent),
+      radial-gradient(1.5px 1.5px at 88% 28%,#fff,transparent),radial-gradient(1.3px 1.3px at 33% 30%,#fff,transparent),
+      radial-gradient(1.6px 1.6px at 12% 34%,#fff,transparent),radial-gradient(1.4px 1.4px at 55% 33%,#fff,transparent);
+    animation:twinkle 3.6s ease-in-out infinite}
+  @keyframes twinkle{0%,100%{opacity:.4}50%{opacity:.95}}
+  .meadow .clouds{position:absolute;left:-8%;right:-8%;top:4%;height:40%;opacity:.9;
+    background:radial-gradient(closest-side,#fff,transparent 70%) 8% 26%/32% 44% no-repeat,
+      radial-gradient(closest-side,#fff,transparent 72%) 66% 10%/40% 52% no-repeat,
+      radial-gradient(closest-side,#fff,transparent 74%) 42% 62%/30% 40% no-repeat;filter:blur(.4px)}
+  .meadow::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46%;z-index:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 100%,rgba(38,110,22,.32),transparent 70%)}
+  .meadow.t-day{background:linear-gradient(180deg,#bfe9ff 0%,#d9f7ff 24%,#dcf7b4 44%,#a8e36b 70%,#78c947 100%)}
+  .meadow.t-sunset{background:linear-gradient(180deg,#ffd6a5 0%,#ffb37b 22%,#ffd9a8 42%,#c8e88a 68%,#8ec95a 100%)}
+  .meadow.t-sunset .sun{top:26%;background:radial-gradient(circle at 40% 35%,#fff1c9,#ffb347 60%,#ff7a45 100%);
+    box-shadow:0 0 34px rgba(255,140,60,.85)}
+  .meadow.t-sunset .clouds{opacity:.72;filter:blur(.6px) hue-rotate(-16deg) saturate(1.35)}
+  .meadow.t-sunset::after{background:radial-gradient(120% 90% at 50% 100%,rgba(120,60,10,.3),transparent 72%)}
+  .meadow.t-night{background:linear-gradient(180deg,#101a3d 0%,#1b2a5c 28%,#26406e 46%,#2f5a52 70%,#2a5a30 100%)}
+  .meadow.t-night .sun{opacity:0}
+  .meadow.t-night .stars{opacity:1}
+  .meadow.t-night .clouds{opacity:.16;filter:blur(1px)}
+  .meadow.t-night::after{background:radial-gradient(120% 90% at 50% 100%,rgba(0,10,20,.58),transparent 72%)}
+  .meadow.t-night .pk img{filter:brightness(1.16) drop-shadow(0 4px 6px rgba(0,0,0,.55))}
+  .meadow.t-night .it{filter:brightness(1.08) drop-shadow(0 4px 6px rgba(0,0,0,.5))}
+  .meadow.t-night .it.nightlight{filter:drop-shadow(0 0 14px #ffd66b) brightness(1.2)}
 
   /* ---------- 배치된 포켓몬 ---------- */
-  .pk{position:absolute;z-index:4;width:clamp(40px,7.4vw,66px);transform:translate(-50%,-50%);
+  .pk{position:absolute;z-index:4;width:clamp(76px,11.5vw,96px);transform:translate(-50%,-50%);
     transition:left 3.4s linear,top 3.4s linear;cursor:pointer;padding:0;border:0;background:none}
   .pk img{width:100%;display:block;image-rendering:pixelated;
     filter:drop-shadow(0 4px 5px rgba(20,60,10,.35));animation:pkbob 2.6s ease-in-out infinite}
@@ -134,11 +131,30 @@
     30%{opacity:1;transform:translate(-50%,-90%) scale(1)}
     100%{opacity:0;transform:translate(-50%,-150%) scale(.9)}}
 
-  /* ---------- 배치된 아이템 ---------- */
-  .it{position:absolute;z-index:3;transform:translate(-50%,-50%);pointer-events:none;
-    font-size:clamp(23px,6.4vw,38px);line-height:1;filter:drop-shadow(0 3px 4px rgba(20,60,10,.3));
-    animation:itbob 4.2s ease-in-out infinite}
-  @keyframes itbob{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-54%) scale(1.03)}}
+  /* ---------- 배치된 아이템 (누르면 크게/작게 · 끌어서 이동) ---------- */
+  .it{position:absolute;z-index:3;transform:translate(-50%,-50%) scale(var(--sc,1));
+    pointer-events:auto;cursor:grab;touch-action:none;
+    font-size:clamp(48px,10vw,86px);line-height:1;filter:drop-shadow(0 4px 5px rgba(20,60,10,.32))}
+  .it .g{display:block;animation:itbob 4.2s ease-in-out infinite}
+  @keyframes itbob{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3%) scale(1.04)}}
+  .it.sel{outline:3px dashed rgba(255,214,77,.95);outline-offset:5px;border-radius:18px;z-index:6;cursor:grabbing}
+  .it.sel .g{animation:none}
+  /* 환경 아이템 — 연못 · 언덕 · 연습장을 풀밭 위에 직접 놓는다 */
+  .it.is-env{z-index:1}
+  .it.is-env .g{position:relative;z-index:1;font-size:.4em;filter:drop-shadow(0 2px 3px rgba(0,0,0,.28))}
+  .it.is-env::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:2.3em;height:1.4em;border-radius:50%;z-index:0}
+  .it.k-pond::before{background:radial-gradient(ellipse at 50% 40%,#bff2ff 0%,#63c8e8 55%,#1e7fa8 100%);
+    box-shadow:inset 0 6px 16px rgba(255,255,255,.6),0 6px 14px rgba(10,60,80,.25)}
+  .it.k-hill::before{background:radial-gradient(ellipse at 50% 18%,#cdf3a0,#6dbb3d 70%,#4f9c2c);
+    box-shadow:inset 0 -8px 18px rgba(30,80,10,.18)}
+  .it.k-arena::before{border-radius:26%;
+    background:repeating-linear-gradient(45deg,rgba(255,255,255,.18) 0 8px,transparent 8px 16px),
+      radial-gradient(ellipse at 50% 40%,#fff6dd,#e5c07a 70%,#c99a4e);
+    box-shadow:inset 0 0 18px rgba(120,80,20,.25)}
+  .meadow .it.nightlight{filter:drop-shadow(0 0 14px #ffd66b) brightness(1.16)}
+  .meadow .it.sel{filter:drop-shadow(0 0 12px rgba(255,214,77,.9))}
+
   .it.k-statue::after{content:"⚡";position:absolute;left:50%;top:-6px;transform:translateX(-50%);
     font-size:.5em;filter:drop-shadow(0 0 3px #ffe066)}
   .it.k-fountain::after{content:"💧";position:absolute;left:50%;top:-8px;transform:translateX(-50%);font-size:.45em;
@@ -153,6 +169,24 @@
     background:rgba(255,255,255,.28)}
   .empty b{display:block;font-size:1.15em;margin-bottom:2px}
   .empty[hidden]{display:none}
+
+  /* ---------- 아이템 조작 바 ---------- */
+  .itemctl{position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    z-index:66;display:flex;gap:5px;align-items:center;padding:6px 8px;border-radius:16px;max-width:94vw;
+    background:rgba(255,253,243,.97);border:2px solid #cfe6a6;box-shadow:0 10px 24px rgba(10,40,4,.32)}
+  .itemctl[hidden]{display:none}
+  .itemctl .nm{font-size:clamp(10px,2.7vw,12px);font-weight:900;color:#33501a;max-width:32vw;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .itemctl button{width:38px;height:38px;border-radius:12px;font-weight:900;font-size:15px;
+    background:linear-gradient(180deg,#fff,#eaf8d0);border:2px solid #cfe7a2;color:#2f4a16;
+    box-shadow:0 2px 0 rgba(70,120,30,.25)}
+  .itemctl button:active{transform:translateY(2px);box-shadow:none}
+  .itemctl button.del{background:linear-gradient(180deg,#fff0ee,#ffd9d4);border-color:#f0a89c;color:#8a2412}
+  .itemctl .sc{min-width:38px;text-align:center;font-size:clamp(10px,2.7vw,12px);font-weight:900;color:#6a3f00}
+  .vtoast{position:fixed;left:50%;bottom:calc(74px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    z-index:80;padding:8px 14px;border-radius:999px;background:rgba(20,50,10,.9);color:#fff;
+    font-weight:900;font-size:clamp(11px,3vw,12.5px);opacity:0;pointer-events:none;transition:opacity .25s}
+  .vtoast.on{opacity:1}
 
   /* ---------- 모달 ---------- */
   .modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:14px;
@@ -251,6 +285,29 @@
   @media (prefers-reduced-motion:reduce){
     .pk img,.it,.pcard .giftem,.z-pond .floor::after,.it.k-fountain::after{animation:none}
   }
+
+  /* ============ 4탄: 마을 크게 보기 ============ */
+  .modal.zoom{padding:7px;z-index:70}
+  .zoom .zsheet{width:min(1180px,100%);height:min(94dvh,100%);display:flex;flex-direction:column;gap:6px;
+    background:linear-gradient(180deg,#ffffff,#f2ffe4);border:2.5px solid #cfe6a6;border-radius:20px;
+    box-shadow:0 18px 46px rgba(12,40,6,.42);padding:9px 9px calc(8px + env(safe-area-inset-bottom))}
+  .zoom .zhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .zoom .zhead h2{margin:0;font-size:clamp(13px,3.6vw,17px);letter-spacing:-.03em;color:#22400f;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .zoom .ztabs{display:flex;gap:5px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:1px}
+  .zoom .ztabs button{flex:0 0 auto;padding:5px 10px;border-radius:999px;font-weight:900;
+    font-size:clamp(9.5px,2.7vw,11.5px);background:#f5fbe8;border:2px solid #d6e4b6;color:#5c7a34;white-space:nowrap}
+  .zoom .ztabs button.on{background:linear-gradient(180deg,#ffe9a8,#ffc94d);border-color:#e8c25a;color:#6a3f00}
+  .zstage{position:relative;flex:1 1 auto;min-height:0;border-radius:16px;overflow:hidden;
+    border:2px solid #cfe6a6;box-shadow:inset 0 2px 10px rgba(20,60,10,.14)}
+  .zstage .meadow{min-height:100%;height:100%;border-radius:0;border:none;box-shadow:none}
+  .zstage .pk{width:clamp(84px,10vw,128px)}
+  .zstage .it{font-size:clamp(56px,9vw,104px)}
+  .zstage .bubble{font-size:clamp(20px,5vw,36px)}
+  .zstage .berry{font-size:clamp(16px,4vw,28px)}
+  .zstage .zzz{font-size:clamp(12px,3.4vw,20px)}
+  .zoom .ztip{margin:0;text-align:center;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
+  @media (max-height:520px){ .zoom .ztip{display:none} }
 </style>
 </head>
 <body>
@@ -266,33 +323,52 @@
   <span class="stats" id="stats">🐾 0/8 · 🎨 0/8</span>
 </div>
 
+<div class="vbar2">
+  <div class="tod" id="todBar" role="group" aria-label="시간대 바꾸기">
+    <button type="button" data-tod="day">☀️ 낮</button>
+    <button type="button" data-tod="sunset">🌅 노을</button>
+    <button type="button" data-tod="night">🌙 밤</button>
+    <button type="button" data-tod="auto" class="on">🕒 자동</button>
+  </div>
+  <button type="button" class="shot" id="photoBtn">📸 사진</button>
+</div>
+
 <div class="acts">
   <button id="pokeBtn"><span class="e">🐾</span><span>포켓몬 배치</span></button>
   <button id="itemBtn"><span class="e">🎨</span><span>마을 꾸미기</span></button>
+  <button id="zoomBtn"><span class="e">🔍</span><span>크게 보기</span></button>
   <button class="gift" id="giftBtn"><span class="e">🎁</span><span>아빠 선물</span></button>
 </div>
 
 <div class="village" id="village">
-  <section class="zone z-grass" data-zone="grass" aria-label="풀숲 놀이터">
-    <span class="zt">🌿 풀숲 놀이터</span>
-    <div class="floor" data-floor="grass"></div>
-    <div class="empty" id="e-grass"><span><b>🌿 풀숲 놀이터</b>포켓몬을 놓아 보세요</span></div>
-  </section>
-  <section class="zone z-pond" data-zone="pond" aria-label="물가 연못">
-    <span class="zt">💧 물가 연못</span>
-    <div class="floor" data-floor="pond"></div>
-    <div class="empty" id="e-pond"><span><b>💧 물가 연못</b>물놀이 친구가 좋아요</span></div>
-  </section>
-  <section class="zone z-hill" data-zone="hill" aria-label="낮잠 언덕">
-    <span class="zt">😴 낮잠 언덕</span>
-    <div class="floor" data-floor="hill"></div>
-    <div class="empty" id="e-hill"><span><b>😴 낮잠 언덕</b>Zzz… 여기선 다 같이 자요</span></div>
-  </section>
-  <section class="zone z-arena" data-zone="arena" aria-label="작은 배틀 연습장">
-    <span class="zt">⚔️ 작은 배틀 연습장</span>
-    <div class="floor" data-floor="arena"></div>
-    <div class="empty" id="e-arena"><span><b>⚔️ 작은 배틀 연습장</b>둘이 장난으로 겨뤄요</span></div>
-  </section>
+  <div class="meadow t-day" id="meadow" data-tod="day">
+    <div class="sky" aria-hidden="true">
+      <span class="clouds"></span><span class="stars"></span><span class="sun"></span>
+    </div>
+    <div class="floor" id="meadowFloor" data-floor="meadow"></div>
+  </div>
+</div>
+
+<div class="itemctl" id="itemCtl" hidden>
+  <span class="nm" id="ctlName">아이템</span>
+  <button type="button" data-scz="small" aria-label="작게">➖</button>
+  <span class="sc" id="ctlSc">1.0x</span>
+  <button type="button" data-scz="big" aria-label="크게">➕</button>
+  <button type="button" class="del" data-scdel="1" aria-label="빼기">🗑</button>
+  <button type="button" data-scclose="1" aria-label="닫기">✕</button>
+</div>
+
+<!-- 🔍 마을 크게 보기 -->
+<div class="modal zoom" id="zoomModal" hidden>
+  <div class="zsheet" role="dialog" aria-modal="true" aria-label="마을 크게 보기">
+    <div class="zhead">
+      <h2 id="zoomTitle">🔍 크게 보기</h2>
+      <button class="mx" data-close="zoomModal" aria-label="닫기">✕</button>
+    </div>
+    <div class="ztabs" id="zoomTabs" role="group" aria-label="구역 선택"></div>
+    <div class="zstage" id="zoomStage"></div>
+    <p class="ztip">포켓몬을 톡톡 두드리면 펄쩍 뛰고 열매를 줘요 · 꾸미기 아이템도 같이 보여요</p>
+  </div>
 </div>
 
 <!-- 포켓몬 배치 -->
@@ -415,6 +491,10 @@
   let SLOT = 'p1';
   let ZONE = 'grass';
   let swapFor = null;   // {type:'poke'|'item', ...}
+  let TOD = lsGet('pkm.village.tod.v1', 'auto');   // day | sunset | night | auto
+  let selectedItem = -1;
+  let todTimer = 0;
+  const GLOW = { campfire: 1, lantern: 1, lamp: 1, star: 1, fireflies: 1 };
 
   /* ---------- 소리 ---------- */
   const Sfx = {
@@ -502,56 +582,51 @@
     ).join('');
   }
 
-  function floorOf(zone) { return document.querySelector('.floor[data-floor="' + zone + '"]'); }
+  function floorOf() { return document.getElementById('meadowFloor'); }
 
   function paintVillage() {
-    ZONES.forEach((z) => {
-      const floor = floorOf(z.k);
-      floor.innerHTML = '';
-    });
+    const floor = floorOf();
+    if (!floor) return;
+    floor.innerHTML = '';
     const st = state();
 
     st.items.forEach((it, idx) => {
       const meta = (POK3 && POK3.item(it.k)) || { emoji: '🏡', name: '아이템' };
       const el = document.createElement('div');
-      el.className = 'it k-' + it.k;
+      el.className = 'it k-' + it.k + (meta.env ? ' is-env' : '')
+        + (GLOW[it.k] ? ' light' : '') + (idx === selectedItem ? ' sel' : '');
       el.dataset.item = String(idx);
-      el.textContent = meta.emoji;
-      el.title = meta.name;
-      el.style.left = clamp(Number(it.x) || 50, 10, 90) + '%';
-      el.style.top = clamp(Number(it.y) || 62, 26, 88) + '%';
-      el.style.animationDelay = (Math.random() * 2).toFixed(1) + 's';
-      floorOf(it.zone || 'grass').appendChild(el);
+      el.dataset.k = it.k;
+      el.title = meta.name + ' — 눌러서 크게/작게 · 끌어서 옮기기';
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', meta.name + ' 꾸미기 아이템');
+      el.innerHTML = '<span class="g">' + meta.emoji + '</span>';
+      el.style.left = clamp(Number(it.x) || 50, 5, 95) + '%';
+      el.style.top = clamp(Number(it.y) || 70, 14, 93) + '%';
+      el.style.setProperty('--sc', String(Number(it.sc) || 1));
+      floor.appendChild(el);
     });
 
     st.poke.forEach((p) => {
-      const zone = p.zone || 'grass';
-      const floor = floorOf(zone);
-      if (!floor) return;
       const el = document.createElement('button');
-      el.className = 'pk' + (zone === 'hill' ? ' sleep' : '') + (zone === 'arena' ? ' spar' : '');
+      el.className = 'pk';
       el.type = 'button';
       el.dataset.pid = String(p.id);
-      el.dataset.zone = zone;
+      el.dataset.zone = 'meadow';
       el.setAttribute('aria-label', pkName(p.id) + ' · 톡톡 두드려 보세요');
-      el.style.left = clamp(Number(p.x) || rnd(20, 80), 10, 90) + '%';
-      el.style.top = clamp(Number(p.y) || rnd(46, 78), 30, 88) + '%';
-      el.innerHTML = '<img src="' + SPR(p.id) + '" alt="" decoding="async">'
-        + (zone === 'hill' ? '<span class="zzz">Zzz</span>' : '');
+      el.style.left = clamp(Number(p.x) || rnd(16, 84), 8, 92) + '%';
+      el.style.top = clamp(Number(p.y) || rnd(46, 80), 26, 90) + '%';
+      el.innerHTML = '<img src="' + SPR(p.id) + '" alt="" decoding="async">';
       el.querySelector('img').addEventListener('error', () => {
         el.querySelector('img').src = ART(p.id);
       }, { once: true });
       floor.appendChild(el);
     });
 
-    ZONES.forEach((z) => {
-      const empty = document.getElementById('e-' + z.k);
-      if (empty) empty.hidden = !!(floorOf(z.k).querySelector('.pk') || floorOf(z.k).querySelector('.it'));
-    });
-
     const st2 = state();
     $('#stats').textContent = '🐾 ' + st2.poke.length + '/' + MAX_PK + ' · 🎨 ' + st2.items.length + '/' + MAX_ITEM;
     paintChips();
+    applyTod();
   }
 
   /* ---------- 배치: 포켓몬 ---------- */
@@ -561,9 +636,7 @@
     st.poke.forEach((p) => { placed[p.id] = 1; });
     const ids = dexIds(SLOT).slice().sort((a, b) => a - b);
     $('#pokeNote').textContent = '도감 ' + ids.length + '마리 중에서 고를 수 있어요 · 마을에는 최대 ' + MAX_PK + '마리';
-    $('#zoneChips').innerHTML = ZONES.map((z) =>
-      '<button data-zone="' + z.k + '" class="' + (z.k === ZONE ? 'on' : '') + '">' + z.emoji + ' ' + z.name + '</button>'
-    ).join('');
+    $('#zoneChips').innerHTML = '<span class="mnote">🌿 넓은 풀밭 어디에나 놓을 수 있어요</span>';
 
     const grid = $('#pokeGrid');
     if (!ids.length) {
@@ -577,7 +650,7 @@
     }
 
     $('#placedList').innerHTML = st.poke.length
-      ? st.poke.map((p, i) => '<span class="ptag">' + pkName(p.id) + ' <em>' + ((ZONES.find((z) => z.k === p.zone) || {}).name || '') + '</em>'
+      ? st.poke.map((p, i) => '<span class="ptag">' + pkName(p.id)
         + '<button data-remove-poke="' + i + '" aria-label="' + pkName(p.id) + ' 빼기">✕</button></span>').join('')
       : '<span class="mnote">아직 아무도 없어요</span>';
   }
@@ -590,9 +663,9 @@
       openSwap();
       return { ok: false, why: 'full' };
     }
-    const n = st.poke.filter((p) => (p.zone || 'grass') === ZONE).length;
+    const n = st.poke.length;
     const sp = SPOTS[n % SPOTS.length];
-    st.poke.push({ id, zone: ZONE, x: sp[0] + rnd(-4, 4), y: sp[1] + rnd(-4, 4) });
+    st.poke.push({ id, x: sp[0] + rnd(-4, 4), y: sp[1] + rnd(-4, 6) });
     save(st);
     paintVillage();
     paintPokeModal();
@@ -615,44 +688,48 @@
     const bag = inv();
     const keys = POK3 ? POK3.itemKeys() : Object.keys(bag);
     const n = Object.keys(bag).reduce((a, k) => a + bag[k], 0);
-    $('#itemNote').textContent = n
-      ? '가방에 ' + n + '개 있어요 · 마을에는 최대 ' + MAX_ITEM + '개까지'
-      : '가방이 비었어요 — 2인 대결에서 이기거나, 배틀에서 포획하면 선물 상자로 받아요!';
+    $('#itemNote').textContent = '💧 연못 · 😴 언덕 · ⚔️ 연습장은 기본! 가방엔 ' + n + '개 · 마을에는 최대 ' + MAX_ITEM + '개까지';
     $('#itemGrid').innerHTML = keys.map((k) => {
-      const it = POK3 ? POK3.item(k) : { emoji: '🏡', name: k };
-      const c = bag[k] || 0;
+      const it = (POK3 && POK3.item(k)) || { emoji: '🏡', name: k };
+      const free = !!(it && (it.env || it.free));
+      const c = free ? 1 : (bag[k] || 0);
       return '<button class="icell' + (c ? '' : ' dim') + '" data-item="' + k + '">'
-        + (c ? '<span class="c">×' + c + '</span>' : '')
+        + (free ? '<span class="c">기본</span>' : (c ? '<span class="c">×' + c + '</span>' : ''))
         + '<span class="e">' + it.emoji + '</span><span>' + it.name + '</span></button>';
     }).join('');
     $('#placedItems').innerHTML = st.items.length
       ? st.items.map((it, i) => {
         const meta = (POK3 && POK3.item(it.k)) || { emoji: '🏡', name: it.k };
-        return '<span class="ptag">' + meta.emoji + ' ' + meta.name + '<button data-remove-item="' + i + '" aria-label="빼기">✕</button></span>';
+        return '<span class="ptag">' + meta.emoji + ' ' + meta.name
+          + '<button data-remove-item="' + i + '" aria-label="빼기">✕</button></span>';
       }).join('')
       : '<span class="mnote">아직 놓은 아이템이 없어요</span>';
   }
 
   function placeItem(k) {
+    const meta = (POK3 && POK3.item(k)) || {};
+    const free = !!(meta.env || meta.free);
     const bag = inv();
-    if (!bag[k]) return { ok: false, why: 'none' };
+    if (!free && !bag[k]) return { ok: false, why: 'none' };
     const st = state();
     if (st.items.length >= MAX_ITEM) {
       swapFor = { type: 'item', k };
       openSwap();
       return { ok: false, why: 'full' };
     }
-    const meta = POK3 ? POK3.item(k) : { zone: 'grass' };
-    bag[k] -= 1;
-    if (bag[k] <= 0) delete bag[k];
-    saveInv(bag);
-    const iz = (meta && meta.zone) || 'grass';
-    const ni = st.items.filter((x) => (x.zone || 'grass') === iz).length;
+    if (!free) {
+      bag[k] -= 1;
+      if (bag[k] <= 0) delete bag[k];
+      saveInv(bag);
+    }
+    const ni = st.items.length;
     const isp = SPOTS[ni % SPOTS.length];
-    st.items.push({ k, zone: iz, x: isp[0] + rnd(-5, 5), y: isp[1] + rnd(-8, 8) });
+    st.items.push({ k, x: clamp(isp[0] + rnd(-5, 5), 8, 92), y: clamp(isp[1] + rnd(-4, 10), 30, 86), sc: 1 });
     save(st);
+    selectedItem = st.items.length - 1;
     paintVillage();
     paintItemModal();
+    paintCtl();
     Sfx.pop();
     return { ok: true };
   }
@@ -661,13 +738,19 @@
     const st = state();
     const it = st.items[idx];
     if (!it) return;
-    const bag = inv();
-    bag[it.k] = (bag[it.k] || 0) + 1;
-    saveInv(bag);
+    const meta = (POK3 && POK3.item(it.k)) || {};
+    if (!meta.env && !meta.free) {
+      const bag = inv();
+      bag[it.k] = (bag[it.k] || 0) + 1;
+      saveInv(bag);
+    }
     st.items.splice(idx, 1);
+    if (selectedItem === idx) selectedItem = -1;
+    else if (selectedItem > idx) selectedItem -= 1;
     save(st);
     paintVillage();
     paintItemModal();
+    paintCtl();
   }
 
   /* ---------- 교체 ---------- */
@@ -682,7 +765,7 @@
     $('#swapList').innerHTML = list.length ? list.map((x, i) => {
       if (swapFor.type === 'poke') {
         return '<button class="ptag" data-swap="' + i + '" style="justify-content:space-between">'
-          + '<span>' + pkName(x.id) + ' <em>' + ((ZONES.find((z) => z.k === x.zone) || {}).name || '') + '</em></span><span>🔄</span></button>';
+          + '<span>' + pkName(x.id) + '</span><span>🔄</span></button>';
       }
       const meta = (POK3 && POK3.item(x.k)) || { emoji: '🏡', name: x.k };
       return '<button class="ptag" data-swap="' + i + '" style="justify-content:space-between">'
@@ -697,9 +780,9 @@
     if (swapFor.type === 'poke') {
       if (!st.poke[idx]) return;
       st.poke.splice(idx, 1);
-      const n = st.poke.filter((p) => (p.zone || 'grass') === ZONE).length;
+      const n = st.poke.length;
       const sp = SPOTS[n % SPOTS.length];
-      st.poke.push({ id: swapFor.id, zone: ZONE, x: sp[0] + rnd(-4, 4), y: sp[1] + rnd(-4, 4) });
+      st.poke.push({ id: swapFor.id, x: sp[0] + rnd(-4, 4), y: sp[1] + rnd(-4, 6) });
       save(st);
       close('swapModal');
       swapFor = null;
@@ -714,12 +797,11 @@
       if (bag[swapFor.k]) bag[swapFor.k] -= 1;
       if (bag[swapFor.k] <= 0) delete bag[swapFor.k];
       saveInv(bag);
-      const meta = POK3 ? POK3.item(swapFor.k) : { zone: 'grass' };
+      const meta2 = (POK3 && POK3.item(swapFor.k)) || {};
       st.items.splice(idx, 1);
-      const iz2 = (meta && meta.zone) || 'grass';
-      const ni2 = st.items.filter((x) => (x.zone || 'grass') === iz2).length;
+      const ni2 = st.items.length;
       const isp2 = SPOTS[ni2 % SPOTS.length];
-      st.items.push({ k: swapFor.k, zone: iz2, x: isp2[0] + rnd(-5, 5), y: isp2[1] + rnd(-8, 8) });
+      st.items.push({ k: swapFor.k, x: clamp(isp2[0] + rnd(-5, 5), 8, 92), y: clamp(isp2[1] + rnd(-4, 8), 30, 86), sc: (meta2.env ? 1 : 1) });
       save(st);
       close('swapModal');
       swapFor = null;
@@ -732,24 +814,22 @@
   /* ---------- 살아있는 행동 & 터치 반응 ---------- */
   function wanderTick() {
     const st = state();
-    $$('.pk').forEach((el) => {
-      const zone = el.dataset.zone;
-      if (zone === 'hill') return;                 // 언덕에선 잠만 자요
+    $$('.village .pk').forEach((el) => {
       if (el.classList.contains('jump')) return;
-      if (Math.random() < 0.25) return;            // 다들 한꺼번에 움직이지 않게
-      const x = rnd(12, 88);
-      const y = zone === 'arena' ? rnd(44, 74) : rnd(40, 84);
+      if (Math.random() < 0.28) return;            // 다들 한꺼번에 움직이지 않게
+      const x = rnd(10, 90);
+      const y = rnd(40, 86);
       el.style.left = x + '%';
       el.style.top = y + '%';
-      const p = st.poke.find((q) => String(q.id) === el.dataset.pid && (q.zone || 'grass') === zone);
+      const p = st.poke.find((q) => String(q.id) === el.dataset.pid);
       if (p) { p.x = x; p.y = y; }
     });
-    void st;
   }
+
   function savePositions() {
     const st = state();
-    $$('.pk').forEach((el) => {
-      const p = st.poke.find((q) => String(q.id) === el.dataset.pid && (q.zone || 'grass') === el.dataset.zone);
+    $$('.village .pk').forEach((el) => {
+      const p = st.poke.find((q) => String(q.id) === el.dataset.pid);
       if (p) {
         p.x = parseFloat(el.style.left) || p.x;
         p.y = parseFloat(el.style.top) || p.y;
@@ -759,10 +839,13 @@
   }
 
   function arenaSpar() {
-    $$('.pk[data-zone="arena"]').forEach((el, i) => {
-      el.classList.remove('spar');
-      if (i % 2 === 0) el.classList.add('spar');
-    });
+    const list = $$('.village .pk');
+    if (!list.length) return;
+    list.forEach((el) => el.classList.remove('spar'));
+    if (Math.random() < 0.55) {
+      const one = list[Math.floor(Math.random() * list.length)];
+      if (one) one.classList.add('spar');
+    }
   }
 
   function bubble(el, text) {
@@ -959,6 +1042,334 @@
     party._t = setTimeout(() => { el.classList.remove('on'); host.innerHTML = ''; }, 3200);
   }
 
+  /* ---------- 4탄: 아이템 크기 조절 · 이동 ---------- */
+  function itemMeta(k) { return (POK3 && POK3.item(k)) || { emoji: '🏡', name: '아이템' }; }
+  function toast(msg) {
+    let t = document.getElementById('vtoast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'vtoast';
+      t.className = 'vtoast';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.classList.remove('on'); }, 2300);
+  }
+  function paintCtl() {
+    const bar = document.getElementById('itemCtl');
+    if (!bar) return;
+    const st = state();
+    const it = st.items[selectedItem];
+    if (!it) { bar.hidden = true; return; }
+    const meta = itemMeta(it.k);
+    const nm = document.getElementById('ctlName');
+    const sc = document.getElementById('ctlSc');
+    if (nm) nm.textContent = meta.emoji + ' ' + meta.name;
+    if (sc) sc.textContent = (Number(it.sc) || 1).toFixed(1) + 'x';
+    bar.hidden = false;
+  }
+  function selectItem(idx) {
+    selectedItem = idx;
+    $$('#meadowFloor .it').forEach((el) => el.classList.toggle('sel', Number(el.dataset.item) === idx));
+    paintCtl();
+    try { Sfx.click(); } catch (e) { /* */ }
+  }
+  function scaleItem(delta) {
+    const st = state();
+    const it = st.items[selectedItem];
+    if (!it) return;
+    it.sc = Math.round(clamp((Number(it.sc) || 1) + delta, 0.7, 1.8) * 10) / 10;
+    save(st);
+    const el = document.querySelector('#meadowFloor .it[data-item="' + selectedItem + '"]');
+    if (el) el.style.setProperty('--sc', String(it.sc));
+    paintCtl();
+    try { Sfx.tone(520, 0.06, 'triangle', 0.04, 760); } catch (e) { /* */ }
+  }
+  function moveItemTo(idx, x, y) {
+    const st = state();
+    const it = st.items[idx];
+    if (!it) return;
+    it.x = Math.round(clamp(x, 5, 95) * 10) / 10;
+    it.y = Math.round(clamp(y, 12, 93) * 10) / 10;
+    save(st);
+    const el = document.querySelector('#meadowFloor .it[data-item="' + idx + '"]');
+    if (el) { el.style.left = it.x + '%'; el.style.top = it.y + '%'; }
+  }
+
+  /* ---------- 4탄: 시간대에 따라 바뀌는 마을 하늘 ---------- */
+  function hourKST() { return new Date(Date.now() + 9 * 3600 * 1000).getUTCHours(); }
+  function todOf(h) {
+    const hh = Number(h);
+    if (hh >= 6 && hh < 17) return 'day';
+    if (hh >= 17 && hh < 20) return 'sunset';
+    return 'night';
+  }
+  function applyTod() {
+    const m = document.getElementById('meadow');
+    if (!m) return;
+    const auto = TOD === 'auto';
+    const k = auto ? todOf(hourKST()) : TOD;
+    m.classList.remove('t-day', 't-sunset', 't-night');
+    m.classList.add('t-' + k);
+    m.dataset.tod = k;
+    $$('#todBar button').forEach((b) => b.classList.toggle('on', b.dataset.tod === (auto ? 'auto' : TOD)));
+    $$('#meadowFloor .it').forEach((el) => el.classList.toggle('nightlight', k === 'night'));
+    const zClone = document.querySelector('#zoomStage .meadow');
+    if (zClone) {
+      zClone.classList.remove('t-day', 't-sunset', 't-night');
+      zClone.classList.add('t-' + k);
+    }
+  }
+  function setTod(v) {
+    TOD = (v === 'day' || v === 'sunset' || v === 'night') ? v : 'auto';
+    lsSet('pkm.village.tod.v1', TOD);
+    applyTod();
+    const label = { day: '☀️ 낮', sunset: '🌅 노을', night: '🌙 밤', auto: '🕒 자동' }[TOD];
+    if (TOD !== 'auto') toast(label + ' 마을로 바꿨어요');
+  }
+
+  /* ---------- 4탄: 마을 기념사진 (PNG) ---------- */
+  const PHOTO_COLORS = {
+    day: ['#bfe9ff', '#d9f7ff', '#dcf7b4', '#a8e36b', '#78c947'],
+    sunset: ['#ffd6a5', '#ffb37b', '#ffd9a8', '#c8e88a', '#8ec95a'],
+    night: ['#101a3d', '#1b2a5c', '#26406e', '#2f5a52', '#2a5a30'],
+  };
+  function loadImg(src) {
+    return new Promise((res) => {
+      let done = false;
+      const fin = (v) => { if (!done) { done = true; res(v); } };
+      try {
+        const im = new Image();
+        im.crossOrigin = 'anonymous';
+        im.onload = () => fin(im);
+        im.onerror = () => fin(null);
+        setTimeout(() => fin(null), 4500);
+        im.src = src;
+      } catch (e) { fin(null); }
+    });
+  }
+  function stampDate() {
+    const d = new Date(Date.now() + 9 * 3600 * 1000);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  async function takePhoto() {
+    const m = document.getElementById('meadow');
+    const floor = floorOf();
+    if (!m || !floor) return { ok: false, why: 'no-stage' };
+    const fr = floor.getBoundingClientRect();
+    if (!fr.width || !fr.height) return { ok: false, why: 'no-size' };
+    const W = 1280;
+    const H = Math.round(W * (fr.height / fr.width));
+    const tod = m.dataset.tod || 'day';
+    const cols = PHOTO_COLORS[tod] || PHOTO_COLORS.day;
+    let withImages = true;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      if (!ctx) return { ok: false, why: 'no-ctx' };
+      /* 하늘 그라데이션 */
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      cols.forEach((c, i) => g.addColorStop(i / (cols.length - 1), c));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      /* 별 / 해 */
+      if (tod === 'night') {
+        for (let i = 0; i < 70; i += 1) {
+          const x = ((i * 173) % W);
+          const y = ((i * 97) % Math.round(H * 0.5));
+          ctx.globalAlpha = 0.3 + ((i % 7) / 14);
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(x, y, (i % 3) * 0.7 + 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = Math.round(W * 0.05) + 'px "Apple Color Emoji","Noto Color Emoji",system-ui';
+        ctx.fillText('🌙', W * 0.86, H * 0.13);
+      } else {
+        const sx = W * 0.85; const sy = H * 0.13; const r = W * 0.045;
+        const rg = ctx.createRadialGradient(sx, sy, r * 0.15, sx, sy, r * 1.6);
+        rg.addColorStop(0, tod === 'sunset' ? '#fff1c9' : '#fffde3');
+        rg.addColorStop(0.55, tod === 'sunset' ? '#ffb347' : '#ffe066');
+        rg.addColorStop(1, 'rgba(255,200,60,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      /* 땅 그라데이션 */
+      const gg = ctx.createLinearGradient(0, H * 0.45, 0, H);
+      gg.addColorStop(0, 'rgba(0,0,0,0)');
+      gg.addColorStop(1, tod === 'night' ? 'rgba(0,10,20,.55)' : 'rgba(30,90,20,.26)');
+      ctx.fillStyle = gg;
+      ctx.fillRect(0, H * 0.45, W, H * 0.55);
+      /* 꾸미기 아이템 */
+      $$('#meadowFloor .it').forEach((el) => {
+        const b = el.getBoundingClientRect();
+        const cx = ((b.left + b.width / 2 - fr.left) / fr.width) * W;
+        const cy = ((b.top + b.height / 2 - fr.top) / fr.height) * H;
+        const size = Math.max(18, (b.width / fr.width) * W);
+        const glyph = el.querySelector('.g');
+        const emoji = (glyph && glyph.textContent) || '';
+        if (!emoji) return;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = Math.round(size * 0.92) + 'px "Apple Color Emoji","Noto Color Emoji",system-ui';
+        ctx.fillText(emoji, cx, cy);
+      });
+      /* 포켓몬 (PokeAPI 스프라이트) */
+      const pks = $$('#meadowFloor .pk');
+      for (let i = 0; i < pks.length; i += 1) {
+        const el = pks[i];
+        const b = el.getBoundingClientRect();
+        const cx = ((b.left + b.width / 2 - fr.left) / fr.width) * W;
+        const cy = ((b.top + b.height / 2 - fr.top) / fr.height) * H;
+        const size = Math.max(28, (b.width / fr.width) * W);
+        let drawn = false;
+        if (withImages) {
+          const im = await loadImg(SPR(el.dataset.pid));
+          if (im) {
+            try {
+              ctx.drawImage(im, cx - size / 2, cy - size / 2, size, size);
+              drawn = true;
+            } catch (err) { drawn = false; }
+          }
+        }
+        if (!drawn) {
+          /* 스프라이트를 못 받으면 조용히 건너뛴다 */
+        }
+      }
+      /* 날짜 도장 */
+      const label = '🏡 ' + slotName(SLOT) + '의 포켓몬 마을 · ' + stampDate();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '800 ' + Math.round(W * 0.024) + 'px "Apple SD Gothic Neo","Noto Sans KR",system-ui';
+      ctx.lineWidth = Math.max(2, W * 0.006);
+      ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      ctx.strokeText(label, W / 2, H - Math.round(H * 0.045));
+      ctx.fillStyle = 'rgba(30,60,15,.92)';
+      ctx.fillText(label, W / 2, H - Math.round(H * 0.045));
+      let url = '';
+      try {
+        url = cv.toDataURL('image/png');
+      } catch (err) {
+        withImages = false;
+        continue;                 // 이미지 때문에 캔버스가 오염됐다면 이미지 없이 다시
+      }
+      if (!url || url.length < 5000) return { ok: false, why: 'empty' };
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'pokemon-village-' + stampDate().replace(/-/g, '') + '.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (e) { /* 다운로드가 막혀도 아래에서 확인할 수 있게 url 을 돌려준다 */ }
+      try { Sfx.fanfare(); } catch (e) { /* */ }
+      toast('📸 사진을 저장했어요!');
+      return { ok: true, w: W, h: H, withImages: withImages, url: url };
+    }
+    return { ok: false };
+  }
+
+  /* ---------- 4탄: 마을 크게 보기 ---------- */
+  let zoomTimer = 0;
+
+  function zoneMeta(k) {
+    const z = ZONES.find((x) => x.k === k);
+    return z ? { emoji: z.emoji, name: z.name } : { emoji: '🏡', name: '마을' };
+  }
+  function liveZone(k) { return document.querySelector('.village .zone[data-zone="' + k + '"]'); }
+
+  /* 지금 마을 그대로를 복제해 큰 무대에 한 번 더 그린다(위치는 주기적으로 따라온다) */
+  function paintZoom() {
+    const stage = document.getElementById('zoomStage');
+    const src = document.getElementById('meadow');
+    if (!stage || !src) return;
+    const clone = src.cloneNode(true);
+    clone.removeAttribute('id');
+    Array.prototype.forEach.call(clone.querySelectorAll('[id]'), (n) => { n.removeAttribute('id'); });
+    stage.innerHTML = '';
+    stage.appendChild(clone);
+    const t = document.getElementById('zoomTitle');
+    if (t) t.textContent = '🔍 크게 보기 — ' + slotName(SLOT) + '의 마을';
+    const tabs = document.getElementById('zoomTabs');
+    if (tabs) tabs.innerHTML = '';
+  }
+
+  /* 살아 있는 마을의 위치·모션을 큰 무대로 복사 */
+  function syncZoom() {
+    const stage = document.getElementById('zoomStage');
+    const src = floorOf();
+    if (!stage || !src) return;
+    const dst = stage.querySelector('.floor');
+    if (!dst) return;
+    const live = {};
+    Array.prototype.forEach.call(src.querySelectorAll('.pk'), (el) => { live[el.dataset.pid] = el; });
+    Array.prototype.forEach.call(dst.querySelectorAll('.pk'), (el) => {
+      const from = live[el.dataset.pid];
+      if (!from) return;
+      el.style.left = from.style.left;
+      el.style.top = from.style.top;
+      el.classList.toggle('jump', from.classList.contains('jump'));
+    });
+    applyTod();
+  }
+
+  function openZoom() {
+    const m = document.getElementById('zoomModal');
+    if (!m) return;
+    paintZoom();
+    syncZoom();
+    m.hidden = false;
+    try { Sfx.click(); } catch (e) { /* */ }
+    clearInterval(zoomTimer);
+    zoomTimer = setInterval(() => { if (!m.hidden) syncZoom(); }, 1000);
+  }
+  function closeZoom() {
+    const m = $('#zoomModal');
+    if (m) m.hidden = true;
+    clearInterval(zoomTimer);
+    zoomTimer = 0;
+  }
+
+  function bindZoom() {
+    const btn = $('#zoomBtn');
+    if (btn) btn.addEventListener('click', () => openZoom());
+    const stage = $('#zoomStage');
+    if (stage) {
+      stage.addEventListener('pointerdown', (e) => {
+        const el = e.target.closest('.pk');
+        if (!el) return;
+        e.preventDefault();
+        touchPokemon(el);
+      });
+    }
+    const m = $('#zoomModal');
+    if (m) {
+      m.addEventListener('click', (e) => {
+        if (e.target === m) { closeZoom(); return; }
+        if (e.target.closest('[data-close="zoomModal"]')) closeZoom();
+      });
+    }
+    /* 크게 보기 안에서도 아이템을 톡 누르면 반응한다 */
+    if (stage) {
+      stage.addEventListener('pointerdown', (e) => {
+        const it = e.target.closest('.it');
+        if (!it) return;
+        const clone = it.cloneNode(true);
+        clone.style.animation = 'none';
+        try { Sfx.tone(640, 0.06, 'square', 0.035, 900); } catch (err) { /* */ }
+        void clone;
+      }, true);
+    }
+  }
+
   /* ---------- 이벤트 ---------- */
   function bind() {
     $('#muteBtn').textContent = Sfx.muted ? '🔇' : '🔊';
@@ -979,6 +1390,7 @@
     $('#pokeBtn').addEventListener('click', () => { Sfx.click(); ZONE = 'grass'; paintPokeModal(); open('pokeModal'); });
     $('#itemBtn').addEventListener('click', () => { Sfx.click(); paintItemModal(); open('itemModal'); });
     $('#giftBtn').addEventListener('click', () => { Sfx.click(); Gift.reset(); open('giftModal'); });
+    bindZoom();
 
     document.addEventListener('click', (e) => {
       const x = e.target.closest('[data-close]');
@@ -1028,12 +1440,100 @@
     });
 
     const v = $('#village');
-    v.addEventListener('pointerdown', (e) => {
-      const el = e.target.closest('.pk');
-      if (!el) return;
-      e.preventDefault();
-      touchPokemon(el);
-    });
+    /* 하나의 풀밭: 아이템은 눌러서 고르고 끌어서 옮긴다 · 포켓몬은 톡톡 */
+    const stage = document.getElementById('meadow');
+    const floor = floorOf();
+    let drag = null;
+    if (stage) {
+      stage.addEventListener('pointerdown', (e) => {
+        const itEl = e.target.closest('.it');
+        if (itEl) {
+          const idx = Number(itEl.dataset.item);
+          selectItem(idx);
+          drag = { idx: idx, el: itEl, moved: false, pid: e.pointerId };
+          try { itEl.setPointerCapture(e.pointerId); } catch (err) { /* */ }
+          e.preventDefault();
+          return;
+        }
+        const pkEl = e.target.closest('.pk');
+        if (pkEl) {
+          e.preventDefault();
+          touchPokemon(pkEl);
+          return;
+        }
+        /* 빈 풀밭을 누르면 고른 아이템이 그 자리로 이동 */
+        if (selectedItem >= 0 && floor) {
+          const r = floor.getBoundingClientRect();
+          moveItemTo(selectedItem, ((e.clientX - r.left) / r.width) * 100, ((e.clientY - r.top) / r.height) * 100);
+          try { Sfx.pop(); } catch (err) { /* */ }
+        }
+      });
+      stage.addEventListener('pointermove', (e) => {
+        if (!drag || !floor) return;
+        const r = floor.getBoundingClientRect();
+        drag.el.style.left = clamp(((e.clientX - r.left) / r.width) * 100, 5, 95) + '%';
+        drag.el.style.top = clamp(((e.clientY - r.top) / r.height) * 100, 12, 93) + '%';
+        drag.moved = true;
+      });
+      const endDrag = () => {
+        if (!drag) return;
+        if (drag.moved) {
+          moveItemTo(drag.idx, parseFloat(drag.el.style.left) || 50, parseFloat(drag.el.style.top) || 70);
+          try { Sfx.pop(); } catch (err) { /* */ }
+        }
+        drag = null;
+      };
+      stage.addEventListener('pointerup', endDrag);
+      stage.addEventListener('pointercancel', endDrag);
+    }
+
+    /* 아이템 조작 바 */
+    const ctl = document.getElementById('itemCtl');
+    if (ctl) {
+      ctl.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.scz === 'big') { scaleItem(0.1); return; }
+        if (b.dataset.scz === 'small') { scaleItem(-0.1); return; }
+        if (b.dataset.scdel) {
+          const i = selectedItem;
+          selectedItem = -1;
+          paintCtl();
+          removeItem(i);
+          return;
+        }
+        if (b.dataset.scclose) {
+          selectedItem = -1;
+          paintCtl();
+          $$('#meadowFloor .it').forEach((el) => el.classList.remove('sel'));
+        }
+      });
+    }
+
+    /* 시간대 버튼 */
+    const todBar = document.getElementById('todBar');
+    if (todBar) {
+      todBar.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-tod]');
+        if (!b) return;
+        setTod(b.dataset.tod);
+        try { Sfx.click(); } catch (err) { /* */ }
+      });
+    }
+    /* 기념사진 */
+    const shot = document.getElementById('photoBtn');
+    if (shot) {
+      shot.addEventListener('click', () => {
+        shot.disabled = true;
+        takePhoto().then((r) => {
+          shot.disabled = false;
+          if (r && r.ok === false) toast('사진을 만들지 못했어요 — 잠시 뒤 다시 해 보세요');
+        }).catch(() => {
+          shot.disabled = false;
+          toast('사진을 만들지 못했어요');
+        });
+      });
+    }
 
     document.addEventListener('visibilitychange', () => { if (document.hidden) savePositions(); });
   }
@@ -1066,8 +1566,11 @@
       })
       .catch(() => { /* */ });
 
+    applyTod();
     setInterval(loop, 3200);
     setInterval(savePositions, 15000);
+    clearInterval(todTimer);
+    todTimer = setInterval(() => { if (TOD === 'auto') applyTod(); }, 60000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
@@ -1084,6 +1587,21 @@
     removePoke,
     removeItem,
     zone(z) { ZONE = z; paintPokeModal(); },
+    tod(k) { setTod(k); return (document.getElementById('meadow') || {}).dataset.tod; },
+    setTod,
+    todOf,
+    photo() { return takePhoto(); },
+    select(i) { selectItem(Number(i)); return selectedItem; },
+    selected: () => selectedItem,
+    scale(d) { scaleItem(Number(d)); return state().items[selectedItem] ? state().items[selectedItem].sc : null; },
+    move(i, x, y) { moveItemTo(Number(i), Number(x), Number(y)); return state().items[Number(i)]; },
+    itemInfo(i) {
+      const st = state();
+      const it = st.items[Number(i)];
+      if (!it) return null;
+      const el = document.querySelector('#meadowFloor .it[data-item="' + Number(i) + '"]');
+      return { k: it.k, x: it.x, y: it.y, sc: Number(it.sc) || 1, w: el ? Math.round(el.getBoundingClientRect().width) : 0 };
+    },
     touch(id) {
       const el = document.querySelector('.pk[data-pid="' + id + '"]');
       if (!el) return false;
@@ -1098,6 +1616,30 @@
       target(t) { Gift.target = t; Gift.paintPick(); },
       pick(k) { Gift.pick = k; Gift.paintPick(); },
       send() { Gift.send(); },
+    },
+    zoom: {
+      open() { openZoom(); },
+      close() { closeZoom(); },
+      state() {
+        const m = document.getElementById('zoomModal');
+        const stage = document.getElementById('zoomStage');
+        return {
+          open: !!m && !m.hidden,
+          tod: (document.getElementById('meadow') || {}).dataset ? document.getElementById('meadow').dataset.tod : '',
+          title: (document.getElementById('zoomTitle') || {}).textContent,
+          tabs: m ? m.querySelectorAll('#zoomTabs button').length : 0,
+          pk: stage ? stage.querySelectorAll('.pk').length : 0,
+          items: stage ? stage.querySelectorAll('.it').length : 0,
+          pkW: stage && stage.querySelector('.pk') ? Math.round(stage.querySelector('.pk').getBoundingClientRect().width) : 0,
+        };
+      },
+      touch(pid) {
+        const stage = document.getElementById('zoomStage');
+        const el = stage ? stage.querySelector('.pk[data-pid="' + pid + '"]') : null;
+        if (!el) return false;
+        touchPokemon(el);
+        return true;
+      },
     },
     MAX: { poke: MAX_PK, item: MAX_ITEM },
   };

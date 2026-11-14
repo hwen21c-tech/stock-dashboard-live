@@ -2155,7 +2155,7 @@ function makeChoices(kind, ans, d) {
   return list;
 }
 
-/* ---------- 문제 유형: 기본 · 빈칸 · 세 수 · 비교 ---------- */
+/* ---------- 문제 유형: 기본 · 빈칸 (세 수·비교식은 제외 — 항상 2개 숫자) ---------- */
 function calc(kind, a, b) {
   return kind === 'add' ? a + b : kind === 'sub' ? a - b : kind === 'mul' ? a * b : a / b;
 }
@@ -2185,7 +2185,7 @@ function rngOf(seed) {
 }
 
 /* 오늘의 유형 덱: 날짜(KST) 시드로 문제 유형 순서가 매일 자정에 새로 섞인다 */
-const QTYPE_CYCLE = ['plain', 'plain', 'blank', 'plain', 'triple', 'blank', 'plain', 'compare', 'triple', 'plain'];
+const QTYPE_CYCLE = ['plain', 'plain', 'blank', 'plain', 'plain', 'blank', 'plain', 'blank', 'plain', 'blank'];
 const QDeck = {
   day: '',
   seq: [],
@@ -2287,27 +2287,8 @@ function qBlank() {
   return { kind, text, ans, choices: makeChoices(kind, ans, S.diff), hintHtml: blankHintHtml(kind, a, b, c, leftBlank) };
 }
 
-/* 세 수 식: 2 + 3 + 4 = ? · 23 + 15 − 8 = ? */
+/* 세 수 식(5 + 4 + 8)·비교식은 아이들이 어려워해 뺐다 — 항상 2개 숫자 1회 연산만 */
 function qTriple() {
-  const d = S.diff;
-  const lo = d === 'easy' ? 1 : d === 'mid' ? 11 : 101;
-  const hi = d === 'easy' ? 9 : d === 'mid' ? 49 : 399;
-  const maxC = d === 'easy' ? 9 : d === 'mid' ? 40 : 150;
-  for (let i = 0; i < 30; i += 1) {
-    const a = rand(lo, hi);
-    const b = rand(lo, hi);
-    const c = rand(1, maxC);
-    const minus = Math.random() < 0.55;
-    const ans = minus ? a + b - c : a + b + c;
-    if (ans < 0) continue;
-    return {
-      kind: 'add',
-      text: `${a} + ${b} ${minus ? '−' : '+'} ${c} = ?`,
-      ans,
-      choices: makeChoices('add', ans, d),
-      hintHtml: `<b>${a} + ${b} = ${a + b}</b> 먼저! 그다음 ${minus ? '−' : '+'} ${c}`,
-    };
-  }
   return qPlain();
 }
 
@@ -2342,7 +2323,7 @@ function shuffleSymbols() {
 function makeQuestion() {
   const type = QDeck.nextType();
   for (let i = 0; i < 60; i += 1) {
-    const q = type === 'blank' ? qBlank() : type === 'triple' ? qTriple() : type === 'compare' ? qCompare() : qPlain();
+    const q = type === 'blank' ? qBlank() : qPlain();
     if (!recentQ.includes(q.text)) {
       rememberQ(q.text);
       return q;
