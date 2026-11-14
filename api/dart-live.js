@@ -155,9 +155,10 @@ const memCache = new Map(); // `${bgn}|${end}` → { at, value }
  */
 const SCANS = [
   { key: 'recent', label: '최신 공시', pageNo: 1, pblntfTy: null, pageCount: 100 },
-  { key: 'major1', label: '주요사항보고(B) 1p', pageNo: 1, pblntfTy: 'B', pageCount: 100 },
-  { key: 'major2', label: '주요사항보고(B) 2p', pageNo: 2, pblntfTy: 'B', pageCount: 100 },
-  { key: 'equity1', label: '지분공시(D) 1p', pageNo: 1, pblntfTy: 'D', pageCount: 100 },
+  { key: 'major1', label: '주요사항보고(B)', pageNo: 1, pblntfTy: 'B', pageCount: 100 },
+  { key: 'major2', label: '주요사항보고(B)', pageNo: 2, pblntfTy: 'B', pageCount: 100 },
+  { key: 'major3', label: '주요사항보고(B)', pageNo: 3, pblntfTy: 'B', pageCount: 100 },
+  { key: 'equity1', label: '지분공시(D)', pageNo: 1, pblntfTy: 'D', pageCount: 100 },
 ];
 
 async function fetchDartPage(apiKey, bgnDe, endDe, scan) {
@@ -223,7 +224,17 @@ function pickItems(rows) {
     if (r !== 0) return r;
     return String(b.rceptDate || '').localeCompare(String(a.rceptDate || ''));
   });
-  return items.slice(0, MAX_ITEMS);
+  // 유형별 상한을 두어 위험 공시가 많아도 주목(수주·지분) 목록이 잘리지 않게 한다
+  const caps = { risk: 12, watch: 10, info: 5 };
+  const used = { risk: 0, watch: 0, info: 0 };
+  const out = [];
+  items.forEach((it) => {
+    if (out.length >= MAX_ITEMS) return;
+    if (used[it.kind] >= caps[it.kind]) return;
+    used[it.kind] += 1;
+    out.push(it);
+  });
+  return out;
 }
 
 /* -------------------------------- handler -------------------------------- */
@@ -279,24 +290,35 @@ module.exports = async function handler(req, res) {
   try {
     const settled = await Promise.allSettled(SCANS.map((s) => fetchDartPage(apiKey, bgnDe, endDe, s)));
     const rows = [];
-    const coverage = [];
+    const byType = new Map(); // 'all' | 'B' | 'D' → { label, fetched, totalCount, pages, errors }
     const scanErrors = [];
     settled.forEach((s, i) => {
       const scan = SCANS[i];
+      const type = scan.pblntfTy || 'all';
+      if (!byType.has(type)) {
+        byType.set(type, { label: scan.label, fetched: 0, totalCount: null, pages: 0, errors: 0 });
+      }
+      const acc = byType.get(type);
+      acc.pages += 1;
       if (s.status === 'fulfilled') {
         rows.push(...s.value.rows);
-        coverage.push({
-          label: scan.label,
-          fetched: s.value.rows.length,
-          totalCount: s.value.totalCount,
-          complete: s.value.rows.length >= s.value.totalCount,
-        });
+        acc.fetched += s.value.rows.length;
+        if (s.value.totalCount !== null) acc.totalCount = s.value.totalCount;
       } else {
         const msg = String((s.reason && s.reason.message) || s.reason);
+        acc.errors += 1;
         scanErrors.push(`${scan.label}: ${msg}`);
-        coverage.push({ label: scan.label, fetched: 0, totalCount: null, complete: false, error: msg });
       }
     });
+    const coverage = Array.from(byType.entries()).map(([type, acc]) => ({
+      type,
+      label: acc.label,
+      pages: acc.pages,
+      fetched: acc.fetched,
+      totalCount: acc.totalCount,
+      // 같은 유형의 페이지를 모두 더해 그 유형 전체를 봤는지 판단한다
+      complete: acc.errors === 0 && acc.totalCount !== null && acc.fetched >= acc.totalCount,
+    }));
     if (!rows.length && scanErrors.length === SCANS.length) {
       throw new Error(scanErrors[0] || 'DART 응답 없음');
     }
@@ -310,9 +332,8 @@ module.exports = async function handler(req, res) {
       interest: items.filter((i) => i.inInterest).length,
       interestRisk: items.filter((i) => i.inInterest && i.kind === 'risk').length,
     };
-    const riskClassesComplete = coverage
-      .filter((c) => /주요사항보고|지분공시/.test(c.label))
-      .every((c) => c.complete);
+    const majorClass = coverage.find((c) => c.type === 'B') || null;
+    const riskClassesComplete = Boolean(majorClass && majorClass.complete);
     const body = {
       ok: true,
       keySet: true,
@@ -329,8 +350,9 @@ module.exports = async function handler(req, res) {
       notes: [
         'DART OpenAPI list.json 결과 중 관심 종목 공시와 위험·주목 키워드 공시만 표시합니다.',
         '공시 유형(위험/주목)은 공시명 키워드로 자동 분류한 것이며, 본문 해석·판단은 아닙니다.',
-        'DART 는 한 번에 100건까지만 주므로 최신 공시 1p + 주요사항보고(B) 2p + 지분공시(D) 1p 를 스캔합니다.',
-        '관심 종목: 8번 종베 10 + 6번 RN존 11 (중복 제거 ' + INTEREST.length + '종목). 스캔 범위 밖 공시는 이 목록에 없을 수 있습니다.',
+        'DART 는 한 번에 100건까지만 주므로 주요사항보고(B: 유상증자·CB·감자 등)는 3페이지까지 받아 전수 확인하고,',
+        '지분공시(D)·전체 최신 공시는 첫 페이지만 스캔합니다(일부). 스캔 범위는 coverage 에 그대로 담습니다.',
+        '관심 종목: 8번 종베 10 + 6번 RN존 11 (중복 제거 ' + INTEREST.length + '종목). corp_code 직접 조회는 하지 않습니다.',
       ],
       sources: [{ name: 'opendart-list', ok: true }],
       errors: scanErrors,

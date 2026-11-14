@@ -97,9 +97,8 @@
       var done = c.complete === true;
       return '<div style="display:flex; justify-content:space-between; gap:8px; font-size:10px; color:' +
         (c.error ? '#fb7185' : done ? '#94a3b8' : '#fbbf24') + '; padding:1px 0;">' +
-        '<span>' + esc(c.label) + '</span>' +
-        '<span>' + (c.error ? '실패' : (c.fetched + ' / ' + (c.totalCount === null ? '?' : c.totalCount) + '건' + (done ? ' 전수' : ' 일부'))) + '</span>' +
-      '</div>';
+        '<span>' + esc(c.label) + (c.pages > 1 ? ' · ' + c.pages + 'p' : '') + '</span>' +
+        '<span>' + (c.error ? '실패' : (c.fetched + ' / ' + (c.totalCount === null ? '?' : c.totalCount) + '건' + (done ? ' 전수' : ' 일부'))) + '</span></div>';
     }).join('');
     return '<div style="margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:5px;">' +
       '<div style="font-size:10px; font-weight:800; color:#94a3b8; margin-bottom:2px;">📋 스캔 범위 (DART 100건/page 한도)</div>' +
