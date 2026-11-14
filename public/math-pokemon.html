@@ -256,6 +256,11 @@
     background:radial-gradient(closest-side,rgba(28,70,12,.42),transparent 78%);
     filter:blur(1px);z-index:2;
   }
+  .wildwrap.noimg::after{
+    content:"?";position:absolute;inset:0;display:grid;place-items:center;
+    font-size:clamp(56px,16vw,120px);font-weight:900;color:rgba(40,70,20,.38);
+    background:radial-gradient(closest-side,rgba(255,255,255,.7),transparent 72%);border-radius:50%;
+  }
   .wildwrap.hit{animation:hitflash .5s steps(1) both}
   @keyframes hitflash{
     0%{filter:brightness(3) saturate(0)}
@@ -942,28 +947,23 @@ function bumpHp(el) {
 function setWildImages(p) {
   const art = $('#wildArt');
   const spr = $('#wildSprite');
-  art.classList.remove('ready');
+  const wrap = $('#wildWrap');
+  wrap.classList.remove('noimg');
+  art.style.cssText = '';
+  spr.style.cssText = '';
+  // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
+  spr.style.opacity = '1';
   art.style.opacity = '0';
+  art.style.transition = 'opacity .22s';
+  art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
+  art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+  spr.onerror = () => {
+    spr.style.display = 'none';
+    art.style.display = 'none';
+    wrap.classList.add('noimg');
+  };
   art.src = ART(p.id);
   spr.src = SPR(p.id);
-  spr.onerror = () => { spr.style.display = 'none'; };
-  art.onload = () => { art.style.transition = 'opacity .25s'; art.style.opacity = '1'; };
-  art.onerror = () => {
-    // 공식 아트워크 실패 → 도트 스프라이트로 대체
-    art.style.display = 'none';
-    spr.style.display = '';
-    spr.style.opacity = '1';
-    spr.style.width = '72%';
-  };
-  art.style.display = '';
-  spr.style.display = '';
-  spr.style.opacity = '0.999';
-  spr.style.width = '100%';
-  art.onload = () => {
-    if (loadedArt.has(p.id) || art.complete) { art.style.opacity = '1'; spr.style.opacity = '0'; }
-    else { art.style.opacity = '1'; spr.style.opacity = '0'; }
-  };
-  if (art.complete && art.naturalWidth) { art.style.opacity = '1'; spr.style.opacity = '0'; }
   $('#foeName').textContent = p.name;
   $('#foeLv').textContent = 'Lv.' + p.level;
   $('#hint').textContent = `야생 ${p.name}${josa(p.name, '이', '가')} 나타났다!`;
@@ -983,8 +983,7 @@ function resetWildVisual() {
   const w = $('#wildWrap');
   w.getAnimations().forEach((a) => a.cancel());
   w.className = 'wildwrap';
-  w.style.cssText = '';
-  $('#wildArt').style.cssText = '';
+  w.style.cssText = '';  $('#wildArt').style.cssText = '';
   $('#wildSprite').style.cssText = '';
   $('#wildShadow').style.opacity = '1';
 }
