@@ -532,6 +532,43 @@ input[type="range"].sl::-moz-range-thumb { width: 17px; height: 17px; border-rad
 #dragOverlay.show { display: flex; }
 #dragOverlay .dz-big { font-size: 46px; }
 
+
+/* ---------- PDF 원본 페이지 모드 ---------- */
+#pdfStage {
+  position: absolute; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  padding: 8px; overflow: hidden; background: var(--page);
+}
+body.pdf-mode #pdfStage { display: flex; }
+body.pdf-mode #pageTurn,
+body.pdf-mode #content { display: none !important; }
+#pdfCanvas {
+  max-width: 100%; max-height: 100%;
+  background: #fff; border-radius: 4px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .18);
+}
+/* OLED 검은바탕에서는 종이 PDF 를 반전 — 흰 종이가 눈을 찌르지 않는다 */
+body[data-theme="dark"] #pdfCanvas { filter: invert(0.92) hue-rotate(180deg); }
+#pdfPageBadge {
+  position: absolute; right: 10px; bottom: 8px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .02em;
+  color: #fff; background: rgba(20, 20, 20, .62);
+  border-radius: 999px; padding: 3px 9px; pointer-events: none;
+  display: none;
+}
+body.pdf-mode #pdfPageBadge { display: block; }
+#btnPdfMode { display: none; }
+body.pdf-mode #btnPdfMode,
+body.has-pdf #btnPdfMode { display: inline-flex; }
+body.pdf-mode #btnFontUp,
+body.pdf-mode #btnFontDown,
+body.pdf-mode #btnViewToggle,
+body.pdf-mode #btnMark,
+body.pdf-mode #btnPlayQuick { display: none !important; }
+@media (max-width: 430px) {
+  #pdfPageBadge { font-size: 9.5px; padding: 2px 7px; }
+}
+
 /* ---------- 폴드8 3화면 / 반응형 ---------- */
 /* 외부 세로 (Cover Portrait) */
 body.mode-cover-portrait #readerWrap { padding: 6px; }
@@ -591,6 +628,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   <div id="readerWrap">
     <div id="viewport">
       <div id="pageTurn"><div id="content"></div></div>
+      <div id="pdfStage"><canvas id="pdfCanvas"></canvas><div id="pdfPageBadge">1 / 1</div></div>
       <div id="turnShade"></div>
     </div>
     <button class="nav-btn prev" id="navPrev" aria-label="이전 페이지">‹</button>
@@ -606,6 +644,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       <button class="chip" id="btnFontDown" title="글자 작게">A−</button>
       <button class="chip" id="btnFontUp" title="글자 크게">A+</button>
       <button class="chip" id="btnViewToggle" title="1쪽/2쪽 보기">📖 1쪽</button>
+      <button class="chip" id="btnPdfMode" title="원본 PDF 페이지 ↔ 텍스트 전환">📄 원본 PDF</button>
       <button class="chip" id="btnMark" title="현재 페이지 책갈피">🔖 책갈피</button>
       <span class="footer-spacer"></span>
       <button class="chip text-only" id="btnPlayQuick" title="오디오북 재생">▶︎ 낭독</button>
@@ -687,10 +726,10 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   <div class="sheet-body">
     <div class="dropzone" id="dropzone">
       <div class="dz-ico">📄</div>
-      <div class="dz-t">TXT 파일을 끌어다 놓거나 눌러서 고르기</div>
-      <div class="dz-s">UTF-8 · EUC-KR 자동 감지 · .txt / .md</div>
+      <div class="dz-t">TXT·PDF 파일을 끌어다 놓거나 눌러서 고르기</div>
+      <div class="dz-s">UTF-8 · EUC-KR 자동 감지 · .txt / .md · .pdf(글자 추출 / 원본 보기)</div>
     </div>
-    <input type="file" id="fileInput" accept=".txt,.md,.text,text/plain" style="display:none">
+    <input type="file" id="fileInput" accept=".txt,.md,.text,.pdf,text/plain,application/pdf" style="display:none">
     <div class="section-label">책 목록</div>
     <div id="bookList"></div>
     <div class="section-label">체험용 샘플 동화</div>
@@ -1463,6 +1502,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     updateProgressUI();
     updateTocPages();
     updateNavBtns();
+    /* 화면 크기가 바뀌면 원본 PDF도 새 크기에 맞춰 다시 그린다 */
+    if (PDF.mode === 'pdf') PDF.render();
   }
 
   /* 이 섹션에 장 제목이 있으면 그 화면 위치만 기록(없으면 비운다) */
@@ -1537,11 +1578,22 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     if (!silent) { /* 낭독 중이면 그대로 따라간다 */ }
   }
 
-  function nextPage() { goSpread(state.spread + 1); }
-  function prevPage() { goSpread(state.spread - 1); }
+  function nextPage() {
+    if (PDF.mode === 'pdf' && PDF.doc) { PDF.go(PDF.page + 1); return; }
+    goSpread(state.spread + 1);
+  }
+  function prevPage() {
+    if (PDF.mode === 'pdf' && PDF.doc) { PDF.go(PDF.page - 1); return; }
+    goSpread(state.spread - 1);
+  }
 
   function updateNavBtns() {
     var p = $('navPrev'), n = $('navNext');
+    if (PDF.mode === 'pdf' && PDF.pages) {
+      if (p) p.disabled = PDF.page <= 1;
+      if (n) n.disabled = PDF.page >= PDF.pages;
+      return;
+    }
     var list = sectionList();
     var sec = state.section || 0;
     if (p) p.disabled = state.spread <= 0 && sec <= 0;
@@ -1550,6 +1602,16 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
 
   function updateProgressUI() {
     var r = $('progressRange');
+    if (PDF.mode === 'pdf' && PDF.pages) {
+      var pt = PDF.pages;
+      r.max = String(Math.max(0, pt - 1));
+      r.value = String(Math.max(0, PDF.page - 1));
+      var ppct = pt > 1 ? Math.round(((PDF.page - 1) / (pt - 1)) * 100) : 100;
+      $('progressLabel').textContent = PDF.page + ' / ' + pt + '쪽 · ' + ppct + '%';
+      var badge = $('pdfPageBadge');
+      if (badge) badge.textContent = PDF.page + ' / ' + pt;
+      return;
+    }
     var total = totalSpreads();
     var g = clamp(globalSpread(), 0, Math.max(0, total - 1));
     r.max = String(Math.max(0, total - 1));
@@ -1675,6 +1737,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       spread: state.spread,
       ratio: total > 1 ? globalSpread() / (total - 1) : 0,
       chapterIndex: state.chapterIndex || 0,
+      pdfMode: PDF.mode,
+      pdfPage: PDF.page,
       sent: typeof state.curSent === 'number' ? state.curSent : 0,
       at: Date.now()
     });
@@ -1954,26 +2018,28 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
      7. IndexedDB 서재
      ========================================================= */
   var DB = (function () {
-    var dbp = null, NAME = 'ebook-library', STORE = 'books';
+    var dbp = null, NAME = 'ebook-library', STORE = 'books', PDFS = 'pdfs';
     function open() {
       if (dbp) return dbp;
       dbp = new Promise(function (res, rej) {
         if (!window.indexedDB) { rej(new Error('no-idb')); return; }
-        var req = indexedDB.open(NAME, 1);
+        var req = indexedDB.open(NAME, 2);
         req.onupgradeneeded = function () {
           var db = req.result;
           if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+          /* PDF 원본 Blob 은 책 기록과 분리해 둔다 — 서재 목록을 읽을 때 큰 파일을 끌어오지 않게 */
+          if (!db.objectStoreNames.contains(PDFS)) db.createObjectStore(PDFS);
         };
         req.onsuccess = function () { res(req.result); };
         req.onerror = function () { rej(req.error || new Error('idb-open')); };
       });
       return dbp;
     }
-    function tx(mode, fn) {
+    function tx(mode, fn, store) {
       return open().then(function (db) {
         return new Promise(function (res, rej) {
-          var t = db.transaction(STORE, mode);
-          var st = t.objectStore(STORE);
+          var t = db.transaction(store || STORE, mode);
+          var st = t.objectStore(store || STORE);
           var out = fn(st);
           t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
           t.onerror = function () { rej(t.error || new Error('idb-tx')); };
@@ -1995,7 +2061,14 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
           });
         });
       },
-      del: function (id) { return tx('readwrite', function (st) { st.delete(id); }); }
+      del: function (id) { return tx('readwrite', function (st) { st.delete(id); }); },
+      putPdf: function (id, rec) { return tx('readwrite', function (st) { st.put(rec, id); }, PDFS); },
+      getPdf: function (id) {
+        return tx('readonly', function (st) { return st.get(id); }, PDFS).then(function (v) {
+          return (v && v.blob) ? v : null;
+        }, function () { return null; });
+      },
+      delPdf: function (id) { return tx('readwrite', function (st) { st.delete(id); }, PDFS); }
     };
   })();
 
@@ -2003,9 +2076,15 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
 
   function saveBook(book) {
     memBooks[book.id] = book;
-    return DB.put({
-      id: book.id, title: book.title, text: book.text, chars: book.chars, addedAt: book.addedAt
-    }).catch(function () { return null; });
+    var hasPdf = !!(book.pdfBlob);
+    var putPdf = hasPdf
+      ? DB.putPdf(book.id, { blob: book.pdfBlob, pages: book.pdfPages || 0, addedAt: Date.now() })
+          .catch(function () { return null; })
+      : Promise.resolve(null);
+    return Promise.all([DB.put({
+      id: book.id, title: book.title, text: book.text, chars: book.chars, addedAt: book.addedAt,
+      pdf: hasPdf ? 1 : 0, pdfPages: book.pdfPages || 0, scan: book.scan ? 1 : 0
+    }).catch(function () { return null; }), putPdf]);
   }
   function listBooks() {
     return DB.all().catch(function () {
@@ -2014,11 +2093,327 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   }
   function deleteBook(id) {
     delete memBooks[id];
-    return DB.del(id).catch(function () { return null; });
+    return Promise.all([DB.del(id).catch(function () { return null; }),
+      DB.delPdf(id).catch(function () { return null; })]);
   }
   function getBook(id) {
     if (memBooks[id]) return Promise.resolve(memBooks[id]);
     return DB.get(id).catch(function () { return null; });
+  }
+
+
+  /* =========================================================
+     7-B. PDF — ① 텍스트 추출 모드(기본) ② 원본 페이지 모드
+     · PDF.js 는 PDF를 처음 열 때만 CDN에서 받아 온다(평소엔 내려받지 않음)
+     · 글자가 있는 PDF  → 페이지별 글자를 뽑아 기존 책 엔진(buildBook)에 그대로 넘긴다
+       → 1만 자 섹션 분할·형광펜·본문 검색·오디오북 낭독이 그대로 동작
+     · 글자가 거의 없는 스캔본 → 자동으로 원본 페이지 모드(Canvas)
+     ========================================================= */
+  var PDFJS_VER = '3.11.174';
+  var PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + PDFJS_VER + '/';
+
+  var PDF = {
+    lib: null, libP: null,
+    doc: null, bookId: '', pages: 0, page: 1,
+    mode: 'text', token: 0, loading: false, rendered: false, lastErr: '',
+
+    loadLib: function () {
+      var self = this;
+      if (this.lib) return Promise.resolve(this.lib);
+      if (this.libP) return this.libP;
+      if (window.pdfjsLib) {
+        this.lib = window.pdfjsLib;
+        try { this.lib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js'; } catch (e) { /* */ }
+        return Promise.resolve(this.lib);
+      }
+      this.libP = new Promise(function (res, rej) {
+        var s = document.createElement('script');
+        s.src = PDFJS_BASE + 'pdf.min.js';
+        s.async = true;
+        s.onload = function () {
+          if (!window.pdfjsLib) { rej(new Error('pdfjs-missing')); return; }
+          try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js'; } catch (e) { /* */ }
+          res(window.pdfjsLib);
+        };
+        s.onerror = function () { rej(new Error('pdfjs-load')); };
+        document.head.appendChild(s);
+      }).then(function (lib) { self.lib = lib; return lib; }, function (e) { self.libP = null; throw e; });
+      return this.libP;
+    },
+
+    /* 한 페이지의 글자를 줄 단위로 — 조각(item)을 y좌표로 묶고, 벌어진 간격은 띄어쓰기로 */
+    pageText: function (page) {
+      return page.getTextContent().then(function (tc) {
+        var lines = [], line = '', lastY = null, xEnd = 0;
+        function push() {
+          var t = line.replace(/\s+$/, '');
+          if (t.trim()) lines.push(t);
+          line = '';
+        }
+        (tc.items || []).forEach(function (it) {
+          if (!it || typeof it.str !== 'string') return;
+          /* 폰트에 따라 띄어쓰기·가운뎃점 글자가 U+0000 으로 풀려 온다 —
+             그대로 두면 단어가 다 붙어 버리므로 빈칸으로 되살린다 */
+          var str = it.str.replace(/\u0000+/g, ' ')
+            .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+          if (!str) return;
+          var tr = it.transform || [1, 0, 0, 1, 0, 0];
+          var y = Math.round(tr[5]);
+          var x = tr[4];
+          var h = Math.abs(it.height || tr[3] || 10) || 10;
+          if (lastY !== null && Math.abs(y - lastY) > Math.max(2, h * 0.4)) push();
+          else if (line && xEnd && (x - xEnd) > Math.max(1.2, h * 0.22)) line += ' ';
+          line += str;
+          xEnd = x + (it.width || 0);
+          if (it.hasEOL) push();
+          lastY = y;
+        });
+        push();
+        /* 한 문단이 여러 줄로 접혀 있는 경우를 되살린다 —
+           그 페이지에서 가장 긴 줄에 가까운 줄이 문장부호로 끝나지 않았으면 다음 줄과 잇는다 */
+        var maxLen = 0;
+        var i2;
+        for (i2 = 0; i2 < lines.length; i2 += 1) maxLen = Math.max(maxLen, lines[i2].length);
+        var merged = [];
+        for (i2 = 0; i2 < lines.length; i2 += 1) {
+          var cur = lines[i2];
+          while (i2 + 1 < lines.length && cur.length >= maxLen * 0.8 &&
+                 !/[.!?…"'”’』」)\]]$/.test(cur.replace(/\s+$/, ''))) {
+            var nxtLine = lines[i2 + 1].replace(/^\s+/, '');
+            if (!nxtLine) break;
+            if (/[-–]$/.test(cur)) cur = cur.replace(/\s*[-–]\s*$/, '') + nxtLine;
+            else cur = cur.replace(/\s+$/, '') + ' ' + nxtLine;
+            i2 += 1;
+          }
+          merged.push(cur);
+        }
+        return merged.join('\n')
+          .replace(/\u00ad/g, '')
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim();
+      });
+    },
+
+    /* 전체 페이지를 차례대로 — 페이지 사이는 빈 줄 하나 */
+    extract: function (doc) {
+      var self = this;
+      var out = [];
+      var i = 1;
+      function step() {
+        if (i > doc.numPages) return Promise.resolve(out);
+        var n = i;
+        i += 1;
+        return doc.getPage(n).then(function (pg) { return self.pageText(pg); })
+          .then(function (t) { out.push(t); return step(); });
+      }
+      return step();
+    },
+
+    /* 파일 → { doc, pages[] } */
+    openFile: function (file) {
+      var self = this;
+      return this.loadLib().then(function (lib) {
+        return file.arrayBuffer().then(function (buf) {
+          return lib.getDocument({ data: new Uint8Array(buf) }).promise;
+        });
+      }).then(function (doc) {
+        return self.extract(doc).then(function (pages) { return { doc: doc, pages: pages }; });
+      });
+    },
+
+    reset: function () {
+      this.doc = null;
+      this.bookId = '';
+      this.pages = 0;
+      this.page = 1;
+      this.rendered = false;
+      this.token += 1;
+      this.mode = 'text';
+      document.body.classList.remove('pdf-mode');
+    },
+
+    /* 책을 열 때 — PDF 책이면 Blob·쪽수를 붙이고, 스캔본이면 원본 모드로 바로 연다 */
+    attach: function (book, restore) {
+      this.reset();
+      this.bookId = (book && book.id) || '';
+      this.pages = (book && book.pdfPages) || 0;
+      var hasPdf = !!(book && book.pdfBlob);
+      document.body.classList.toggle('has-pdf', hasPdf);
+      var chip = $('btnPdfMode');
+      if (chip) chip.textContent = '📄 원본 PDF';
+      if (!hasPdf) return;
+      var noText = !book.text || !String(book.text).replace(/\s/g, '');
+      var scan = book.scan === true || noText;
+      var saved = restore && (restore.pdfMode === 'pdf' || restore.pdfMode === 'text') ? restore.pdfMode : '';
+      var want = saved || (scan ? 'pdf' : 'text');
+      this.page = clamp(Number(restore && restore.pdfPage) || 1, 1, Math.max(1, this.pages));
+      if (want === 'pdf') this.load(book, this.page);
+      else this.setModeUI('text');
+    },
+
+    /* 원본 PDF 문서를 실제로 연다(Blob → PDF.js) */
+    load: function (book, page) {
+      var self = this;
+      if (!book || !book.pdfBlob) return Promise.resolve(null);
+      if (this.doc && this.bookId === book.id) {
+        this.setModeUI('pdf');
+        if (page) this.go(page);
+        return Promise.resolve(this.doc);
+      }
+      this.loading = true;
+      this.lastErr = '';
+      return this.loadLib().then(function (lib) {
+        return book.pdfBlob.arrayBuffer().then(function (buf) {
+          return lib.getDocument({ data: new Uint8Array(buf) }).promise;
+        });
+      }).then(function (doc) {
+        self.doc = doc;
+        self.pages = doc.numPages;
+        self.loading = false;
+        self.bookId = book.id;
+        self.setModeUI('pdf');
+        self.go(page || self.page);
+        return doc;
+      }).catch(function (e) {
+        self.loading = false;
+        self.lastErr = (e && e.message) || 'pdf-load';
+        toast('원본 PDF를 열지 못했어요 — 인터넷 연결을 확인해 주세요');
+        self.setModeUI('text');
+        return null;
+      });
+    },
+
+    setModeUI: function (mode) {
+      this.mode = mode === 'pdf' ? 'pdf' : 'text';
+      document.body.classList.toggle('pdf-mode', this.mode === 'pdf');
+      var chip = $('btnPdfMode');
+      if (chip) chip.textContent = this.mode === 'pdf' ? '📖 텍스트' : '📄 원본 PDF';
+      if (this.mode === 'pdf') this.render();
+      else this.token += 1;
+      updateProgressUI();
+      updateNavBtns();
+    },
+
+    setMode: function (mode) {
+      var want = mode === 'pdf' ? 'pdf' : 'text';
+      if (want === this.mode) return this.mode;
+      if (want === 'pdf') {
+        if (!state.book || !state.book.pdfBlob) { toast('이 책은 PDF 원본이 없어요'); return this.mode; }
+        this.load(state.book, this.page);
+      } else {
+        this.setModeUI('text');
+        layout(false);
+      }
+      savePosition();
+      return this.mode;
+    },
+
+    toggle: function () { return this.setMode(this.mode === 'pdf' ? 'text' : 'pdf'); },
+
+    go: function (p) {
+      if (!this.doc) return this.page;
+      var n = clamp(Math.round(Number(p) || 1), 1, Math.max(1, this.pages));
+      this.page = n;
+      this.render();
+      updateProgressUI();
+      updateNavBtns();
+      savePositionSoon();
+      return n;
+    },
+
+    /* 지금 쪽을 화면에 꼭 맞춰 그린다 — 기기 픽셀비만큼 크게 그려 선명하게 */
+    render: function () {
+      var self = this;
+      if (!this.doc) return;
+      var vpEl = $('viewport');
+      var cv = $('pdfCanvas');
+      if (!vpEl || !cv) return;
+      /* 쪽을 빠르게 넘기면 앞 렌더가 아직 돌고 있다 — 겹치면 pdf.js 가 캔버스 사용을 거절하므로 먼저 취소한다 */
+      if (this.task) { try { this.task.cancel(); } catch (e) { /* */ } this.task = null; }
+      var token = ++this.token;
+      var availW = Math.max(80, vpEl.clientWidth - 16);
+      var availH = Math.max(80, vpEl.clientHeight - 16);
+      this.doc.getPage(this.page).then(function (pg) {
+        if (token !== self.token) return null;
+        var base = pg.getViewport({ scale: 1 });
+        var fit = Math.min(availW / base.width, availH / base.height);
+        var dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+        var vp = pg.getViewport({ scale: fit * dpr });
+        cv.width = Math.max(1, Math.round(vp.width));
+        cv.height = Math.max(1, Math.round(vp.height));
+        cv.style.width = Math.max(40, Math.round(base.width * fit)) + 'px';
+        cv.style.height = Math.max(40, Math.round(base.height * fit)) + 'px';
+        var g = cv.getContext('2d', { alpha: false });
+        if (g) {
+          g.save();
+          g.fillStyle = '#fff';
+          g.fillRect(0, 0, cv.width, cv.height);
+          g.restore();
+        }
+        var task = pg.render({ canvasContext: g, viewport: vp });
+        self.task = task;
+        return task.promise.then(function () {
+          if (token === self.token) { self.rendered = true; self.lastErr = ''; }
+        }, function (e) {
+          /* 취소는 오류가 아니다 */
+          if (e && e.name === 'RenderingCancelledException') return;
+          if (token === self.token) self.lastErr = (e && e.message) || 'pdf-render';
+        });
+      }).catch(function (e) {
+        if (e && e.name === 'RenderingCancelledException') return;
+        if (token === self.token) self.lastErr = (e && e.message) || 'pdf-render';
+      });
+    },
+
+    state: function () {
+      var cv = $('pdfCanvas');
+      return {
+        mode: this.mode,
+        pages: this.pages,
+        page: this.page,
+        doc: !!this.doc,
+        loading: this.loading,
+        rendered: this.rendered,
+        err: this.lastErr,
+        canvas: cv ? { w: cv.width, h: cv.height, cssW: cv.style.width, cssH: cv.style.height } : null,
+        dark: document.body.getAttribute('data-theme') === 'dark',
+        filter: cv ? (window.getComputedStyle(cv).filter || '') : ''
+      };
+    }
+  };
+
+  /* PDF 파일 하나를 책으로 — 텍스트를 뽑아 기존 책 엔진에 그대로 넘긴다 */
+  function handlePdf(file) {
+    toast('📄 PDF를 읽는 중…');
+    PDF.openFile(file).then(function (res) {
+      var doc = res.doc;
+      var pages = res.pages || [];
+      var text = pages.join('\n\n');
+      var bare = text.replace(/\s/g, '').length;
+      var perPage = doc.numPages ? bare / doc.numPages : 0;
+      var title = String(file.name || 'PDF').replace(/\.pdf$/i, '');
+      var id = 'pdf-' + (file.name || 'x') + '-' + (file.size || 0) + '-' + (file.lastModified || 0);
+      var book = buildBook(title, text || title, id);
+      book.title = title;
+      book.text = text;
+      book.chars = text.length;
+      book.pdfBlob = file;
+      book.pdfPages = doc.numPages;
+      book.scan = perPage < 40;          /* 글자가 거의 없으면 스캔본으로 본다 */
+      openBook(book, null);
+      saveBook(book).then(function () { renderBookList(); });
+      closeAllSheets();
+      if (book.scan) {
+        toast('🖼️ 글자가 거의 없는 PDF예요 — 원본 페이지로 엽니다 (' + doc.numPages + '쪽)');
+      } else if (book.sections.length > 1) {
+        toast('📖 PDF ' + doc.numPages + '쪽 · ' + book.sections.length + '섹션 · ' + book.sentences.length + '문장으로 열었어요');
+      } else {
+        toast('📖 PDF ' + doc.numPages + '쪽 · ' + book.sentences.length + '문장으로 열었어요');
+      }
+    }).catch(function (e) {
+      var why = (e && e.message) || '';
+      toast(/pdfjs/.test(why) ? 'PDF 도구를 불러오지 못했어요 — 인터넷 연결을 확인해 주세요' : 'PDF를 열지 못했어요 (암호가 걸린 PDF인지 확인해 주세요)');
+    });
   }
 
   /* =========================================================
@@ -2033,6 +2428,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       updateSleepUI();
     }
     state.book = book;
+    /* PDF 책이면 원본 페이지 모드 준비(스캔본은 바로 원본으로 열린다) */
+    try { PDF.attach(book, restore); } catch (e) { /* */ }
     state.spread = 0;
     state.section = 0;
     state.chapterIndex = 0;
@@ -2078,8 +2475,12 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
 
   function handleFile(file) {
     if (!file) return;
+    if (/\.pdf$/i.test(file.name || '') || /^application\/pdf$/i.test(file.type || '')) {
+      handlePdf(file);
+      return;
+    }
     if (!/\.(txt|md|text)$/i.test(file.name) && !/^text\//.test(file.type || '')) {
-      toast('TXT 파일만 열 수 있어요 (' + (file.name || '') + ')');
+      toast('TXT·PDF 파일만 열 수 있어요 (' + (file.name || '') + ')');
       return;
     }
     var reader = new FileReader();
@@ -2114,17 +2515,28 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       }
       books.forEach(function (b) {
         var row = el('div', 'book-row' + (state.book && state.book.id === b.id ? ' current' : ''));
-        row.innerHTML = '<span class="bi">📕</span><span class="bt"><b>' + escHtml(b.title) + '</b><span>' +
-          (b.chars ? (b.chars.toLocaleString() + '자') : '') + '</span></span><button class="del" title="삭제">🗑</button>';
+        var meta = b.pdf
+          ? ('📄 PDF ' + (b.pdfPages || 0) + '쪽' + (b.chars ? (' · ' + b.chars.toLocaleString() + '자') : ''))
+          : (b.chars ? (b.chars.toLocaleString() + '자') : '');
+        row.innerHTML = '<span class="bi">' + (b.pdf ? '📄' : '📕') + '</span><span class="bt"><b>' + escHtml(b.title) + '</b><span>' +
+          meta + '</span></span><button class="del" title="삭제">🗑</button>';
         row.addEventListener('click', function (ev) {
           if (ev.target && ev.target.classList.contains('del')) return;
           getBook(b.id).then(function (full) {
             var src = full || b;
-            if (!src.text) { toast('책 내용을 찾지 못했어요'); return; }
             var last = lsGet(LS_LAST, null);
-            var book = buildBook(src.title, src.text, src.id);
-            openBook(book, last && last.bookId === src.id ? last : null);
-            closeAllSheets();
+            var restore = last && last.bookId === src.id ? last : null;
+            var done = function (pdfRec) {
+              if (!src.text && !pdfRec) { toast('책 내용을 찾지 못했어요'); return; }
+              var book = buildBook(src.title, src.text || '', src.id);
+              book.title = src.title;
+              if (pdfRec) { book.pdfBlob = pdfRec.blob; book.pdfPages = pdfRec.pages || src.pdfPages || 0; }
+              book.scan = src.scan === 1 || src.scan === true;
+              openBook(book, restore);
+              closeAllSheets();
+            };
+            if (src.pdf) DB.getPdf(src.id).then(done, function () { done(null); });
+            else done(null);
           });
         });
         row.querySelector('.del').addEventListener('click', function (ev) {
@@ -3005,6 +3417,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     $('navNext').addEventListener('click', nextPage);
 
     $('progressRange').addEventListener('input', function (e) {
+      if (PDF.mode === 'pdf' && PDF.pages) { PDF.go(Number(e.target.value) + 1); return; }
       jumpToGlobal(Number(e.target.value));
     });
 
@@ -3018,6 +3431,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       toast('📖 ' + state.perView + '쪽 보기');
     });
     $('btnMark').addEventListener('click', addBookmark);
+    $('btnPdfMode').addEventListener('click', function () { PDF.toggle(); });
 
     /* 형광펜 팝업 · 책갈피/형광펜 탭 · 수면 타이머 · 검색 */
     document.querySelectorAll('#hlPop .hl-dot').forEach(function (b) {
@@ -3346,12 +3760,19 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     var opened = false;
     if (last && last.bookId) {
       getBook(last.bookId).then(function (rec) {
-        if (rec && rec.text && !opened) {
+        if (!rec || (!rec.text && !rec.pdf)) { fallback(); return; }
+        /* PDF 책은 원본 Blob 도 함께 붙여야 원본 모드·쪽수가 그대로 살아난다 */
+        var go0 = function (pdfRec) {
+          if (opened) return;
           opened = true;
-          openBook(buildBook(rec.title, rec.text, rec.id), last);
-          return;
-        }
-        fallback();
+          var bk = buildBook(rec.title, rec.text || '', rec.id);
+          bk.title = rec.title;
+          if (pdfRec) { bk.pdfBlob = pdfRec.blob; bk.pdfPages = pdfRec.pages || rec.pdfPages || 0; }
+          bk.scan = rec.scan === 1 || rec.scan === true;
+          openBook(bk, last);
+        };
+        if (rec.pdf) DB.getPdf(rec.id).then(go0, function () { go0(null); });
+        else go0(null);
       }).catch(fallback);
     } else {
       fallback();
@@ -3468,7 +3889,18 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
         return l ? l.getAttribute('href') : null;
       },
       playing: function () { return !!state.playing; },
-      sentKind: function (i) { var b = state.book; return (b && b.sentences[i]) ? b.sentences[i].kind : null; }
+      sentKind: function (i) { var b = state.book; return (b && b.sentences[i]) ? b.sentences[i].kind : null; },
+      /* ---- PDF ---- */
+      pdf: function () { return PDF.state(); },
+      pdfMode: function (m) {
+        if (m === 'pdf' || m === 'text') return PDF.setMode(m);
+        return PDF.mode;
+      },
+      pdfGo: function (n) { return PDF.go(n); },
+      pdfToggle: function () { return PDF.toggle(); },
+      hasPdf: function () { return !!(state.book && state.book.pdfBlob); },
+      pageLabel: function () { return $('progressLabel').textContent; },
+      bookTitleText: function () { return $('bookTitle').textContent; }
     };
   }
 
