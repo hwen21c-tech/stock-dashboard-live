@@ -195,6 +195,17 @@
   }
   .stock-card:hover, .stock-card:focus-visible { border-color: var(--accent-blue); background: #131a29; outline: none; }
   .stock-card:active { transform: scale(0.995); }
+  /* ===== 카드 안 미니 일봉 캔들 차트 — 핀치 확대·좌우 드래그·1탭 = 큰 차트 ===== */
+  .stock-card .sc-mini {
+    display: block; width: 100%; height: 150px; margin: 8px 0 0;
+    border: 1px solid rgba(148,163,184,0.20); border-radius: 8px; background: #070c14;
+    touch-action: pan-y; cursor: pointer;
+  }
+  .sc-mini-cap {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 2px 0;
+    font-size: 9.5px; font-weight: 700; color: #64748b; letter-spacing: -.2px; line-height: 1.35;
+  }
+  .sc-mini-cap .mc-tap { color: #7dd3fc; }
   .sc-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px; }
   .sc-name { font-weight: 800; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 5px; min-width: 0; }
   .sc-name span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -385,6 +396,16 @@
   .m-metric .v { font-size: 12px; font-weight: 800; color: #e2e8f0; font-feature-settings: "tnum"; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chart-wrap { background: #070c14; border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 8px; position: relative; margin-bottom: 8px; }
   #chartCanvas { width: 100%; height: 236px; display: block; touch-action: pan-y; }
+  #chartCtl { display: flex; align-items: center; gap: 4px; margin: 2px 0 7px 0; overflow-x: auto; padding-bottom: 2px; }
+  #chartCtl button.hip {
+    padding: 4px 9px; border-radius: 5px; background: #1e293b; color: #94a3b8;
+    border: 1px solid rgba(255,255,255,0.12); font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap;
+  }
+  #chartCtl .zbtn {
+    min-width: 30px; height: 28px; padding: 0 7px; border-radius: 5px; background: #1e293b; color: #f1f5f9;
+    border: 1px solid rgba(255,255,255,0.2); font-size: 13px; font-weight: 900; cursor: pointer;
+  }
+  #chartCtl .zbtn.reset { background: rgba(56,189,248,0.15); color: #38bdf8; border-color: rgba(56,189,248,0.35); font-size: 12px; padding: 0 8px; }
   .ch-info { font-size: 9.5px; color: #94a3b8; font-weight: 700; min-height: 15px; margin-top: 3px; font-feature-settings: "tnum"; }
   .ch-legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 9.5px; font-weight: 800; color: #94a3b8; margin-top: 4px; }
   .lg { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
@@ -748,7 +769,7 @@
   <section id="sec-stocks">
     <div class="sec-head">
       <div class="sec-title">📈 핵심 후보 — 단계별</div>
-      <div class="sec-sub">카드를 누르면 200일 실측 차트 · 전일 종가 · 120일 전고점</div>
+      <div class="sec-sub">카드 안 200일 캔들(핀치·드래그) · 1탭 = 큰 차트 · 전일 종가/120일 전고점</div>
     </div>
     <div class="chip-bar" id="stageChips"></div>
     <div class="chip-note" id="chipNote">—</div>
@@ -834,7 +855,7 @@
     </div>
     <div class="guide-flex">
       <div class="guide-thumb" onclick="openGuide()" title="눌러서 크게 보기">
-        <img src="/assets/honginki-guide.png" alt="홍인기 D+0 D+1 매매법 도해" loading="lazy">
+        <img src="assets/honginki-guide.png" alt="홍인기 D+0 D+1 매매법 도해" loading="lazy">
         <span class="gt-tag">🔍 눌러서 크게 보기</span>
       </div>
       <div class="guide-caption">
@@ -842,7 +863,7 @@
         종목선정 6단계 → 1분봉 5단 타점 → 매도·손절 4트리거. PDF 4페이지 + 영상 1편에서 <b>화면·자막·차트로 확인된 것만</b> 담았습니다. 도해 안의 가격은 <b>개념 설명용</b>이고, 카드 수치는 <b>2026-11-11~11-13 실제 일봉</b>입니다.
         <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn-action" style="background:#1b1234;color:#d8b4fe;border-color:#a855f7" onclick="openGuide()">📐 크게 보기</button>
-          <a class="btn-action" href="/assets/honginki-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
+          <a class="btn-action" href="assets/honginki-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
         </div>
       </div>
     </div>
@@ -869,6 +890,18 @@
     <div class="modal-body">
       <div class="m-metrics" id="cmMetrics"></div>
       <div class="m-status ok" id="cmStatus">⏳ 실측 일봉을 불러오는 중…</div>
+      <div id="chartCtl">
+        <button class="hip" data-hip="15" onclick="setChartPeriod(15)">15일</button>
+        <button class="hip" data-hip="30" onclick="setChartPeriod(30)">30일</button>
+        <button class="hip" data-hip="60" onclick="setChartPeriod(60)">60일</button>
+        <button class="hip" data-hip="120" onclick="setChartPeriod(120)">120일</button>
+        <button class="hip" data-hip="200" onclick="setChartPeriod(200)">200일</button>
+        <span style="display:flex; gap:3px; margin-left:auto;">
+          <button class="zbtn" onclick="zoomChartBy(1/1.5)" aria-label="축소">－</button>
+          <button class="zbtn" onclick="zoomChartBy(1.5)" aria-label="확대">＋</button>
+          <button class="zbtn reset" onclick="resetChartView()" aria-label="원래대로">↺</button>
+        </span>
+      </div>
       <div class="chart-wrap">
         <canvas id="chartCanvas"></canvas>
         <div class="ch-info" id="chInfo"></div>
@@ -917,12 +950,12 @@
     </div>
     <div class="modal-body">
       <div class="guide-img-wrap" id="guideImgWrap">
-        <img src="/assets/honginki-guide.png" alt="홍인기 매매법 도해 원본">
+        <img src="assets/honginki-guide.png" alt="홍인기 매매법 도해 원본">
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-action" style="background:#1e293b;color:#cbd5e1" onclick="toggleZoom()">🔍 확대/맞춤</button>
-      <a class="btn-action" href="/assets/honginki-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
+      <a class="btn-action" href="assets/honginki-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
       <button class="btn-action" style="background:#0284c7;color:#fff;border-color:#38bdf8" onclick="closeGuide()">닫기</button>
     </div>
   </div>
@@ -1141,6 +1174,7 @@ function renderCards() {
         '<div class="sc-sector">' + (c.theme ? c.theme + ' · 테마 ' + sign(c.themeRate.toFixed(2)) + '% · 5%↑ 동반 ' + c.companions + '종목' : '개별 재료') + ' · 6단계 ' + c.tier + '</div>' +
         strip3(c) +
         '<div class="sc-price-row"><div class="sc-price">' + nf(c.close) + '<small>원</small></div><div class="sc-pct ' + pctCls(c.pct) + '">' + sign(c.pct.toFixed(2)) + '%</div></div>' +
+        miniChartHtml(c) +
         '<div class="sc-meta">' +
           '<span class="chip blue">대금 ' + fmtEok(c.valueEok) + ' · ' + c.rank + '위</span>' +
           '<span class="chip ' + (c.kki.limitUp > 0 ? 'purple' : '') + '">끼 상한가 ' + c.kki.limitUp + '회</span>' +
@@ -1150,12 +1184,467 @@ function renderCards() {
         stepDots(c) + sparkSvg(c) + planBox(c) +
         '<div class="sc-reasons">' + c.reasons.map(function (r) { return '<div class="reason"><i>·</i><span>' + r + '</span></div>'; }).join('') + '</div>' +
         (c.flags.length ? '<div class="sc-flags">' + c.flags.map(function (f) { return '<div class="flag">⚠️ ' + f + '</div>'; }).join('') + '</div>' : '') +
-        '<div class="sc-foot"><span>일봉 130개 내장 · 120일 전고점 ' + nf(c.hi120) + '원</span><span class="open">실측 차트 →</span></div>' +
+        '<div class="sc-foot"><span>일봉 캔들 · 120일 전고점 ' + nf(c.hi120) + '원</span><span class="open">큰 차트 →</span></div>' +
         '</button>';
     }).join('');
   }
   window.__HONGINKI.cards = DATA.cards.length;
   window.__HONGINKI.shown = list.length;
+  /* 카드가 새로 그려질 때마다(최초 렌더·단계 필터) 미니 차트도 다시 그린다 */
+  try { hiDrawMinis(); } catch (e) { console.error('Honginki mini chart:', e); }
+}
+
+/* =====================================================================
+   카드 안 미니 일봉 캔들 차트 — 관제탑 #tabHonginki 와 동일 사양
+     · 카드마다 내장 일봉(130개)으로 먼저 그리고, /api/stock-chart 200일 실측이 오면 교체
+     · 정적 호스팅(*.github.io · file:)에서는 API 를 부르지 않고 내장 일봉으로만 조용히 동작
+     · 시·고·저·종 양봉/음봉 + 하단 거래량 + 전일 종가·120일 전고점 기준선(가격 라벨)
+     · 두 손가락 핀치 확대 / 좌우 드래그 이동 / 한 번 탭 = 큰 차트 팝업
+   ===================================================================== */
+/* 정적 미러 판별 — GitHub Pages 처럼 /api 가 없는 곳에서는 실시간 호출을 아예 하지 않는다 */
+const STATIC_MIRROR = (function () {
+  try {
+    if (location.protocol === 'file:') return true;
+    if (/\.github\.io$/i.test(location.hostname || '')) return true;
+    if (window.__STATIC_MIRROR__ === true) return true;
+  } catch (e) { return true; }
+  return false;
+})();
+
+var MINI = Object.create(null);        // code -> { len, count, start, hover, vsta, vend, iw }
+var MINI_FULL = Object.create(null);   // code -> [{d,o,h,l,c,v}] 200일 실측
+var MINI_ASKED = Object.create(null);  // code -> true (요청 1회)
+var MINI_DEF = 120;
+
+function miniSeriesOf(card) {
+  return MINI_FULL[card.code] || card.candles || [];
+}
+function miniState(code, len) {
+  var s = MINI[code];
+  if (!s || s.len !== len) {
+    s = MINI[code] = { len: len, count: Math.min(MINI_DEF, len), start: 0, hover: -1, vsta: 0, vend: len, iw: 0 };
+  }
+  s.count = Math.max(10, Math.min(s.count || len, len));
+  s.start = Math.max(0, Math.min(s.start || 0, Math.max(0, len - s.count)));
+  return s;
+}
+function miniChartHtml(card) {
+  return '<canvas class="sc-mini" data-mini="' + card.code + '" aria-label="' + card.name + ' 일봉 캔들 차트"></canvas>' +
+    '<div class="sc-mini-cap"><span class="mc-n" data-mini-n="' + card.code + '">일봉 —</span>' +
+    '<span>· 핀치 확대 · 좌우 드래그</span><span class="mc-tap">· 1탭 = 큰 차트</span></div>';
+}
+function miniIdxAt(cv, clientX, code) {
+  var s = MINI[code];
+  if (!s || !s.iw) return -1;
+  var n = s.vend - s.vsta;
+  if (!(n > 0)) return -1;
+  var r = cv.getBoundingClientRect();
+  var i = Math.floor(((clientX - r.left - 4) / s.iw) * n);
+  return Math.max(0, Math.min(n - 1, i));
+}
+function miniZoom(code, f) {
+  var s = MINI[code];
+  if (!s) return;
+  f = Math.min(2, Math.max(0.5, Number(f) || 1));
+  var cur = s.count || s.len;
+  var center = (s.start || 0) + cur / 2;
+  var next = Math.round(cur / f);
+  next = Math.max(10, Math.min(next, s.len));
+  if (next === cur) return;
+  s.count = next;
+  s.start = Math.max(0, Math.min(s.len - next, Math.round(center - next / 2)));
+}
+function miniPan(code, dxPx, iw) {
+  var s = MINI[code];
+  if (!s || s.len <= (s.count || s.len)) return;
+  var per = (s.count || s.len) / Math.max(1, iw);
+  s.start = Math.max(0, Math.min(s.len - s.count, (s.start || 0) - dxPx * per));
+}
+function hiMiniCanvas(code) {
+  return document.querySelector('canvas.sc-mini[data-mini="' + code + '"]');
+}
+/* 200일 실측 일봉을 한 번만 받아와 카드 차트를 교체 (실패·정적 호스팅이면 내장 일봉 유지) */
+function hiLoadMiniFull(code) {
+  if (MINI_ASKED[code]) return;
+  MINI_ASKED[code] = true;
+  if (STATIC_MIRROR) { window.__HONGINKI.miniStatic = true; return; }
+  fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=200')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.ok || !d.candles || !d.candles.length) return;
+      var arr = d.candles.map(function (c) {
+        return { d: c.date || c.d, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
+      });
+      MINI_FULL[code] = arr;
+      var card = cardOf(code);
+      if (!card) return;
+      var cv = hiMiniCanvas(code);
+      if (cv) hiDrawMini(card, cv);
+      window.__HONGINKI.miniFull = Object.keys(MINI_FULL).length;
+    })
+    .catch(function () { /* 폴백: 내장 일봉 */ });
+}
+
+function hiDrawMini(card, cv) {
+  if (!card || !cv) return;
+  var all = miniSeriesOf(card);
+  if (!all || !all.length) return;
+  var s = miniState(card.code, all.length);
+  var capN = cv.parentNode && cv.parentNode.querySelector('.mc-n[data-mini-n="' + card.code + '"]');
+  if (capN) capN.textContent = '일봉 ' + all.length + '개';
+  var vc = Math.max(10, Math.min(Math.round(s.count || all.length), all.length));
+  var vend = Math.max(vc, all.length - Math.max(0, Math.round(s.start || 0)));
+  var vsta = Math.max(0, vend - vc);
+  var view = all.slice(vsta, vend);
+  if (!view.length) return;
+
+  var dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2.5);
+  var W = Math.max(120, Math.round(cv.clientWidth || (cv.parentNode ? cv.parentNode.clientWidth : 0) || 300));
+  var H = Math.max(90, Math.round(cv.clientHeight || 150));
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  var ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  var pl = 4, pt = 7, axisH = 10, volH = 22, vGap = 3;
+  var ph = Math.max(28, H - pt - axisH - volH - vGap);
+  var volTop = pt + ph + vGap;
+
+  var refs = [];
+  if (isFinite(card.prevClose) && card.prevClose > 0) refs.push({ v: card.prevClose, label: '전일', color: '#fbbf24', dash: [5, 3] });
+  if (isFinite(card.hi120) && card.hi120 > 0) refs.push({ v: card.hi120, label: '전고', color: '#c084fc', dash: [2, 3] });
+
+  /* 우측 기준선 라벨 폭에 맞춰 여백을 잡는다 (라벨이 잘리지 않게) */
+  ctx.font = '8px ui-monospace, SFMono-Regular, Menlo, monospace';
+  var pr = 34;
+  if (refs.length) {
+    var lw = refs.reduce(function (m, r) { return Math.max(m, ctx.measureText('↑' + r.label + ' ' + nf(r.v)).width); }, 0);
+    pr = Math.max(pr, Math.ceil(lw) + 10);
+  }
+  var iw = Math.max(40, W - pl - pr);
+
+  var mx = -Infinity, mn = Infinity;
+  view.forEach(function (c) { if (c.h > mx) mx = c.h; if (c.l < mn) mn = c.l; });
+  if (!isFinite(mx) || !isFinite(mn)) return;
+  var rawSpan = (mx - mn) || Math.max(mx * 0.02, 1);
+  var lim = rawSpan * 0.25;
+  refs.forEach(function (r) {
+    if (r.v > mx && r.v - mx <= lim) mx = r.v;
+    if (r.v < mn && mn - r.v <= lim) mn = r.v;
+  });
+  var span = (mx - mn) || Math.max(mx * 0.02, 1);
+  mx += span * 0.07; mn -= span * 0.07;
+  span = mx - mn;
+
+  var yOf = function (v) { return pt + ph - ((v - mn) / span) * ph; };
+  var X = function (i) { return pl + (iw * (i + 0.5)) / view.length; };
+  var bw = Math.max(1.1, Math.min(9, iw / view.length - 0.8));
+
+  /* 배경 + 눈금 */
+  ctx.fillStyle = '#070c14';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(148,163,184,.10)';
+  ctx.lineWidth = 1;
+  for (var g = 1; g <= 3; g += 1) {
+    var gy = pt + (ph * g) / 4;
+    ctx.beginPath(); ctx.moveTo(pl, gy); ctx.lineTo(pl + iw, gy); ctx.stroke();
+  }
+
+  /* 캔들 + 거래량 */
+  var vMax = 0;
+  view.forEach(function (c) { if (c.v > vMax) vMax = c.v; });
+  view.forEach(function (c, i) {
+    var x = X(i);
+    var up = c.c >= c.o;
+    var col = up ? '#f43f5e' : '#38bdf8';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(1, Math.min(2, bw * 0.5));
+    ctx.beginPath(); ctx.moveTo(x, yOf(c.h)); ctx.lineTo(x, yOf(c.l)); ctx.stroke();
+    var yO = yOf(c.o), yC = yOf(c.c);
+    var bTop = Math.min(yO, yC);
+    var bH = Math.max(1, Math.abs(yC - yO));
+    ctx.fillStyle = up ? col : 'rgba(15,23,42,1)';
+    ctx.fillRect(x - bw / 2, bTop, bw, bH);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - bw / 2, bTop, bw, bH);
+    if (vMax > 0) {
+      var vh = ((c.v || 0) / vMax) * (volH - 2);
+      ctx.fillStyle = up ? 'rgba(244,63,94,.42)' : 'rgba(56,189,248,.42)';
+      ctx.fillRect(x - bw / 2, volTop + volH - vh, bw, Math.max(0.6, vh));
+    }
+  });
+  ctx.strokeStyle = 'rgba(148,163,184,.18)';
+  ctx.beginPath(); ctx.moveTo(pl, volTop - 1); ctx.lineTo(pl + iw, volTop - 1); ctx.stroke();
+
+  /* 전일 종가 · 120일 전고점 기준선 + 가격 라벨 (겹치면 위아래로 밀어낸다) */
+  var chips = [];
+  refs.forEach(function (r) {
+    var y = yOf(r.v), off = '';
+    if (r.v > mx) { y = pt + 1; off = '↑'; }
+    if (r.v < mn) { y = pt + ph - 1; off = '↓'; }
+    ctx.strokeStyle = r.color;
+    ctx.setLineDash(r.dash);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + iw, y); ctx.stroke();
+    ctx.setLineDash([]);
+    chips.push({ y: y, text: off + r.label + ' ' + nf(r.v), color: r.color });
+  });
+  ctx.font = '8px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  chips.sort(function (a, b) { return a.y - b.y; });
+  var prevY = -Infinity;
+  chips.forEach(function (c) {
+    c.ly = Math.max(Math.min(c.y, pt + ph - 5), prevY + 9.5);
+    if (c.ly < pt + 6) c.ly = pt + 6;
+    prevY = c.ly;
+  });
+  for (var ci = chips.length - 1; ci >= 0; ci -= 1) {
+    var maxY = pt + ph - 5 - (chips.length - 1 - ci) * 9.5;
+    if (chips[ci].ly > maxY) chips[ci].ly = maxY;
+  }
+  chips.forEach(function (c) {
+    if (Math.abs(c.ly - c.y) > 1) {
+      ctx.strokeStyle = c.color; ctx.globalAlpha = 0.5; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(pl + iw, c.y); ctx.lineTo(pl + iw + 3, c.ly); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    var tw = ctx.measureText(c.text).width;
+    ctx.fillStyle = 'rgba(7,12,20,.92)';
+    ctx.fillRect(pl + iw + 1.5, c.ly - 6, tw + 4, 12);
+    ctx.fillStyle = c.color;
+    ctx.fillText(c.text, pl + iw + 4, c.ly);
+  });
+
+  /* 날짜 */
+  var dTxt = function (d) { return String(d || '').length === 8 ? String(d).slice(4, 6) + '.' + String(d).slice(6, 8) : ''; };
+  ctx.fillStyle = '#64748b';
+  ctx.font = '8px ui-monospace, monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillText(dTxt(view[0].d), pl, H - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText(dTxt(view[view.length - 1].d), pl + iw, H - 2);
+
+  /* 크로스헤어 — 짚은 봉의 날짜·종가 */
+  if (s.hover != null && s.hover >= 0 && s.hover < view.length) {
+    var hc = view[s.hover];
+    var hx = X(s.hover);
+    ctx.strokeStyle = 'rgba(226,232,240,.42)';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(hx, pt); ctx.lineTo(hx, volTop + volH); ctx.stroke();
+    ctx.setLineDash([]);
+    var txt = dTxt(hc.d) + ' · ' + nf(hc.c) + '원';
+    ctx.font = '8.5px ui-monospace, monospace';
+    var tw2 = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(7,12,20,.90)';
+    ctx.fillRect(pl + 1, pt + 1, tw2 + 8, 14);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, pl + 5, pt + 8);
+  }
+
+  s.vsta = vsta; s.vend = vend; s.iw = iw;
+}
+
+/* 카드 차트 제스처 — 두 손가락 핀치·좌우 드래그(1손가락 세로 스크롤은 통과) · 탭 = 큰 차트 */
+function hiBindMini(cv, code) {
+  if (!cv || cv.__miniBind) return;
+  cv.__miniBind = true;
+  var pts = new Map();
+  var drag = null, pinch = null;
+  var dist = function () { var a = Array.from(pts.values()); return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+  var redraw = function () { var c = cardOf(code); if (c) hiDrawMini(c, cv); };
+  var wOf = function () { var s = MINI[code]; return (s && s.iw) || Math.max(60, (cv.clientWidth || 300) - 40); };
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담(핀치 유지)
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 1) { drag = { x: e.clientX, moved: false }; pinch = null; cv.__miniMoved = false; }
+    else if (pts.size === 2) { pinch = { d: dist() }; drag = null; cv.__miniMoved = true; }
+    var s = MINI[code];
+    if (s) { s.hover = miniIdxAt(cv, e.clientX, code); redraw(); }
+  });
+
+  cv.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담
+    var s = MINI[code];
+    if (!pts.has(e.pointerId)) {
+      if (e.pointerType === 'mouse' && s) { s.hover = miniIdxAt(cv, e.clientX, code); redraw(); }
+      return;
+    }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size >= 2 && pinch) {
+      var d = dist();
+      if (d > 8 && pinch.d > 8) { miniZoom(code, d / pinch.d); cv.__miniMoved = true; redraw(); }
+      pinch.d = d;
+      return;
+    }
+    if (drag) {
+      var dx = e.clientX - drag.x;
+      if (Math.abs(dx) >= 1) {
+        if (Math.abs(dx) > 3) drag.moved = true;
+        drag.x = e.clientX;
+        miniPan(code, dx, wOf());
+        if (drag.moved) cv.__miniMoved = true;
+        if (s) s.hover = miniIdxAt(cv, e.clientX, code);
+        redraw();
+      }
+    }
+  });
+
+  var end = function (e) {
+    var wasDrag = !!(drag && drag.moved);
+    pts.delete(e.pointerId);
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) {
+      var s = MINI[code];
+      if (s && !wasDrag) s.hover = -1;
+      drag = null;
+      redraw();
+    }
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('lostpointercapture', function (e) { if (pts.has(e.pointerId)) end(e); });
+  cv.addEventListener('pointerleave', function (e) {
+    if (e.pointerType !== 'mouse' || pts.size) return;
+    var s = MINI[code];
+    if (s && s.hover >= 0) { s.hover = -1; redraw(); }
+  });
+  /* 2핑거 핀치·좌우 드래그는 TouchEvent 직접 처리(안드로이드 크롬 pointercancel 대응) */
+  cv.style.touchAction = 'pan-y';
+  bindTouchGestures(cv, {
+    allowScroll: true,                 // 1손가락 세로 = 페이지 스크롤
+    zoom: function (sp) { miniZoom(code, sp); cv.__miniMoved = true; },
+    pan: function (dx) { miniPan(code, dx, wOf()); cv.__miniMoved = true; },
+    hover: function (cx, cy) { var st = MINI[code]; if (st) st.hover = cx < 0 ? -1 : miniIdxAt(cv, cx, code); },
+    redraw: redraw,
+  });
+  /* 카드 전체 클릭(큰 차트)과 겹치지 않게: 핀치·드래그로 끝난 제스처는 클릭으로 치지 않는다 */
+  cv.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (cv.__miniMoved) { cv.__miniMoved = false; return; }
+    openChart(code);
+  });
+}
+
+function hiDrawMinis() {
+  var grid = $('stockGrid');
+  if (!grid) return 0;
+  var cvs = grid.querySelectorAll('canvas.sc-mini');
+  var n = 0;
+  Array.prototype.forEach.call(cvs, function (cv) {
+    var code = cv.getAttribute('data-mini');
+    var card = cardOf(code);
+    if (!card) return;
+    hiBindMini(cv, code);
+    hiDrawMini(card, cv);
+    hiLoadMiniFull(code);
+    n += 1;
+  });
+  window.__HONGINKI.miniDrawn = n;
+  return n;
+}
+
+/* ============================================================
+   터치 전용 제스처 — 안드로이드 크롬 실기기(갤럭시 Z 폴드8) 대응
+   · PointerEvent 만 쓰면 두 손가락이 닿는 순간 브라우저가 제스처를
+     가로채 pointercancel 을 던지고 포인터 맵이 비어 핀치가 죽는다.
+   · 그래서 TouchEvent 를 직접 받아 좌표로 계산한다.
+   opts: { allowScroll, zoom(spread), pan(dx), hover(x,y), onTap(), redraw() }
+   ============================================================ */
+const TAP_SLOP = 8;
+const TAP_MS = 1000;
+const SCROLL_SLOP = 10;
+
+function bindTouchGestures(cv, opts) {
+  if (!cv || cv._ztg) return;
+  cv._ztg = true;
+  const o = opts || {};
+  const allowScroll = o.allowScroll === true;
+  let g = null;
+
+  const dist2 = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const midX2 = (a, b) => (a.clientX + b.clientX) / 2;
+  const call = (f, a, b) => { if (typeof f !== 'function') return undefined; try { return f(a, b); } catch (_) { return undefined; } };
+  const redraw = () => call(o.redraw);
+  const hover = (cx, cy) => call(o.hover, cx, cy);
+  const startPinch = (a, b) => { g = { mode: 'pinch', d: dist2(a, b), mx: midX2(a, b) }; hover(-1, -1); redraw(); };
+
+  cv.addEventListener('touchstart', (e) => {
+    call(o.clearOthers);
+    if (e.touches.length >= 2) {
+      if (e.cancelable) e.preventDefault();      // 2손가락 = 브라우저 확대·스크롤 원천 차단
+      startPinch(e.touches[0], e.touches[1]);
+      return;
+    }
+    const t = e.touches[0];
+    if (!t) return;
+    g = { mode: 'tap', x0: t.clientX, y0: t.clientY, x: t.clientX, t0: Date.now(), moved: false };
+    hover(t.clientX, t.clientY);
+    redraw();
+  }, { passive: false });
+
+  cv.addEventListener('touchmove', (e) => {
+    if (e.touches.length >= 2) {
+      if (e.cancelable) e.preventDefault();
+      const a = e.touches[0], b = e.touches[1];
+      const d = dist2(a, b), mx = midX2(a, b);
+      if (!g || g.mode !== 'pinch') { startPinch(a, b); return; }
+      if (d > 6 && g.d > 6) {
+        const sp = Math.min(2, Math.max(0.5, d / g.d));   // 한 단계에 2배 이상 튀지 않게
+        if (Math.abs(sp - 1) > 0.004) call(o.zoom, sp, call(o.anchor, mx));
+      }
+      if (Math.abs(mx - g.mx) > 0.5) call(o.pan, mx - g.mx);
+      g.d = d; g.mx = mx;
+      redraw();
+      return;
+    }
+    const t = e.touches[0];
+    if (!t || !g) return;
+    const dx = t.clientX - g.x0, dy = t.clientY - g.y0;
+    if (g.mode === 'tap') {
+      if (allowScroll && Math.abs(dy) > SCROLL_SLOP && Math.abs(dy) > Math.abs(dx)) {
+        g.mode = 'scroll';                     // 세로 = 페이지 스크롤에 넘긴다
+        hover(-1, -1);
+        redraw();
+        return;
+      }
+      if (Math.abs(dx) <= TAP_SLOP && Math.abs(dy) <= TAP_SLOP) return;
+      if (e.cancelable) e.preventDefault();
+      g.mode = 'drag'; g.moved = true; g.x = t.clientX;
+    }
+    if (g.mode !== 'drag') return;
+    if (e.cancelable) e.preventDefault();
+    const mv = t.clientX - g.x;
+    if (Math.abs(mv) > 0.5) { g.x = t.clientX; call(o.pan, mv); }
+    hover(t.clientX, t.clientY);
+    redraw();
+  }, { passive: false });
+
+  cv.addEventListener('touchend', (e) => {
+    if (!g) return;
+    if (e.touches.length >= 2) { startPinch(e.touches[0], e.touches[1]); return; }
+    if (e.touches.length === 1) {              // 두 손가락 중 하나만 떨어짐 → 남은 손가락으로 이어서 드래그
+      const t = e.touches[0];
+      g = { mode: 'drag', x0: t.clientX, y0: t.clientY, x: t.clientX, t0: 0, moved: true };
+      return;
+    }
+    const t = g; g = null;
+    hover(-1, -1);
+    redraw();
+    if (t.mode === 'tap' && !t.moved && (Date.now() - t.t0) < TAP_MS) call(o.onTap);
+  });
+
+  cv.addEventListener('touchcancel', () => { g = null; hover(-1, -1); redraw(); });
 }
 
 /* ===== ③ 1분봉 5단 타점 ===== */
@@ -1226,14 +1715,23 @@ function closeReject(e) {
   window.__HONGINKI.rejectOpen = false;
 }
 
-/* ===== 차트 모달 (/api/stock-chart 200일 실측) ===== */
-let chartState = { code: null, full: [], fallback: null, prevClose: null, hi120: null, hover: -1 };
+/* ===== 차트 모달 (200일 일봉 · 정적 호스팅에서는 내장 일봉으로 조용히) ===== */
+const HIP_DEF = 120;
+let chartState = { code: null, full: [], fallback: null, prevClose: null, hi120: null, hover: -1, count: HIP_DEF, start: 0, viewStart: 0, viewCount: HIP_DEF };
+
+const barDate = function (c) { return (c && (c.date || c.d)) || ''; };
 
 function openChart(code) {
   const c = cardOf(code);
   if (!c) return;
   $('chartModal').classList.add('open');
   document.body.style.overflow = 'hidden';
+  bindChartCanvas();
+  bindChartGestures();
+  chartState.count = HIP_DEF;
+  chartState.start = 0;
+  chartState.hover = -1;
+  hiSyncChips();
   $('cmTitle').innerHTML = c.name + ' <span class="sc-market">' + c.market + '</span> <span class="sc-market">' + c.code + '</span>';
   $('cmSub').textContent = (c.theme ? c.theme + ' · ' : '') + '기준일 ' + DATA.basisLabel + ' · ' +
     ({ D0: 'D+0 기준봉', D1: 'D+1 눌림', D2: 'D+2 연장', NEAR: '근접(6단계 ' + c.tier + ')' }[c.kind] || '');
@@ -1251,26 +1749,38 @@ function openChart(code) {
     '<div class="m-reasons">' + c.reasons.map(function (r) { return '<div class="m-reason">· ' + r + '</div>'; }).join('') +
     c.flags.map(function (f) { return '<div class="m-reason" style="color:#fca5a5">⚠️ ' + f + '</div>'; }).join('') + '</div>' +
     '<div class="src-line">점선 2개 = <b>전일 종가(11/12 종가)</b>와 <b>120일 전고점</b>. 홍인기 기준은 이 두 선을 기준으로 1분봉 눌림을 재는 것입니다. 일봉 기준선이라 실제 타점은 1분봉에서 다시 확인해야 합니다.</div>';
-  $('cmStatus').className = 'm-status ok';
-  $('cmStatus').textContent = '⏳ /api/stock-chart 실측 일봉(200개)을 불러오는 중…';
   $('chInfo').textContent = '';
   chartState.code = code;
   chartState.prevClose = c.prevClose;
   chartState.hi120 = c.hi120;
   chartState.fallback = c.candles;
-  chartState.hover = -1;
   window.__HONGINKI.chartCode = code;
   window.__HONGINKI.chartDrawn = false;
 
+  /* 정적 호스팅(GitHub Pages) — /api/stock-chart 를 부르지 않고 내장 일봉으로 바로 그린다 */
+  if (STATIC_MIRROR) {
+    chartState.full = (c.candles || []).slice();
+    $('cmStatus').className = 'm-status ok';
+    $('cmStatus').textContent = '🧪 정적 미러 — 페이지에 내장된 실측 일봉 ' + chartState.full.length + '개로 그립니다 (API 호출 없음)';
+    $('cmSrc').textContent = '소스: 내장 fchart 일봉(2026-11-13까지 ' + chartState.full.length + '거래일) · 정적 호스팅에서는 /api/stock-chart 를 부르지 않습니다';
+    drawChart();
+    window.__HONGINKI.chartDrawn = true;
+    window.__HONGINKI.chartSource = 'static-embedded';
+    return;
+  }
+
+  $('cmStatus').className = 'm-status ok';
+  $('cmStatus').textContent = '⏳ /api/stock-chart 실측 일봉(200개)을 불러오는 중…';
   fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=200')
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d || !d.ok || !d.candles || !d.candles.length) throw new Error((d && d.message) || 'no data');
       chartState.full = d.candles;
       const last = d.candles[d.candles.length - 1];
+      const ld = barDate(last);
       $('cmStatus').className = 'm-status ok';
-      $('cmStatus').textContent = '✅ /api/stock-chart 실측 일봉 ' + d.candleCount + '개 · 마지막 봉 ' +
-        last.date.slice(0, 4) + '-' + last.date.slice(4, 6) + '-' + last.date.slice(6, 8) + ' (종가 ' + nf(last.c) + '원) · 네이버 fchart' +
+      $('cmStatus').textContent = '✅ /api/stock-chart 실측 일봉 ' + (d.candleCount || d.candles.length) + '개 · 마지막 봉 ' +
+        ld.slice(0, 4) + '-' + ld.slice(4, 6) + '-' + ld.slice(6, 8) + ' (종가 ' + nf(last.c) + '원) · 네이버 fchart' +
         (d.current && d.current.marketStatus ? ' · ' + d.current.marketStatus : '');
       $('cmSrc').textContent = '소스: /api/stock-chart → ' + (d.sources || []).map(function (x) { return x.name + (x.ok ? ' ✓' : ' ✗'); }).join(' · ') + ' · 조회 ' + new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }) + ' KST';
       drawChart();
@@ -1278,10 +1788,10 @@ function openChart(code) {
       window.__HONGINKI.chartSource = 'api';
     })
     .catch(function (err) {
-      chartState.full = chartState.fallback.slice();
+      chartState.full = (chartState.fallback || []).slice();
       $('cmStatus').className = 'm-status err';
-      $('cmStatus').textContent = '⚠️ /api/stock-chart 응답 없음 (' + (err && err.message ? err.message : 'network') + ') — 페이지에 내장된 실측 일봉 130개로 그립니다.';
-      $('cmSrc').textContent = '소스: 내장 fchart 일봉(2026-11-13까지 130거래일) · API 미응답 시 폴백';
+      $('cmStatus').textContent = '⚠️ /api/stock-chart 응답 없음 (' + (err && err.message ? err.message : 'network') + ') — 페이지에 내장된 실측 일봉 ' + chartState.full.length + '개로 그립니다.';
+      $('cmSrc').textContent = '소스: 내장 fchart 일봉(2026-11-13까지 ' + chartState.full.length + '거래일) · API 미응답 시 폴백';
       drawChart();
       window.__HONGINKI.chartDrawn = true;
       window.__HONGINKI.chartSource = 'embedded';
@@ -1322,9 +1832,16 @@ function drawChart() {
   ctx.fillStyle = '#070c14';
   ctx.fillRect(0, 0, w, h);
 
-  const view = full.slice(-120);
+  /* 표시 구간 — 기간 칩·핀치·드래그가 공유하는 상태 */
+  const vc = Math.max(10, Math.min(chartState.count || HIP_DEF, full.length));
+  const voff = Math.max(0, Math.min(chartState.start || 0, Math.max(0, full.length - vc)));
+  const vend = Math.max(vc, full.length - voff);
+  const vsta = Math.max(0, vend - vc);
+  const view = full.slice(vsta, vend);
+  chartState.viewStart = vsta;
+  chartState.viewCount = view.length;
   const sma = { 5: calcSMA(full, 5), 20: calcSMA(full, 20), 120: calcSMA(full, 120) };
-  const startIdx = full.length - view.length;
+  const startIdx = vsta;
   let maxP = -Infinity, minP = Infinity, maxV = 0;
   view.forEach(function (c) { if (c.h > maxP) maxP = c.h; if (c.l < minP) minP = c.l; if (c.v > maxV) maxV = c.v; });
   const bases = [chartState.prevClose, chartState.hi120].filter(function (v) { return typeof v === 'number'; });
@@ -1348,6 +1865,7 @@ function drawChart() {
     const pv = minP + pRange * g / 4;
     ctx.fillText(pv >= 1000 ? Math.round(pv).toLocaleString() : pv.toFixed(0), w - 3, y + 3);
   }
+  /* 기준선 + 가격 라벨 (라벨이 겹치면 한쪽을 아래로 밀어낸다) */
   const drawLine = function (val, color, label, side, dy) {
     if (typeof val !== 'number' || val > maxP || val < minP) return null;
     const y = yOf(val);
@@ -1399,7 +1917,12 @@ function drawChart() {
     const x = padL + i * barW + barW / 2;
     ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([2, 2]);
     ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + chartH); ctx.stroke(); ctx.restore();
-    $('chInfo').textContent = c.date.slice(0, 4) + '-' + c.date.slice(4, 6) + '-' + c.date.slice(6, 8) +
+    ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+    ctx.beginPath();
+    const hy = yOf(c.c);
+    ctx.moveTo(padL, hy); ctx.lineTo(padL + chartW, hy); ctx.stroke();
+    const dd = barDate(c);
+    $('chInfo').textContent = dd.slice(0, 4) + '-' + dd.slice(4, 6) + '-' + dd.slice(6, 8) +
       ' · 시 ' + nf(c.o) + ' 고 ' + nf(c.h) + ' 저 ' + nf(c.l) + ' 종 ' + nf(c.c) +
       ' (' + sign(((c.c / view[i > 0 ? i - 1 : 0].c - 1) * 100).toFixed(2)) + '%) · 거래량 ' + nf(c.v);
   }
@@ -1412,11 +1935,126 @@ function chartHover(ev) {
   const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
   const padR = 46, padL = 6;
   const chartW = rect.width - padR - padL;
-  const n = Math.min(120, full.length);
-  const idx = Math.round((x - padL) / (chartW / n) - 0.5);
+  const n = chartState.viewCount || Math.min(chartState.count || HIP_DEF, full.length);
+  const idx = Math.round((x - padL) / (chartW / Math.max(1, n)) - 0.5);
   chartState.hover = Math.max(0, Math.min(n - 1, idx));
   drawChart();
 }
+
+/* ===== 기간 전환 · 줌 · 핀치 · 좌우 드래그 (관제탑 공통 차트 규격) ===== */
+function hiSyncChips() {
+  const n = chartState.count || HIP_DEF;
+  const box = $('chartCtl');
+  if (!box) return;
+  Array.prototype.forEach.call(box.querySelectorAll('button.hip'), function (b) {
+    const on = Number(b.getAttribute('data-hip')) === n;
+    b.style.background = on ? 'rgba(168,85,247,0.20)' : '#1e293b';
+    b.style.color = on ? '#d8b4fe' : '#94a3b8';
+    b.style.borderColor = on ? 'rgba(168,85,247,0.55)' : 'rgba(255,255,255,0.12)';
+  });
+  window.__HONGINKI.chartPeriod = n;
+}
+function setChartPeriod(n) {
+  const len = (chartState.full || []).length;
+  const v = isFinite(n) && n > 0 ? n : HIP_DEF;
+  chartState.count = len > 0 ? Math.max(10, Math.min(v, len)) : v;
+  chartState.start = 0;
+  chartState.hover = -1;
+  hiSyncChips();
+  drawChart();
+}
+function zoomChartBy(f) {
+  const len = (chartState.full || []).length;
+  if (!len) return;
+  f = Math.min(2, Math.max(0.5, Number(f) || 1));
+  const cur = chartState.count || HIP_DEF;
+  const center = Math.max(0, chartState.start || 0) + cur / 2;
+  let next = Math.round(cur / f);
+  next = Math.max(10, Math.min(next, len));
+  if (next === cur) return;
+  chartState.count = next;
+  chartState.start = Math.max(0, Math.min(len - next, Math.round(center - next / 2)));
+  chartState.hover = -1;
+  hiSyncChips();
+  drawChart();
+}
+function panChartPx(dxPx) {
+  const len = (chartState.full || []).length;
+  const cur = chartState.count || HIP_DEF;
+  if (len <= cur) return;
+  const cv = $('chartCanvas');
+  const w = cv ? Math.max(120, cv.clientWidth || 300) : 300;
+  const per = cur / Math.max(1, w - 52);
+  chartState.start = Math.max(0, Math.min(len - cur, (chartState.start || 0) - dxPx * per));
+  chartState.hover = -1;
+  drawChart();
+}
+function resetChartView() {
+  chartState.count = Math.min(HIP_DEF, Math.max(10, (chartState.full || []).length || HIP_DEF));
+  chartState.start = 0;
+  chartState.hover = -1;
+  hiSyncChips();
+  drawChart();
+}
+function bindChartCanvas() {
+  const cv = $('chartCanvas');
+  if (!cv || cv.__hiBound) return;
+  cv.__hiBound = true;
+  cv.addEventListener('mousemove', chartHover);
+  cv.addEventListener('touchstart', chartHover, { passive: true });
+}
+function bindChartGestures() {
+  const cv = $('chartCanvas');
+  if (!cv || cv._hiGest) return;
+  cv._hiGest = true;
+  const pts = new Map();
+  let drag = null, pinch = null;
+  const dist = function () { const a = Array.from(pts.values()); return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+  cv.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 1) { drag = { x: e.clientX }; pinch = null; }
+    else if (pts.size === 2) { pinch = { d: dist() }; drag = null; }
+    chartHover(e);
+  });
+  cv.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담
+    if (!pts.has(e.pointerId)) { chartHover(e); return; }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size >= 2 && pinch) {
+      const d = dist();
+      if (d > 6 && pinch.d > 6) zoomChartBy(d / pinch.d);   // 손가락을 벌리면 확대(봉 수 감소)
+      pinch.d = d;
+      return;
+    }
+    if (drag) {
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) >= 1) { drag.x = e.clientX; panChartPx(dx); }
+    }
+  });
+  const end = function (e) {
+    pts.delete(e.pointerId);
+    if (e.pointerType === 'touch') return;   // 터치는 touch 이벤트 경로가 전담
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) drag = null;
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('lostpointercapture', end);
+  /* 세로 스크롤은 통과(pan-y) · 2핑거 확대·좌우 드래그는 TouchEvent 로 직접 처리 */
+  cv.style.touchAction = 'pan-y';
+  bindTouchGestures(cv, {
+    allowScroll: true,
+    zoom: function (sp) { zoomChartBy(sp); },
+    pan: function (dx) { panChartPx(dx); },
+    hover: function (cx, cy) {
+      if (cx < 0) { chartState.hover = -1; drawChart(); return; }
+      chartHover({ clientX: cx, clientY: cy });
+    },
+  });
+}
+
 
 /* ===== 도해 ===== */
 function openGuide() {
@@ -1446,13 +2084,17 @@ function renderAll() {
   if ($('rejBadge')) $('rejBadge').textContent = DATA.reject.length;
   window.__HONGINKI.rendered = true;
 }
-const _cv = $('chartCanvas');
-if (_cv) { _cv.addEventListener('mousemove', chartHover); _cv.addEventListener('touchstart', chartHover, { passive: true }); }
+bindChartCanvas();
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { closeChart(); closeGuide(); closeReject(); }
 });
-window.addEventListener('resize', function () { if ($('chartModal').classList.contains('open')) drawChart(); });
+window.addEventListener('resize', function () {
+  var m = $('chartModal');
+  if (m && m.classList.contains('open')) drawChart();
+  try { hiDrawMinis(); } catch (e) {}
+});
 renderAll();
+window.__HONGINKI.staticMirror = STATIC_MIRROR;
 window.__HONGINKI.ready = true;
 </script>
 </body>
