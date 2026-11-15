@@ -433,8 +433,9 @@
 
   /* ============ 마을 테마 선택 (도감 10마리마다 새 마을이 열린다) ============ */
   .vtop{display:contents}
-  .themebar{display:flex;align-items:center;gap:5px;padding:7px 10px 0;max-width:760px;margin:0 auto;width:100%;
-    overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  /* 마을 테마 9종 — 좁은 화면에서는 두 줄로 자연스럽게 접힌다(가로에서는 자기 줄을 하나 차지한다) */
+  .themebar{display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 8px 0;max-width:760px;margin:0 auto;width:100%;
+    flex-wrap:wrap;overflow-x:visible}
   .themebar::-webkit-scrollbar{display:none}
   .themebar button{flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;
     font-size:clamp(9.5px,2.7vw,11.5px);font-weight:900;letter-spacing:-.03em;white-space:nowrap;
@@ -445,10 +446,15 @@
   .themebar button.lock{background:#f7f7ef;border-color:#e0e0d0;color:#8b8b74;box-shadow:none}
   .themebar button:active{transform:translateY(1px)}
 
-  /* ============ 가로(태블릿·폴드 펌침 등 넓은 화면) — 상단은 한 줄, 마을은 화면을 꽉 체운다 ============ */
+  /* 테마 바가 9종이 되어 폰 세로에서는 두 줄로 접힌다 — 그만큼 지도 높이 계산에서 빼 준다(넘침 0) */
+  @media (max-width:759px){
+    .meadow{min-height:clamp(320px, calc(100dvh - 334px), 760px);max-width:calc((100dvh - 334px) * 1.30)}
+  }
+
+  /* ============ 가로(태블릿·폴드 펌침 등 넓은 화면) — 상단 두 줄(조작 + 테마), 마을은 화면을 꽉 체운다 ============ */
   @media (min-width:760px){
     body{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
-    .vtop{display:flex;align-items:center;gap:5px;flex:0 0 auto;padding:5px 8px;
+    .vtop{display:flex;align-items:center;flex-wrap:wrap;gap:4px 5px;flex:0 0 auto;padding:5px 8px 4px;
       background:rgba(255,255,255,.9);border-bottom:2px solid rgba(160,210,120,.72);
       backdrop-filter:blur(6px);position:relative;z-index:30}
     .vhead{position:static;padding:0;background:none;border:0;flex:0 0 auto;gap:5px;min-width:0}
@@ -460,7 +466,9 @@
     .slots{flex:0 0 auto;min-width:0}
     .slots button{padding:4px 8px;max-width:44%}
     .stats{white-space:nowrap;padding:2px 8px}
-    .themebar{padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto;overflow:visible}
+    /* 테마 9종은 자기 줄을 하나 차지한다 — 이름·잠금 마릿수가 언제나 다 보이고 넘치지 않는다 */
+    .themebar{padding:0;margin:0;max-width:none;width:100%;flex:0 0 100%;order:99;
+      justify-content:center;flex-wrap:nowrap;overflow:visible}
     .themebar button{padding:4px 8px}
     .acts{display:flex;gap:4px;padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto}
     .acts button{flex-direction:row;gap:4px;padding:5px 8px;border-radius:11px;border-bottom-width:3px}
@@ -483,13 +491,10 @@
     .back::before{content:"◀";font-size:12px}
     .todnow{max-width:4.6em;overflow:hidden;text-overflow:ellipsis}
   }
-  /* 좀 더 짧은 가로 화면(폰을 옆으로) — 이름은 아이콘으로, 잠금 숫자는 그대로 보인다 */
+  /* 좀 더 짧은 가로 화면(폰을 옆으로) — 머리글·날씨는 아이콘으로 */
   @media (min-width:760px) and (max-width:819px){
     .vhead h1{display:none}
     .todnow{display:none}
-    .themebar .tn{display:none}
-    .themebar .tn.lockn{display:inline}
-    .themebar button{padding:4px 6px;gap:2px}
     .slots button{max-width:48%;padding:4px 6px}
   }
 </style>
@@ -735,6 +740,71 @@
         { k: 'arena', emoji: '⚔️', name: '모래 마당', cx: 56, cy: 72, rx: 16, ry: 9 },
       ],
     },
+    /* 태초 바람 마을 — 왼쪽 냇물 · 꽃밭 울타리 · 가운데 빈 마당 */
+    starter: {
+      sq: [
+        { k: 'pond', emoji: '💧', name: '냇물', cx: 8, cy: 66, rx: 8, ry: 17 },
+        { k: 'hill', emoji: '😴', name: '꽃밭', cx: 23, cy: 42, rx: 11, ry: 8 },
+        { k: 'arena', emoji: '⚔️', name: '마을 마당', cx: 52, cy: 74, rx: 20, ry: 13 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '💧', name: '냇물', cx: 4.5, cy: 62, rx: 6, ry: 22 },
+        { k: 'hill', emoji: '😴', name: '꽃밭', cx: 20, cy: 74, rx: 11, ry: 12 },
+        { k: 'arena', emoji: '⚔️', name: '마을 마당', cx: 52, cy: 72, rx: 22, ry: 15 },
+      ],
+    },
+    /* 파란 지붕 항구 마을 — 부두 아래 바다 · 오른쪽 솔숲 · 모래 광장 */
+    harbor: {
+      sq: [
+        { k: 'pond', emoji: '🌊', name: '바다', cx: 45, cy: 95, rx: 20, ry: 6 },
+        { k: 'hill', emoji: '😴', name: '솔숲 언덕', cx: 93, cy: 70, rx: 7, ry: 8 },
+        { k: 'arena', emoji: '⚔️', name: '모래 마당', cx: 48, cy: 50, rx: 24, ry: 20 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '🌊', name: '바다', cx: 45, cy: 92, rx: 26, ry: 8 },
+        { k: 'hill', emoji: '😴', name: '솔숲 언덕', cx: 92, cy: 28, rx: 7, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '모래 마당', cx: 55, cy: 52, rx: 25, ry: 18 },
+      ],
+    },
+    /* 고목 숲속 마을 — 돌 우물 · 고목 그늘 · 숲속 마당 */
+    forest: {
+      sq: [
+        { k: 'pond', emoji: '💧', name: '돌 우물', cx: 84.5, cy: 40, rx: 7, ry: 6 },
+        { k: 'hill', emoji: '😴', name: '고목 그늘', cx: 12, cy: 74, rx: 9, ry: 11 },
+        { k: 'arena', emoji: '⚔️', name: '숲속 마당', cx: 48, cy: 55, rx: 22, ry: 20 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '💧', name: '돌 우물', cx: 75, cy: 39, rx: 6, ry: 8 },
+        { k: 'hill', emoji: '😴', name: '고목 그늘', cx: 8, cy: 66, rx: 7, ry: 12 },
+        { k: 'arena', emoji: '⚔️', name: '숲속 마당', cx: 48, cy: 65, rx: 25, ry: 22 },
+      ],
+    },
+    /* 설원 온천 마을 — 노천 온천 · 눈더미 · 눈 마당 */
+    snow: {
+      sq: [
+        { k: 'pond', emoji: '♨️', name: '온천', cx: 19, cy: 29, rx: 16, ry: 11 },
+        { k: 'hill', emoji: '😴', name: '눈더미 언덕', cx: 79, cy: 52, rx: 8, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '눈 마당', cx: 50, cy: 66, rx: 24, ry: 18 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '♨️', name: '온천', cx: 12, cy: 66, rx: 12, ry: 20 },
+        { k: 'hill', emoji: '😴', name: '눈더미 언덕', cx: 74, cy: 78, rx: 9, ry: 11 },
+        { k: 'arena', emoji: '⚔️', name: '눈 마당', cx: 55, cy: 58, rx: 24, ry: 18 },
+      ],
+    },
+    /* 물의 운하 도시 — 운하 · 물가 계단 · 광장 */
+    canal: {
+      sq: [
+        { k: 'pond', emoji: '🌊', name: '운하', cx: 12, cy: 62, rx: 12, ry: 22 },
+        { k: 'hill', emoji: '😴', name: '물가 계단', cx: 80, cy: 84, rx: 9, ry: 8 },
+        { k: 'arena', emoji: '⚔️', name: '광장', cx: 47, cy: 55, rx: 22, ry: 18 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '🌊', name: '운하', cx: 20, cy: 86, rx: 20, ry: 13 },
+        { k: 'hill', emoji: '😴', name: '물가 계단', cx: 52, cy: 82, rx: 10, ry: 7 },
+        { k: 'arena', emoji: '⚔️', name: '광장', cx: 58, cy: 60, rx: 22, ry: 16 },
+      ],
+    },
   };
   let TERRAIN = TERRAIN_SET.meadow.sq;
   let MAP_FIT = null;
@@ -816,10 +886,23 @@
     { k: 'beach', emoji: '🏖️', name: '바다 해변 마을', short: '바다', need: 10, tag: 'village-beach' },
     { k: 'mountain', emoji: '🏔️', name: '산속 고원 마을', short: '고원', need: 20, tag: 'village-mountain' },
     { k: 'desert', emoji: '🏜️', name: '사막 오아시스 마을', short: '사막', need: 30, tag: 'village-desert' },
+    { k: 'starter', emoji: '🏠', name: '태초 바람 마을', short: '태초', need: 40, tag: 'village-starter' },
+    { k: 'harbor', emoji: '⛵', name: '파란 지붕 항구 마을', short: '항구', need: 50, tag: 'village-harbor' },
+    { k: 'forest', emoji: '🌲', name: '고목 숲속 마을', short: '숲속', need: 60, tag: 'village-forest' },
+    { k: 'snow', emoji: '❄️', name: '설원 온천 마을', short: '설원', need: 70, tag: 'village-snow' },
+    { k: 'canal', emoji: '🌊', name: '물의 운하 도시', short: '운하', need: 80, tag: 'village-canal' },
   ];
   const K_THEME = (s) => 'pkm.village.theme.v1.' + s;
   let THEME = 'meadow';
   function themeDef(k) { return THEMES.find((t) => t.k === k) || THEMES[0]; }
+  /* '마을로 / 숲으로' — 받침에 맞는 조사를 고른다(ㄹ받침·받침없음은 '로') */
+  function roJosa(word) {
+    const s = String(word || '');
+    const c = s.charCodeAt(s.length - 1);
+    if (!(c >= 0xAC00 && c <= 0xD7A3)) return '로';
+    const jong = (c - 0xAC00) % 28;
+    return (jong === 0 || jong === 8) ? '로' : '으로';
+  }
   function dexCount(slot) { try { return dexIds(slot || SLOT).length; } catch (e) { return 0; } }
   /* 게스트는 체험용이라 전부 열려 있고, 나머지는 도감 마릿수만큼 열린다 */
   function themeOpen(t) { return !t || !t.need || SLOT === 'guest' || dexCount(SLOT) >= Number(t.need); }
@@ -911,7 +994,7 @@
     paintThemeBar();
     paintVillage();
     try { Sfx.click(); } catch (e) { /* */ }
-    if (t.k !== 'meadow') toast(t.emoji + ' ' + t.name + '(으)로 놀러 왔어요!');
+    if (t.k !== 'meadow') toast(t.emoji + ' ' + t.name + roJosa(t.name) + ' 놀러 왔어요!');
     return true;
   }
 

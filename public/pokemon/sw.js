@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v6';   /* 2026-11-15 v6: 마을 4테마(초원·바다·고원·사막) 수채화 배경 + 가로 와이드 배경 + 수채화 소품 PNG */
+const VERSION = PREFIX + 'v7';   /* 2026-11-15 v7: 마을 9테마 — 태초·항구·숲속·설원·운하 수채화 배경(세로+가로) 10장 추가 */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -45,6 +45,17 @@ const SHELL = [
   '/art/village-mountain-wide.webp',
   '/art/village-desert.webp',
   '/art/village-desert-wide.webp',
+  /* 마을 5→9테마 — 태초·항구·숲속·설원·운하 */
+  '/art/village-starter.webp',
+  '/art/village-starter-wide.webp',
+  '/art/village-harbor.webp',
+  '/art/village-harbor-wide.webp',
+  '/art/village-forest.webp',
+  '/art/village-forest-wide.webp',
+  '/art/village-snow.webp',
+  '/art/village-snow-wide.webp',
+  '/art/village-canal.webp',
+  '/art/village-canal-wide.webp',
   /* 수채화 꾸미기 소품(투명 PNG) */
   '/assets/props/bench.png',
   '/assets/props/mat.png',

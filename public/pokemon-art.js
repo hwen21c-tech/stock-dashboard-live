@@ -22,7 +22,16 @@
   };
   var VILLAGE = { day: 'village-day', sunset: 'village-sunset', night: 'village-night' };
   /* 초원 말고 다른 마을 테마 — 낮 그림 한 장을 쓰고 노을·밤은 마을 화면이 색 보정으로 만든다 */
-  var VILLAGE_THEME = { beach: 'village-beach', mountain: 'village-mountain', desert: 'village-desert' };
+  var VILLAGE_THEME = {
+    beach: 'village-beach',
+    mountain: 'village-mountain',
+    desert: 'village-desert',
+    starter: 'village-starter',
+    harbor: 'village-harbor',
+    forest: 'village-forest',
+    snow: 'village-snow',
+    canal: 'village-canal',
+  };
 
   var state = {};   /* src → 'loading' | 'ok' | 'fail' */
   var queue = {};   /* src → [callback] */
