@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>🎯 리노 매매법 관제탑 — 독립 프리뷰</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<style>
+  :root {
+    --bg-main: #0b1120;
+    --bg-card: #1e293b;
+    --bg-card-sub: #111827;
+    --border-color: #334155;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-blue: #38bdf8;
+    --accent-red: #ef4444;
+    --accent-yellow: #fbbf24;
+    --accent-green: #34d399;
+    --accent-purple: #c084fc;
+    --up: #f43f5e;
+    --down: #38bdf8;
+    --warning: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { max-width: 100%; }
+  body {
+    background: var(--bg-main);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Pretendard", sans-serif;
+    line-height: 1.42;
+    min-height: 100vh;
+    padding: 0 16px 40px;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* ===== 미리보기 전용 리본 (기존 관제탑 미반영) ===== */
+  .preview-bar {
+    position: sticky; top: 0; z-index: 60;
+    margin: 0 -16px 10px;
+    padding: 8px 14px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: linear-gradient(90deg, #2a2113 0%, #3b2a10 55%, #2a2113 100%);
+    border-bottom: 1px solid rgba(251,191,36,0.45);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    font-size: 11.5px; font-weight: 800; color: #fcd34d;
+  }
+  .preview-bar .pb-flask { font-size: 14px; }
+  .preview-bar .pb-note {
+    font-weight: 700; color: #fde68a; font-size: 10.5px;
+    background: rgba(251,191,36,0.14); border: 1px solid rgba(251,191,36,0.35);
+    border-radius: 4px; padding: 2px 7px;
+  }
+  .preview-bar .pb-back {
+    margin-left: auto; color: #fcd34d; text-decoration: none; font-weight: 800;
+    border: 1px solid rgba(251,191,36,0.5); background: rgba(251,191,36,0.12);
+    border-radius: 5px; padding: 3px 9px; font-size: 10.5px; white-space: nowrap;
+  }
+
+  /* ===== 상단 세션 레이더 (관제탑과 동일 톤) ===== */
+  .session-radar-bar {
+    background: linear-gradient(90deg, #090d16 0%, #111827 50%, #090d16 100%);
+    border: 1px solid rgba(56,189,248,0.2);
+    border-radius: 8px;
+    padding: 7px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px 12px; flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 11px;
+  }
+  .srb-left, .srb-right { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+  .srb-status-txt { font-weight: 800; color: #e2e8f0; white-space: nowrap; }
+  .srb-countdown-txt { color: #94a3b8; font-size: 10.5px; white-space: nowrap; }
+  .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #a855f7; box-shadow: 0 0 8px #a855f7; flex-shrink: 0;
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  .srb-btn-refresh {
+    padding: 3px 8px; font-size: 10.5px; font-weight: 800;
+    background: rgba(56,189,248,0.15); color: #38bdf8;
+    border: 1px solid rgba(56,189,248,0.3); border-radius: 4px; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .srb-last-sync { color: #38bdf8; font-size: 10.5px; font-weight: 800; white-space: nowrap; }
+
+  /* ===== HEADER ===== */
+  header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color);
+    margin-bottom: 10px;
+  }
+  .brand-title {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 17px; font-weight: 800; line-height: 1.25;
+  }
+  .badge-fold {
+    background: #0284c7; color: #fff; font-size: 10px; padding: 2px 6px;
+    border-radius: 4px; font-weight: 700; white-space: nowrap;
+  }
+  .badge-preview {
+    background: rgba(251,191,36,0.16); color: #fbbf24; border: 1px solid rgba(251,191,36,0.45);
+    font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 800; white-space: nowrap;
+  }
+  .brand-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+  .header-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .btn-action {
+    background: var(--bg-card); border: 1px solid var(--border-color); color: var(--accent-blue);
+    font-size: 11px; font-weight: 700; padding: 5px 9px; border-radius: 6px; cursor: pointer;
+    white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center;
+  }
+  .btn-action:active { transform: scale(0.97); }
+
+  /* ===== 공통 섹션 ===== */
+  section { margin-bottom: 14px; }
+  .sec-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .sec-title {
+    font-size: 13.5px; font-weight: 800; color: #e2e8f0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sec-sub { font-size: 10.5px; color: var(--text-muted); font-weight: 600; }
+  .panel {
+    background: var(--bg-card-sub); border: 1px solid var(--border-color);
+    border-radius: 10px; padding: 11px 12px;
+  }
+
+  /* ===== 파이프라인 & 필터 ===== */
+  .pipeline {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    font-size: 11.5px; font-weight: 800; margin-bottom: 10px;
+  }
+  .pipe-step {
+    background: #0f172a; border: 1px solid #273549; border-radius: 6px;
+    padding: 4px 9px; color: #cbd5e1; white-space: nowrap;
+  }
+  .pipe-step b { color: #38bdf8; font-size: 12.5px; }
+  .pipe-step.hot { border-color: rgba(52,211,153,0.5); color: #a7f3d0; }
+  .pipe-step.hot b { color: #34d399; }
+  .pipe-arrow { color: #475569; font-size: 11px; }
+
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+  .filter-card {
+    background: #0f172a; border: 1px solid #273549; border-left: 3px solid #38bdf8;
+    border-radius: 8px; padding: 9px 11px; min-width: 0;
+  }
+  .filter-card.f1 { border-left-color: #f43f5e; }
+  .filter-card.f2 { border-left-color: #38bdf8; }
+  .filter-card.f3 { border-left-color: #34d399; }
+  .filter-card.f4 { border-left-color: #c084fc; }
+  .fc-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .fc-title { font-size: 11.5px; font-weight: 800; color: #e2e8f0; }
+  .fc-count { font-size: 10px; font-weight: 800; color: #94a3b8; white-space: nowrap; }
+  .fc-rule { font-size: 10.5px; color: #94a3b8; line-height: 1.45; }
+  .fc-rule b { color: #cbd5e1; }
+
+  /* ===== 후보 종목 카드 ===== */
+  .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 9px; }
+  .stock-card {
+    background: #0b0f17; border: 1px solid #1a2336; border-radius: 10px;
+    padding: 11px 12px; cursor: pointer; transition: border-color .15s, background .15s;
+    text-align: left; color: inherit; font: inherit; min-width: 0; display: block; width: 100%;
+  }
+  .stock-card:hover, .stock-card:focus-visible { border-color: var(--accent-blue); background: #131a29; outline: none; }
+  .stock-card:active { transform: scale(0.995); }
+  .sc-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .sc-name { font-weight: 800; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .sc-name span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sc-market { font-size: 9.5px; font-weight: 700; color: #94a3b8; background: #162033; border: 1px solid #28354f; border-radius: 4px; padding: 1px 5px; flex-shrink: 0; }
+  .sc-score { font-size: 10px; font-weight: 800; color: #a5b4fc; background: rgba(99,102,241,0.14); border: 1px solid rgba(99,102,241,0.35); border-radius: 4px; padding: 2px 6px; white-space: nowrap; flex-shrink: 0; }
+  .sc-sector { font-size: 10px; color: #64748b; font-weight: 700; margin-bottom: 6px; }
+  .sc-price-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .sc-price { font-size: 20px; font-weight: 800; font-feature-settings: "tnum"; color: #f8fafc; line-height: 1.1; }
+  .sc-price small { font-size: 11px; font-weight: 700; color: #94a3b8; margin-left: 2px; }
+  .sc-pct { font-size: 13px; font-weight: 800; font-feature-settings: "tnum"; white-space: nowrap; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: #94a3b8; }
+  .sc-meta { display: flex; gap: 5px; flex-wrap: wrap; margin: 6px 0 7px; }
+  .chip {
+    font-size: 10px; font-weight: 700; color: #cbd5e1; background: #131c2b;
+    border: 1px solid #243146; border-radius: 4px; padding: 2px 6px; white-space: nowrap;
+  }
+  .chip.blue { color: #7dd3fc; border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.09); }
+  .chip.green { color: #6ee7b7; border-color: rgba(52,211,153,0.35); background: rgba(52,211,153,0.09); }
+  .chip.purple { color: #d8b4fe; border-color: rgba(192,132,252,0.35); background: rgba(192,132,252,0.09); }
+
+  .sc-kprice {
+    background: #0e1626; border: 1px dashed #2a3b55; border-radius: 7px;
+    padding: 7px 9px; margin-bottom: 7px;
+  }
+  .kp-role { font-size: 9.5px; font-weight: 800; color: #fbbf24; letter-spacing: .01em; }
+  .kp-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-top: 1px; }
+  .kp-val { font-size: 15px; font-weight: 800; color: #fde68a; font-feature-settings: "tnum"; }
+  .kp-gap { font-size: 10.5px; font-weight: 800; color: #94a3b8; }
+  .kp-src { font-size: 9.5px; color: #64748b; font-weight: 700; }
+
+  .sc-ma { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 7px; }
+  .ma-cell { background: #0e1626; border: 1px solid #1d2941; border-radius: 5px; padding: 4px 5px; text-align: center; min-width: 0; }
+  .ma-lbl { font-size: 8.5px; color: #64748b; font-weight: 800; display: block; }
+  .ma-val { font-size: 10px; font-weight: 800; font-feature-settings: "tnum"; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .sc-reasons { border-top: 1px dashed #1a2336; padding-top: 6px; display: grid; gap: 3px; }
+  .reason { font-size: 10px; color: #b6c2d3; line-height: 1.42; display: flex; gap: 4px; }
+  .reason i { font-style: normal; color: #38bdf8; font-weight: 800; flex-shrink: 0; }
+  .sc-flags { display: grid; gap: 2px; margin-top: 5px; }
+  .flag { font-size: 9.5px; font-weight: 700; color: #fca5a5; background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.22); border-radius: 4px; padding: 2px 6px; }
+  .sc-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 7px; font-size: 9.5px; color: #64748b; font-weight: 700; }
+  .sc-foot .open { color: #38bdf8; }
+
+  /* ===== 하루 타임라인 ===== */
+  .tl-state {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 11px; font-weight: 800; margin-bottom: 9px;
+  }
+  .tl-state .now-chip {
+    background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.4);
+    color: #7dd3fc; border-radius: 5px; padding: 3px 8px;
+  }
+  .tl-state .hint { font-weight: 700; color: #94a3b8; font-size: 10.5px; }
+  .tl-sim { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 9px; align-items: center; }
+  .tl-sim .lab { font-size: 10px; color: #64748b; font-weight: 800; }
+  .sim-btn {
+    background: #0f172a; border: 1px solid #273549; color: #94a3b8; border-radius: 5px;
+    font-size: 10px; font-weight: 800; padding: 3px 7px; cursor: pointer; white-space: nowrap;
+  }
+  .sim-btn.on { background: rgba(56,189,248,0.16); border-color: #38bdf8; color: #7dd3fc; }
+  .sim-note { font-size: 9.5px; color: #fbbf24; font-weight: 800; margin-bottom: 8px; }
+  .tl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(152px, 1fr)); gap: 7px; }
+  .tl-step {
+    background: #0f172a; border: 1px solid #273549; border-radius: 8px; padding: 8px 9px;
+    position: relative; min-width: 0; transition: border-color .2s, background .2s;
+  }
+  .tl-time { font-size: 10px; font-weight: 800; color: #38bdf8; font-feature-settings: "tnum"; }
+  .tl-name { font-size: 12px; font-weight: 800; color: #e2e8f0; margin: 1px 0 3px; }
+  .tl-desc { font-size: 10px; color: #94a3b8; line-height: 1.4; }
+  .tl-step.active {
+    border-color: #fbbf24; background: #1a1608;
+    box-shadow: 0 0 0 1px rgba(251,191,36,0.35), 0 6px 18px rgba(251,191,36,0.12);
+  }
+  .tl-step.active .tl-time { color: #fbbf24; }
+  .tl-step.active .tl-name { color: #fde68a; }
+  .tl-step.active::after {
+    content: '지금'; position: absolute; top: -7px; right: 7px;
+    background: #fbbf24; color: #1a1608; font-size: 8.5px; font-weight: 900;
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .tl-step.done { opacity: .62; }
+  .tl-next { margin-top: 8px; font-size: 10.5px; color: #94a3b8; font-weight: 700; }
+  .tl-next b { color: #fbbf24; }
+
+  /* ===== HTS 한계 + 체크리스트 ===== */
+  .two-col { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .limit-box {
+    background: linear-gradient(180deg, rgba(67,20,7,0.55), rgba(17,24,39,0.9));
+    border: 1px solid rgba(249,115,22,0.45); border-radius: 10px; padding: 11px 12px;
+  }
+  .limit-title { font-size: 12px; font-weight: 800; color: #fdba74; display: flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+  .limit-lead {
+    font-size: 11px; color: #fed7aa; font-weight: 800; line-height: 1.5;
+    background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.28);
+    border-radius: 6px; padding: 7px 9px; margin-bottom: 8px;
+  }
+  .limit-list { display: grid; gap: 6px; }
+  .limit-item { display: flex; gap: 7px; font-size: 10.5px; color: #cbd5e1; line-height: 1.45; }
+  .limit-item .li-ico { flex-shrink: 0; font-size: 12px; }
+  .limit-item b { color: #fdba74; }
+  .limit-item span.why { color: #94a3b8; }
+
+  .check-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cp-bar { flex: 1; height: 7px; background: #0b1220; border: 1px solid #273549; border-radius: 6px; overflow: hidden; min-width: 60px; }
+  .cp-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0ea5e9, #34d399); transition: width .25s; }
+  .cp-txt { font-size: 10.5px; font-weight: 800; color: #6ee7b7; white-space: nowrap; }
+  .ck-group { margin-bottom: 8px; }
+  .ck-group-title { font-size: 10.5px; font-weight: 800; color: #38bdf8; margin-bottom: 4px; }
+  .ck-item {
+    display: flex; align-items: flex-start; gap: 7px; padding: 5px 7px;
+    background: #0f172a; border: 1px solid #1d2941; border-radius: 6px; margin-bottom: 4px;
+    cursor: pointer; font-size: 10.5px; color: #cbd5e1; line-height: 1.45;
+  }
+  .ck-item input { margin-top: 2px; accent-color: #0ea5e9; width: 14px; height: 14px; flex-shrink: 0; }
+  .ck-item.done { color: #6b7c92; text-decoration: line-through; border-color: rgba(52,211,153,0.25); }
+  .ck-reset {
+    background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 10px;
+    font-weight: 800; padding: 4px 9px; border-radius: 5px; cursor: pointer; margin-top: 2px;
+  }
+
+  /* ===== 도해 ===== */
+  .guide-flex { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: start; }
+  .guide-thumb {
+    border: 1px solid #273549; border-radius: 9px; overflow: hidden; background: #070c14;
+    max-height: 300px; cursor: zoom-in; position: relative;
+  }
+  .guide-thumb img { width: 100%; display: block; object-fit: cover; object-position: top; }
+  .guide-thumb .gt-tag {
+    position: absolute; left: 8px; bottom: 8px; background: rgba(2,6,23,0.85);
+    border: 1px solid rgba(56,189,248,0.4); color: #7dd3fc; font-size: 10px; font-weight: 800;
+    border-radius: 5px; padding: 3px 8px;
+  }
+  .guide-caption { font-size: 10.5px; color: #94a3b8; line-height: 1.5; }
+  .guide-caption b { color: #cbd5e1; }
+
+  footer {
+    margin-top: 16px; padding-top: 10px; border-top: 1px solid #1e293b;
+    font-size: 10px; color: #64748b; line-height: 1.55;
+  }
+  footer b { color: #94a3b8; }
+
+  /* ===== 모달 (관제탑과 동일 스타일) ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82);
+    backdrop-filter: blur(5px); z-index: 999; align-items: center; justify-content: center; padding: 12px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-content {
+    background: #1e293b; border: 1px solid #475569; border-radius: 12px; padding: 14px 16px;
+    width: 100%; max-width: 660px; max-height: 92vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); min-width: 0;
+  }
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid #334155; margin-bottom: 10px;
+  }
+  .modal-header h3 { font-size: 15px; color: #fff; font-weight: 800; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .modal-header .mh-sub { font-size: 10.5px; color: #94a3b8; font-weight: 700; margin-top: 2px; }
+  .btn-close {
+    background: #334155; border: none; color: #cbd5e1; font-size: 18px; width: 28px; height: 28px;
+    border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .modal-body { overflow-y: auto; overflow-x: hidden; font-size: 12px; color: #e2e8f0; line-height: 1.5; padding-right: 4px; }
+  .modal-body::-webkit-scrollbar { width: 4px; }
+  .modal-body::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+  .modal-footer { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 9px; margin-top: 9px; display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+
+  .m-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 5px; margin-bottom: 8px; }
+  .m-metric { background: #0f172a; border: 1px solid #273549; border-radius: 6px; padding: 6px 8px; min-width: 0; }
+  .m-metric .k { font-size: 9px; color: #64748b; font-weight: 800; display: block; }
+  .m-metric .v { font-size: 12px; font-weight: 800; color: #e2e8f0; font-feature-settings: "tnum"; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chart-wrap { background: #070c14; border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 8px; position: relative; margin-bottom: 8px; }
+  #chartCanvas { width: 100%; height: 236px; display: block; touch-action: pan-y; }
+  .ch-info { font-size: 9.5px; color: #94a3b8; font-weight: 700; min-height: 15px; margin-top: 3px; font-feature-settings: "tnum"; }
+  .ch-legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 9.5px; font-weight: 800; color: #94a3b8; margin-top: 4px; }
+  .lg { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .lg i { width: 10px; height: 2px; display: inline-block; border-radius: 1px; }
+  .m-status { font-size: 10.5px; font-weight: 800; padding: 4px 8px; border-radius: 5px; margin-bottom: 8px; }
+  .m-status.ok { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.4); color: #6ee7b7; }
+  .m-status.err { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); color: #fca5a5; }
+  .m-reasons { display: grid; gap: 3px; margin-top: 6px; }
+  .m-reason { font-size: 10.5px; color: #b6c2d3; line-height: 1.45; }
+  .m-reason b { color: #38bdf8; }
+  .src-line { font-size: 9px; color: #64748b; margin-top: 7px; line-height: 1.5; }
+  .guide-modal .modal-content { max-width: 1100px; }
+  .guide-img-wrap { overflow: auto; max-height: 74vh; background: #070c14; border-radius: 8px; border: 1px solid #273549; }
+  .guide-img-wrap img { display: block; width: 100%; height: auto; }
+  .guide-img-wrap.zoom img { width: 200%; max-width: none; height: auto; }
+
+  /* ===== 폴드8 3화면 반응형 ===== */
+  /* 1안: 외부액정 세로 (400px급) */
+  @media (max-width: 640px) {
+    body { padding: 0 10px 32px; }
+    .preview-bar { margin: 0 -10px 8px; padding: 7px 10px; font-size: 10.5px; gap: 5px; }
+    .preview-bar .pb-note { display: none; }
+    .session-radar-bar { flex-direction: column; align-items: flex-start; gap: 6px; padding: 6px 10px; }
+    .srb-left, .srb-right { width: 100%; }
+    header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .brand-title { font-size: 16px; }
+    .brand-subtitle { font-size: 10.5px; }
+    .header-actions { width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 3px; }
+    .header-actions::-webkit-scrollbar { display: none; }
+    .header-actions .btn-action { flex-shrink: 0; font-size: 10.5px; padding: 5px 8px; }
+    .stock-grid { grid-template-columns: 1fr; }
+    .tl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .filter-grid { grid-template-columns: 1fr; }
+    .sc-price { font-size: 19px; }
+    #chartCanvas { height: 200px; }
+    .modal-content { padding: 12px 12px; max-height: 94vh; }
+    .guide-thumb { max-height: 230px; }
+  }
+  /* 2안: 641~899px (내부화면 세로·외부 가로 인접) */
+  @media (min-width: 641px) and (max-width: 899px) {
+    .srb-left, .srb-right { flex-wrap: wrap; row-gap: 4px; }
+    .stock-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tl-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .guide-flex { grid-template-columns: 1.05fr 0.95fr; }
+  }
+  /* 3안: 900px+ (내부화면 가로) */
+  @media (min-width: 900px) {
+    .stock-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .tl-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .two-col { grid-template-columns: 0.92fr 1.08fr; }
+    .guide-flex { grid-template-columns: 1.15fr 0.85fr; }
+    .guide-thumb { max-height: 340px; }
+    #chartCanvas { height: 260px; }
+  }
+  /* 외부액정 가로(낮은 높이) */
+  @media (max-height: 520px) and (max-width: 960px) {
+    .preview-bar { position: static; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 미리보기 전용 리본 ===== -->
+<div class="preview-bar">
+  <span class="pb-flask">🧪</span>
+  <span>미리보기 전용 (기존 관제탑 미반영)</span>
+  <span class="pb-note">index.html 무변경 · 확인 후 반영 여부 결정</span>
+  <a class="pb-back" href="/" target="_self">← 관제탑</a>
+</div>
+
+<!-- ===== 세션 레이더 ===== -->
+<div class="session-radar-bar">
+  <div class="srb-left">
+    <span class="live-dot"></span>
+    <span class="srb-status-txt">🎯 리노 매매법 레이더 · 실측 기준일 2026-11-13(금)</span>
+    <span class="srb-countdown-txt" id="sessionCountdownTxt">(네이버 fchart 260일봉 × 4대 필터)</span>
+  </div>
+  <div class="srb-right">
+    <span class="srb-last-sync" id="lastSyncTxt">최근 갱신: —</span>
+    <button class="srb-btn-refresh" onclick="refreshLive(true)">🔄 실측 새로고침</button>
+  </div>
+</div>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <div style="min-width:0">
+    <div class="brand-title">
+      🎯 리노 매매법 관제탑
+      <span class="badge-fold">FOLD8 PRO</span>
+      <span class="badge-preview">🧪 미리보기</span>
+    </div>
+    <div class="brand-subtitle">
+      당일 상승 종목 1,519개 실측 스캔 → 리노 4대 필터 통과 <b id="subPickCount">8</b>종목 · 근거: PDF 18편 + 영상 1편 순수 정리
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-action" style="background:#0e2638;color:#7dd3fc;border-color:#38bdf8" onclick="scrollToId('sec-stocks')">📈 후보 종목</button>
+    <button class="btn-action" style="background:#2a2113;color:#fbbf24;border-color:#f59e0b" onclick="scrollToId('sec-timeline')">🕒 하루 타임라인</button>
+    <button class="btn-action" style="background:#1b1234;color:#d8b4fe;border-color:#a855f7" onclick="openGuide()">📐 도해 크게 보기</button>
+    <a class="btn-action" href="/" style="background:#1e293b;color:#cbd5e1">🏠 관제탑으로</a>
+  </div>
+</header>
+
+<main>
+  <!-- ===== 4대 필터 ===== -->
+  <section id="sec-filters">
+    <div class="sec-head">
+      <div class="sec-title">🧮 리노 4대 필터 — 실제 종목으로 돌린 결과</div>
+      <div class="sec-sub" id="filterSub">기준: 2026-11-13(금) 정규장 종가 · 네이버 fchart 260일봉</div>
+    </div>
+    <div class="panel">
+      <div class="pipeline">
+        <span class="pipe-step">상승 종목 유니버스 <b id="pipeUniverse">1,519</b></span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step">①등락률 · ②거래대금 <b id="pipe1">39</b></span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step">③이동평균 · ④스팟/전고점 <b id="pipe2">11</b></span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step hot">표시 <b id="pipe3">8</b></span>
+      </div>
+      <div class="filter-grid">
+        <div class="filter-card f1">
+          <div class="fc-head"><span class="fc-title">① 등락률 과열 제외</span><span class="fc-count" id="f1count"></span></div>
+          <div class="fc-rule">당일 상승 종목 중 <b>+2% ~ +15%</b> 구간만. 상한가·급등 상위 20위권은 제외 — “준비된 주식은 상승률 순위에 아직 없습니다”(11편)</div>
+        </div>
+        <div class="filter-card f2">
+          <div class="fc-head"><span class="fc-title">② 충분한 거래대금</span><span class="fc-count" id="f2count"></span></div>
+          <div class="fc-rule"><b>300억 원 이상</b>. “거래대금이 없으면 거의 손을 안 대요”(17편)</div>
+        </div>
+        <div class="filter-card f3">
+          <div class="fc-head"><span class="fc-title">③ 이동평균 자리</span><span class="fc-count" id="f3count"></span></div>
+          <div class="fc-rule"><b>5·10·20일선 수렴</b>(폭 4% 이내) 또는 <b>20·120일선 위 지지</b>. 120선 위 지지 = 매수, 이격 상단 = 매도(PDF1)</div>
+        </div>
+        <div class="filter-card f4">
+          <div class="fc-head"><span class="fc-title">④ 거래량 스팟 · 전고점</span><span class="fc-count" id="f4count"></span></div>
+          <div class="fc-rule">최근 10거래일 내 <b>20일 평균 2배 이상</b> 거래량 스팟, 또는 <b>전고점 12% 이내</b>. “거래량 스팟이 그 자체로 지지선”(14편)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 후보 종목 ===== -->
+  <section id="sec-stocks">
+    <div class="sec-head">
+      <div class="sec-title">📈 이번 주 후보 종목 (실측 선별)</div>
+      <div class="sec-sub">카드를 누르면 실제 120일 일봉 · 5/10/20/120선 · 거래량 차트</div>
+    </div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin:-2px 0 7px">
+      적합 점수 = 수렴(3.0) + 20일선 위(1.5) + 120일선 위(1.5) + 스팟 배수 + 전고점 근접 + 거래대금 − 급등 과열 감점. 점수는 정렬용이며 필터 통과/탈락은 위 4개 기준으로만 판정합니다.
+    </div>
+    <div class="stock-grid" id="stockGrid"></div>
+    <div class="tl-next" style="margin-top:8px">
+      ※ 표시된 종목은 <b>2026-11-13(금) 종가 실측</b>으로 4대 필터를 통과한 결과입니다. 매수 신호가 아니라 <b>모니터링 후보</b>이며, 실제 진입은 호가창·분차트 확인 후 결정해야 합니다.
+    </div>
+  </section>
+
+  <!-- ===== 하루 타임라인 ===== -->
+  <section id="sec-timeline">
+    <div class="sec-head">
+      <div class="sec-title">🕒 종가베팅 하루 타임라인</div>
+      <div class="sec-sub">현재 KST 시각 기준 자동 하이라이트</div>
+    </div>
+    <div class="panel">
+      <div class="tl-state">
+        <span class="now-chip" id="nowChip">지금 —</span>
+        <span class="hint" id="stateHint"></span>
+      </div>
+      <div class="tl-sim">
+        <span class="lab">시간대 미리보기</span>
+        <button class="sim-btn on" data-sim="auto" onclick="setSim('auto')">자동(현재)</button>
+        <button class="sim-btn" data-sim="09:40" onclick="setSim('09:40')">09:40</button>
+        <button class="sim-btn" data-sim="14:40" onclick="setSim('14:40')">14:40</button>
+        <button class="sim-btn" data-sim="15:05" onclick="setSim('15:05')">15:05</button>
+        <button class="sim-btn" data-sim="15:18" onclick="setSim('15:18')">15:18</button>
+        <button class="sim-btn" data-sim="15:25" onclick="setSim('15:25')">15:25</button>
+        <button class="sim-btn" data-sim="15:29" onclick="setSim('15:29')">15:29</button>
+      </div>
+      <div class="sim-note" id="simNote" style="display:none">⏱ 미리보기 시각을 적용 중입니다 — 실제 현재 시각이 아닙니다.</div>
+      <div class="tl-grid" id="tlGrid"></div>
+      <div class="tl-next" id="tlNext"></div>
+    </div>
+  </section>
+
+  <!-- ===== HTS 한계 + 체크리스트 ===== -->
+  <section id="sec-limit">
+    <div class="sec-head">
+      <div class="sec-title">🧭 HTS 한계 & 진입 전 체크리스트</div>
+      <div class="sec-sub">무료 웹 데이터로 안 되는 것 / 되는 것</div>
+    </div>
+    <div class="two-col">
+      <div class="limit-box">
+        <div class="limit-title">⚠️ 솔직한 한계 — 이 화면으로 안 되는 것</div>
+        <div class="limit-lead">
+          호가창(1,111 · 2,500 · 6,666) · 초 단위 순간체결창(폭룡) · 1분봉 120선은<br>
+          무료 웹 API 미지원 → <b>HTS에서 직접 확인</b>
+        </div>
+        <div class="limit-list">
+          <div class="limit-item"><span class="li-ico">🪜</span><div><b>호가창 10단계·잔량 숫자</b> — 무료 웹 시세는 최우선 호가·잔량 원본을 주지 않습니다. 리노가 쓰는 1,111·1,818·2,500·6,666 식별은 HTS 창에서만 보입니다. <span class="why">(7편·8편·14편)</span></div></div>
+          <div class="limit-item"><span class="li-ico">⚡</span><div><b>순간체결창(폭룡)</b> — 초 단위 체결가·체결량 스트림은 무료 API에 없습니다. “매도벽 소화” 판독은 HTS 순간체결창에서. <span class="why">(PDF1·15편)</span></div></div>
+          <div class="limit-item"><span class="li-ico">📉</span><div><b>1분봉 120선</b> — 무료 일봉 API만 있어 분봉 120선을 그릴 수 없습니다. 이 화면은 <b>일봉 120선</b>까지만 정확히 계산합니다. <span class="why">(PDF1)</span></div></div>
+          <div class="limit-item"><span class="li-ico">🏦</span><div><b>프로그램 순매수</b> — 무료 웹에 없음. HTS 수급 창에서 확인. <span class="why">(15편)</span></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="sec-head" style="margin-bottom:6px">
+          <div class="sec-title" style="font-size:12px">✅ 진입 전 체크리스트 (리노 기준)</div>
+          <div class="cp-txt" id="cpTxt">0 / 0</div>
+        </div>
+        <div class="check-progress">
+          <div class="cp-bar"><div class="cp-fill" id="cpFill"></div></div>
+        </div>
+        <div class="ck-scroll" id="ckGroups"></div>
+        <button class="ck-reset" onclick="resetChecklist()">체크 초기화</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 도해 ===== -->
+  <section id="sec-guide">
+    <div class="sec-head">
+      <div class="sec-title">📐 순수 리노 기준 도해</div>
+      <div class="sec-sub">버튼으로 크게 펼쳐보기</div>
+    </div>
+    <div class="guide-flex">
+      <div class="guide-thumb" onclick="openGuide()" title="눌러서 크게 보기">
+        <img src="/assets/leeno-pure-guide.png" alt="리노 단타의 기본서 순수 기준 도해" loading="lazy">
+        <span class="gt-tag">🔍 눌러서 크게 보기</span>
+      </div>
+      <div class="guide-caption">
+        <b>「리노(리노TV) 단타의 기본서 — 순수 리노 기준 한눈에 보기」</b><br>
+        타점이 아니라 <b>주포가 만들어 놓은 가격</b>에서 시작해 → 호가창으로 의도를 읽고 → 몸집을 불려 종가베팅으로 넘기는 순서. PDF 18편 + 영상 1편에 나온 것만 담았습니다.<br><br>
+        ※ 도해 안의 차트·가격(5,300원 등)은 <b>개념 설명용 예시</b>이고, 위 후보 종목 카드의 수치는 <b>2026-11-13 실제 시세</b>입니다.
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-action" style="background:#1b1234;color:#d8b4fe;border-color:#a855f7" onclick="openGuide()">📐 크게 보기</button>
+          <a class="btn-action" href="/assets/leeno-pure-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <b>근거 자료</b>: 사용자 업로드 PDF 18편(리노 카페 「나주다」) + MP4 「종가배팅 boning &amp; handling」 + 유튜브 43lP3rcduqQ.<br>
+  <b>시세 출처</b>: 네이버 증권 fchart 일봉(260거래일) · polling 현재가 · /api/stock-chart (관제탑과 동일 소스). 선별 기준일 2026-11-13(금) 정규장 종가.<br>
+  🧪 이 페이지는 <b>독립 프리뷰</b>입니다. 기존 관제탑(index.html)은 수정하지 않았습니다. 학습 정리이며 투자 권유가 아닙니다.
+</footer>
+
+<!-- ===== 차트 모달 ===== -->
+<div class="modal-overlay" id="chartModal" onclick="closeChart(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div style="min-width:0">
+        <h3 id="cmTitle">종목 차트</h3>
+        <div class="mh-sub" id="cmSub">—</div>
+      </div>
+      <button class="btn-close" onclick="closeChart()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="m-metrics" id="cmMetrics"></div>
+      <div class="m-status ok" id="cmStatus">⏳ 실측 일봉을 불러오는 중…</div>
+      <div class="chart-wrap">
+        <canvas id="chartCanvas"></canvas>
+        <div class="ch-info" id="chInfo"></div>
+        <div class="ch-legend">
+          <span class="lg"><i style="background:#f59e0b"></i>5일선</span>
+          <span class="lg"><i style="background:#c084fc"></i>10일선</span>
+          <span class="lg"><i style="background:#22c55e"></i>20일선</span>
+          <span class="lg"><i style="background:#e2e8f0;height:3px"></i>120일선</span>
+          <span class="lg"><i style="background:#fbbf24;height:0;border-top:2px dashed #fbbf24"></i>의미 있는 가격</span>
+        </div>
+      </div>
+      <div id="cmDetail"></div>
+      <div class="src-line" id="cmSrc">—</div>
+    </div>
+    <div class="modal-footer">
+      <a class="btn-action" id="cmNaver" href="https://m.stock.naver.com/" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">📊 네이버 증권 호가창</a>
+      <button class="btn-action" style="background:#0284c7;color:#fff;border-color:#38bdf8" onclick="closeChart()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 도해 모달 ===== -->
+<div class="modal-overlay guide-modal" id="guideModal" onclick="closeGuide(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>📐 순수 리노 기준 도해 <span class="badge-preview">도해는 개념 예시</span></h3>
+      <button class="btn-close" onclick="closeGuide()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="guide-img-wrap" id="guideImgWrap">
+        <img src="/assets/leeno-pure-guide.png" alt="리노 단매법 도해 원본">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-action" style="background:#1e293b;color:#cbd5e1" onclick="toggleZoom()">🔍 확대/맞춤</button>
+      <a class="btn-action" href="/assets/leeno-pure-guide.png" target="_blank" rel="noopener" style="background:#0f172a;color:#7dd3fc">↗ 원본 새 창</a>
+      <button class="btn-action" style="background:#0284c7;color:#fff;border-color:#38bdf8" onclick="closeGuide()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== 오류 수집 (검증용) ===== */
+window.__LEENO_ERRORS = [];
+window.addEventListener('error', function (e) {
+  window.__LEENO_ERRORS.push(String((e && e.message) || e));
+});
+window.addEventListener('unhandledrejection', function (e) {
+  window.__LEENO_ERRORS.push('unhandledrejection: ' + String((e && e.reason) || ''));
+});
+window.__LEENO = { cards: 0, chartDrawn: false, chartCode: null, guideOpened: false };
+
+/* ===== 실측 선별 데이터 (build_data.py 생성) ===== */
+const DATA = {"basisDate":"2026-11-13","basisLabel":"2026-11-13(금) 정규장 종가","universe":1519,"candidateCount":39,"passedCount":11,"generatedAt":"2026-11-15 12:57:45","stocks":[{"code":"092870","name":"엑시콘","market":"코스닥","sector":"반도체 검사장비","close":62500.0,"pct":7.57,"valueEok":728.1,"date":"20261113","o":59000.0,"h":67000.0,"l":56800.0,"v":1174750.0,"m5":55360.0,"m10":53510.0,"m20":54455.0,"m120":31676.7,"spread":3.46,"above20":true,"above120":true,"conv":true,"spotDate":"20261113","spotRatio":2.15,"spotHigh":67000.0,"spotLow":56800.0,"hi250":68000.0,"hi250Date":"20261028","dist250":8.8,"chg5":40.13,"chg20":15.53,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/13)","value":67000.0,"gap":7.2},"secondary":{"label":"250일 전고점(10/28)","value":68000.0,"gap":8.8},"score":8.74,"reasons":["① 등락률 +7.57% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 728억 — 300억 기준 통과","③ 5·10·20일선 수렴 폭 3.5% + 20·120일선 위 지지 (수렴 끝 자리)","④ 거래량 스팟 11/13 평균 대비 2.15배 — 스팟 봉이 지지선"],"flags":["5일 누적 +40.1% — 눌림 없는 수직, 추격 금지"]},{"code":"030530","name":"원익홀딩스","market":"코스닥","sector":"반도체 장비지주","close":32100.0,"pct":5.59,"valueEok":1610.6,"date":"20261113","o":31050.0,"h":33700.0,"l":31000.0,"v":4955416.0,"m5":29740.0,"m10":30000.0,"m20":27475.0,"m120":23183.2,"spread":9.19,"above20":true,"above120":true,"conv":false,"spotDate":"20261102","spotRatio":2.72,"spotHigh":34000.0,"spotLow":29100.0,"hi250":50600.0,"hi250Date":"20251230","dist250":57.63,"chg5":11.46,"chg20":39.26,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/02)","value":34000.0,"gap":5.92},"secondary":{"label":"120일 고점","value":34500.0,"gap":7.48},"score":7.1,"reasons":["① 등락률 +5.59% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 1,611억 — 300억 기준 통과","③ 20일선(27,475)·120일선(23,183) 위 지지 — 수렴 폭은 9.2%","④ 거래량 스팟 11/02 평균 대비 2.72배 — 스팟 봉이 지지선"],"flags":["20일 누적 +39.3% — 이미 달린 자리, 비중·손절 짧게","전고점까지 -57.6% — 위쪽 매물대 통과 전"]},{"code":"437730","name":"삼현","market":"코스닥","sector":"로봇·기계","close":47550.0,"pct":9.94,"valueEok":350.8,"date":"20261113","o":43200.0,"h":48500.0,"l":42800.0,"v":751030.0,"m5":40840.0,"m10":40095.0,"m20":42362.5,"m120":41186.2,"spread":5.66,"above20":true,"above120":true,"conv":false,"spotDate":"20261111","spotRatio":3.31,"spotHigh":44400.0,"spotLow":37350.0,"hi250":76900.0,"hi250Date":"20260116","dist250":61.72,"chg5":25.79,"chg20":20.99,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/11)","value":44400.0,"gap":-6.62},"secondary":{"label":"20일선","value":42362.5,"gap":-10.91},"score":5.84,"reasons":["① 등락률 +9.94% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 351억 — 300억 기준 통과","③ 20일선(42,362)·120일선(41,186) 위 지지 — 수렴 폭은 5.7%","④ 거래량 스팟 11/11 평균 대비 3.31배 — 스팟 봉이 지지선"],"flags":["5일 누적 +25.8% — 눌림 없는 수직, 추격 금지","전고점까지 -61.7% — 위쪽 매물대 통과 전"]},{"code":"079650","name":"서산","market":"코스닥","sector":"건설·플랜트","close":7190.0,"pct":13.23,"valueEok":632.7,"date":"20261113","o":6630.0,"h":7880.0,"l":6600.0,"v":8502490.0,"m5":6418.0,"m10":6536.0,"m20":6994.0,"m120":5076.5,"spread":8.97,"above20":true,"above120":true,"conv":false,"spotDate":"20261113","spotRatio":2.85,"spotHigh":7880.0,"spotLow":6600.0,"hi250":10300.0,"hi250Date":"20260625","dist250":43.25,"chg5":22.49,"chg20":-10.46,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/13)","value":7880.0,"gap":9.6},"secondary":{"label":"20일선","value":6994.0,"gap":-2.73},"score":4.87,"reasons":["① 등락률 +13.23% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 633억 — 300억 기준 통과","③ 20일선(6,994)·120일선(5,076) 위 지지 — 수렴 폭은 9.0%","④ 거래량 스팟 11/13 평균 대비 2.85배 — 스팟 봉이 지지선"],"flags":["전고점까지 -43.2% — 위쪽 매물대 통과 전"]},{"code":"028050","name":"삼성E&A","market":"코스피","sector":"건설·플랜트","close":69400.0,"pct":5.15,"valueEok":2202.6,"date":"20261113","o":66200.0,"h":69700.0,"l":66100.0,"v":3211555.0,"m5":65220.0,"m10":64500.0,"m20":60295.0,"m120":49592.1,"spread":8.17,"above20":true,"above120":true,"conv":false,"spotDate":null,"spotRatio":null,"spotHigh":null,"spotLow":null,"hi250":69700.0,"hi250Date":"20261113","dist250":0.43,"chg5":13.21,"chg20":59.17,"primary":{"role":"돌파 트리거","label":"250일 전고점(11/13)","value":69700.0,"gap":0.43},"secondary":{"label":"20일선","value":60295.0,"gap":-13.12},"score":4.8,"reasons":["① 등락률 +5.15% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 2,203억 — 300억 기준 통과","③ 20일선(60,295)·120일선(49,592) 위 지지 — 수렴 폭은 8.2%","④ 250일 전고점 0.4% 아래 — 돌파 직전 자리"],"flags":["20일 누적 +59.2% — 이미 달린 자리, 비중·손절 짧게"]},{"code":"263860","name":"지니언스","market":"코스닥","sector":"정보보안","close":34150.0,"pct":8.93,"valueEok":2303.7,"date":"20261113","o":32700.0,"h":36450.0,"l":31500.0,"v":6686465.0,"m5":28590.0,"m10":27170.0,"m20":24743.5,"m120":16947.4,"spread":15.55,"above20":true,"above120":true,"conv":false,"spotDate":"20261112","spotRatio":5.1,"spotHigh":33650.0,"spotLow":27400.0,"hi250":36450.0,"hi250Date":"20261113","dist250":6.73,"chg5":45.94,"chg20":55.94,"primary":{"role":"돌파 트리거","label":"250일 전고점(11/13)","value":36450.0,"gap":6.73},"secondary":{"label":"거래량 스팟 상단(11/12)","value":33650.0,"gap":-1.46},"score":4.8,"reasons":["① 등락률 +8.93% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 2,304억 — 300억 기준 통과","③ 20일선(24,744)·120일선(16,947) 위 지지 — 수렴 폭은 15.6%","④ 거래량 스팟 11/12 평균 대비 5.10배 — 스팟 봉이 지지선"],"flags":["20일 누적 +55.9% — 이미 달린 자리, 비중·손절 짧게","5일 누적 +45.9% — 눌림 없는 수직, 추격 금지"]},{"code":"018260","name":"삼성에스디에스","market":"코스피","sector":"IT서비스","close":235500.0,"pct":2.17,"valueEok":652.2,"date":"20261113","o":228000.0,"h":240000.0,"l":223500.0,"v":276615.0,"m5":229000.0,"m10":218300.0,"m20":213105.0,"m120":218434.2,"spread":7.46,"above20":true,"above120":true,"conv":false,"spotDate":"20261106","spotRatio":2.03,"spotHigh":224500.0,"spotLow":190500.0,"hi250":388500.0,"hi250Date":"20260601","dist250":64.97,"chg5":9.53,"chg20":18.52,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/06)","value":224500.0,"gap":-4.67},"secondary":{"label":"120일선","value":218434.2,"gap":-7.25},"score":4.68,"reasons":["① 등락률 +2.17% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 652억 — 300억 기준 통과","③ 20일선(213,105)·120일선(218,434) 위 지지 — 수렴 폭은 7.5%","④ 거래량 스팟 11/06 평균 대비 2.03배 — 스팟 봉이 지지선"],"flags":["전고점까지 -65.0% — 위쪽 매물대 통과 전"]},{"code":"036540","name":"SFA반도체","market":"코스닥","sector":"반도체 후공정","close":9220.0,"pct":5.37,"valueEok":711.6,"date":"20261113","o":9160.0,"h":9900.0,"l":8890.0,"v":7555194.0,"m5":8194.0,"m10":7740.0,"m20":8250.5,"m120":7252.6,"spread":6.6,"above20":true,"above120":true,"conv":false,"spotDate":"20261112","spotRatio":2.11,"spotHigh":8900.0,"spotLow":8230.0,"hi250":12370.0,"hi250Date":"20261006","dist250":34.16,"chg5":48.95,"chg20":-1.07,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/12)","value":8900.0,"gap":-3.47},"secondary":{"label":"20일선","value":8250.5,"gap":-10.52},"score":4.36,"reasons":["① 등락률 +5.37% — 과열 제외 구간(2~15%) 안, 상한가·급등 상위 20위권 밖","② 거래대금 712억 — 300억 기준 통과","③ 20일선(8,250)·120일선(7,253) 위 지지 — 수렴 폭은 6.6%","④ 거래량 스팟 11/12 평균 대비 2.11배 — 스팟 봉이 지지선"],"flags":["5일 누적 +49.0% — 눌림 없는 수직, 추격 금지","전고점까지 -34.2% — 위쪽 매물대 통과 전"]}]};
+
+const $ = function (id) { return document.getElementById(id); };
+const nf = function (n, d) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return Number(n).toLocaleString('ko-KR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
+};
+const pctCls = function (v) { return v > 0 ? 'up' : (v < 0 ? 'down' : 'flat'); };
+const sign = function (v) { return (v > 0 ? '+' : '') + v; };
+const fmtEok = function (v) { return nf(v) + '억'; };
+
+/* ===== 카드 렌더 ===== */
+function maCell(label, val, close) {
+  const above = close >= val;
+  return '<div class="ma-cell"><span class="ma-lbl">' + label + '</span>' +
+    '<span class="ma-val ' + (above ? 'up' : 'down') + '" title="' + label + ' ' + nf(val) + '원 (종가 ' + (above ? '위' : '아래') + ')">' +
+    nf(val, val < 100 ? 1 : 0) + '</span></div>';
+}
+
+function renderCards() {
+  const grid = $('stockGrid');
+  grid.innerHTML = DATA.stocks.map(function (s, i) {
+    const p = s.primary || {};
+    const sec = s.secondary ? '<span class="kp-src">/ ' + s.secondary.label + ' ' + nf(s.secondary.value) + '원 (' + sign(s.secondary.gap) + '%)</span>' : '';
+    return '<button class="stock-card" type="button" onclick="openChart(\'' + s.code + '\')" aria-label="' + s.name + ' 120일 차트 열기">' +
+      '<div class="sc-top">' +
+        '<div class="sc-name"><span class="nm">' + s.name + '</span><span class="sc-market">' + s.market + '</span></div>' +
+        '<div class="sc-score">적합 ' + s.score.toFixed(1) + '</div>' +
+      '</div>' +
+      '<div class="sc-sector">' + s.sector + ' · 11/13 종가 실측</div>' +
+      '<div class="sc-price-row">' +
+        '<div class="sc-price">' + nf(s.close) + '<small>원</small></div>' +
+        '<div class="sc-pct ' + pctCls(s.pct) + '">' + sign(s.pct.toFixed(2)) + '%</div>' +
+      '</div>' +
+      '<div class="sc-meta">' +
+        '<span class="chip blue">대금 ' + fmtEok(s.valueEok) + '</span>' +
+        '<span class="chip">' + (s.conv ? '수렴 ' + s.spread.toFixed(1) + '%' : '수렴 ' + s.spread.toFixed(1) + '% (벌어짐)') + '</span>' +
+        (s.spotDate ? '<span class="chip purple">스팟 ' + s.spotRatio.toFixed(2) + '배</span>' : '') +
+      '</div>' +
+      '<div class="sc-kprice">' +
+        '<div class="kp-role">의미 있는 가격 · ' + p.role + '</div>' +
+        '<div class="kp-line"><span class="kp-val">' + nf(p.value) + '원</span><span class="kp-gap">' + sign(p.gap) + '%</span></div>' +
+        '<div class="kp-src">' + p.label + (sec ? ' ' + sec : '') + '</div>' +
+      '</div>' +
+      '<div class="sc-ma">' +
+        maCell('5일', s.m5, s.close) + maCell('10일', s.m10, s.close) +
+        maCell('20일', s.m20, s.close) + maCell('120일', s.m120, s.close) +
+      '</div>' +
+      '<div class="sc-reasons">' +
+        s.reasons.map(function (r) { return '<div class="reason"><i>✓</i><span>' + r + '</span></div>'; }).join('') +
+      '</div>' +
+      (s.flags.length ? '<div class="sc-flags">' + s.flags.map(function (f) { return '<div class="flag">⚠️ ' + f + '</div>'; }).join('') + '</div>' : '') +
+      '<div class="sc-foot"><span>일봉 260개 · 20일 거래량 대비 ' + (s.spotDate ? s.spotRatio.toFixed(1) + '배 스팟' : '스팟 없음') + '</span><span class="open">차트 열기 →</span></div>' +
+    '</button>';
+  }).join('');
+  window.__LEENO.cards = DATA.stocks.length;
+}
+
+/* ===== 상단 수치 ===== */
+function fillHeaderStats() {
+  $('pipeUniverse').textContent = nf(DATA.universe);
+  $('pipe1').textContent = DATA.candidateCount;
+  $('pipe2').textContent = DATA.passedCount;
+  $('pipe3').textContent = DATA.stocks.length;
+  $('subPickCount').textContent = DATA.stocks.length;
+  $('f1count').textContent = '①② 동시 통과 ' + DATA.candidateCount + '종목';
+  $('f2count').textContent = '①② 동시 통과 ' + DATA.candidateCount + '종목';
+  $('f3count').textContent = '③④ 통과 ' + DATA.passedCount + '종목';
+  $('f4count').textContent = '③④ 통과 ' + DATA.passedCount + '종목';
+  $('filterSub').textContent = '기준: ' + DATA.basisLabel + ' · 네이버 fchart 260일봉 · 상승 종목 유니버스 ' + nf(DATA.universe) + '개(코스피·코스닥 상승랭킹 전수)';
+}
+
+/* ===== KST 시간 ===== */
+function kstParts(d) {
+  const t = d || new Date();
+  const fmt = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'short', hour12: false
+  });
+  const o = {};
+  fmt.formatToParts(t).forEach(function (p) { o[p.type] = p.value; });
+  return {
+    y: +o.year, mo: +o.month, d: +o.day,
+    h: +o.hour === 24 ? 0 : +o.hour, mi: +o.minute, s: +o.second,
+    wd: o.weekday, label: (o.month) + '/' + (o.day) + '(' + o.weekday + ') ' + String(o.hour === '24' ? '0' : o.hour).padStart(2, '0') + ':' + o.minute
+  };
+}
+function isWeekend(k) { return k.wd === '토' || k.wd === '일'; }
+
+/* ===== 타임라인 ===== */
+const STEPS = [
+  { t: '~14:30', name: '밑그림', desc: '대상 3~5종목에 1차 물량 (전일 종가·장 후반 5~8분 전)', from: 540, to: 870, src: '6편·10편' },
+  { t: '14:30~15:00', name: '몸집 불리기', desc: '의미 있는 가격 밴드에서 흔들며 흡수 + 리스크 관리 매도', from: 870, to: 900, src: '13편·14편' },
+  { t: '15:00~15:15', name: '드리블', desc: '관성구간에서 이익 실현, 남은 기본 물량 유지', from: 900, to: 915, src: '15편' },
+  { t: '15:15~15:20', name: '가격 통과 확인', desc: '4,900→5,000→5,200 · 5,700 · 93,800→94,000 통과 체크', from: 915, to: 920, src: '4편·13편·15편' },
+  { t: '15:20~15:28', name: '29분 결정', desc: '추가 매수 또는 전량 취소 — “29분에 결정을 하자”', from: 920, to: 928, src: '4편' },
+  { t: '15:20~15:30', name: '동시호가 마감', desc: '의미 있는 가격 위로 마감 → 종가베팅 완료 (최고가 마감이 최선)', from: 928, to: 930, src: '4편·13편' }
+];
+let simMode = 'auto';
+
+function renderTimeline() {
+  const k = kstParts();
+  const nowMin = k.h * 60 + k.mi;
+  let activeIdx = -1, stateTxt = '', nextTxt = '';
+
+  if (simMode !== 'auto') {
+    const parts = simMode.split(':');
+    const m = (+parts[0]) * 60 + (+parts[1]);
+    for (let i = 0; i < STEPS.length; i++) {
+      if (m >= STEPS[i].from && m < STEPS[i].to) { activeIdx = i; break; }
+    }
+    if (activeIdx < 0 && m >= 930) activeIdx = 5;
+    stateTxt = '미리보기 ' + simMode + ' 기준 하이라이트';
+  } else if (isWeekend(k)) {
+    stateTxt = '주말 휴장 — 평일 09:00 장 시작과 함께 1단계가 켜집니다';
+    nextTxt = '<b>다음 거래일(월) 09:00</b> → 1단계 「밑그림」부터 자동 진행';
+  } else if (nowMin < 540) {
+    stateTxt = '장전 — 09:00 장 시작 대기';
+    nextTxt = '<b>09:00</b> → 1단계 「밑그림」 활성';
+  } else if (nowMin >= 930) {
+    stateTxt = '정규장 마감 — 타임라인 종료';
+    nextTxt = '<b>다음 거래일 09:00</b> 에 1단계부터 다시 자동 진행';
+    activeIdx = -2;
+  } else {
+    for (let i = 0; i < STEPS.length; i++) {
+      if (nowMin >= STEPS[i].from && nowMin < STEPS[i].to) { activeIdx = i; break; }
+    }
+    stateTxt = '정규장 진행 중 — 지금 단계가 노란 테두리';
+    if (activeIdx >= 0 && activeIdx < STEPS.length - 1) {
+      nextTxt = '다음: <b>' + STEPS[activeIdx + 1].t + ' ' + STEPS[activeIdx + 1].name + '</b>';
+    }
+  }
+
+  $('nowChip').textContent = '지금 ' + k.label + ' KST';
+  $('stateHint').textContent = stateTxt;
+  $('simNote').style.display = (simMode === 'auto') ? 'none' : 'block';
+
+  $('tlGrid').innerHTML = STEPS.map(function (s, i) {
+    let cls = '';
+    if (activeIdx === i) cls = 'active';
+    else if (activeIdx >= 0 && i < activeIdx) cls = 'done';
+    else if (activeIdx === -2) cls = 'done';
+    return '<div class="tl-step ' + cls + '">' +
+      '<div class="tl-time">' + s.t + '</div>' +
+      '<div class="tl-name">' + s.name + '</div>' +
+      '<div class="tl-desc">' + s.desc + '</div>' +
+      '<div class="tl-src" style="font-size:9px;color:#475569;font-weight:800;margin-top:3px">' + s.src + '</div>' +
+    '</div>';
+  }).join('');
+
+  if (nextTxt) $('tlNext').innerHTML = nextTxt;
+  else if (activeIdx >= 0) $('tlNext').innerHTML = '지금 단계: <b>' + STEPS[activeIdx].t + ' ' + STEPS[activeIdx].name + '</b>';
+  else $('tlNext').innerHTML = '';
+}
+
+function setSim(v) {
+  simMode = v;
+  document.querySelectorAll('.sim-btn').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-sim') === v);
+  });
+  renderTimeline();
+}
+
+/* ===== 체크리스트 ===== */
+const CK_KEY = 'leeno_preview_checklist_v1';
+const CK = [
+  { g: '① 후보 압축', items: [
+    '일봉: 매물대·전고점이 정리되고 수렴 중인가',
+    '거래대금이 충분한가 (없으면 손 안 댐)',
+    '상승률 상위 20위에 아직 없는가'
+  ]},
+  { g: '② 의미 있는 가격', items: [
+    '전고점 / 직전 매물대 / 거래량 스팟 중 가격 하나를 특정했는가',
+    '그 가격 위에서 놀면 정상, 중심으로 분차트가 꺾이면 손절',
+    '타점보다 가격을 먼저 찾았는가'
+  ]},
+  { g: '③ 호가창 테스트 (HTS)', items: [
+    '받치기 물량이 들어오는가',
+    '매도벽이 소화되는가',
+    '쌍바닥이 확인되는가',
+    '잔량 숫자가 맞춰져 있는가 (2,500형 등)',
+    '1분봉 20선을 기점으로 저점을 높이는가'
+  ]},
+  { g: '④ 진입·운용', items: [
+    '1차는 가볍게 → 확인 후 평단 올려 증량',
+    '돌파호가창에서 3계좌 동시 클릭',
+    '관성구간에서 부분 매도로 원금 회수',
+    '동시호가 전 29분 결정 규칙 준수'
+  ]},
+  { g: '⑤ 종료', items: [
+    '의미 있는 가격 위 마감 확인 → 종베 유지',
+    '이탈 시 즉시 손절 · 물타기 금지',
+    '시간외 매매 금지'
+  ]}
+];
+
+function loadCk() {
+  try { return JSON.parse(localStorage.getItem(CK_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function saveCk(state) {
+  try { localStorage.setItem(CK_KEY, JSON.stringify(state)); } catch (e) {}
+}
+function renderCk() {
+  const st = loadCk();
+  let total = 0, done = 0;
+  $('ckGroups').innerHTML = CK.map(function (grp, gi) {
+    return '<div class="ck-group"><div class="ck-group-title">' + grp.g + '</div>' +
+      grp.items.map(function (it, ii) {
+        const key = gi + '-' + ii;
+        total++;
+        const on = !!st[key];
+        if (on) done++;
+        return '<label class="ck-item ' + (on ? 'done' : '') + '">' +
+          '<input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="toggleCk(\'' + key + '\', this.checked)">' +
+          '<span>' + it + '</span></label>';
+      }).join('') + '</div>';
+  }).join('');
+  $('cpTxt').textContent = done + ' / ' + total;
+  $('cpFill').style.width = (total ? (done / total * 100) : 0) + '%';
+}
+function toggleCk(key, on) {
+  const st = loadCk();
+  if (on) st[key] = 1; else delete st[key];
+  saveCk(st);
+  renderCk();
+}
+function resetChecklist() {
+  saveCk({});
+  renderCk();
+}
+
+/* ===== 차트 ===== */
+let chartState = { candles: [], sma: {}, minP: 0, maxP: 0, code: null, target: null, hover: -1, geometry: null };
+
+function openChart(code) {
+  const s = DATA.stocks.filter(function (x) { return x.code === code; })[0];
+  if (!s) return;
+  const m = $('chartModal');
+  m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  $('cmTitle').innerHTML = s.name + ' <span class="sc-market">' + s.market + '</span>';
+  $('cmSub').textContent = s.code + ' · ' + s.sector + ' · 기준 ' + DATA.basisLabel;
+  $('cmNaver').href = 'https://m.stock.naver.com/domestic/stock/' + s.code + '/total';
+  $('cmMetrics').innerHTML =
+    metric('11/13 종가', nf(s.close) + '원') +
+    metric('등락률', sign(s.pct.toFixed(2)) + '%', pctCls(s.pct)) +
+    metric('거래대금', fmtEok(s.valueEok)) +
+    metric('의미 있는 가격', nf(s.primary ? s.primary.value : 0) + '원') +
+    metric('5/10/20/120', nf(s.m5) + ' / ' + nf(s.m10) + ' / ' + nf(s.m20) + ' / ' + nf(s.m120), '', 1);
+  $('cmDetail').innerHTML =
+    '<div class="m-reasons">' +
+      '<div class="m-reason"><b>의미 있는 가격</b> · ' + (s.primary ? s.primary.role + ' ' + nf(s.primary.value) + '원 (' + s.primary.label + ', ' + sign(s.primary.gap) + '%)' : '—') +
+        (s.secondary ? ' / 보조: ' + s.secondary.label + ' ' + nf(s.secondary.value) + '원 (' + sign(s.secondary.gap) + '%)' : '') + '</div>' +
+      s.reasons.map(function (r) { return '<div class="m-reason">' + r + '</div>'; }).join('') +
+      s.flags.map(function (f) { return '<div class="m-reason" style="color:#fca5a5">⚠️ ' + f + '</div>'; }).join('') +
+    '</div>' +
+    '<div class="src-line">리노 기준: 이 가격 위에서 놀면 정상, 중심으로 분차트가 꺾이면 손절. 표시된 선은 실측 일봉 260개로 계산한 단순이동평균입니다.</div>';
+  $('cmStatus').className = 'm-status ok';
+  $('cmStatus').textContent = '⏳ /api/stock-chart 실측 일봉(200개)을 불러오는 중…';
+  $('chInfo').textContent = '';
+
+  window.__LEENO.chartCode = code;
+  window.__LEENO.chartDrawn = false;
+  chartState.code = code;
+  chartState.target = s.primary ? s.primary.value : null;
+  chartState.hover = -1;
+
+  fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=200')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.ok || !d.candles || !d.candles.length) throw new Error((d && d.message) || 'no data');
+      chartState.full = d.candles;
+      const last = d.candles[d.candles.length - 1];
+      $('cmStatus').className = 'm-status ok';
+      $('cmStatus').textContent = '✅ 실측 일봉 ' + d.candleCount + '개 · 마지막 봉 ' + last.date.slice(0, 4) + '-' + last.date.slice(4, 6) + '-' + last.date.slice(6, 8) +
+        ' (종가 ' + nf(last.c) + '원) · 소스: 네이버 fchart' + (d.current && d.current.marketStatus ? ' · ' + d.current.marketStatus : '');
+      $('cmSrc').textContent = '소스: /api/stock-chart → ' + (d.sources || []).map(function (x) { return x.name + (x.ok ? ' ✓' : ' ✗'); }).join(' · ') +
+        ' · 조회 시각 ' + kstParts().label + ' KST';
+      drawChart();
+      window.__LEENO.chartDrawn = true;
+    })
+    .catch(function (err) {
+      $('cmStatus').className = 'm-status err';
+      $('cmStatus').textContent = '⚠️ 실측 일봉을 불러오지 못했습니다 (' + (err && err.message ? err.message : 'network') + ') — 잠시 후 카드를 다시 눌러 주세요.';
+      window.__LEENO.chartError = String(err && err.message ? err.message : err);
+    });
+}
+
+function metric(k, v, cls, small) {
+  return '<div class="m-metric"><span class="k">' + k + '</span><span class="v ' + (cls || '') + '"' + (small ? ' style="font-size:10.5px"' : '') + '>' + v + '</span></div>';
+}
+
+function calcSMA(full, period) {
+  const out = new Array(full.length).fill(null);
+  let run = 0;
+  for (let i = 0; i < full.length; i++) {
+    run += full[i].c;
+    if (i >= period) run -= full[i - period].c;
+    if (i >= period - 1) out[i] = run / period;
+  }
+  return out;
+}
+
+function drawChart() {
+  const canvas = $('chartCanvas');
+  const full = chartState.full || [];
+  if (!canvas || !full.length) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(240, Math.round(rect.width || canvas.parentElement.clientWidth || 320));
+  const h = Math.round(rect.height || 236);
+
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#070c14';
+  ctx.fillRect(0, 0, w, h);
+
+  const view = full.slice(-120);
+  const startIdx = full.length - view.length;
+  const smaFull = { 5: calcSMA(full, 5), 10: calcSMA(full, 10), 20: calcSMA(full, 20), 120: calcSMA(full, 120) };
+
+  let maxP = -Infinity, minP = Infinity, maxV = 0;
+  view.forEach(function (c) {
+    if (c.h > maxP) maxP = c.h;
+    if (c.l < minP) minP = c.l;
+    if (c.v > maxV) maxV = c.v;
+  });
+  const pad = (maxP - minP) * 0.06 || 1;
+  maxP += pad; minP -= pad;
+  const pRange = maxP - minP;
+
+  const padR = 46, padL = 6, top = 8;
+  const chartH = h * 0.70, volH = h * 0.20;
+  const chartW = w - padR - padL;
+  const barW = chartW / view.length;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillStyle = '#64748b';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'right';
+  for (let g = 0; g <= 4; g++) {
+    const y = top + chartH * (1 - g / 4);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + chartW, y); ctx.stroke();
+    const pv = minP + pRange * g / 4;
+    ctx.fillText(pv >= 1000 ? Math.round(pv).toLocaleString() : pv.toFixed(0), w - 3, y + 3);
+  }
+
+  // 의미 있는 가격 점선
+  const tgt = chartState.target;
+  if (tgt && tgt <= maxP && tgt >= minP) {
+    const ty = top + chartH * (1 - (tgt - minP) / pRange);
+    ctx.save();
+    ctx.strokeStyle = '#fbbf24';
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, ty); ctx.lineTo(padL + chartW, ty); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = 'bold 8.5px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('의미있는 가격 ' + Math.round(tgt).toLocaleString(), padL + 3, ty - 3);
+  }
+
+  // 캔들 + 거래량
+  for (let i = 0; i < view.length; i++) {
+    const c = view[i];
+    const x = padL + i * barW + barW / 2;
+    const isUp = c.c >= c.o;
+    const color = isUp ? '#f43f5e' : '#38bdf8';
+    const bodyW = Math.max(1, barW * 0.66);
+
+    const vh = maxV > 0 ? (c.v / maxV) * volH : 0;
+    ctx.fillStyle = isUp ? 'rgba(244,63,94,0.32)' : 'rgba(56,189,248,0.32)';
+    ctx.fillRect(x - bodyW / 2, h - 4 - vh, bodyW, vh);
+
+    const yH = top + chartH * (1 - (c.h - minP) / pRange);
+    const yL = top + chartH * (1 - (c.l - minP) / pRange);
+    const yO = top + chartH * (1 - (c.o - minP) / pRange);
+    const yC = top + chartH * (1 - (c.c - minP) / pRange);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, yH); ctx.lineTo(x, yL); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillRect(x - bodyW / 2, Math.min(yO, yC), bodyW, Math.max(1, Math.abs(yC - yO)));
+  }
+
+  // 이동평균 4종
+  const lines = [
+    { p: 5, color: '#f59e0b', width: 1.4 },
+    { p: 10, color: '#c084fc', width: 1.3 },
+    { p: 20, color: '#22c55e', width: 1.3 },
+    { p: 120, color: '#e2e8f0', width: 1.8 }
+  ];
+  lines.forEach(function (L) {
+    const arr = smaFull[L.p];
+    ctx.strokeStyle = L.color;
+    ctx.lineWidth = L.width;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < view.length; i++) {
+      const v = arr[startIdx + i];
+      if (v === null) continue;
+      const x = padL + i * barW + barW / 2;
+      const y = top + chartH * (1 - (v - minP) / pRange);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // 현재가 태그
+  const last = view[view.length - 1];
+  const ly = top + chartH * (1 - (last.c - minP) / pRange);
+  const lastUp = last.c >= last.o;
+  ctx.fillStyle = lastUp ? '#f43f5e' : '#38bdf8';
+  ctx.fillRect(padL + chartW + 1, ly - 7, padR - 2, 14);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 8.5px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(Math.round(last.c).toLocaleString(), padL + chartW + 4, ly + 3);
+
+  // 날짜 라벨
+  ctx.fillStyle = '#64748b';
+  ctx.font = '8.5px sans-serif';
+  ctx.textAlign = 'left';
+  const f0 = view[0].date, f1 = view[Math.floor(view.length / 2)].date, f2 = last.date;
+  const dstr = function (s) { return s.slice(2, 4) + '.' + s.slice(4, 6) + '.' + s.slice(6, 8); };
+  ctx.fillText(dstr(f0), padL, h - 1);
+  ctx.textAlign = 'center';
+  ctx.fillText(dstr(f1), padL + chartW / 2, h - 1);
+  ctx.textAlign = 'right';
+  ctx.fillText(dstr(f2), padL + chartW, h - 1);
+
+  // 크로스헤어
+  if (chartState.hover >= 0) {
+    const i = Math.min(view.length - 1, Math.max(0, chartState.hover));
+    const x = padL + i * barW + barW / 2;
+    ctx.strokeStyle = 'rgba(226,232,240,0.55)';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, h - 4); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  chartState.view = view;
+  chartState.geometry = { padL: padL, barW: barW, chartW: chartW };
+
+  if (chartState.hover < 0) {
+    const hi = Math.max.apply(null, view.map(function (c) { return c.h; }));
+    const lo = Math.min.apply(null, view.map(function (c) { return c.l; }));
+    $('chInfo').textContent = '최근 ' + view.length + '거래일 · 최고 ' + nf(hi) + ' / 최저 ' + nf(lo) + ' · 차트를 짚으면 봉 값이 나옵니다';
+  }
+}
+
+function bindChartHover() {
+  const canvas = $('chartCanvas');
+  if (!canvas || canvas._bound) return;
+  canvas._bound = true;
+  const move = function (ev) {
+    if (!chartState.geometry || !chartState.view) return;
+    const rect = canvas.getBoundingClientRect();
+    const px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+    const g = chartState.geometry;
+    const idx = Math.round((px - g.padL - g.barW / 2) / g.barW);
+    if (idx < 0 || idx >= chartState.view.length) return;
+    chartState.hover = idx;
+    drawChart();
+    const c = chartState.view[idx];
+    const ds = c.date;
+    $('chInfo').textContent = ds.slice(0, 4) + '-' + ds.slice(4, 6) + '-' + ds.slice(6, 8) +
+      ' · 시 ' + nf(c.o) + ' 고 ' + nf(c.h) + ' 저 ' + nf(c.l) + ' 종 ' + nf(c.c) + ' · 거래량 ' + nf(c.v);
+  };
+  const leave = function () {
+    chartState.hover = -1;
+    drawChart();
+  };
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseleave', leave);
+  canvas.addEventListener('touchstart', move, { passive: true });
+  canvas.addEventListener('touchmove', move, { passive: true });
+  canvas.addEventListener('touchend', leave);
+}
+
+function closeChart() {
+  $('chartModal').classList.remove('open');
+  document.body.style.overflow = '';
+  chartState.hover = -1;
+}
+
+/* ===== 도해 모달 ===== */
+function openGuide() {
+  $('guideModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  window.__LEENO.guideOpened = true;
+}
+function closeGuide() {
+  $('guideModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function toggleZoom() {
+  $('guideImgWrap').classList.toggle('zoom');
+}
+
+/* ===== 실시간 확인 (선별 기준은 11/13 종가 고정) ===== */
+function refreshLive(manual) {
+  const codes = DATA.stocks.map(function (s) { return s.code; }).join(',');
+  $('sessionCountdownTxt').textContent = manual ? '(실시간 시세 확인 중…)' : '(네이버 fchart 260일봉 × 4대 필터)';
+  fetch('/api/stock-live?codes=' + codes)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      const k = kstParts();
+      $('lastSyncTxt').textContent = '최근 확인: ' + k.label + ' KST' + (d && d.marketStatus ? ' · 장상태 ' + d.marketStatus : '');
+      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 4대 필터 · 선별 기준 11/13 종가 고정)';
+      const stocks = (d && d.stocks) || [];
+      if (stocks.length) {
+        // 선별 기준(11/13 종가)은 유지하고, 현재가가 다르면 카드에 표시만 한다
+        let diff = 0;
+        stocks.forEach(function (q) {
+          const s = DATA.stocks.filter(function (x) { return x.code === q.code; })[0];
+          if (!s) return;
+          if (q.tradedAt && String(q.tradedAt).slice(0, 10) !== DATA.basisDate && Math.abs((q.price || 0) - s.close) > 0.01) diff++;
+        });
+        if (diff > 0) {
+          $('sessionCountdownTxt').textContent = '(' + diff + '종목은 11/13 이후 시세가 있습니다 — 카드 수치는 선별 기준일 종가)';
+        }
+      }
+      window.__LEENO.liveOk = true;
+      window.__LEENO.liveAt = k.label;
+    })
+    .catch(function (e) {
+      $('lastSyncTxt').textContent = '실시간 확인 실패 — 선별 기준(11/13 종가)은 그대로 유효';
+      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 4대 필터)';
+      window.__LEENO.liveOk = false;
+    });
+}
+
+function scrollToId(id) {
+  const el = $(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ===== 초기화 ===== */
+document.addEventListener('DOMContentLoaded', function () {
+  fillHeaderStats();
+  renderCards();
+  renderTimeline();
+  renderCk();
+  bindChartHover();
+  refreshLive(false);
+  setInterval(function () { if (simMode === 'auto') renderTimeline(); }, 30000);
+  window.addEventListener('resize', function () { if (chartState.full) drawChart(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeChart(); closeGuide(); }
+  });
+});
+</script>
+</body>
+</html>
