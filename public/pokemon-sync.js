@@ -605,7 +605,8 @@
     if (document.hidden) return;
     if (Date.now() - lastAuto < (minGapMs || 0)) return;
     lastAuto = Date.now();
-    pull().then(function (r) {
+    /* 게임 도중에 화면이 새로고침되지 않도록 — 주기 점검은 조용히 반영만 한다 */
+    pull({ noReload: true }).then(function (r) {
       if (r === 'noRow') { /* 클라우드가 비었는데 이 기기에 내용이 있으면 올린다 */ push(); }
     });
   }
