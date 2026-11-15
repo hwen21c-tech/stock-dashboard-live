@@ -430,7 +430,7 @@
   <div class="srb-left">
     <span class="live-dot"></span>
     <span class="srb-status-txt">🎯 리노 매매법 레이더 · 실측 기준일 2026-11-13(금)</span>
-    <span class="srb-countdown-txt" id="sessionCountdownTxt">(네이버 fchart 260일봉 × 4대 필터)</span>
+    <span class="srb-countdown-txt" id="sessionCountdownTxt">(네이버 fchart 260일봉 × 정예 5단계)</span>
   </div>
   <div class="srb-right">
     <span class="srb-last-sync" id="lastSyncTxt">최근 갱신: —</span>
@@ -447,7 +447,7 @@
       <span class="badge-preview">🧪 미리보기</span>
     </div>
     <div class="brand-subtitle">
-      당일 상승 종목 1,519개 실측 스캔 → 리노 4대 필터 통과 <b id="subPickCount">8</b>종목 · 근거: PDF 18편 + 영상 1편 순수 정리
+      당일 상승 종목 1,519개 실측 스캔 → 5단계 정예 필터 전부 통과 <b id="subPickCount">1</b>종목 · 근거: PDF 18편 + 영상 1편 순수 정리
     </div>
   </div>
   <div class="header-actions">
@@ -459,61 +459,72 @@
 </header>
 
 <main>
-  <!-- ===== 4대 필터 ===== -->
+  <!-- ===== 정예 필터 5단계 ===== -->
   <section id="sec-filters">
     <div class="sec-head">
-      <div class="sec-title">🧮 리노 4대 필터 — 실제 종목으로 돌린 결과</div>
+      <div class="sec-title">🧮 리노 정예 필터 5단계 — 실제 종목으로 돌린 결과</div>
       <div class="sec-sub" id="filterSub">기준: 2026-11-13(금) 정규장 종가 · 네이버 fchart 260일봉</div>
     </div>
     <div class="panel">
       <div class="pipeline">
         <span class="pipe-step">상승 종목 유니버스 <b id="pipeUniverse">1,519</b></span>
         <span class="pipe-arrow">→</span>
-        <span class="pipe-step">①등락률 · ②거래대금 <b id="pipe1">39</b></span>
+        <span class="pipe-step">①등락률 · ②거래대금 <b id="pipe1">47</b></span>
         <span class="pipe-arrow">→</span>
-        <span class="pipe-step">③이동평균 · ④스팟/전고점 <b id="pipe2">11</b></span>
+        <span class="pipe-step">③과열 차단 <b id="pipe2">27</b></span>
         <span class="pipe-arrow">→</span>
-        <span class="pipe-step hot">표시 <b id="pipe3">8</b></span>
+        <span class="pipe-step">④전고점 근접 <b id="pipe3">1</b></span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step hot">⑤추세·스팟 = 정예 <b id="pipe4">1</b></span>
       </div>
       <div class="filter-grid">
         <div class="filter-card f1">
-          <div class="fc-head"><span class="fc-title">① 등락률 과열 제외</span><span class="fc-count" id="f1count"></span></div>
-          <div class="fc-rule">당일 상승 종목 중 <b>+2% ~ +15%</b> 구간만. 상한가·급등 상위 20위권은 제외 — “준비된 주식은 상승률 순위에 아직 없습니다”(11편)</div>
+          <div class="fc-head"><span class="fc-title">① 등락률</span><span class="fc-count" id="f1count"></span></div>
+          <div class="fc-rule">당일 <b>+1.5% ~ +15%</b>. 상한가·급등 상위 20위권은 제외 — “준비된 주식은 상승률 순위에 아직 없습니다”(11편)</div>
         </div>
         <div class="filter-card f2">
-          <div class="fc-head"><span class="fc-title">② 충분한 거래대금</span><span class="fc-count" id="f2count"></span></div>
+          <div class="fc-head"><span class="fc-title">② 거래대금</span><span class="fc-count" id="f2count"></span></div>
           <div class="fc-rule"><b>300억 원 이상</b>. “거래대금이 없으면 거의 손을 안 대요”(17편)</div>
         </div>
         <div class="filter-card f3">
-          <div class="fc-head"><span class="fc-title">③ 이동평균 자리</span><span class="fc-count" id="f3count"></span></div>
-          <div class="fc-rule"><b>5·10·20일선 수렴</b>(폭 4% 이내) 또는 <b>20·120일선 위 지지</b>. 120선 위 지지 = 매수, 이격 상단 = 매도(PDF1)</div>
+          <div class="fc-head"><span class="fc-title">③ 과열 원천 차단</span><span class="fc-count" id="f3count"></span></div>
+          <div class="fc-rule"><b>5일 누적 &lt; +20%</b> 이고 <b>20일 누적 &lt; +35%</b>. 하나라도 넘으면 ‘이미 달린 자리’로 보고 <b>무조건 제외</b></div>
         </div>
         <div class="filter-card f4">
-          <div class="fc-head"><span class="fc-title">④ 거래량 스팟 · 전고점</span><span class="fc-count" id="f4count"></span></div>
-          <div class="fc-rule">최근 10거래일 내 <b>20일 평균 2배 이상</b> 거래량 스팟, 또는 <b>전고점 12% 이내</b>. “거래량 스팟이 그 자체로 지지선”(14편)</div>
+          <div class="fc-head"><span class="fc-title">④ 전고점 근접</span><span class="fc-count" id="f4count"></span></div>
+          <div class="fc-rule"><b>250일 전고점(또는 120일 고점) 대비 -12% ~ +5%</b>. 위쪽 두꺼운 매물대가 멀리 있는 종목은 탈락</div>
+        </div>
+        <div class="filter-card" style="border-left-color:#fbbf24">
+          <div class="fc-head"><span class="fc-title">⑤ 추세 · 스팟</span><span class="fc-count" id="f5count"></span></div>
+          <div class="fc-rule"><b>20일선·120일선 위 지지</b> + <b>5·10·20일선 수렴(4% 이내)</b> 또는 <b>최근 10거래일 내 거래량 스팟(2배↑)</b></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===== 후보 종목 ===== -->
+  <!-- ===== 정예 종목 ===== -->
   <section id="sec-stocks">
     <div class="sec-head">
-      <div class="sec-title">📈 이번 주 후보 종목 (실측 선별)</div>
+      <div class="sec-title">📈 정예 후보 — 5단계 전부 통과 <span id="eliteCount" style="color:#f43f5e">1</span>종목</div>
       <div class="sec-sub">카드를 누르면 실제 120일 일봉 · 5/10/20/120선 · 거래량 차트</div>
     </div>
     <div style="font-size:10px;color:#64748b;line-height:1.5;margin:-2px 0 7px">
-      적합 점수 = 수렴(3.0) + 20일선 위(1.5) + 120일선 위(1.5) + 스팟 배수 + 전고점 근접 + 거래대금 − 급등 과열 감점. 점수는 정렬용이며 필터 통과/탈락은 위 4개 기준으로만 판정합니다.
+      적합 점수는 통과 종목의 정렬용입니다. 통과/탈락은 ①~⑤ 실측 기준으로만 판정하고, 기준에 못 미치는 종목은 <b>개수를 채우지 않고 그대로 비웁니다</b>.
     </div>
-    <div class="chip-bar" id="chipBar">
-      <button type="button" class="filter-chip on" data-f="all" onclick="setCardFilter('all')">전체 <b id="fcAll">8</b></button>
-      <button type="button" class="filter-chip" data-f="break" onclick="setCardFilter('break')">🔥 돌파 임박 3%↓ <b id="fcBreak">0</b></button>
-      <button type="button" class="filter-chip" data-f="cool" onclick="setCardFilter('cool')">🛡️ 과열 제외 <b id="fcCool">0</b></button>
-      <button type="button" class="filter-chip" data-f="spot" onclick="setCardFilter('spot')">💧 스팟 3배↑ <b id="fcSpot">0</b></button>
-    </div>
+    <div class="chip-bar" id="stampBar"></div>
     <div class="stock-grid" id="stockGrid"></div>
     <div class="tl-next" style="margin-top:8px">
-      ※ 표시된 종목은 <b>2026-11-13(금) 종가 실측</b>으로 4대 필터를 통과한 결과입니다. 매수 신호가 아니라 <b>모니터링 후보</b>이며, 실제 진입은 호가창·분차트 확인 후 결정해야 합니다.
+      ※ <b>2026-11-13(금) 종가 실측</b>으로 ①~⑤를 전부 통과한 종목만 표시했습니다. 매수 신호가 아니라 <b>모니터링 후보</b>이며, 실제 진입은 호가창·분차트 확인 후 결정해야 합니다.
+    </div>
+    <div class="panel" style="margin-top:10px">
+      <div class="sec-head" style="margin-bottom:6px">
+        <div class="sec-title" style="font-size:12px">🔍 왜 1종목만 남았나 — 탈락 사유 정밀 기록</div>
+        <div class="sec-sub" id="rejSub">—</div>
+      </div>
+      <div id="rejTable"></div>
+      <div class="tl-next" style="margin-top:6px">
+        ※ 위 종목들은 <b>화면에서 제외</b>했습니다. 기준을 느슨하게 풀면 다시 들어오지만, 그러면 <b>‘이미 달린 자리’</b>나 <b>‘전고점 -40~-60% 먼 자리’</b> 문제가 그대로 돌아옵니다.
+      </div>
     </div>
   </section>
 
@@ -661,7 +672,7 @@ window.addEventListener('unhandledrejection', function (e) {
 window.__LEENO = { cards: 0, chartDrawn: false, chartCode: null, guideOpened: false };
 
 /* ===== 실측 선별 데이터 (build_data.py 생성) ===== */
-const DATA = {"basisDate":"2026-11-13","basisLabel":"2026-11-13(금) 정규장 종가","universe":1519,"candidateCount":39,"passedCount":11,"generatedAt":"2026-11-15 13:10:51","stocks":[{"code":"092870","name":"엑시콘","market":"코스닥","sector":"반도체 검사장비","rank":92,"close":62500.0,"pct":7.57,"valueEok":728.1,"date":"20261113","o":59000.0,"h":67000.0,"l":56800.0,"v":1174750.0,"m5":55360.0,"m10":53510.0,"m20":54455.0,"m120":31676.7,"spread":3.46,"above20":true,"above120":true,"conv":true,"spotDate":"20261113","spotRatio":2.15,"spotHigh":67000.0,"spotLow":56800.0,"hi250":68000.0,"hi250Date":"20261028","dist250":8.8,"chg5":40.13,"chg20":15.53,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/13)","value":67000.0,"gap":7.2},"secondary":{"label":"250일 전고점(10/28)","value":68000.0,"gap":8.8},"score":8.74,"reasons":["① 등락률 +7.57% — 과열 제외 구간(2~15%) 안 · 상승률 순위 92위(코스닥)","② 거래대금 728억 — 300억 기준 통과","③ 5·10·20일선 수렴 폭 3.5% + 20·120일선 위 지지 (수렴 끝 자리)","④ 거래량 스팟 11/13 평균 대비 2.15배 — 스팟 봉이 지지선"],"flags":["5일 누적 +40.1% — 눌림 없는 수직, 추격 금지"],"spark15":[["20261026",47550.0,258180.0],["20261027",58000.0,570860.0],["20261028",68000.0,818730.0],["20261029",64700.0,674612.0],["20261030",58700.0,556483.0],["20261102",58200.0,456358.0],["20261103",54400.0,624552.0],["20261104",54800.0,786364.0],["20261105",46300.0,710461.0],["20261106",44600.0,643759.0],["20261109",45600.0,731544.0],["20261110",51500.0,516096.0],["20261111",60100.0,521554.0],["20261112",57100.0,448564.0],["20261113",62500.0,1174750.0]]},{"code":"030530","name":"원익홀딩스","market":"코스닥","sector":"반도체 장비지주","rank":146,"close":32100.0,"pct":5.59,"valueEok":1610.6,"date":"20261113","o":31050.0,"h":33700.0,"l":31000.0,"v":4955416.0,"m5":29740.0,"m10":30000.0,"m20":27475.0,"m120":23183.2,"spread":9.19,"above20":true,"above120":true,"conv":false,"spotDate":"20261102","spotRatio":2.72,"spotHigh":34000.0,"spotLow":29100.0,"hi250":50600.0,"hi250Date":"20251230","dist250":57.63,"chg5":11.46,"chg20":39.26,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/02)","value":34000.0,"gap":5.92},"secondary":{"label":"120일 고점","value":34500.0,"gap":7.48},"score":7.1,"reasons":["① 등락률 +5.59% — 과열 제외 구간(2~15%) 안 · 상승률 순위 146위(코스닥)","② 거래대금 1,611억 — 300억 기준 통과","③ 20일선(27,475)·120일선(23,183) 위 지지 — 수렴 폭은 9.2%","④ 거래량 스팟 11/02 평균 대비 2.72배 — 스팟 봉이 지지선"],"flags":["20일 누적 +39.3% — 이미 달린 자리, 비중·손절 짧게","전고점까지 -57.6% — 위쪽 매물대 통과 전"],"spark15":[["20261026",23900.0,2116045.0],["20261027",24300.0,1112615.0],["20261028",28050.0,6642274.0],["20261029",28550.0,2951661.0],["20261030",28850.0,4995151.0],["20261102",32650.0,8333354.0],["20261103",33100.0,5608289.0],["20261104",30200.0,5798196.0],["20261105",26550.0,3245537.0],["20261106",28800.0,4866791.0],["20261109",26400.0,2226781.0],["20261110",28550.0,3173023.0],["20261111",31550.0,4033296.0],["20261112",30100.0,2478541.0],["20261113",32100.0,4955416.0]]},{"code":"437730","name":"삼현","market":"코스닥","sector":"로봇·기계","rank":56,"close":47550.0,"pct":9.94,"valueEok":350.8,"date":"20261113","o":43200.0,"h":48500.0,"l":42800.0,"v":751030.0,"m5":40840.0,"m10":40095.0,"m20":42362.5,"m120":41186.2,"spread":5.66,"above20":true,"above120":true,"conv":false,"spotDate":"20261111","spotRatio":3.31,"spotHigh":44400.0,"spotLow":37350.0,"hi250":76900.0,"hi250Date":"20260116","dist250":61.72,"chg5":25.79,"chg20":20.99,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/11)","value":44400.0,"gap":-6.62},"secondary":{"label":"20일선","value":42362.5,"gap":-10.91},"score":5.84,"reasons":["① 등락률 +9.94% — 과열 제외 구간(2~15%) 안 · 상승률 순위 56위(코스닥)","② 거래대금 351억 — 300억 기준 통과","③ 20일선(42,362)·120일선(41,186) 위 지지 — 수렴 폭은 5.7%","④ 거래량 스팟 11/11 평균 대비 3.31배 — 스팟 봉이 지지선"],"flags":["5일 누적 +25.8% — 눌림 없는 수직, 추격 금지","전고점까지 -61.7% — 위쪽 매물대 통과 전"],"spark15":[["20261026",47600.0,917624.0],["20261027",48700.0,387202.0],["20261028",49400.0,612999.0],["20261029",44950.0,333685.0],["20261030",40750.0,222527.0],["20261102",42500.0,190546.0],["20261103",39200.0,154922.0],["20261104",39800.0,191831.0],["20261105",37450.0,132223.0],["20261106",37800.0,208697.0],["20261109",34350.0,214526.0],["20261110",35400.0,277856.0],["20261111",43550.0,1271101.0],["20261112",43350.0,641422.0],["20261113",47550.0,751030.0]]},{"code":"079650","name":"서산","market":"코스닥","sector":"건설·플랜트","rank":32,"close":7190.0,"pct":13.23,"valueEok":632.7,"date":"20261113","o":6630.0,"h":7880.0,"l":6600.0,"v":8502490.0,"m5":6418.0,"m10":6536.0,"m20":6994.0,"m120":5076.5,"spread":8.97,"above20":true,"above120":true,"conv":false,"spotDate":"20261113","spotRatio":2.85,"spotHigh":7880.0,"spotLow":6600.0,"hi250":10300.0,"hi250Date":"20260625","dist250":43.25,"chg5":22.49,"chg20":-10.46,"primary":{"role":"돌파 트리거","label":"거래량 스팟 상단(11/13)","value":7880.0,"gap":9.6},"secondary":{"label":"20일선","value":6994.0,"gap":-2.73},"score":4.87,"reasons":["① 등락률 +13.23% — 과열 제외 구간(2~15%) 안 · 상승률 순위 32위(코스닥)","② 거래대금 633억 — 300억 기준 통과","③ 20일선(6,994)·120일선(5,076) 위 지지 — 수렴 폭은 9.0%","④ 거래량 스팟 11/13 평균 대비 2.85배 — 스팟 봉이 지지선"],"flags":["전고점까지 -43.2% — 위쪽 매물대 통과 전"],"spark15":[["20261026",6920.0,639301.0],["20261027",7530.0,987046.0],["20261028",7510.0,2091134.0],["20261029",7980.0,13845932.0],["20261030",7150.0,2673378.0],["20261102",7440.0,2948429.0],["20261103",7080.0,825488.0],["20261104",6840.0,1036195.0],["20261105",6040.0,1263105.0],["20261106",5870.0,1164998.0],["20261109",5650.0,978956.0],["20261110",6230.0,4511518.0],["20261111",6600.0,1814177.0],["20261112",6420.0,2151818.0],["20261113",7190.0,8502490.0]]},{"code":"028050","name":"삼성E&A","market":"코스피","sector":"건설·플랜트","rank":51,"close":69400.0,"pct":5.15,"valueEok":2202.6,"date":"20261113","o":66200.0,"h":69700.0,"l":66100.0,"v":3211555.0,"m5":65220.0,"m10":64500.0,"m20":60295.0,"m120":49592.1,"spread":8.17,"above20":true,"above120":true,"conv":false,"spotDate":null,"spotRatio":null,"spotHigh":null,"spotLow":null,"hi250":69700.0,"hi250Date":"20261113","dist250":0.43,"chg5":13.21,"chg20":59.17,"primary":{"role":"돌파 트리거","label":"250일 전고점(11/13)","value":69700.0,"gap":0.43},"secondary":{"label":"20일선","value":60295.0,"gap":-13.12},"score":4.8,"reasons":["① 등락률 +5.15% — 과열 제외 구간(2~15%) 안 · 상승률 순위 51위(코스피)","② 거래대금 2,203억 — 300억 기준 통과","③ 20일선(60,295)·120일선(49,592) 위 지지 — 수렴 폭은 8.2%","④ 250일 전고점 0.4% 아래 — 돌파 직전 자리"],"flags":["20일 누적 +59.2% — 이미 달린 자리, 비중·손절 짧게"],"spark15":[["20261026",60100.0,5666914.0],["20261027",62800.0,4853393.0],["20261028",63400.0,4237254.0],["20261029",62600.0,3393336.0],["20261030",60600.0,2293307.0],["20261102",63400.0,1850653.0],["20261103",62500.0,1913027.0],["20261104",66900.0,4173981.0],["20261105",64800.0,3054309.0],["20261106",61300.0,3247311.0],["20261109",60500.0,1872631.0],["20261110",63900.0,2065957.0],["20261111",66600.0,3029007.0],["20261112",65700.0,1962749.0],["20261113",69400.0,3211555.0]]},{"code":"263860","name":"지니언스","market":"코스닥","sector":"정보보안","rank":70,"close":34150.0,"pct":8.93,"valueEok":2303.7,"date":"20261113","o":32700.0,"h":36450.0,"l":31500.0,"v":6686465.0,"m5":28590.0,"m10":27170.0,"m20":24743.5,"m120":16947.4,"spread":15.55,"above20":true,"above120":true,"conv":false,"spotDate":"20261112","spotRatio":5.1,"spotHigh":33650.0,"spotLow":27400.0,"hi250":36450.0,"hi250Date":"20261113","dist250":6.73,"chg5":45.94,"chg20":55.94,"primary":{"role":"돌파 트리거","label":"250일 전고점(11/13)","value":36450.0,"gap":6.73},"secondary":{"label":"거래량 스팟 상단(11/12)","value":33650.0,"gap":-1.46},"score":4.8,"reasons":["① 등락률 +8.93% — 과열 제외 구간(2~15%) 안 · 상승률 순위 70위(코스닥)","② 거래대금 2,304억 — 300억 기준 통과","③ 20일선(24,744)·120일선(16,947) 위 지지 — 수렴 폭은 15.6%","④ 거래량 스팟 11/12 평균 대비 5.10배 — 스팟 봉이 지지선"],"flags":["20일 누적 +55.9% — 이미 달린 자리, 비중·손절 짧게","5일 누적 +45.9% — 눌림 없는 수직, 추격 금지"],"spark15":[["20261026",19390.0,329196.0],["20261027",21300.0,366642.0],["20261028",27300.0,1461285.0],["20261029",25050.0,1097147.0],["20261030",26650.0,3966902.0],["20261102",27350.0,1455956.0],["20261103",29200.0,4347847.0],["20261104",25550.0,1073337.0],["20261105",23250.0,955934.0],["20261106",23400.0,695853.0],["20261109",23900.0,1209326.0],["20261110",25800.0,1269490.0],["20261111",25800.0,4318550.0],["20261112",33300.0,8271013.0],["20261113",34150.0,6686465.0]]},{"code":"018260","name":"삼성에스디에스","market":"코스피","sector":"IT서비스","rank":260,"close":235500.0,"pct":2.17,"valueEok":652.2,"date":"20261113","o":228000.0,"h":240000.0,"l":223500.0,"v":276615.0,"m5":229000.0,"m10":218300.0,"m20":213105.0,"m120":218434.2,"spread":7.46,"above20":true,"above120":true,"conv":false,"spotDate":"20261106","spotRatio":2.03,"spotHigh":224500.0,"spotLow":190500.0,"hi250":388500.0,"hi250Date":"20260601","dist250":64.97,"chg5":9.53,"chg20":18.52,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/06)","value":224500.0,"gap":-4.67},"secondary":{"label":"120일선","value":218434.2,"gap":-7.25},"score":4.68,"reasons":["① 등락률 +2.17% — 과열 제외 구간(2~15%) 안 · 상승률 순위 260위(코스피)","② 거래대금 652억 — 300억 기준 통과","③ 20일선(213,105)·120일선(218,434) 위 지지 — 수렴 폭은 7.5%","④ 거래량 스팟 11/06 평균 대비 2.03배 — 스팟 봉이 지지선"],"flags":["전고점까지 -65.0% — 위쪽 매물대 통과 전"],"spark15":[["20261026",215000.0,428651.0],["20261027",215500.0,190941.0],["20261028",223500.0,185473.0],["20261029",204500.0,350198.0],["20261030",200000.0,147244.0],["20261102",208500.0,133066.0],["20261103",203500.0,83657.0],["20261104",206000.0,115382.0],["20261105",205000.0,136964.0],["20261106",215000.0,477122.0],["20261109",218000.0,343350.0],["20261110",231500.0,380572.0],["20261111",232000.0,246441.0],["20261112",228000.0,268982.0],["20261113",235500.0,276615.0]]},{"code":"036540","name":"SFA반도체","market":"코스닥","sector":"반도체 후공정","rank":154,"close":9220.0,"pct":5.37,"valueEok":711.6,"date":"20261113","o":9160.0,"h":9900.0,"l":8890.0,"v":7555194.0,"m5":8194.0,"m10":7740.0,"m20":8250.5,"m120":7252.6,"spread":6.6,"above20":true,"above120":true,"conv":false,"spotDate":"20261112","spotRatio":2.11,"spotHigh":8900.0,"spotLow":8230.0,"hi250":12370.0,"hi250Date":"20261006","dist250":34.16,"chg5":48.95,"chg20":-1.07,"primary":{"role":"지지(이 위에서 놀면 정상)","label":"거래량 스팟 상단(11/12)","value":8900.0,"gap":-3.47},"secondary":{"label":"20일선","value":8250.5,"gap":-10.52},"score":4.36,"reasons":["① 등락률 +5.37% — 과열 제외 구간(2~15%) 안 · 상승률 순위 154위(코스닥)","② 거래대금 712억 — 300억 기준 통과","③ 20일선(8,250)·120일선(7,253) 위 지지 — 수렴 폭은 6.6%","④ 거래량 스팟 11/12 평균 대비 2.11배 — 스팟 봉이 지지선"],"flags":["5일 누적 +49.0% — 눌림 없는 수직, 추격 금지","전고점까지 -34.2% — 위쪽 매물대 통과 전"],"spark15":[["20261026",8080.0,2389167.0],["20261027",8850.0,2715574.0],["20261028",9140.0,4519026.0],["20261029",8740.0,2995477.0],["20261030",7970.0,2016824.0],["20261102",8080.0,1531129.0],["20261103",7520.0,1721343.0],["20261104",7970.0,2931933.0],["20261105",6670.0,2853040.0],["20261106",6190.0,2457687.0],["20261109",6800.0,6277504.0],["20261110",7700.0,7812513.0],["20261111",8690.0,5647576.0],["20261112",8560.0,7927164.0],["20261113",9220.0,7555194.0]]}]};
+const DATA = {"basisDate":"2026-11-13","basisLabel":"2026-11-13(금) 정규장 종가","universe":1519,"stage12":47,"stage3":27,"stage34":1,"passedCount":1,"generatedAt":"2026-11-15 14:10:54","stocks":[{"code":"068270","name":"셀트리온","market":"코스피","sector":"제약·바이오(바이오시밀러)","rank":307,"close":213500.0,"pct":1.91,"valueEok":931.2,"date":"20261113","o":208500.0,"h":215000.0,"l":207000.0,"v":436767.0,"m5":209200.0,"m10":205490.0,"m20":198960.0,"m120":184153.8,"spread":5.15,"above20":true,"above120":true,"conv":false,"spotDate":"20261105","spotRatio":2.89,"spotHigh":216000.0,"spotLow":206000.0,"hi250":239244.0,"hi250Date":"20260224","dist250":12.06,"hi120":216000.0,"dist120":1.17,"chg5":2.4,"chg20":10.11,"primary":{"role":"돌파 트리거","label":"120일 고점","value":216000.0,"gap":1.17},"secondary":{"label":"5일선","value":209200.0,"gap":-2.01},"score":9.7,"reasons":["① 등락률 +1.91% — 1.5~15% 구간 안 · 상승률 순위 307위(코스피)","② 거래대금 931억 — 300억 기준 통과","③ 5일 누적 +2.4% · 20일 누적 +10.1% — 과열선(5일 20%·20일 35%) 아래","④ 120일 고점(11/05) 216,000원 대비 -1.2% — 위쪽 매물대 바로 아래","⑤ 20일선(198,960)·120일선(184,154) 위 지지 + 11/05 거래량 스팟 2.89배"],"flags":["250일 전고점(02/24)은 -12.1% — 120일 고점 기준으로 통과, 250일 매물대는 남아 있음","5·10·20 수렴 폭 5.2% — 수렴은 아직(거래량 스팟으로 통과)"],"spark15":[["20261026",190000.0,431926.0],["20261027",188900.0,433983.0],["20261028",189900.0,418176.0],["20261029",190600.0,372797.0],["20261030",190200.0,522562.0],["20261102",192900.0,331145.0],["20261103",190500.0,310531.0],["20261104",202000.0,1091653.0],["20261105",215000.0,1999977.0],["20261106",208500.0,1036846.0],["20261109",211000.0,626672.0],["20261110",204500.0,869506.0],["20261111",206500.0,745716.0],["20261112",210500.0,569041.0],["20261113",213500.0,436767.0]]}],"reject":{"s3":20,"s4":26,"s5":0,"total":47,"rows":[{"name":"우리금융지주","code":"316140","what":"④ 전고점 12% 이내","val":"120일 고점 -14.3% · 250일 -28.1%","pct":2.69,"valueEok":434.9},{"name":"원익홀딩스","code":"030530","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +11.5% · 20일 +39.3%","pct":5.59,"valueEok":1610.6},{"name":"GS건설","code":"006360","what":"④ 전고점 12% 이내","val":"120일 고점 -24.3% · 250일 -41.7%","pct":4.8,"valueEok":372.5},{"name":"엑시콘","code":"092870","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +40.1% · 20일 +15.5%","pct":7.57,"valueEok":728.1},{"name":"지니언스","code":"263860","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +45.9% · 20일 +55.9%","pct":8.93,"valueEok":2303.7},{"name":"삼성에스디에스","code":"018260","what":"④ 전고점 12% 이내","val":"120일 고점 -65.0% · 250일 -65.0%","pct":2.17,"valueEok":652.2}]}};
 
 const $ = function (id) { return document.getElementById(id); };
 const nf = function (n, d) {
@@ -762,8 +773,8 @@ function renderCards() {
   if ($('fcSpot')) $('fcSpot').textContent = cSpot;
 
   if (!list.length) {
-    grid.innerHTML = '<div class="empty-note">이 조건에 맞는 후보가 없습니다. 조건을 바꾸거나 [전체]로 돌아가세요.<br>' +
-      '※ 표시 여부는 위 4대 필터 통과 결과를 다시 좁히는 것이며, 없는 종목을 만들어 넣지 않습니다.</div>';
+    grid.innerHTML = '<div class="empty-note">5단계 기준을 전부 통과한 종목이 없습니다.<br>' +
+      '※ 이번 기준일에는 정예 0종목입니다. 없는 종목을 만들어 넣지 않습니다.</div>';
     window.__LEENO.cards = 0;
     window.__LEENO.filter = cardFilter;
     return;
@@ -775,7 +786,7 @@ function renderCards() {
     return '<button class="stock-card" type="button" onclick="openChart(\'' + s.code + '\')" aria-label="' + s.name + ' 120일 차트 열기">' +
       '<div class="sc-top">' +
         '<div class="sc-name"><span class="nm">' + s.name + '</span><span class="sc-market">' + s.market + '</span></div>' +
-        '<div class="sc-score">적합 ' + s.score.toFixed(1) + '</div>' +
+        '<div class="sc-score">정예 ✓ 5/5</div>' +
       '</div>' +
       '<div class="sc-sector">' + s.sector + ' · 11/13 종가 실측</div>' +
       '<div class="sc-price-row">' +
@@ -811,15 +822,62 @@ function renderCards() {
 /* ===== 상단 수치 ===== */
 function fillHeaderStats() {
   $('pipeUniverse').textContent = nf(DATA.universe);
-  $('pipe1').textContent = DATA.candidateCount;
-  $('pipe2').textContent = DATA.passedCount;
-  $('pipe3').textContent = DATA.stocks.length;
+  $('pipe1').textContent = DATA.stage12;
+  $('pipe2').textContent = DATA.stage3;
+  $('pipe3').textContent = DATA.stage34;
+  $('pipe4').textContent = DATA.stocks.length;
   $('subPickCount').textContent = DATA.stocks.length;
-  $('f1count').textContent = '①② 동시 통과 ' + DATA.candidateCount + '종목';
-  $('f2count').textContent = '①② 동시 통과 ' + DATA.candidateCount + '종목';
-  $('f3count').textContent = '③④ 통과 ' + DATA.passedCount + '종목';
-  $('f4count').textContent = '③④ 통과 ' + DATA.passedCount + '종목';
+  if ($('eliteCount')) $('eliteCount').textContent = DATA.stocks.length;
+  if ($('f1count')) $('f1count').textContent = '①② 동시 통과 ' + DATA.stage12 + '종목';
+  if ($('f2count')) $('f2count').textContent = '①② 동시 통과 ' + DATA.stage12 + '종목';
+  if ($('f3count')) $('f3count').textContent = '③ 통과 ' + DATA.stage3 + '종목';
+  if ($('f4count')) $('f4count').textContent = '④ 통과 ' + DATA.stage34 + '종목';
+  if ($('f5count')) $('f5count').textContent = '⑤ 통과 ' + DATA.stocks.length + '종목';
   $('filterSub').textContent = '기준: ' + DATA.basisLabel + ' · 네이버 fchart 260일봉 · 상승 종목 유니버스 ' + nf(DATA.universe) + '개(코스피·코스닥 상승랭킹 전수)';
+  renderStamps();
+  renderReject();
+}
+
+/* ===== 통과 스탬프 (정예 종목이 실제로 넘은 값) ===== */
+function renderStamps() {
+  const bar = $('stampBar');
+  if (!bar) return;
+  const s = DATA.stocks[0];
+  if (!s) { bar.innerHTML = ''; return; }
+  const X = '<i style="color:#22c55e;font-style:normal;font-weight:900;margin-right:3px">✓</i>';
+  const items = [
+    X + '등락률 ' + sign(s.pct.toFixed(2)) + '%',
+    X + '대금 ' + fmtEok(s.valueEok),
+    X + '5일 ' + sign(s.chg5.toFixed(1)) + '% · 20일 ' + sign(s.chg20.toFixed(1)) + '%',
+    X + '120일 고점 -' + s.dist120.toFixed(1) + '%',
+    X + '스팟 ' + (s.spotRatio || 0).toFixed(2) + '배',
+    X + '20·120선 위'
+  ];
+  bar.innerHTML = items.map(function (t) {
+    return '<span class="filter-chip on" style="cursor:default;pointer-events:none">' + t + '</span>';
+  }).join('') + '<span style="font-size:9.5px;color:#475569;font-weight:800;align-self:center">적합 ' + s.score.toFixed(1) + '</span>';
+}
+
+/* ===== 탈락 사유 표 (실측 수치만) ===== */
+function renderReject() {
+  const R = DATA.reject;
+  if (!R) return;
+  if ($('rejSub')) {
+    $('rejSub').textContent = '①② 통과 ' + DATA.stage12 + '종목 중 — ③ 과열 ' + R.s3 + '건 · ④ 전고점 원거리 ' + R.s4 + '건 · ⑤ 추세 ' + R.s5 + '건 탈락 → 정예 ' + DATA.stocks.length + '종목';
+  }
+  const box = $('rejTable');
+  if (!box) return;
+  if (!R.rows || !R.rows.length) { box.innerHTML = ''; return; }
+  const cols = 'display:grid;grid-template-columns:1.05fr 1.45fr 1.5fr;gap:6px;';
+  const head = '<div style="' + cols + 'font-size:9px;color:#64748b;font-weight:900;padding:0 2px 4px">' +
+    '<span>종목</span><span>탈락 기준</span><span>실측값</span></div>';
+  box.innerHTML = head + R.rows.map(function (r) {
+    return '<div style="' + cols + 'align-items:center;padding:5px 2px;border-top:1px solid rgba(255,255,255,0.06);font-size:10.5px">' +
+      '<span style="font-weight:900;color:#cbd5e1">' + r.name + '<span style="color:#475569;font-weight:700"> ' + sign(r.pct.toFixed(2)) + '%</span></span>' +
+      '<span style="color:#94a3b8">' + r.what + '</span>' +
+      '<span style="color:#fca5a5;font-weight:800">' + r.val + '</span>' +
+    '</div>';
+  }).join('');
 }
 
 /* ===== KST 시간 ===== */
@@ -1257,13 +1315,13 @@ function toggleZoom() {
 /* ===== 실시간 확인 (선별 기준은 11/13 종가 고정) ===== */
 function refreshLive(manual) {
   const codes = DATA.stocks.map(function (s) { return s.code; }).join(',');
-  $('sessionCountdownTxt').textContent = manual ? '(실시간 시세 확인 중…)' : '(네이버 fchart 260일봉 × 4대 필터)';
+  $('sessionCountdownTxt').textContent = manual ? '(실시간 시세 확인 중…)' : '(네이버 fchart 260일봉 × 정예 5단계)';
   fetch('/api/stock-live?codes=' + codes)
     .then(function (r) { return r.json(); })
     .then(function (d) {
       const k = kstParts();
       $('lastSyncTxt').textContent = '최근 확인: ' + k.label + ' KST' + (d && d.marketStatus ? ' · 장상태 ' + d.marketStatus : '');
-      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 4대 필터 · 선별 기준 11/13 종가 고정)';
+      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 정예 5단계 · 선별 기준 11/13 종가 고정)';
       const stocks = (d && d.stocks) || [];
       if (stocks.length) {
         // 선별 기준(11/13 종가)은 유지하고, 현재가가 다르면 카드에 표시만 한다
@@ -1282,7 +1340,7 @@ function refreshLive(manual) {
     })
     .catch(function (e) {
       $('lastSyncTxt').textContent = '실시간 확인 실패 — 선별 기준(11/13 종가)은 그대로 유효';
-      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 4대 필터)';
+      $('sessionCountdownTxt').textContent = '(네이버 fchart 260일봉 × 정예 5단계)';
       window.__LEENO.liveOk = false;
     });
 }
