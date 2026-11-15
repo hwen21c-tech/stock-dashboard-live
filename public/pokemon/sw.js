@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v4';   /* 2026-11-15 v4: 실음원 배틀 BGM·속성 환경음(/audio/*.mp3) 반영분 재캐시 */
+const VERSION = PREFIX + 'v5';   /* 2026-11-15 v5: 마을 BGM(music_village) + 오디오 10개 선설치 · versus/village BGM 연동 반영 */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -34,7 +34,18 @@ const SHELL = [
   '/art/battle-sky.webp',
   '/art/village-day.webp',
   '/art/village-sunset.webp',
-  '/art/village-night.webp'
+  '/art/village-night.webp',
+  /* 실음원 BGM·환경음 — 첫 설치 때 받아 두어 오프라인·비행기모드에서도 소리가 난다 */
+  '/audio/music_battle.mp3',
+  '/audio/music_boss.mp3',
+  '/audio/music_village.mp3',
+  '/audio/amb_water.mp3',
+  '/audio/amb_fire.mp3',
+  '/audio/amb_forest.mp3',
+  '/audio/amb_thunder.mp3',
+  '/audio/amb_ghost.mp3',
+  '/audio/amb_cave.mp3',
+  '/audio/amb_wind.mp3'
 ];
 
 self.addEventListener('install', (event) => {

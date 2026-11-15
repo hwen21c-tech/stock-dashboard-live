@@ -552,6 +552,237 @@
     },
   };
 
+  /* ============================================================
+     배경음악 — public/audio/*.mp3 (전곡 CC0, 출처는 public/audio/CREDITS.md)
+     · AudioBuffer 루프로 재생해 파일 끝에서 끊기지 않고 이어진다.
+     · 소리는 모두 master gain 을 지나므로 🔊/🔇 하나로 효과음과 함께 꺼진다.
+     · 자동재생 정책 때문에 첫 터치 전에는 조용히 대기하고, 터치 순간 시작한다.
+     · 파일을 못 받아도 게임은 그대로 진행된다(조용해질 뿐).
+     ============================================================ */
+  const BGM = {
+    ctx: null, master: null, analyser: null, meterBuf: null,
+    files: {}, loading: {}, src: null, ambSrc: null,
+    musicName: '', ambName: '', wantMusic: '', wantAmb: '',
+    level: 0, meterT: 0, unlocked: false,
+    MUSIC_VOL: 0.62, AMB_VOL: 0.3,
+    AMB_GAIN: { amb_forest: 1.25, amb_wind: 0.9 },
+    url(name) { return '/audio/' + name + '.mp3'; },
+    ensure() {
+      try {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          this.ctx = new AC();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = Sfx.muted ? 0 : 1;
+          this.analyser = this.ctx.createAnalyser();
+          this.analyser.fftSize = 1024;
+          this.master.connect(this.analyser);
+          this.analyser.connect(this.ctx.destination);
+          this.meterBuf = new Uint8Array(this.analyser.fftSize);
+        }
+        if (this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) { /* */ } }
+        return this.ctx;
+      } catch (e) { return null; }
+    },
+    /* 첫 터치 — 음소거 상태면 컨텍스트를 만들지 않고, 해제되면 그때 깨운다 */
+    unlock() {
+      if (Sfx.muted) return;
+      const ctx = this.ensure();
+      if (!ctx) return;
+      this.unlocked = true;
+      if (this.wantMusic && !this.src) this.startMusic(this.wantMusic);
+      if (this.wantAmb && !this.ambSrc) this.startAmb(this.wantAmb);
+    },
+    load(name) {
+      const ctx = this.ensure();
+      if (!ctx) return Promise.resolve(null);
+      if (this.files[name]) return Promise.resolve(this.files[name]);
+      if (this.loading[name]) return this.loading[name];
+      const url = this.url(name);
+      this.loading[name] = fetch(url, { cache: 'force-cache' })
+        .then((r) => { if (!r.ok) throw new Error(r.status + ' ' + url); return r.arrayBuffer(); })
+        .then((buf) => new Promise((res, rej) => {
+          const p = ctx.decodeAudioData(buf, res, rej);
+          if (p && typeof p.then === 'function') p.then(res, rej);
+        }))
+        .then((b) => {
+          const t = this.trimBuffer(b);
+          this.files[name] = t;
+          delete this.loading[name];
+          /* 받자마자, 기다리던 곡이면 바로 건다(이미 다른 곡이 흐르고 있어도 갈아 끼운다) */
+          if (name === this.wantMusic && this.unlocked && !Sfx.muted) this.startMusic(name);
+          if (name === this.wantAmb && this.unlocked && !Sfx.muted) this.startAmb(name);
+          return t;
+        })
+        .catch((e) => {
+          delete this.loading[name];
+          console.warn('[BGM] 음원 로드 실패:', url, e && e.message);
+          return null;
+        });
+      return this.loading[name];
+    },
+    /* MP3 인코더가 붙인 수십 샘플 패딩만 잘라 내고, 실제 무음 구간은 건드리지 않는다 */
+    trimBuffer(buf) {
+      try {
+        const ctx = this.ctx;
+        if (!ctx || !buf) return buf;
+        const ch0 = buf.getChannelData(0);
+        const n = buf.length;
+        let s = 0; let e = n - 1;
+        const TH = 0.0008;
+        while (s < n && Math.abs(ch0[s]) < TH) s += 1;
+        while (e > 0 && Math.abs(ch0[e]) < TH) e -= 1;
+        if (s > 256 || (n - 1 - e) > 256) return buf;   /* 진짜 무음이면 그대로 둔다 */
+        if (s === 0 && e === n - 1) return buf;
+        const len = e - s + 1;
+        const out = ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate);
+        for (let c = 0; c < buf.numberOfChannels; c += 1) {
+          out.getChannelData(c).set(buf.getChannelData(c).subarray(s, e + 1));
+        }
+        return out;
+      } catch (err) { return buf; }
+    },
+    music(name) {
+      if (!name) return;
+      this.wantMusic = name;
+      if (!this.unlocked || Sfx.muted) return;   /* 첫 터치 전에는 대기 */
+      this.startMusic(name);
+    },
+    startMusic(name) {
+      const ctx = this.ensure();
+      if (!ctx) return false;
+      const buf = this.files[name];
+      if (!buf) { this.load(name); return false; }
+      if (this.src && this.musicName === name) return true;
+      if (this.src) { const old = this.src; this.src = null; this.fadeSrc(old, 0.9); }
+      const now = ctx.currentTime;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(this.MUSIC_VOL, now + 1.2);
+      g.connect(this.master);
+      const s = ctx.createBufferSource();
+      s.buffer = buf;
+      s.loop = true;
+      s.connect(g);
+      s.start(now);
+      this.src = { node: s, gain: g, name };
+      this.musicName = name;
+      if (!this.meterT) this.meterT = setInterval(() => this.meter(), 200);
+      return true;
+    },
+    stopMusic(fade) {
+      const rec = this.src;
+      this.src = null;
+      this.musicName = '';
+      this.wantMusic = '';
+      if (rec) this.fadeSrc(rec, fade == null ? 0.8 : fade);
+    },
+    amb(name) {
+      this.wantAmb = name || '';
+      if (!name) { this.stopAmb(1.2); return; }
+      if (!this.unlocked || Sfx.muted) return;
+      this.startAmb(name);
+    },
+    startAmb(name) {
+      const ctx = this.ensure();
+      if (!ctx) return false;
+      const buf = this.files[name];
+      if (!buf) { this.load(name); return false; }
+      if (this.ambSrc && this.ambName === name) return true;
+      if (this.ambSrc) { const old = this.ambSrc; this.ambSrc = null; this.fadeSrc(old, 1.6); }
+      const now = ctx.currentTime;
+      const g = ctx.createGain();
+      const peak = this.AMB_VOL * (this.AMB_GAIN[name] || 1);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(peak, now + 2.2);
+      g.connect(this.master);
+      const s = ctx.createBufferSource();
+      s.buffer = buf;
+      s.loop = true;
+      s.connect(g);
+      s.start(now);
+      this.ambSrc = { node: s, gain: g, name };
+      this.ambName = name;
+      return true;
+    },
+    stopAmb(fade) {
+      const rec = this.ambSrc;
+      this.ambSrc = null;
+      this.ambName = '';
+      if (rec) this.fadeSrc(rec, fade == null ? 1.2 : fade);
+    },
+    fadeSrc(rec, fade) {
+      const ctx = this.ctx;
+      if (!ctx || !rec) return;
+      const t = ctx.currentTime;
+      try {
+        if (fade > 0) {
+          const g = rec.gain.gain;
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(g.value, t);
+          g.linearRampToValueAtTime(0.0001, t + fade);
+          rec.node.stop(t + fade + 0.05);
+        } else {
+          rec.node.stop(t + 0.01);
+        }
+      } catch (e) { /* */ }
+    },
+    /* 🔊/🔇 — 효과음(Sfx)과 같은 스위치를 따른다 */
+    setMuted(m) {
+      if (!this.master) {
+        if (!m) this.unlock();
+        return;
+      }
+      const ctx = this.ctx;
+      const t = ctx.currentTime;
+      const g = this.master.gain;
+      try {
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(m ? 0.0001 : 1, t + 0.25);
+      } catch (e) { /* */ }
+      if (!m) this.unlock();
+    },
+    meter() {
+      if (!this.analyser || !this.ctx) { this.level = 0; return; }
+      const b = this.meterBuf;
+      this.analyser.getByteTimeDomainData(b);
+      let s = 0;
+      for (let i = 0; i < b.length; i += 1) { const v = (b[i] - 128) / 128; s += v * v; }
+      this.level = Math.sqrt(s / b.length);
+    },
+    state() {
+      return {
+        unlocked: this.unlocked,
+        muted: !!Sfx.muted,
+        ctx: this.ctx ? this.ctx.state : 'none',
+        music: this.musicName,
+        amb: this.ambName,
+        wantMusic: this.wantMusic,
+        wantAmb: this.wantAmb,
+        loaded: Object.keys(this.files),
+        level: Math.round((this.level || 0) * 1000) / 1000,
+        musicGain: this.src ? Math.round(this.src.gain.gain.value * 100) / 100 : null,
+        ambGain: this.ambSrc ? Math.round(this.ambSrc.gain.gain.value * 100) / 100 : null,
+        masterGain: this.master ? Math.round(this.master.gain.value * 1000) / 1000 : null,
+      };
+    },
+  };
+
+  /* 자동재생 정책 — 터치가 올 때마다 깨워 본다(한 번에 안 되면 다음 터치에) */
+  ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+    try { window.addEventListener(ev, () => BGM.unlock(), { passive: true }); } catch (e) { /* */ }
+  });
+
+  /* 라운드별 배경음악 — 마지막 5라운드이거나 한 대만 더 맞으면 끝나는 매치포인트에서 보스 곡 */
+  function musicForRound() {
+    const a = D.s.p1;
+    const b = D.s.p2;
+    const matchPoint = D.round >= MAXROUND || (!!a && !!b && Math.min(a.hp, b.hp) <= 1);
+    return matchPoint ? 'music_boss' : 'music_battle';
+  }
+
   /* ---------- 데이터 ---------- */
   const DB = { list: [], byId: {} };
   const BANK = { hangul: [], english: [], sentences: [] };
@@ -958,6 +1189,7 @@
 
   function beginRound() {
     if (!D.on || D.over) return;
+    BGM.music(musicForRound());      /* 일반 라운드는 battle, 마지막·매치포인트는 boss */
     hideReveal();
     D.pick = { p1: 0, p2: 0 };
     D.lock = { p1: false, p2: false };
@@ -1485,6 +1717,7 @@
   function finish(forced) {
     if (D.over) return;
     D.over = true;
+    BGM.stopMusic(1.6);              /* 승부가 나면 음악을 걷고 승리 팡파르만 남긴다 */
     clearInterval(D.s.p1.timer);
     clearInterval(D.s.p2.timer);
     const a = D.s.p1;
@@ -1709,7 +1942,9 @@
       Sfx.muted = !Sfx.muted;
       lsSet('pkm.mute.v1', Sfx.muted);
       $('#muteBtn').textContent = Sfx.muted ? '🔇' : '🔊';
+      BGM.setMuted(Sfx.muted);   /* 배경음악도 같은 버튼으로 함께 꺼진다 */
     });
+    if (Sfx.muted) BGM.setMuted(true);   /* 저장된 음소거 상태로 시작 */
     $('#startBtn').addEventListener('click', startDuel);
     $$('#modeBar button').forEach((b) => {
       b.addEventListener('click', () => { setMode(b.dataset.mode); Sfx.click(); });
@@ -1778,6 +2013,9 @@
 
   /* 검증용 최소 API */
   window.VS = {
+    audio: () => BGM.state(),
+    musicFor: () => musicForRound(),
+    roundTo(n) { D.round = Number(n) || 1; beginRound(); return D.round; },
     state: D,
     start: startDuel,
     setSlot(side, slot) { D.chosen[side] = slot; paintCardsOnly(); validate(); },
