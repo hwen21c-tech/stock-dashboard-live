@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """★ 관심종목 장중 타점 알리미 — 판정 엔진
 
-  python3 scripts/check_watchlist_alerts.py              # 실서버 판정(장중에만 의미 있음)
+  python3 scripts/check_watchlist_alerts.py              # 실서버 판정(평일 09:00~15:30 장중에만 판정)
   python3 scripts/check_watchlist_alerts.py --selftest   # 네트워크 없이 터치 판정 시뮬레이션(회귀 검사)
   python3 scripts/check_watchlist_alerts.py --json       # JSON 만 출력
   python3 scripts/check_watchlist_alerts.py --no-window  # 장 시간 판정 무시(검사·수동 실행용)
@@ -345,13 +345,14 @@ def alert_key(hit, today):
 
 # ─────────────────────────── 6) 실행 ───────────────────────────
 def in_market_window(now: dt.datetime):
+    """평일 09:00~15:30 정규장만 타점 판정 대상(그 밖은 시세가 얇아 오탐이 난다)."""
     if now.weekday() >= 5:
         return False, "주말 휴장"
     hm = now.strftime("%H:%M")
-    if hm < "08:00":
-        return False, "장 시작 전(08:00 이전)"
-    if hm > "20:05":
-        return False, "장 종료(20:05 이후)"
+    if hm < "09:00":
+        return False, "장 시작 전(09:00 이전)"
+    if hm > "15:30":
+        return False, "정규장 종료(15:30 이후)"
     return True, "장중"
 
 
