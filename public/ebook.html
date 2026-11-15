@@ -2238,11 +2238,12 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       this.bookId = (book && book.id) || '';
       this.pages = (book && book.pdfPages) || 0;
       var hasPdf = !!(book && book.pdfBlob);
-      document.body.classList.toggle('has-pdf', hasPdf);
+      var noText = !book || !book.text || !String(book.text).replace(/\s/g, '');
+      /* 글자가 아예 없는 스캔본은 '텍스트로 보기'가 의미 없으니 전환 버튼을 감춘다 */
+      document.body.classList.toggle('has-pdf', hasPdf && !noText);
       var chip = $('btnPdfMode');
       if (chip) chip.textContent = '📄 원본 PDF';
       if (!hasPdf) return;
-      var noText = !book.text || !String(book.text).replace(/\s/g, '');
       var scan = book.scan === true || noText;
       var saved = restore && (restore.pdfMode === 'pdf' || restore.pdfMode === 'text') ? restore.pdfMode : '';
       var want = saved || (scan ? 'pdf' : 'text');
