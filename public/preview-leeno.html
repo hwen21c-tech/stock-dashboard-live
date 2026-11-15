@@ -868,14 +868,13 @@ function renderReject() {
   const box = $('rejTable');
   if (!box) return;
   if (!R.rows || !R.rows.length) { box.innerHTML = ''; return; }
-  const cols = 'display:grid;grid-template-columns:1.05fr 1.45fr 1.5fr;gap:6px;';
-  const head = '<div style="' + cols + 'font-size:9px;color:#64748b;font-weight:900;padding:0 2px 4px">' +
-    '<span>종목</span><span>탈락 기준</span><span>실측값</span></div>';
-  box.innerHTML = head + R.rows.map(function (r) {
-    return '<div style="' + cols + 'align-items:center;padding:5px 2px;border-top:1px solid rgba(255,255,255,0.06);font-size:10.5px">' +
-      '<span style="font-weight:900;color:#cbd5e1">' + r.name + '<span style="color:#475569;font-weight:700"> ' + sign(r.pct.toFixed(2)) + '%</span></span>' +
-      '<span style="color:#94a3b8">' + r.what + '</span>' +
-      '<span style="color:#fca5a5;font-weight:800">' + r.val + '</span>' +
+  box.innerHTML = R.rows.map(function (r) {
+    return '<div style="padding:5px 2px;border-top:1px solid rgba(255,255,255,0.06)">' +
+      '<div style="font-size:11px;font-weight:900;color:#cbd5e1">' + r.name +
+        '<span style="color:#64748b;font-weight:800;margin-left:5px">' + sign(r.pct.toFixed(2)) + '%</span>' +
+        '<span style="color:#475569;font-weight:800;margin-left:5px">' + fmtEok(r.valueEok) + '</span></div>' +
+      '<div style="font-size:10px;color:#94a3b8;margin-top:2px">' + r.what +
+        ' <span style="color:#fca5a5;font-weight:800">→ ' + r.val + '</span></div>' +
     '</div>';
   }).join('');
 }
