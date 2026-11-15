@@ -556,6 +556,37 @@
     wrap.appendChild(note);
 
     host.parentNode.insertBefore(wrap, host);
+
+    // 기존 모달의 'KRX 시장경보 진단'은 일부 종목만 손으로 써 둔 문장이라,
+    // 공식 지정이 확인된 종목에서는 그 문장이 '안전 🟢'이라고 말해도 모순이 생긴다 → 공식 값으로 교체한다.
+    if (a) overrideRiskBox(a);
+  }
+
+  function overrideRiskBox(a) {
+    try {
+      var badge = document.getElementById('modalRiskBadge');
+      var krxTxt = document.getElementById('modalKrxTxt');
+      var riskBox = document.getElementById('modalRiskBox');
+      var st = a.alertLabel ? ALERT_STYLE[a.alertLabel] : null;
+      var label = a.tradeStop ? '거래정지' : (st ? st.short : a.alertLabel || '시장경보');
+      var ico = a.tradeStop ? '⛔' : (st ? st.ico : '⚠️');
+      if (riskBox) {
+        riskBox.style.display = 'block';
+        riskBox.style.background = 'rgba(245,158,11,0.10)';
+        riskBox.style.borderColor = 'rgba(245,158,11,0.4)';
+      }
+      if (badge) {
+        badge.className = 'krx-warn';
+        badge.innerHTML = ico + ' ' + label;
+      }
+      if (krxTxt) {
+        krxTxt.innerHTML =
+          '<span style="color:#fbbf24">네이버 금융 「관리·거래정지·경보」(KRX 지정 현황) 기준 <b>' + label +
+          '</b> 종목입니다.' +
+          (a.haltDate ? ' 정지일 ' + dateLabel(a.haltDate) + '.' : '') +
+          '</span> <span style="color:#94a3b8">— 추격 매수 주의. 판정 근거는 공식 목록이며, 이 화면의 일봉 계산 배지와는 별개입니다.</span>';
+      }
+    } catch (e) {}
   }
 
   function hookOpenDetail() {
