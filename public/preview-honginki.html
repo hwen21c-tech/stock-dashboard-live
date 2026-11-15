@@ -227,6 +227,17 @@
   .kp-gap { font-size: 10.5px; font-weight: 800; color: #94a3b8; }
   .kp-src { font-size: 9.5px; color: #64748b; font-weight: 700; }
 
+  /* ===== 카드 안 11/16 타점 설명 ===== */
+  .kp-tajeom {
+    margin-top: 5px; padding-top: 5px; border-top: 1px dashed #24354d;
+    font-size: 10px; font-weight: 700; color: #cbd5e1; line-height: 1.5;
+  }
+  .kp-tajeom .tj-k { color: #6ee7b7; font-weight: 900; margin-right: 3px; }
+  .kp-tajeom.g { color: #e2d3a8; }
+  .kp-tajeom.g .tj-k { color: #fca5a5; }
+  .kp-tajeom b { color: #fde68a; font-weight: 900; }
+  .kp-tajeom .tj-warn { display: block; margin-top: 3px; font-size: 9px; font-weight: 800; color: #fca5a5; }
+
   .sc-ma { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 7px; }
   .ma-cell { background: #0e1626; border: 1px solid #1d2941; border-radius: 5px; padding: 4px 5px; text-align: center; min-width: 0; }
   .ma-lbl { font-size: 8.5px; color: #64748b; font-weight: 800; display: block; }
@@ -634,6 +645,22 @@
   .tl3 .t3.d2 .t3-h { color: #d8b4fe; }
   .tl3 .t3-b { font-size: 9.5px; color: #94a3b8; line-height: 1.45; }
   .tl3 .t3-b b { color: #e2e8f0; }
+  .tl3 .t3-t {
+    margin-top: 4px; padding-top: 4px; border-top: 1px dashed #24354d;
+    font-size: 9.5px; color: #c3cfdd; line-height: 1.45;
+  }
+  .tl3 .t3-t .tj-k { font-weight: 900; color: #fcd34d; margin-right: 3px; }
+  .tl3 .t3-t b { color: #fde68a; }
+  .taj-h {
+    margin: 10px 0 5px; font-size: 11px; font-weight: 900; color: #fcd34d;
+    display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+  }
+  .taj-h span { font-size: 9.5px; font-weight: 700; color: #94a3b8; }
+  .taj-link {
+    margin-top: 6px; padding-left: 7px; border-left: 2px solid #38bdf8;
+    font-size: 10px; font-weight: 700; color: #b6c2d3; line-height: 1.5;
+  }
+  .taj-link b { color: #fcd34d; }
   @media (max-width: 430px) {
     .tl3 { grid-template-columns: 1fr; }
     .tl3 .t3 { border-top-width: 0; border-left: 3px solid #334155; }
@@ -735,22 +762,28 @@
   <!-- ===== ③ 3일 타임라인 ===== -->
   <section id="sec-tl">
     <div class="sec-head">
-      <div class="sec-title">📘 D+0 → D+1 → D+2 3일 타임라인</div>
-      <div class="sec-sub">PDF 1·4p + 카페 통계(56717·38802)</div>
+      <div class="sec-title">📘 D+0 → D+1 → D+2 3일 타임라인 · 타점 설명</div>
+      <div class="sec-sub">PDF 1·3·4p + 카페 통계(56717·38802)</div>
     </div>
     <div class="panel">
       <div class="tl3">
         <div class="t3 d0">
           <div class="t3-h">D+0 · 기준봉</div>
-          <div class="t3-b">120일 전고점을 돌파하는 <b>장대양봉(+10%↑)</b>. 이 날은 <b>기준봉이 생긴 날</b> — 기준선은 <b>그날 종가</b>.<br>진입은 09:30 이후 1분봉 눌림(시초가 → 전일 종가 → 지지선).</div>
+          <div class="t3-b">120일 전고점을 돌파하는 <b>장대양봉(+10%↑)</b> — <b>기준봉이 생긴 날</b>, 기준선은 <b>그날 종가</b>.</div>
+          <div class="t3-t"><span class="tj-k">📍 타점</span><b>09:30 이후 1분봉</b> — ① 시초가(끼 강=강·약=약) → ② <b>전일 종가 눌림</b> → ③ 종가 이하(강한 상방일 때만) → ④⑤ <b>지지선</b> 반복 · 항상 분할</div>
+          <div class="t3-t"><span class="tj-k">🎯 관리</span>당일 <b>5% · 10%</b> 분할 익절 + 잔량은 <b>D+1 갭</b> · 다음 날 수익 5~10% 익절, 갭하락 즉시 손절</div>
         </div>
         <div class="t3 d1">
           <div class="t3-h">D+1 · 눌림</div>
-          <div class="t3-b"><b>전일 종가가 기준선</b>. 갭하락 아니고 그 아래 눌림이면 분할 매수.<br>익절 <b>+5% / +10%</b>, 종가 <b>−3%</b>면 손절.</div>
+          <div class="t3-b"><b>전일 종가가 기준선</b> — 갭하락 아니고 그 아래 눌림이면 분할 매수.</div>
+          <div class="t3-t"><span class="tj-k">📍 타점</span>같은 5단을 <b>전일 종가</b>에 다시 — 1차(시초가)는 빼고 <b>2차 전일 종가 눌림</b>이 기본 자리</div>
+          <div class="t3-t"><span class="tj-k">🎯 관리</span>익절 <b>+5% / +10%</b> · 종가 <b>−3%</b>면 손절</div>
         </div>
         <div class="t3 d2">
           <div class="t3-h">D+2 · 연장</div>
-          <div class="t3-b"><b>D+1 종가가 +2%↑를 유지했을 때만</b> 진입(D+1~D+5 반복). 못 지키면 <b>G(패스)</b>.<br>기준선은 계속 갱신되는 <b>전일 종가</b>, 손절 <b>−3%</b>.</div>
+          <div class="t3-b"><b>D+1 종가가 +2%↑를 유지했을 때만</b> 진입(D+1~D+5 반복). 못 지키면 <b>G(패스)</b>.</div>
+          <div class="t3-t"><span class="tj-k">📍 타점</span><b>D+1 종가 +2%↑</b> 유지된 날만 — 기준선은 <b>매일 갱신되는 전일 종가</b>, 같은 눌림 자리를 하루 더</div>
+          <div class="t3-t"><span class="tj-k">🚫 제외</span>갭하락 · NXT 선상승 · 기준봉 +2% 미달이면 <b>G(패스)</b> · 종가 <b>−3%</b> 손절</div>
         </div>
       </div>
       <div class="pipeline" style="margin:9px 0 8px">
@@ -766,7 +799,9 @@
         <span class="pipe-arrow">→</span>
         <span class="pipe-step hot">장대양봉 = D+0 성립 <b id="pipe5">0</b></span>
       </div>
+      <div class="taj-h">📌 D+0 1분봉 5단 타점 <span>09:30 이후 · 지지·저항 확인 후 분할</span></div>
       <div class="ladder" id="ladder"></div>
+      <div class="taj-link">D+1 · D+2는 이 5단을 <b>매일 갱신되는 전일 종가</b>에 다시 얹는 것 — 1차(시초가) 대신 <b>2차 전일 종가 눌림</b>이 기본 자리, 종가 <b>−3%</b>면 손절.</div>
       <div class="tl-next" style="margin-top:7px">
         ※ 익절 <b>5% · 10% · 1분봉/주월봉 전고점</b> 분할, 손절은 <b>분봉 고점 대비 절반 이상 밀리면 매수 X</b>, 시간외(대체거래소) <b>−1%면 잔량 정리</b>. 지지선 아래 추가 매수는 섹터·수급·시장·관점 4개가 모두 우호적일 때만(물타기 아님).
       </div>
@@ -1040,8 +1075,47 @@ function stepDots(c) {
       (s.ok ? '✓' : '✕') + '<i>' + s.label.replace(/^[③②④⑥]\s*/, '') + '</i></span>';
   }).join('') + '</div>';
 }
+function tajeomOf(c) {
+  const p = c.plan;
+  const thin = (c.valueEok < 500 || c.rank > 30);
+  const warn = thin ? '⚠ 대금 ' + fmtEok(c.valueEok) + ' · ' + c.rank + '위 — 호가 얇아 소액·보수적 접근' : '';
+  if (c.kind === 'D0') {
+    return {
+      cls: 'b',
+      main: '11/16 오전 장초 <b>전일 종가(' + nf(p.base) + '원)</b> 부근 눌림 지지 확인 후 분할 매수 → 반등 시 <b>+5%(' + nf(p.tp5) + ')</b>/<b>+10%(' + nf(p.tp10) + ')</b> 분할 익절, 종가 <b>−3%(' + nf(p.stop) + ')</b> 이탈 시 손절',
+      warn: warn
+    };
+  }
+  if (c.kind === 'D1') {
+    if (p.pass) {
+      return {
+        cls: 'b',
+        main: '11/13 기준봉 <b>' + sign(c.pct.toFixed(2)) + '%(+2%↑ 유지)</b> → 11/16 <b>D+2 연장 유효</b> · 시가 갭하락/NXT 선상승 없으면 기준선 <b>' + nf(p.base) + '원</b> 눌림 지지 확인 후 진입, <b>−3%(' + nf(p.stop) + ')</b> 엄수',
+        warn: ''
+      };
+    }
+    return {
+      cls: 'g',
+      main: '11/13 종가 <b>' + sign(c.pct.toFixed(2)) + '%</b> — 기준봉 +2% 미달이라 카페 기준 11/16 <b>신규 눌림 패스(G)</b> · 보유자만 기준선 <b>' + nf(p.base) + '원</b> / <b>−3%(' + nf(p.stop) + ')</b> 대응',
+      warn: ''
+    };
+  }
+  if (c.kind === 'D2') {
+    return {
+      cls: 'g',
+      main: 'D+2까지 진행 완료된 구간 → 11/16 <b>신규 눌림 매수 패스(G)</b> · 추격 금지, 보유자는 기준선 <b>' + nf(p.base) + '원</b> / <b>−3%(' + nf(p.stop) + ')</b>만 관리',
+      warn: ''
+    };
+  }
+  return {
+    cls: 'b',
+    main: '120일 전고점 <b>' + nf(c.hi120) + '원</b> 종가 돌파 + 대금 <b>' + fmtEok(c.valueEok) + '·' + c.rank + '위</b> — 장대양봉(+10%)만 미달 · 11/13 <b>' + sign(c.pct.toFixed(2)) + '%(B)</b>라 11/16 시초 눌림 지지 시 단기 대응 참고',
+    warn: ''
+  };
+}
 function planBox(c) {
   const p = c.plan;
+  const tj = tajeomOf(c);
   const head = c.kind === 'D0' ? '11/16 D+1 기준선(11/13 종가)'
     : (c.kind === 'D1' ? '11/16 D+2 판정 · 기준선(11/13 종가)' : '11/16 기준선(11/13 종가)');
   return '<div class="sc-kprice">' +
@@ -1049,6 +1123,8 @@ function planBox(c) {
     '<div class="kp-line"><span class="kp-val">' + nf(p.base) + '원</span>' +
       '<span class="kp-gap">익절 +5% ' + nf(p.tp5) + ' · +10% ' + nf(p.tp10) + ' · 손절 −3% ' + nf(p.stop) + '</span></div>' +
     '<div class="kp-src">' + (p.pass ? '🟢 ' : '⚪ ') + p.verdict + ' · 11/13 종가 ' + sign(c.pct.toFixed(2)) + '%</div>' +
+    '<div class="kp-tajeom ' + tj.cls + '" data-tajeom="' + c.kind + '"><span class="tj-k">📌 타점</span>' + tj.main +
+      (tj.warn ? '<span class="tj-warn">' + tj.warn + '</span>' : '') + '</div>' +
     '</div>';
 }
 
