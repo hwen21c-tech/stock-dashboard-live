@@ -483,6 +483,8 @@
   .dcell.miss img{filter:brightness(0) opacity(.3)}
   .dcell.got:active{transform:translateY(2px)}
   .dxmore{display:flex;justify-content:center;margin:11px 0 0}
+  /* class 로 display 를 잡으면 hidden 이 먹지 않는다 — 숨김은 강제로 */
+  .dxmore[hidden],.dxempty[hidden],.dxtypes[hidden],.prep-head .pq[hidden]{display:none !important}
   .dxmore button{padding:8px 16px;border-radius:999px;font-weight:900;color:#2f4a16;
     font-size:clamp(10px,2.8vw,12px);background:linear-gradient(180deg,#fff,#eaf8d0);border:2px solid #cfe7a2;
     box-shadow:0 3px 0 rgba(70,120,30,.22)}
@@ -1749,7 +1751,7 @@
     const bag = inv();
     const keys = POK3 ? POK3.itemKeys() : Object.keys(bag);
     const n = Object.keys(bag).reduce((a, k) => a + bag[k], 0);
-    $('#itemNote').textContent = '가방에 있는 꾸미기 아이템이에요 · 마을에는 최대 ' + MAX_ITEM + '개 · 🔒는 아직 못 얻은 아이템 · 꾹 누르면 아빠가 지울 수 있어요';
+    $('#itemNote').textContent = '가방에 있는 꾸미기 아이템이에요 · 마을에는 최대 ' + MAX_ITEM + '개 · 🔒는 아직 못 얻은 아이템(배틀 승리·아빠 선물로 받아요) · 꾹 누르면 아빠가 넣거나 지울 수 있어요';
     $('#itemGrid').innerHTML = keys.map((k) => {
       const it = (POK3 && POK3.item(k)) || { emoji: '🏡', name: k };
       const free = !!(it && (it.env || it.free));
