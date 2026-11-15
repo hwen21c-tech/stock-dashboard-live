@@ -395,8 +395,16 @@
       if (!s || seenK[s]) return;
       seenK[s] = 1; out.push(id);
     }
-    rIds.forEach(function (id) { if (removed.indexOf(String(id)) < 0) add(id); });
-    lIds.forEach(add);
+    var rReset = Number(r.resetAt) || 0, lReset = Number(l.resetAt) || 0;
+    if (rReset > lReset) {
+      /* 다른 기기가 더 최근에 🗑 도감 초기화를 했다 — 그 전 목록은 되살리지 않는다.
+         대신 이 기기가 마지막으로 본 목록에 없던(초기화 뒤 새로 잡은) 포켓몽만 살린다. */
+      rIds.forEach(function (id) { if (removed.indexOf(String(id)) < 0) add(id); });
+      lIds.forEach(function (id) { if (!prevSet[String(id)]) add(id); });
+    } else {
+      rIds.forEach(function (id) { if (removed.indexOf(String(id)) < 0) add(id); });
+      lIds.forEach(add);
+    }
     var counts = {};
     [r.counts, l.counts].forEach(function (c) {
       if (!c || typeof c !== 'object') return;
@@ -406,7 +414,11 @@
        다시 잡았을 때 '예전 횟수'가 되살아나지 않게. */
     for (var ck in counts) { if (!seenK[ck]) delete counts[ck]; }
     var vv = (l && l.v) || (r && r.v) || 2;
-    return JSON.stringify({ ids: out, counts: counts, v: vv });
+    var merged = { ids: out, counts: counts, v: vv };
+    /* 초기화 표시는 클라우드에 남겨 둔다 — 아직 초기화를 못 받은 기기가 예전 목록을
+       올려도 위 가지에서 '옛 목록은 버린다'로 판단할 수 있게. */
+    if (rReset || lReset) merged.resetAt = Math.max(rReset, lReset);
+    return JSON.stringify(merged);
   }
   function push(opts) {
     opts = opts || {};
