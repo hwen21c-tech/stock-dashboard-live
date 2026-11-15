@@ -1,0 +1,80 @@
+[
+  {
+    "size": "400x860",
+    "badge": {
+      "text": "☁️가족 동기화0623오늘 오후 9:45 동기화",
+      "state": "ok",
+      "top": 180,
+      "w": 264,
+      "h": 33
+    },
+    "overflow": {
+      "scrollW": 400,
+      "vw": 400,
+      "bodyScrollW": 400,
+      "bad": []
+    },
+    "modal": {
+      "open": true,
+      "sw": 372,
+      "vw": 400,
+      "over": false
+    },
+    "modalOverflow": [],
+    "pushMsg": "이미 클라우드와 같아요",
+    "closed": true,
+    "consoleErrors": []
+  },
+  {
+    "size": "884x960",
+    "badge": {
+      "text": "☁️가족 동기화0623오늘 오후 9:45 동기화",
+      "state": "ok",
+      "top": 204,
+      "w": 284,
+      "h": 34
+    },
+    "overflow": {
+      "scrollW": 884,
+      "vw": 884,
+      "bodyScrollW": 884,
+      "bad": []
+    },
+    "modal": {
+      "open": true,
+      "sw": 430,
+      "vw": 884,
+      "over": false
+    },
+    "modalOverflow": [],
+    "pushMsg": "이미 클라우드와 같아요",
+    "closed": true,
+    "consoleErrors": []
+  },
+  {
+    "size": "1100x800",
+    "badge": {
+      "text": "☁️가족 동기화0623오늘 오후 9:45 동기화",
+      "state": "ok",
+      "top": 204,
+      "w": 284,
+      "h": 34
+    },
+    "overflow": {
+      "scrollW": 1100,
+      "vw": 1100,
+      "bodyScrollW": 1100,
+      "bad": []
+    },
+    "modal": {
+      "open": true,
+      "sw": 430,
+      "vw": 1100,
+      "over": false
+    },
+    "modalOverflow": [],
+    "pushMsg": "이미 클라우드와 같아요",
+    "closed": true,
+    "consoleErrors": []
+  }
+]

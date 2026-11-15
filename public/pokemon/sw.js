@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v10';  /* 2026-11-15 v10: 홈 「📕 통합 도감」 카드를 누르면 도감 보기(진행률·잡은/못잡은·속성·상세·아빠 PIN 토글) */
+const VERSION = PREFIX + 'v11';  /* 2026-11-15 v11: ☁️ 가족 클라우드 자동 동기화(Supabase) — pokemon-sync.js 추가 */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -20,6 +20,7 @@ const SHELL = [
   '/pokemon-art.js',
   '/pokemon-props.js',
   '/pokemon-lock.js',
+  '/pokemon-sync.js',
   '/pokemon-db.json',
   '/hangul-bank.json',
   '/english-bank.json',
