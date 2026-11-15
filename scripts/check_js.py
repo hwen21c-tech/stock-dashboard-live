@@ -84,5 +84,14 @@ for rel in HTML:
     dv = len(re.findall(r"<div\b", src)) - len(re.findall(r"</div>", src))
     print(f"{'✓' if not errs else '✗'} {rel} — 인라인 {n}블록 · DIV차이 {dv}")
 
+# ★ 관심종목 타점 알리미 판정 엔진 — 네트워크 없이 24개 판정(회귀 검사)
+alert = os.path.join(HERE, "check_watchlist_alerts.py")
+if os.path.exists(alert):
+    r = subprocess.run([sys.executable, alert, "--selftest"], capture_output=True, text=True)
+    print(("✓ " if r.returncode == 0 else "✗ ") + "scripts/check_watchlist_alerts.py — " +
+          (r.stdout.strip() or r.stderr.strip()))
+    if r.returncode != 0:
+        bad += 1
+
 print(("\n❌ 구문 오류 " + str(bad) + "건") if bad else f"\n✅ JS 구문 검사 통과 (esprima 한계 생략 {skipped}건)")
 sys.exit(1 if bad else 0)

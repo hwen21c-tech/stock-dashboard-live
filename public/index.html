@@ -2939,6 +2939,56 @@
   #tabBijoong .modal-box{border-radius:14px; max-height:88vh;}
 }
 </style>
+<style id="hfit-css">
+  /* ============================================================
+     📐 가로 밀림(가로 스크롤) 정리 — 폴드8 접힌 세로(400) 대응
+     · 디자인·색감·글자 크기·배치는 그대로 두고, '칸을 밀어내는 최소폭'과
+       '칸을 넘쳐 흐르는 한 줄 텍스트'만 잠근다.
+     · 그리드 칸은 minmax(0,1fr) 로 최소폭을 0으로, 칸 안 요소는 min-width:0,
+       넘치는 nowrap 텍스트는 overflow:hidden(필요한 곳은 말줄임).
+     ============================================================ */
+
+  /* 0) 공통 — 문서가 가로로 밀리지 않게 하는 마지막 빗장 */
+  html, body { max-width: 100%; }
+
+  /* 1) 메인 테마 그리드 · 종목 타일 — 타일 안 시·고·저 한 줄이 칸 폭을 밀어내지 않게 */
+  .theme-grid-6, .theme-grid-8 { grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 680px) { .theme-grid-6, .theme-grid-8 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1200px) { .theme-grid-6, .theme-grid-8 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .theme-block, .theme-header, .theme-name, .theme-avg { min-width: 0; }
+  .theme-header { flex-wrap: wrap; row-gap: 2px; }
+  .stock-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stock-tile, .st-top, .st-bottom { min-width: 0; }
+  .st-ohlc { min-width: 0; overflow: hidden; }
+  .main-bottom-grid { grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 760px) { .main-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* 2) RN존 탭 — 좌(차트)·우(종목리스트) 2단 그리드가 칸 최소폭 때문에 400px에서 466px까지 벌어지던 문제 */
+  #tabRnzone .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 580px) { #tabRnzone .dashboard-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
+  #tabRnzone .chart-section, #tabRnzone .stocks-section,
+  #tabRnzone .chart-header, #tabRnzone .chart-toolbar,
+  #tabRnzone .rn-status-bar, #tabRnzone .stock-info-main { min-width: 0; }
+  #tabRnzone .chart-header { flex-wrap: wrap; }
+  #tabRnzone .stock-price-box { min-width: 0; }
+
+  /* 3) 증시 일정 달력 — 7칸 그리드가 날짜 칸 최소폭 때문에 439px까지 벌어지던 문제 */
+  .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-cell, .cal-day-head, .cal-date-num { min-width: 0; }
+  .cal-cell { overflow: hidden; }
+  .cal-date-num { max-width: 100%; }
+
+  /* 4) 상단 세션 레이더 바 — 900~1099px 에서 '거래소 공식 검증' 배지가 한 줄로 버티다 37px 밀던 구간만 줄바꿈 허용 */
+  .session-radar-bar, .srb-left, .srb-right { min-width: 0; max-width: 100%; }
+  @media (min-width: 900px) {
+    .srb-left { flex-wrap: wrap; row-gap: 4px; }
+    .srb-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+  }
+
+  /* 5) 가로 스크롤 스트립(티커·시그널 칩·탭 버튼)은 칩을 줄이지 않고 스트립 안에서만 넘친다 */
+  .ticker-bar, .signal-chips-scroll, .view-tabs, .header-actions { min-width: 0; max-width: 100%; }
+  .signal-chip { flex: 0 0 auto; }
+</style>
 </head>
 <body>
 
