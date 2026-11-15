@@ -831,13 +831,14 @@
     const n = theme === 'meadow' ? 'village-' + tod : 'village-' + theme;
     return '/art/' + n + (wide ? '-wide' : '') + '.webp';
   }
-  /* 무대가 가로로 넓을 때만 와이드 그림을 쓴다(세로·정사각이면 정사각 그림) */
+  /* 무대가 가로로 충분히 넓을 때만 와이드 그림을 쓴다 — 1.30 아래(폴드8 펼침 3:4 등)는
+     정사각 그림이 더 꽉 차게 보인다 */
   function isWideStage() {
     const m = document.getElementById('meadow');
     if (!m) return false;
     const r = m.getBoundingClientRect();
     if (!r.width || !r.height) return false;
-    return (r.width / r.height) >= 1.15;
+    return (r.width / r.height) >= 1.30;
   }
   let ART_TOKEN = 0;
   function applyArt() {
