@@ -180,6 +180,37 @@ TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효�
 - 쇼핑 탭: 키워드 입력 → `/api/deals-shopping` → **최저가순 Top 5**(이미지·가격·판매처·직통 링크).
 - 네이버 API 키가 없으면 **키 연동 안내 배너 + 네이버쇼핑 직통 링크**로 대체(오류 아님).
 
+## 📊🎯 전략 자동 재스캔 · ⭐ 관심종목
+
+### 1) 비중법사 · 홍인기 자동 재스캔 — `scripts/rescan_strategies.py`
+
+전 종목(코스피·코스닥 2,400여 종목 · ETF/우선주/스팩 제외)의 **fchart 일봉 260개**를 다시 받아
+`비중법사 기준봉·1일차`와 `홍인기 D+0·D+1·D+2` 후보를 매번 새로 계산하고, 관제탑(`public/index.html`)의
+**내장 스냅샷(DATA)** 과 `public/data/*.json` 을 최신 기준일로 갈아끼운다. 카드 UI·4분할선·200일 캔들·
+타점 계산 로직은 그대로 두고 데이터만 교체한다.
+
+```bash
+python3 scripts/rescan_strategies.py                 # 오늘 장마감(15:35) 이후 기준 1회 · 최신이면 skip
+python3 scripts/rescan_strategies.py --if-stale-hours 6   # 스케줄러용: 6시간 안에 갱신했으면 skip
+python3 scripts/rescan_strategies.py --force         # 무조건 다시 스캔
+python3 scripts/rescan_strategies.py --dry           # JSON만 생성(HTML 미반영)
+python3 scripts/rescan_strategies.py --check          # 네트워크 없이 현재 index.html 구문·구조 점검
+```
+
+- 기준일은 **KOSPI 지수 일봉의 마지막 거래일**(공휴일 자동 반영)이며, 15:35 이전에는 미완성 당일 봉을 쓰지 않고 직전 거래일로 잡는다.
+- 일봉 캐시 `scripts/.cache/candles.json.gz` 에 누적되고, 갱신이 필요한 종목만 최근 90봉을 다시 받는다(첫 실행만 260봉 전수).
+- 출력: `public/data/strategies-latest.json`(통합) · `honginki-latest.json` · `bijoong-latest.json` + `index.html` 내장 DATA.
+- 종료 코드 `3` = 일봉 수집이 시간 예산(기본 420초)에 걸림 → 다음 실행이 이어받는다(HTML은 건드리지 않음).
+- 기준일이 넘어가면 카드 문장의 날짜(11/13·11/16 등)도 **데이터에서 계산**해 함께 바뀐다(`DATA.days` · `basisLongLabel` · `nextLabel`).
+
+### 2) 관심종목(★) · 매수/손절 메모 · 클라우드 동기화 — `public/watchlist.js`
+
+- 모든 종목 카드(메인 테마 타일 · 수급 · 비중법사 · 홍인기 · RN존 · 만쥬 · 종목 모달)에 **☆/★** 를 붙이고,
+  누르면 **매수 희망가 · 손절가 · 메모**를 적는 편집기가 열린다(다시 누르면 수정).
+- 헤더 **★ 관심종목** 버튼 → 모아보기 드로어(수정·차트·해제) + **★만 보기** 필터(카드 전체에 즉시 적용).
+- 저장: `localStorage['stock.watch.v1']` + Supabase `family_sync` 의 **`stock_0623`** 네임스페이스(포켓몬 `0623` 과 분리).
+  항목별 `at`(수정 시각) 기준 병합, 삭제는 tombstone, 빈 기기가 클라우드를 지우지 않음. 60초 주기 + 복귀 시 자동 맞춤.
+
 ## API
 
 | 엔드포인트 | 설명 | 캐시 |
@@ -213,6 +244,8 @@ npm run check                 # 모든 서버·프론트 JS 구문 + HTML 인라
 node test_local.mjs           # 실제 네이버·야후 응답으로 110개 항목 검증 (stock-live/chart/deals/live-briefing/tabs-live/신호등·NXT·수급 규칙)
 node test_e2e_extra.mjs       # 헤드리스 E2E: 1·2·3·6·8·9번 탭 + 폴드8(884px) 넘침 + 콘솔·HTTP 오류 0
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)
+python3 scripts/check_js.py   # node 가 없을 때의 동일 범위 검사(esprima) — 인라인 <script>·DIV 균형 포함
+python3 scripts/dev_server.py # node 없이 로컬 미리보기(정적 + /api/* 는 라이브 Vercel 프록시)
 ```
 
 ## Vercel 배포

@@ -16,3 +16,9 @@ tabs135_e2e_results.json
 verify_live_*.png
 verify_live_*.json
 final_*.png
+
+# 로컬 재스캔 캐시 · 검증 작업 폴더 (배포 대상 아님)
+scripts/.cache/
+work_scan/
+scripts/__pycache__/
+__pycache__/
