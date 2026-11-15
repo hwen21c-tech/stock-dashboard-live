@@ -318,9 +318,9 @@ input,select{font-family:inherit;color:inherit}
 .ytick .yv{font-family:var(--serif);font-size:10.5px;line-height:1;color:var(--dim);font-variant-numeric:tabular-nums}
 .ytick .ybar2{position:relative;display:flex;align-items:flex-end;width:100%;max-width:22px;height:92px;
   border-radius:5px;background:rgba(255,255,255,.055);overflow:hidden}
-.ytick .ybar2::before{content:'';position:absolute;left:0;right:0;bottom:42.7%;border-top:1px dashed rgba(217,180,92,.22);pointer-events:none;z-index:1}
+.ytick .ybar2::before{content:'';position:absolute;left:0;right:0;bottom:42.7%;border-top:1px dashed rgba(217,180,92,.22);pointer-events:none;z-index:0}
 [data-theme="day"] .ytick .ybar2{background:rgba(120,90,40,.08)}
-.ytick .ybar2 i{display:block;width:100%;border-radius:5px 5px 0 0;transition:height .45s ease}
+.ytick .ybar2 i{position:relative;z-index:1;display:block;width:100%;border-radius:5px 5px 0 0;transition:height .45s ease}
 .ytick .yg{font-family:var(--serif);font-size:9px;letter-spacing:-.04em;color:var(--faint);white-space:nowrap}
 .ytick .yy{font-size:8.5px;color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ytick.is-on{border-color:var(--line2);background:rgba(217,180,92,.10)}
