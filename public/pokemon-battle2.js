@@ -228,7 +228,7 @@
 
   function legendBoost() {
     if (!Mission.buffOn()) return null;
-    if (Math.random() > 0.12) return null;
+    if (Math.random() > 0.05) return null;   /* 미션 버프 전설 확률 12% → 5% */
     const pool = POKEMON.filter((p) => !p.form && (p.leg || p.myth));
     if (!pool.length) return null;
     const p = pick(pool);
@@ -765,6 +765,171 @@
     },
   };
 
+  /* ---------- 6-2. 🎫 위시 소환권 UI ---------- */
+  UI.tickets = function () {
+    const el = q('#pb2TicketBadge');
+    const btn = q('#pb2TicketBtn');
+    const n = Tickets.count();
+    if (el) {
+      el.textContent = n;
+      el.style.background = n > 0 ? '#e08a12' : '';
+    }
+    if (btn) {
+      btn.classList.toggle('pb2-dim', n <= 0);
+      btn.title = n > 0
+        ? '✨ 위시 소환권 ' + n + '장 — 원하는 포켓몬을 바로 소환!'
+        : '도감 10마리마다 소환권 1장 (지금 ' + dexCount() + '마리)';
+      btn.setAttribute('aria-label', '위시 소환권 ' + n + '장');
+    }
+    const go = q('#pb2SummonGo');
+    if (go) {
+      const ok = n > 0 && !!UI._summonPick;
+      go.disabled = !ok;
+      go.textContent = n > 0 ? '🎫 1장으로 소환' : '🎫 소환권이 없어요';
+      go.classList.toggle('off', !ok);
+    }
+  };
+
+  UI.ticketBtn = function () {
+    if (Tickets.isGuest()) return;
+    const menu = q('#menu');
+    if (!menu || q('#pb2TicketBtn')) return;
+    const b = document.createElement('button');
+    b.className = 'mbtn';
+    b.id = 'pb2TicketBtn';
+    b.innerHTML = '<span class="ico">🎫</span><span class="txt">소환권</span><span class="badge" id="pb2TicketBadge">0</span>';
+    menu.appendChild(b);
+    b.addEventListener('click', () => {
+      try { Sound.ensure(); Sound.click(); } catch (_) { /* */ }
+      UI.summonModal();
+    });
+    UI.tickets();
+  };
+
+  UI.summonRender = function () {
+    const grid = q('#pb2SummonGrid');
+    if (!grid) return;
+    const qEl = q('#pb2SummonQ');
+    const gEl = q('#pb2SummonGen');
+    const tEl = q('#pb2SummonType');
+    const qv = (qEl && qEl.value ? qEl.value : '').trim().toLowerCase();
+    const gen = gEl ? gEl.value : '';
+    const ty = tEl ? tEl.value : '';
+    let list = (typeof POKEMON !== 'undefined' && Array.isArray(POKEMON)) ? POKEMON.slice() : [];
+    if (gen === 'form') list = list.filter((p) => p && p.form);
+    else if (gen) list = list.filter((p) => p && !p.form && String(p.gen) === gen);
+    if (ty) list = list.filter((p) => p && (p.types || []).indexOf(ty) >= 0);
+    if (qv) {
+      list = list.filter((p) => p && (
+        String(p.name || '').toLowerCase().indexOf(qv) >= 0
+        || String(p.num || '') === qv
+        || ('#' + p.id) === qv
+      ));
+    }
+    const MAX = 150;
+    const shown = list.slice(0, MAX);
+    const pick = Number(UI._summonPick) || 0;
+    grid.innerHTML = shown.length ? shown.map((p) =>
+      '<button class="pb2-pcard' + (p.id === pick ? ' on' : '') + '" data-id="' + p.id + '" title="' + esc(p.name) + '">'
+      + '<img loading="lazy" decoding="async" src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + p.id + '.png" alt="">'
+      + '<span>' + esc(p.name) + '</span></button>').join('')
+      : '<div class="pb2-sumempty">찾는 포켓몬이 없어요 — 이름을 다시 확인해 주세요</div>';
+    const cnt = q('#pb2SummonCount');
+    if (cnt) {
+      cnt.textContent = list.length + '마리'
+        + (list.length > MAX ? ' · 앞 ' + MAX + '마리만 보여요 (검색으로 좁혀 보세요)' : '');
+    }
+    UI.tickets();
+  };
+
+  UI.summonModal = function () {
+    if (Tickets.isGuest()) {
+      UI.toast('게스트 연습 모드에서는 소환권을 쓸 수 없어요', 'info', 1800);
+      return;
+    }
+    try { Tickets.sync(true); } catch (e) { /* */ }
+    let m = q('#pb2SummonModal');
+    if (!m) {
+      m = document.createElement('div');
+      m.className = 'modal';
+      m.id = 'pb2SummonModal';
+      m.hidden = true;
+      const typeList = (typeof TYPES !== 'undefined' && Array.isArray(TYPES)) ? TYPES : [];
+      m.innerHTML = '<div class="sheet">'
+        + '<div class="sheet-head"><h2>✨ 위시 소환권</h2>'
+        + '<button class="x" data-pb2sumclose="1">✕</button></div>'
+        + '<div class="sheet-body">'
+        + '<p class="pb2-mnote" id="pb2SummonNote">원하는 포켓몬 <b>1마리</b>를 골라 바로 소환! 전설·환상·특별폼도 모두 가능해요.</p>'
+        + '<div class="pb2-sumrow">'
+        + '<input id="pb2SummonQ" class="pb2-sumin" type="search" inputmode="search" autocomplete="off" placeholder="이름 검색 (예: 피카츄)" aria-label="포켓몬 이름 검색">'
+        + '<select id="pb2SummonGen" class="pb2-sumsel" aria-label="세대"><option value="">모든 세대</option>'
+        + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((g) => '<option value="' + g + '">' + g + '세대</option>').join('')
+        + '<option value="form">특별폼</option></select>'
+        + '<select id="pb2SummonType" class="pb2-sumsel" aria-label="타입"><option value="">모든 타입</option>'
+        + typeList.map((t) => '<option value="' + esc(t) + '">' + esc(t) + '</option>').join('')
+        + '</select>'
+        + '</div>'
+        + '<div class="pb2-sumnote" id="pb2SummonCount"></div>'
+        + '<div class="pb2-pgrid pb2-sumgrid" id="pb2SummonGrid"></div>'
+        + '</div>'
+        + '<div class="sheet-foot pb2-setfoot"><button class="pb2-confirm" id="pb2SummonGo" disabled>🎫 1장으로 소환</button></div>'
+        + '</div>';
+      document.body.appendChild(m);
+      const close = () => { m.hidden = true; try { syncPause(); } catch (_) { /* */ } };
+      m.addEventListener('click', (e) => {
+        if (e.target === m) close();
+        const x = e.target.closest('[data-pb2sumclose]');
+        if (x) { try { Sound.click(); } catch (_) { /* */ } close(); }
+      });
+      const grid = q('#pb2SummonGrid', m);
+      if (grid) {
+        grid.addEventListener('click', (e) => {
+          const card = e.target.closest('.pb2-pcard');
+          if (!card) return;
+          const id = Number(card.dataset.id);
+          UI._summonPick = (UI._summonPick === id) ? 0 : id;
+          try { Sound.ensure(); Sound.click(); } catch (_) { /* */ }
+          qa('.pb2-pcard', grid).forEach((c) => c.classList.toggle('on', Number(c.dataset.id) === UI._summonPick));
+          UI.tickets();
+        });
+      }
+      const field = (sel, ev) => {
+        const el = q(sel, m);
+        if (!el) return;
+        const run = sel === '#pb2SummonQ'
+          ? () => { clearTimeout(UI._sumT); UI._sumT = setTimeout(() => UI.summonRender(), 130); }
+          : () => UI.summonRender();
+        ['input', ev].forEach((t) => el.addEventListener(t, run));
+      };
+      field('#pb2SummonQ', 'change');
+      field('#pb2SummonGen', 'change');
+      field('#pb2SummonType', 'change');
+      const go = q('#pb2SummonGo', m);
+      if (go) {
+        go.addEventListener('click', () => {
+          if (!UI._summonPick) return;
+          try { Sound.ensure(); Sound.click(); } catch (_) { /* */ }
+          const id = UI._summonPick;
+          if (Summon.go(id)) {
+            UI._summonPick = 0;
+            m.hidden = true;
+            try { syncPause(); } catch (_) { /* */ }
+          }
+        });
+      }
+    }
+    if (!(Number(UI._summonPick) > 0)) UI._summonPick = 0;
+    const note = q('#pb2SummonNote');
+    if (note) {
+      const n = Tickets.count();
+      note.innerHTML = n > 0
+        ? '원하는 포켓몬 <b>1마리</b>를 골라 바로 소환! <b>보유 ' + n + '장</b>'
+        : '소환권이 <b>0장</b>이에요. 도감 <b>' + dexCount() + '마리</b> — 10마리마다 1장씩 받아요.';
+    }
+    UI.summonRender();
+    try { openModal('pb2SummonModal'); } catch (e) { m.hidden = false; }
+  };
+
   /* ---------- 7. 랭크 ---------- */
   function josaOf(name) {
     try { return josa(name, '이', '가'); } catch (e) { return '가'; }
@@ -1262,6 +1427,7 @@
             PB.combo = 0;
             UI.combo();
             recordWrong(snap);
+            try { Streak.reset(); } catch (e) { /* */ }
             wildAttack();
           }
         } catch (e) { warn('answer hook', e); }
@@ -1286,6 +1452,7 @@
           PB.combo = 0;
           UI.combo();
           recordWrong(snap);
+          try { Streak.reset(); } catch (e) { /* */ }
           wildAttack();
         } catch (e) { warn('timeout hook', e); }
         return r;
@@ -1296,32 +1463,89 @@
   };
 
   /* ---------- 10. 등장(진화·이로치·배경·파트너·울음) ---------- */
-  /* 이미 잡은 포켓몬 재등장 확률 — 20% → 45%
-     1,215마리 도감이 너무 빨리 소진되지 않고, 2회 포획→진화 조건도 자연스럽게
-     발동하도록 "잡은 몬스터 / 못 잡은 몬스터"를 45 : 55 로 섞는다.
-     게임 본체의 pickWild 를 부르되, 그 순간의 풀(POKEMON)만 잠시 좁혀서
-     본체 규칙(전설 3% · 최근 등장 제외 · 폼 제외)은 그대로 지키게 한다. */
-  const RECATCH_NEW = 0.45;
+  /* 이미 잡은 포켓몬 재등장 확률 — 도감 수에 따라 동적으로.
+     · 도감 5마리 이하: 10%  (새 얼굴 90% — 도감이 금방 차오르게)
+     · 6~19마리:       25%
+     · 20마리 이상:    40%  (2회 포획→진화 조건도 자연스럽게)
+     게임 본체의 pickWild 를 부르되, 그 순간의 풀(POKEMON)만 잠시 바꿔서
+     본체 규칙(전설 확률 · 최근 등장 제외 · 폼 제외)은 그대로 지키게 한다. */
+  const RECATCH_TIERS = [
+    { max: 5, rate: 0.10 },
+    { max: 19, rate: 0.25 },
+    { max: Infinity, rate: 0.40 },
+  ];
+  function recatchRate(n) {
+    const k = RECATCH_TIERS.find((t) => n <= t.max) || RECATCH_TIERS[RECATCH_TIERS.length - 1];
+    return k.rate;
+  }
+
+  /* ---------- 10-1. 낮·밤·주말 생태계 (KST) ---------- */
+  /* 완전 차단이 아니라, 그 시간대에 어울리는 타입이 조금 더 자주 나오게 한다.
+     가중치는 "같은 몬스터를 풀에 한 번 더 넣기" 방식이라 본체 pickWild 의
+     확률 규칙(전설·미포획 우선)을 건드리지 않는다. */
+  const ECO_DAY = { '풀': 1, '노말': 1, '벌레': 1, '비행': 1 };
+  const ECO_NIGHT = { '고스트': 1, '악': 1, '에스퍼': 1, '전기': 1 };
+  const ECO_WEEKEND = { '드래곤': 1, '강철': 1, '페어리': 1 };
+  function kstNow() {
+    const d = new Date();
+    return new Date(d.getTime() + (d.getTimezoneOffset() * 60000) + (9 * 3600000));
+  }
+  function kstHour() { return kstNow().getHours(); }
+  function isNightKST() { const h = kstHour(); return h < 6 || h >= 18; }
+  function isWeekendKST() { const g = kstNow().getDay(); return g === 0 || g === 6; }
+  function ecoTag() {
+    return (isWeekendKST() ? '주말·' : '') + (isNightKST() ? '밤' : '낮');
+  }
+  function ecoWeight(p) {
+    const ts = (p && p.types) || [];
+    const t0 = ts[0] || '';
+    const t1 = ts[1] || '';
+    const table = isNightKST() ? ECO_NIGHT : ECO_DAY;
+    let extra = 0;
+    if (table[t0] || table[t1]) extra += 1;
+    if (isWeekendKST() && (ECO_WEEKEND[t0] || ECO_WEEKEND[t1])) extra += 1;
+    return 1 + Math.min(extra, 2);
+  }
+  /* 가중치만큼 같은 항목을 반복해 넣은 풀 — pickWild 는 균등 추첨이므로 이걸로 확률이 바뀐다 */
+  function ecoPool(list) {
+    const out = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const p = list[i];
+      const w = ecoWeight(p);
+      for (let k = 0; k < w; k += 1) out.push(p);
+    }
+    return out.length ? out : list;
+  }
+
   let basePickOrigin = null;   /* 게임 본체의 순수한 pickWild (검증용) */
-  function pickWildRecatch(orig, args) {
+  function pickWildRecatch(orig, args, opts) {
+    const o = opts || {};
     try {
-      const ids = (typeof S !== 'undefined' && S && S.dex && S.dex.ids) ? S.dex.ids : null;
-      if (!ids || !ids.size) return orig.apply(null, args);
       if (typeof POKEMON === 'undefined' || !Array.isArray(POKEMON) || !POKEMON.length) return orig.apply(null, args);
-      const base = POKEMON.filter((p) => p && !p.form);
-      if (!base.length) return orig.apply(null, args);
+      const ids = (typeof S !== 'undefined' && S && S.dex && S.dex.ids) ? S.dex.ids : null;
+      /* 전설·환상 쿨다운 중이면 일반 몬스터 풀만 남긴다 */
+      const plain = POKEMON.filter((p) => p && !p.form && (!o.noRare || !(p.leg || p.myth)));
+      if (!plain.length) return orig.apply(null, args);
+      const base = ecoPool(plain);
+      const saved = POKEMON;
+      /* 아직 아무것도 못 잡았으면 생태계 가중치만 적용하고 본체에 넘긴다 */
+      if (!ids || !ids.size) {
+        try { POKEMON = base; return orig.apply(null, args); } finally { POKEMON = saved; }
+      }
       const owned = base.filter((p) => ids.has(p.id));
       const uncaught = base.filter((p) => !ids.has(p.id));
       /* 한쪽이 비어 있으면 섞을 것이 없다(본체가 알아서 고른다) */
-      if (!owned.length || !uncaught.length) return orig.apply(null, args);
+      if (!owned.length || !uncaught.length) {
+        try { POKEMON = base; return orig.apply(null, args); } finally { POKEMON = saved; }
+      }
       /* 직전에 나온 포켓몬은 다시 고르지 않는다.
          도감에 1마리(예: 콘치 #118)만 있으면 owned = [콘치] 라서
          본체 pickWild 의 excludeId 가 무력화되고 콘치만 연속 등장하던 버그 수정. */
       const excludeId = args && args[0];
       const ownedAvail = owned.filter((p) => String(p.id) !== String(excludeId));
-      const saved = POKEMON;
+      const rate = recatchRate(ids.size);
       try {
-        POKEMON = (ownedAvail.length > 0 && Math.random() < RECATCH_NEW) ? ownedAvail : uncaught;
+        POKEMON = (ownedAvail.length > 0 && Math.random() < rate) ? ownedAvail : uncaught;
         return orig.apply(null, args);
       } finally {
         POKEMON = saved;
@@ -1332,25 +1556,190 @@
     }
   }
 
+  /* ---------- 10-2. 전설·환상·보스 쿨다운 (5판에 최대 1마리) ---------- */
+  /* 희귀(전설·환상·보스)가 한 번 나오면 그 뒤 4판은 추가 희귀 스폰을 막는다.
+     → 최근 5판 안에 희귀는 최대 1마리. 새로고침해도 이어지게 프로필 슬롯에 저장. */
+  const K_RARE = (s) => 'pkm.rare.v1.' + s;
+  const RARE_COOLDOWN = 4;
+  const RARE_HIST_MAX = 12;
+  const Rare = {
+    hist: [],
+    key() { return K_RARE(slotId()); },
+    load() {
+      const a = lsGet(this.key(), []);
+      this.hist = Array.isArray(a) ? a.slice(-RARE_HIST_MAX).map(Boolean) : [];
+    },
+    save() { lsSet(this.key(), this.hist.slice(-RARE_HIST_MAX)); },
+    isRare(p) { return !!(p && (p.__boss || p.leg || p.myth)); },
+    /* 최근 4판(=이번 판 포함 5판)에 희귀가 있었으면 쿨다운 중 */
+    cooling() { return this.hist.slice(-RARE_COOLDOWN).some(Boolean); },
+    left() {
+      const win = this.hist.slice(-RARE_COOLDOWN);
+      let idx = -1;
+      for (let i = win.length - 1; i >= 0; i -= 1) { if (win[i]) { idx = i; break; } }
+      return idx < 0 ? 0 : RARE_COOLDOWN - idx;
+    },
+    record(p) {
+      this.hist.push(this.isRare(p));
+      if (this.hist.length > RARE_HIST_MAX) this.hist.shift();
+      this.save();
+    },
+    clear() { this.hist = []; this.save(); },
+  };
+
+  /* ---------- 10-3. 무실수 연승 보상 ---------- */
+  /* 틀리거나 도망치지 않고 연속으로 잡으면 다음 판의 진화·이로치 확률이 조금씩 오른다.
+     연승 1회당 진화 +6%(상한 +30%), 이로치 +2%(상한 +6%). 틀리면 바로 0으로. */
+  const K_STREAK = (s) => 'pkm.streak.v1.' + s;
+  const EVO_BONUS_PER = 0.06;
+  const EVO_BONUS_CAP = 0.30;
+  const SHINY_BONUS_PER = 0.02;
+  const SHINY_BONUS_CAP = 0.06;
+  const Streak = {
+    n: 0,
+    key() { return K_STREAK(slotId()); },
+    load() {
+      const o = lsGet(this.key(), null);
+      this.n = Math.max(0, Math.min(50, Math.floor(Number(o && o.n) || 0)));
+    },
+    save() { lsSet(this.key(), { n: this.n, date: todayKey() }); },
+    reset() { if (!this.n) return 0; this.n = 0; this.save(); return 0; },
+    up() { this.n += 1; this.save(); return this.n; },
+    evoBonus() { return Math.min(EVO_BONUS_CAP, this.n * EVO_BONUS_PER); },
+    shinyBonus() { return Math.min(SHINY_BONUS_CAP, this.n * SHINY_BONUS_PER); },
+    clear() { this.n = 0; this.save(); },
+  };
+
+  /* ---------- 10-4. 🎫 위시 소환권 — 도감 10마리마다 1장 ---------- */
+  /* 도감 포획 수가 10, 20, 30 … 마일스톤을 새로 넘을 때마다 1장.
+     게스트 슬롯은 제외하고, 첫째·둘째는 각자 도감 기준으로 따로 받는다. */
+  const K_TICKET = (s) => 'pkm.ticket.v1.' + s;
+  const MILESTONE_STEP = 10;
+  const Tickets = {
+    data: { granted: [], n: 0 },
+    key() { return K_TICKET(slotId()); },
+    isGuest() { try { return slotId() === 'guest'; } catch (e) { return false; } },
+    load() {
+      const o = lsGet(this.key(), null);
+      this.data = {
+        granted: (o && Array.isArray(o.granted)) ? o.granted.map(Number).filter(Number.isFinite) : [],
+        n: Math.max(0, Math.floor(Number(o && o.n) || 0)),
+      };
+      return this.data;
+    },
+    save() {
+      this.data.granted = this.data.granted.slice(-60);
+      lsSet(this.key(), { granted: this.data.granted.slice(), n: this.data.n });
+    },
+    count() { return this.data.n; },
+    /* 마일스톤 동기화 — 새로 넘은 만큼만 지급. got = 이번에 받은 장수 */
+    sync(silent) {
+      if (this.isGuest()) return 0;
+      this.load();
+      const total = dexCount();
+      let got = 0;
+      if (!this.data.granted.length) {
+        /* 처음 쓰는 친구: 이미 10마리 이상이면 한 번만 지급 */
+        if (total >= MILESTONE_STEP) {
+          this.data.granted.push(Math.floor(total / MILESTONE_STEP) * MILESTONE_STEP);
+          this.data.n += 1;
+          got = 1;
+        }
+      } else {
+        const top = Math.max.apply(null, this.data.granted);
+        for (let m = top + MILESTONE_STEP; m <= total; m += MILESTONE_STEP) {
+          this.data.granted.push(m);
+          this.data.n += 1;
+          got += 1;
+        }
+      }
+      if (got) {
+        this.save();
+        if (!silent) {
+          UI.toast('🎫 도감 ' + total + '마리 달성! ✨ 위시 소환권 ' + (got > 1 ? got + '장' : '1장') + ' 받았어요', 'good', 2800);
+          try { Sound.fanfare(); } catch (e) { /* */ }
+        }
+      }
+      UI.tickets();
+      return got;
+    },
+    take() {
+      this.load();
+      if (this.data.n <= 0) return false;
+      this.data.n -= 1;
+      this.save();
+      UI.tickets();
+      return true;
+    },
+    clear() { this.data = { granted: [], n: 0 }; this.save(); UI.tickets(); },
+  };
+
+  /* 소환권으로 고른 포켓몬을 다음 등장으로 넘기는 한 칸짜리 우편함 */
+  const Summon = {
+    next: null,
+    set(id) {
+      const p = byId(Number(id));
+      if (!p) return false;
+      this.next = p;
+      return true;
+    },
+    peek() { return this.next; },
+    clear() { this.next = null; },
+    /* 선택한 포켓몬으로 바로 새 배틀 */
+    go(id) {
+      if (this.isGuest()) return false;
+      if (['battle', 'caught', 'fainted'].indexOf(S.screen) < 0) {
+        UI.toast('배틀 중에만 소환할 수 있어요', 'info', 1400);
+        return false;
+      }
+      if (!Tickets.count()) { UI.toast('소환권이 없어요 — 도감 10마리마다 1장!', 'info', 1800); return false; }
+      if (!this.set(id)) { UI.toast('그 포켓몬을 찾지 못했어요', 'info', 1200); return false; }
+      if (!Tickets.take()) { this.clear(); return false; }
+      const p = byId(Number(id));
+      UI.toast('✨ ' + (p ? p.name : '포켓몬') + ' 소환!', 'good', 1600);
+      try { ['pb2SummonModal', 'catchModal', 'faintModal'].forEach((m) => { const el = document.getElementById(m); if (el) el.hidden = true; }); } catch (e) { /* */ }
+      try { syncPause(); } catch (e) { /* */ }
+      try { newEncounter({}); } catch (e) { warn('summon', e); this.clear(); return false; }
+      return true;
+    },
+    isGuest() { return Tickets.isGuest(); },
+  };
+
   const SpawnHook = {
     attach() {
       const origPick = window.pickWild;
       if (typeof origPick === 'function' && !origPick.__pb2) {
         basePickOrigin = origPick;
         const pickW = function (excludeId) {
+          /* 소환권으로 고른 포켓몬이 있으면 그것부터 */
           try {
-            const boss = rollBoss(excludeId);
-            if (boss) return boss;
+            const wish = Summon.peek();
+            if (wish) {
+              Summon.clear();
+              return Object.assign({}, wish, {
+                level: rand(6, 30), cp: rand(80, 460), __wish: true,
+                shiny: Math.random() < (SHINY_RATE + Streak.shinyBonus() * 0.5),
+              });
+            }
+          } catch (e) { warn('pickWild wish', e); }
+          const cooling = Rare.cooling();   /* 최근 5판에 희귀 등장 → 이번 판은 일반만 */
+          try {
+            if (!cooling) {
+              const boss = rollBoss(excludeId);
+              if (boss) return boss;
+            }
           } catch (e) { warn('pickWild boss', e); }
           try {
             const evo = SpawnHook.rollEvo(excludeId);
             if (evo) return evo;
-            const boost = legendBoost();
-            if (boost) return boost;
+            if (!cooling) {
+              const boost = legendBoost();
+              if (boost) return boost;
+            }
           } catch (e) { warn('pickWild pre', e); }
-          const w = pickWildRecatch(origPick, arguments);
+          const w = pickWildRecatch(origPick, arguments, { noRare: cooling });
           try {
-            if (w && Math.random() < SHINY_RATE) w.shiny = true;
+            if (w && Math.random() < (SHINY_RATE + Streak.shinyBonus())) w.shiny = true;
           } catch (e) { /* */ }
           return w;
         };
@@ -1376,10 +1765,22 @@
       }
     },
 
+    /* 도망치면 연승이 끝난다 */
+    attachFlee() {
+      const orig = window.fleeWild;
+      if (typeof orig !== 'function' || orig.__pb2) return;
+      const wrapped = function () {
+        try { Streak.reset(); } catch (e) { /* */ }
+        return orig.apply(this, arguments);
+      };
+      wrapped.__pb2 = true;
+      window.fleeWild = wrapped;
+    },
+
     rollEvo(excludeId) {
       if (!S.dex || !S.dex.counts) return null;
       if (!PB.evo || !Object.keys(PB.evo).length) return null;
-      if (Math.random() > EVO_RATE) return null;
+      if (Math.random() > EVO_RATE + Streak.evoBonus()) return null;
       const cands = [];
       Object.keys(S.dex.counts).forEach((k) => {
         const id = Number(k);
@@ -1396,13 +1797,14 @@
       const t = byId(c.to);
       return Object.assign({}, t, {
         level: rand(4, 12), cp: rand(20, 220), evolved: true, evoFrom: c.from,
-        shiny: Math.random() < SHINY_RATE,
+        shiny: Math.random() < (SHINY_RATE + Streak.shinyBonus()),
       });
     },
 
     onEncounter(o) {
       const p = S.wild;
       if (!p) return;
+      try { Rare.record(p); } catch (e) { warn('rare record', e); }
       UI.theme(p);
       UI.partner();
       UI.renderBalls();
@@ -1472,6 +1874,7 @@
       const origF = window.faint;
       if (typeof origF === 'function' && !origF.__pb2) {
         const f = function () {
+          try { Streak.reset(); } catch (e) { /* */ }
           const r = origF.apply(this, arguments);
           const after = () => {
             try { UI.reviewBtn('faintModal'); } catch (e) { /* */ }
@@ -1505,6 +1908,19 @@
       Mission.mark(GAME);
       UI.renderBalls();
       UI.rank();
+      /* 무실수 연승 — 이번 판에 한 번도 틀리지 않았으면 +1, 틀렸으면 0으로 */
+      try {
+        if (!PB.wrong.length) {
+          const n = Streak.up();
+          if (n >= 3 && n % 3 === 0) {
+            UI.toast('🔥 ' + n + '연승! 다음 판 진화·이로치 확률이 올라가요', 'good', 1900);
+          }
+        } else {
+          Streak.reset();
+        }
+      } catch (e) { warn('streak', e); }
+      /* 도감 10마리 마일스톤 → ✨ 위시 소환권 1장 */
+      try { Tickets.sync(); } catch (e) { warn('ticket sync', e); }
       UI.reviewBtn('catchModal');
       const dexm = q('#dexModal');
       if (dexm && !dexm.hidden) { try { renderDex(false); } catch (e) { /* */ } }
@@ -1566,6 +1982,8 @@
         const dr = function () {
           const out = origReset.apply(this, arguments);
           try { Partner.load(); UI.partner(); UI.rank(); } catch (e) { /* */ }
+          /* 도감을 비우면 소환권·연승·희귀 쿨다운도 같이 처음으로 */
+          try { Rare.clear(); Streak.clear(); UI.tickets(); } catch (e) { warn('reset ext', e); }
           return out;
         };
         dr.__pb2 = true;
@@ -1768,7 +2186,8 @@
   /* ============================================================
      15. 3탄 — 💥 타입 상성 · 👑 주말 보스 레이드 · 🏅 등급 승급 · 🎁 마을 아이템
      ============================================================ */
-  const BOSS_RATE = 0.24;
+  /* 주말 보스 레이드 — 24% 는 너무 자주 나와서 8% 로 낮춘다(전설 쿨다운과 같이 동작) */
+  const BOSS_RATE = 0.08;
   /* 깜짝 선물: 기본 11% → 한 번도 안 틀린 완벽한 판이면 최대 30% */
   const DROP_BASE = 0.11;
   const DROP_MAX = 0.30;
@@ -1792,8 +2211,8 @@
     try { return (S.dex && S.dex.ids) ? S.dex.ids.size : 0; } catch (e) { return 0; }
   }
   function isWeekend() {
-    const d = new Date().getDay();
-    return d === 0 || d === 6;
+    const g = kstNow().getDay();   /* KST 기준 — 기기 시간대와 상관없이 토·일 */
+    return g === 0 || g === 6;
   }
   function bossMode() {
     if (!window.POK3) return false;
@@ -2536,6 +2955,9 @@
     Partner.load();
     Balls.load();
     Shiny.load();
+    try { Rare.load(); } catch (e) { warn('rare load', e); }
+    try { Streak.load(); } catch (e) { warn('streak load', e); }
+    try { Tickets.load(); } catch (e) { warn('ticket load', e); }
   }
 
   function init() {
@@ -2555,6 +2977,7 @@
     rankStage();
     UI.balls();
     UI.missionBtn();
+    UI.ticketBtn();
     UI.modals();
     UI.timerGrid();
     UI.rank();
@@ -2565,6 +2988,8 @@
     UI.missionBadge();
     UI.timer();
     UI.paintTimerGrid();
+    try { Tickets.sync(true); } catch (e) { warn('ticket init', e); }
+    try { SpawnHook.attachFlee(); } catch (e) { warn('flee hook', e); }
     TimerHook.attach();
     AnswerHook.attach();
     TimeoutHook.attach();
@@ -2589,6 +3014,7 @@
           UI.timer();
           initRankSeen();
           bossChip();
+          try { Tickets.sync(true); } catch (e) { warn('ticket switch', e); }
           try { QuotaLock.check(); } catch (e) { warn('quota switch', e); }
         } catch (e) { warn('applyProfile', e); }
         return out;
@@ -2699,7 +3125,61 @@
       clear() { try { lsSet(QK, { v: 1, date: kstDate(), limit: QUOTA_DEFAULT, plays: {} }); } catch (e) { /* */ } },
       date: () => kstDate(),
     },
-    recatchRate: () => RECATCH_NEW,
+    recatchRate: () => recatchRate(dexCount()),
+    /* 7탄 검증용 — 등장 밸런스·희귀 쿨다운·연승·생태계·소환권 */
+    balance: {
+      recatchRate: () => recatchRate(dexCount()),
+      bossRate: () => BOSS_RATE,
+      legendRate: () => (typeof LEGEND_RATE === 'number' ? LEGEND_RATE : null),
+      legendBoostRate: () => 0.05,
+      eco: () => ({
+        tag: ecoTag(), night: isNightKST(), weekend: isWeekendKST(), hour: kstHour(),
+        dayTypes: Object.keys(ECO_DAY), nightTypes: Object.keys(ECO_NIGHT), weekendTypes: Object.keys(ECO_WEEKEND),
+      }),
+      ecoWeight: (id) => ecoWeight(byId(id)),
+      rareCooling: () => Rare.cooling(),
+      rareLeft: () => Rare.left(),
+      rareHist: () => Rare.hist.slice(),
+      resetRare: () => { Rare.clear(); return Rare.hist.length; },
+    },
+    streak: {
+      n: () => Streak.n,
+      evoBonus: () => Streak.evoBonus(),
+      shinyBonus: () => Streak.shinyBonus(),
+      up: () => Streak.up(),
+      reset: () => Streak.reset(),
+      evoRate: () => EVO_RATE + Streak.evoBonus(),
+    },
+    tickets: {
+      state: () => ({ n: Tickets.count(), granted: Tickets.data.granted.slice(), dex: dexCount(), guest: Tickets.isGuest() }),
+      sync: (silent) => Tickets.sync(!!silent),
+      open: () => UI.summonModal(),
+      pick(id) { UI.summonModal(); UI._summonPick = Number(id) || 0; UI.summonRender(); return UI._summonPick; },
+      go: (id) => Summon.go(Number(id)),
+      grant(n) {
+        Tickets.load();
+        Tickets.data.n = Math.max(0, Number(n) || 0);
+        Tickets.save();
+        UI.tickets();
+        return Tickets.count();
+      },
+    },
+    /* 등장 시뮬레이션 — pickWild 를 n번 돌리며 희귀 쿨다운까지 그대로 적용한다 */
+    simSpawn(n) {
+      const out = [];
+      const N = Math.max(1, Math.min(600, Number(n) || 100));
+      for (let i = 0; i < N; i += 1) {
+        let p = null;
+        try { p = window.pickWild(out.length ? out[out.length - 1].id : -1); } catch (e) { break; }
+        if (!p) break;
+        try { Rare.record(p); } catch (e) { /* */ }
+        out.push({
+          id: p.id, name: p.name, type: (p.types || [])[0] || '',
+          boss: !!p.__boss, leg: !!p.leg, myth: !!p.myth, evo: !!p.evolved, shiny: !!p.shiny,
+        });
+      }
+      return out;
+    },
     cheer: {
       play: () => Cheer.play(),
       words: () => Cheer.words.slice(),

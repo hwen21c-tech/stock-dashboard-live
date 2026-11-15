@@ -872,3 +872,19 @@
   background:rgba(14,30,26,.55);text-shadow:0 1px 2px rgba(0,0,0,.55);
   -webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px)}
 .stage:has(.pb2-bg[data-art]) .wildzone .halo{opacity:.55}
+
+/* ---------- 6-3. 🎫 위시 소환권 (도감 10마리마다 1장) ---------- */
+.mbtn.pb2-dim{opacity:.6}
+#pb2TicketBtn .badge{background:#e08a12}
+.pb2-sumrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 4px}
+.pb2-sumin{flex:1 1 140px;min-width:0;padding:8px 11px;border-radius:10px;
+  border:2px solid #dbe8c2;background:#fff;font-weight:800;color:#33501a;
+  font-size:clamp(11px,3vw,13px);font-family:inherit}
+.pb2-sumin:focus{outline:none;border-color:#8ec63f;box-shadow:0 0 0 3px rgba(142,198,63,.18)}
+.pb2-sumsel{flex:0 1 auto;padding:7px 8px;border-radius:10px;border:2px solid #dbe8c2;
+  background:#fff;font-weight:800;color:#33501a;font-size:clamp(10.5px,2.8vw,12px);font-family:inherit}
+.pb2-sumnote{font-size:clamp(10px,2.7vw,11.5px);font-weight:800;color:#6b8547;text-align:center;margin:0 0 4px}
+.pb2-sumgrid{max-height:38dvh}
+.pb2-sumempty{grid-column:1/-1;text-align:center;padding:18px 8px;font-weight:800;
+  color:#8a9a6a;font-size:clamp(10.5px,2.8vw,12px)}
+.pb2-confirm:disabled,.pb2-confirm.off{opacity:.5;filter:grayscale(.35);box-shadow:none}

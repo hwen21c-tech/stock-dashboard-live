@@ -1323,62 +1323,66 @@ const Sound = {
 };
 
 /* ============================================================
-   배틀 BGM — Web Audio 칩튠 시퀀서 (외부 음원 파일 없음)
+   배틀 BGM — Web Audio 게임 신스 시퀀서 (외부 음원 파일 없음)
    야생 포켓몬의 주 타입에 따라 조성·멜로디·리듬·음색이 달라진다.
+   · 멜로디: triangle + 부드러운 sine 레이어 → lowpass(1400~2200Hz)
+             → 클릭·틱이 없는 ADSR 엔벨로프
+   · 은은한 3화음 패드 + 저음 베이스 + 짧은 딜레이(에코 0.18s)
+   · 음소거(🔇) · 사용자 제스처 자동재생 정책은 그대로 지킨다
    ============================================================ */
 const BGM_KITS = {
   normal: {
     bpm: 150, root: 69, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 5, 3, 4],
-    leadWave: 'square', leadGain: 0.13, leadDur: 0.1,
+    leadGain: 0.105, leadDur: 0.24, lpf: 1900, padGain: 0.030, bassGain: 0.15,
     mel: [0, 4, 7, 4, 5, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, -3],
     bass: [0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0],
     kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
   },
   water: {
     bpm: 150, root: 67, scale: [0, 2, 4, 7, 9], prog: [0, 5, 2, 4],
-    leadWave: 'triangle', leadGain: 0.15, leadDur: 0.13,
+    leadGain: 0.110, leadDur: 0.30, lpf: 1700, padGain: 0.034, bassGain: 0.14,
     mel: [0, 2, 4, 7, 4, 2, 0, -3, 2, 4, 7, 9, 7, 4, 2, 0],
     bass: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
     kick: [0, 8], snare: [4, 12], hat: 2,
   },
   electric: {
     bpm: 165, root: 71, scale: [0, 3, 5, 7, 10], prog: [0, 3, 5, 4],
-    leadWave: 'square', leadGain: 0.12, leadDur: 0.08,
+    leadGain: 0.100, leadDur: 0.16, lpf: 2200, padGain: 0.026, bassGain: 0.16,
     mel: [0, 0, 7, 0, 10, 0, 7, 5, 0, 0, 7, 12, 10, 7, 5, 3],
     bass: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
     kick: [0, 4, 8, 12], snare: [4, 12], hat: 1,
   },
   fire: {
     bpm: 160, root: 66, scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, 5, 3, 6],
-    leadWave: 'sawtooth', leadGain: 0.1, leadDur: 0.1,
+    leadGain: 0.100, leadDur: 0.22, lpf: 1800, padGain: 0.030, bassGain: 0.16,
     mel: [0, 7, 5, 3, 0, 7, 10, 7, 5, 3, 0, -2, 0, 3, 5, 7],
     bass: [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1],
     kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
   },
   grass: {
     bpm: 148, root: 72, scale: [0, 2, 4, 7, 9], prog: [0, 4, 5, 3],
-    leadWave: 'square', leadGain: 0.12, leadDur: 0.11,
+    leadGain: 0.105, leadDur: 0.26, lpf: 1850, padGain: 0.032, bassGain: 0.14,
     mel: [0, 4, 2, 4, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, 0, -3],
     bass: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0],
     kick: [0, 6, 8, 14], snare: [4, 12], hat: 2,
   },
   psychic: {
     bpm: 152, root: 69, scale: [0, 2, 3, 5, 7, 9, 10], prog: [0, 2, 5, 3],
-    leadWave: 'triangle', leadGain: 0.16, leadDur: 0.22,
+    leadGain: 0.115, leadDur: 0.42, lpf: 1500, padGain: 0.038, bassGain: 0.13,
     mel: [0, null, 3, null, 5, null, 3, 2, 0, null, 7, null, 5, 3, 2, null],
     bass: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
     kick: [0, 10], snare: [8], hat: 4,
   },
   rock: {
     bpm: 146, root: 64, scale: [0, 3, 5, 6, 7, 10], prog: [0, 0, 3, 4],
-    leadWave: 'square', leadGain: 0.12, leadDur: 0.14,
+    leadGain: 0.105, leadDur: 0.28, lpf: 1700, padGain: 0.030, bassGain: 0.17,
     mel: [0, 0, 3, 0, 5, 5, 3, 0, 7, 7, 5, 3, 0, 0, -2, 0],
     bass: [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0],
     kick: [0, 3, 8, 11], snare: [4, 12], hat: 2,
   },
   boss: {
     bpm: 162, root: 65, scale: [0, 1, 4, 5, 7, 8, 11], prog: [0, 1, 5, 4],
-    leadWave: 'square', leadGain: 0.13, leadDur: 0.12,
+    leadGain: 0.110, leadDur: 0.24, lpf: 1400, padGain: 0.040, bassGain: 0.18,
     mel: [0, 7, 5, 1, 4, 7, 11, 7, 5, 4, 1, 0, -1, 1, 4, 7],
     bass: [1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1],
     kick: [0, 3, 6, 8, 11, 14], snare: [4, 12], hat: 1, drone: true,
@@ -1404,6 +1408,12 @@ function bgmTrackFor(p) {
 const BGM = {
   ctx: null,
   master: null,
+  bus: null,
+  lpf: null,
+  send: null,
+  delay: null,
+  echo: null,
+  fb: null,
   timer: 0,
   playing: false,
   paused: false,
@@ -1416,17 +1426,47 @@ const BGM = {
   kitKey: '',
   noiseBuf: null,
   VOL: 0.34,
+  ECHO: 0.18,        // 에코 간격(초)
   ensure() {
     if (this.ctx) return this.ctx;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       this.ctx = new AC();
-      this.master = this.ctx.createGain();
+      const ctx = this.ctx;
+      this.master = ctx.createGain();
       this.master.gain.value = 0;
-      this.master.connect(this.ctx.destination);
-      const len = Math.floor(this.ctx.sampleRate * 0.25);
-      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      this.master.connect(ctx.destination);
+      /* 악기 전체가 지나는 따뜻한 로우패스 버스 */
+      this.bus = ctx.createGain();
+      this.bus.gain.value = 1;
+      this.lpf = ctx.createBiquadFilter();
+      this.lpf.type = 'lowpass';
+      this.lpf.frequency.value = 1900;
+      this.lpf.Q.value = 0.6;
+      this.bus.connect(this.lpf);
+      this.lpf.connect(this.master);
+      /* 짧은 에코 — 멜로디에만 살짝 걸어 공간감을 준다 */
+      this.send = ctx.createGain();
+      this.send.gain.value = 0.16;
+      this.delay = ctx.createDelay(1);
+      this.delay.delayTime.value = this.ECHO;
+      this.echo = ctx.createGain();
+      this.echo.gain.value = 0.40;
+      const damp = ctx.createBiquadFilter();
+      damp.type = 'lowpass';
+      damp.frequency.value = 2000;
+      this.fb = ctx.createGain();
+      this.fb.gain.value = 0.26;
+      this.lpf.connect(this.send);
+      this.send.connect(this.delay);
+      this.delay.connect(damp);
+      damp.connect(this.echo);
+      this.echo.connect(this.master);
+      damp.connect(this.fb);
+      this.fb.connect(this.delay);
+      const len = Math.floor(ctx.sampleRate * 0.25);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
       const ch = buf.getChannelData(0);
       for (let i = 0; i < len; i += 1) ch[i] = Math.random() * 2 - 1;
       this.noiseBuf = buf;
@@ -1472,6 +1512,10 @@ const BGM = {
     this.playing = true;
     this.step = 0;
     this.nextTime = ctx.currentTime + 0.08;
+    if (this.lpf) {
+      const f = k.lpf || 1800;
+      try { this.lpf.frequency.setTargetAtTime(f, ctx.currentTime, 0.12); } catch (e) { this.lpf.frequency.value = f; }
+    }
     if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
     clearInterval(this.timer);
     this.timer = setInterval(() => this.tick(), 25);
@@ -1506,73 +1550,113 @@ const BGM = {
     const i = ((deg % n) + n) % n;
     return k.root + sc[i] + 12 * oct;
   },
-  blip(midi, t, dur, wave, gain) {
-    const ctx = this.ctx;
-    const f = 440 * Math.pow(2, (midi - 69) / 12);
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = wave || 'square';
-    o.frequency.setValueAtTime(f, t);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g);
-    g.connect(this.master);
-    o.start(t);
-    o.stop(t + dur + 0.03);
+  /* 부드러운 ADSR — 시작·끝을 0으로 떨어뜨리지 않아 클릭·틱이 없다 */
+  env(g, t, peak, dur, atk, rel) {
+    const a = Math.max(0.008, atk || 0.025);
+    const hold = Math.max(a + 0.02, dur);
+    g.gain.setValueAtTime(0.00001, t);
+    g.gain.linearRampToValueAtTime(peak, t + a);
+    g.gain.linearRampToValueAtTime(peak * 0.72, t + a + Math.min(0.16, hold - a));
+    g.gain.setTargetAtTime(0.00001, t + hold, rel || 0.11);
+    return hold + (rel || 0.11) * 4;
   },
-  noise(t, dur, gain, hp) {
+  voice(midi, t, dur, wave, peak, opts) {
+    const ctx = this.ctx;
+    const o = opts || {};
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = wave || 'triangle';
+    osc.frequency.setValueAtTime(f, t);
+    if (o.detune) osc.detune.setValueAtTime(o.detune, t);
+    const end = this.env(g, t, peak, dur, o.atk, o.rel);
+    osc.connect(g);
+    g.connect(o.to || this.bus);
+    osc.start(t);
+    osc.stop(end + 0.05);
+    return osc;
+  },
+  /* 멜로디 — triangle 본음 + sine 두께 + 아주 옅은 옥타브 반짝임 */
+  lead(midi, t, dur, gain) {
+    this.voice(midi, t, dur, 'triangle', gain, { atk: 0.022, rel: 0.12 });
+    this.voice(midi, t, dur * 0.92, 'sine', gain * 0.46, { detune: 5, atk: 0.03, rel: 0.13 });
+    this.voice(midi + 12, t, dur * 0.55, 'sine', gain * 0.12, { atk: 0.04, rel: 0.14 });
+  },
+  /* 3화음 패드 — 마디마다 은은하게 깔리는 화음 */
+  pad(chordDeg, t, dur) {
+    const k = this.kit;
+    const g = (k.padGain || 0.03);
+    [0, 2, 4].forEach((d) => {
+      const midi = this.degToMidi(chordDeg + d) - 12;
+      this.voice(midi, t, dur * 0.92, 'triangle', g, { atk: 0.30, rel: 0.38 });
+      this.voice(midi, t, dur * 0.92, 'sine', g * 0.55, { detune: -4, atk: 0.34, rel: 0.40 });
+    });
+  },
+  bass(midi, t, dur, gain) {
+    this.voice(midi, t, dur, 'sine', gain || 0.15, { atk: 0.014, rel: 0.10 });
+    this.voice(midi, t, dur * 0.7, 'triangle', (gain || 0.15) * 0.35, { atk: 0.02, rel: 0.10 });
+  },
+  drone(midi, t) {
+    this.voice(midi, t, 1.1, 'triangle', 0.045, { atk: 0.35, rel: 0.5 });
+    this.voice(midi, t, 1.1, 'sine', 0.05, { detune: 7, atk: 0.4, rel: 0.5 });
+  },
+  noise(t, dur, gain, type, freq) {
     const ctx = this.ctx;
     const s = ctx.createBufferSource();
     s.buffer = this.noiseBuf;
     const g = ctx.createGain();
     const f = ctx.createBiquadFilter();
-    f.type = hp ? 'highpass' : 'lowpass';
-    f.frequency.value = hp || 4000;
-    g.gain.setValueAtTime(gain, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    f.type = type || 'lowpass';
+    f.frequency.value = freq || 2000;
+    const end = this.env(g, t, gain, dur, 0.006, 0.05);
     s.connect(f);
     f.connect(g);
-    g.connect(this.master);
+    g.connect(this.master);   // 타격음은 로우패스 버스 밖으로(심벌이 먹먹해지지 않게)
     s.start(t);
-    s.stop(t + dur + 0.02);
+    s.stop(end + 0.03);
   },
   kick(t) {
     const ctx = this.ctx;
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = 'sine';
-    o.frequency.setValueAtTime(150, t);
-    o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
-    g.gain.setValueAtTime(0.42, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+    o.frequency.setValueAtTime(132, t);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.10);
+    g.gain.setValueAtTime(0.00001, t);
+    g.gain.linearRampToValueAtTime(0.30, t + 0.012);
+    g.gain.setTargetAtTime(0.00001, t + 0.05, 0.07);
     o.connect(g);
     g.connect(this.master);
     o.start(t);
-    o.stop(t + 0.17);
+    o.stop(t + 0.4);
+  },
+  snare(t) {
+    this.noise(t, 0.09, 0.055, 'lowpass', 2100);   // 쇳소리 대신 부드러운 타격
+  },
+  hat(t) {
+    this.noise(t, 0.028, 0.022, 'highpass', 7200);
   },
   schedule(step, t) {
     const k = this.kit;
     const bar = Math.floor(step / 16) % 4;
     const s = step % 16;
     const chord = k.prog[bar];
+    const stepDur = 60 / k.bpm / 4;
+    /* 마디 첫 박 — 화음 패드로 따뜻한 바탕을 깔아 준다 */
+    if (s === 0) this.pad(chord, t, stepDur * 16);
     const deg = k.mel[s];
     if (deg !== null && deg !== undefined) {
       const midi = this.degToMidi(chord + deg);
-      this.blip(midi, t, k.leadDur, k.leadWave, k.leadGain);
-      /* 칩튠 특유의 옥타브 보강 */
-      this.blip(midi + 12, t, k.leadDur * 0.6, k.leadWave, k.leadGain * 0.28);
+      this.lead(midi, t, Math.min(k.leadDur, stepDur * 2.4), k.leadGain);
     }
-    if (k.bass[s]) {
-      const bmidi = this.degToMidi(chord) - 24;
-      this.blip(bmidi, t, 0.16, 'triangle', 0.2);
-    }
+    if (k.bass[s]) this.bass(this.degToMidi(chord) - 24, t, stepDur * 2.2, k.bassGain);
     if (k.kick.indexOf(s) >= 0) this.kick(t);
-    if (k.snare.indexOf(s) >= 0) this.noise(t, 0.1, 0.13, 1600);
-    if (k.hat && s % k.hat === 0) this.noise(t, 0.03, 0.045, 6500);
-    if (k.drone && s === 0) this.blip(this.degToMidi(chord) - 36, t, 0.9, 'sawtooth', 0.06);
+    if (k.snare.indexOf(s) >= 0) this.snare(t);
+    if (k.hat && s % k.hat === 0) this.hat(t);
+    if (k.drone && s === 0) this.drone(this.degToMidi(chord) - 36, t);
   },
 };
+
 document.addEventListener('visibilitychange', () => {
   const modal = typeof anyModal === 'function' ? anyModal() : false;
   BGM.setPaused(document.hidden || modal);
@@ -2079,8 +2163,8 @@ function wildPool() {
 }
 /* 최근 등장 기억 — 바로 전/최근 몬스터가 또 나오지 않게 */
 const recentWild = [];
-/* 전설·환상은 3% 정도만 — 균등 랜덤(9%대)이면 너무 흔해진다 */
-const LEGEND_RATE = 0.03;
+/* 전설·환상은 3% → 2% — 균등 랜덤(9%대)이면 너무 흔해진다 */
+const LEGEND_RATE = 0.02;
 /* 이미 잡은 몬스터도 20% 정도는 다시 나온다(미포획 우선 + 재등장 섞기) */
 const RECATCH_RATE = 0.2;
 function pickWild(excludeId) {
@@ -2274,7 +2358,7 @@ async function loadBank(refresh) {
     const o = await res.json();
     const words = (o.words || [])
       .filter((x) => x && typeof x.en === 'string' && x.en.length >= 1 && x.en.length <= 20 && typeof x.ko === 'string')
-      .map((x) => ({ en: String(x.en), ko: String(x.ko), e: x.e || '🔤', cat: x.cat || 'etc', level: x.level || 'mid' }));
+      .map((x) => ({ en: String(x.en), ko: String(x.ko), e: (typeof x.e === 'string' ? x.e.trim() : ''), cat: x.cat || 'etc', level: x.level || 'mid' }));
     const sents = (o.sentences || [])
       .filter((x) => x && typeof x.q === 'string' && x.q.split('___').length === 2 && typeof x.a === 'string' && Array.isArray(x.o) && x.o.length >= 3)
       .map((x) => ({ q: String(x.q), a: String(x.a), o: x.o.slice(0, 3).map(String), k: String(x.k || ''), level: x.level || 'mid' }));
@@ -2424,15 +2508,29 @@ function grammarTip(ans) {
   return '빈칸에 들어갈 알맞은 말을 골라요';
 }
 
-/* 🌱 1단계-A — 그림 + 한국어 뜻 → 영어 단어 고르기 */
+/* 그림(이모지)이 1:1로 분명한 단어만 — 같은 그림을 여러 단어가 돌려 쓰지 않는다 */
+function picReady(w) { return !!(w && w.e && w.e !== '🔤'); }
+function picWords(pool) {
+  const p = (pool || []).filter(picReady);
+  return p.length >= 8 ? p : null;
+}
+/* 그림이 없는 단어는 그림 영역을 비우고 뜻·발음 힌트로만 출제한다 */
+function picHtml(w, inner) {
+  return (picReady(w) ? `<span class="qemoji">${w.e}</span>` : '') + inner;
+}
+const emo = (w) => (picReady(w) ? w.e + ' ' : '');
+
+/* 🌱 1단계-A — 그림 + 한국어 뜻 → 영어 단어 고르기 (그림이 분명한 단어만) */
 function makePicQ() {
-  const w = takeEnWord(levelWords(), 'pic:' + S.level);
+  const pool = picWords(levelWords()) || picWords(WORDS);
+  if (!pool) return makeKoQ();   /* 그림 단어가 없으면 뜻 보고 고르기로 */
+  const w = takeEnWord(pool, 'pic:' + S.level);
   const opts = [w.en];
   sameCat(w).forEach((x) => { if (opts.length < 3 && !opts.includes(x.en)) opts.push(x.en); });
   fillChoices(opts, 4, WORDS);
   return {
     stage: 'easy', tag: '그림 단어', css: 'en',
-    qhtml: `<span class="qemoji">${w.e}</span><span class="qko">${esc(w.ko)}</span>`,
+    qhtml: picHtml(w, `<span class="qko">${esc(w.ko)}</span>`),
     say: w.en,
     extrasHTML: '<button class="ttsbtn" id="ttsBtn">🔊 발음 듣기</button>',
     choices: shuffleArr(opts).map((t) => ({ t, ok: t === w.en })),
@@ -2477,11 +2575,11 @@ function makeListenQ() {
     qhtml: '👂 잘 듣고 알맞은 단어를 골라요',
     say: w.en,
     extrasHTML: '<button class="ttsbtn" id="ttsBtn">🔊 다시 듣기</button>'
-      + '<button class="ttsbtn" id="picBtn">👀 뜻 힌트</button>'
-      + `<span class="hintpic" id="hintPic" hidden>${w.e} ${esc(w.ko)}</span>`,
+      + (picReady(w) ? '<button class="ttsbtn" id="picBtn">👀 뜻 힌트</button>' : '')
+      + (picReady(w) ? `<span class="hintpic" id="hintPic" hidden>${w.e} ${esc(w.ko)}</span>` : ''),
     choices: shuffleArr(opts).map((t) => ({ t, ok: t === w.en })),
     answer: w.en,
-    hintHtml: `뜻: ${w.e} <b>${esc(w.ko)}</b> · 첫 글자 <b>'${esc(w.en[0])}'</b> (${w.en.length}글자)`,
+    hintHtml: `뜻: ${emo(w)}<b>${esc(w.ko)}</b> · 첫 글자 <b>'${esc(w.en[0])}'</b> (${w.en.length}글자)`,
   };
 }
 
@@ -2504,10 +2602,10 @@ function makeSpellQ() {
     stage: 'mid', tag: '철자 빈칸', css: 'letters',
     qhtml: `<span class="qword">${esc(pre)}<b class="qbl">_</b>${esc(post)}</span>`,
     say: w.en,
-    extrasHTML: `<span class="qko">${w.e} ${esc(w.ko)}</span><button class="ttsbtn" id="ttsBtn">🔊 발음</button>`,
+    extrasHTML: `<span class="qko">${emo(w)}${esc(w.ko)}</span><button class="ttsbtn" id="ttsBtn">🔊 발음</button>`,
     choices: opts.map((t) => ({ t, ok: t === sp.seg })),
     answer: sp.seg,
-    hintHtml: `뜻: ${w.e} <b>${esc(w.ko)}</b> · 첫 글자 <b>'${esc(w.en[0])}'</b>`,
+    hintHtml: `뜻: ${emo(w)}<b>${esc(w.ko)}</b> · 첫 글자 <b>'${esc(w.en[0])}'</b>`,
   };
 }
 
