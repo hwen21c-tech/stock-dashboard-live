@@ -18,7 +18,9 @@ public/pokemon/manifest.json  포켓몬 배틀 월드 매니페스트 (id·start
 public/pokemon/sw.js          포켓몬 배틀 월드 서비스워커 (scope /pokemon/)
 public/ebook.html          📖 eBook 오디오북 — TXT 뷰어 + 세미 오디오북 (단일 파일, 외부 의존 없음)
 public/ebook/manifest.json    eBook 매니페스트 (id·start_url = /ebook.html, scope = /ebook/)
+public/ebook-standalone-manifest.json  독립 eBook 도메인용 매니페스트 (start_url = /, scope = /)
 public/ebook/sw.js            eBook 서비스워커 (scope /ebook/, 캐시 접두사 ebook-reader-)
+public/ebook-root-sw.js       독립 eBook 도메인용 루트 서비스워커 (scope /)
 public/ebook-icon.svg         eBook 앱 아이콘(책+헤드폰) — 192/512 PNG 동봉
 check-inline.mjs           HTML 안의 인라인 <script> 구문 검사기 (index.html 3.5MB 본체 보호용)
 public/downloads/          앱 아이콘 192/512
@@ -124,17 +126,40 @@ TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효�
 | 서비스워커 | `/sw.js` (`scope: /`) | `/ebook/sw.js` (`scope: /ebook/`, 캐시 접두사 `ebook-reader-`) |
 | 진입 | `/` | `/ebook.html`, `/ebook/` (`vercel.json` rewrite) |
 
+**독립 도메인 `yeonolang-ebook.vercel.app`** — 같은 저장소를 별도 Vercel 프로젝트로 한 번 더 배포한 eBook 전용 주소.
+
+| | 값 |
+|---|---|
+| 루트(`/`) | `vercel.json` 의 `has: host` rewrite → `/ebook.html` (+ `index.html` 최상단 호스트 분기 스크립트가 2중 안전망) |
+| 매니페스트 | `/ebook-standalone-manifest.json` (`start_url: /`, `scope: /`, `id: /`) |
+| 서비스워커 | `/ebook-root-sw.js` (`scope: /`, `Service-Worker-Allowed: /`) |
+| 설치 이름 | 연오랑 eBook 오디오북 / eBook |
+
+호스트 이름에 `ebook` 이 들어가면(운영·프리뷰·커스텀 도메인 모두) eBook 이 첫 화면이 되고,
+관제탑 주소(`stock-dashboard-live-6frm.vercel.app`)에서는 분기가 동작하지 않아 PIN 잠금·9대 탭이 그대로다.
+
 - **TXT 열기**: 드래그&드롭 · 파일 선택. `TextDecoder('utf-8',{fatal:true})` 실패 시 `euc-kr` 로 자동 폴백.
-  올린 책은 IndexedDB(`ebook-library`), 읽던 위치·책갈피·설정은 `localStorage` 에만 저장(서버 전송 없음).
+  올린 책은 IndexedDB(`ebook-library`), 읽던 위치·책갈피·형광펜·설정은 `localStorage` 에만 저장(서버 전송 없음).
 - **본문 구조**: `제1장`·`1장`·`Chapter 1`·`1.`·`프롤로그/에필로그` 등을 장으로 인식해 목차 드로어를 만들고,
   장 첫머리는 새 쪽에서 시작한다. 문단은 문장 단위 `<span class="sn">` 로 쪼개 대사(`"…"`, `“…”`, 「…」)와 지문을 구분한다.
 - **화면**: 멀티컬럼 페이지 엔진. 넓은 화면(≥780px) 2쪽 펼침(책등 표시) / 좁은 화면 1쪽, 푸터에서 전환 가능.
-  좌우 화면 끝 탭·스와이프·←/→ 키로 넘김, 진행률 슬라이더, 글자 14~26px · 줄간격 1.4~2.4 · 고딕/명조 · 종이/세피아/다크.
+  좌우 화면 끝 탭·스와이프·←/→ 키로 넘김, 진행률 슬라이더, 글자 14~26px · 줄간격 1.4~2.4 · 고딕/명조 · 종이/세피아/검은바탕.
+- **몰입 모드**: 본문 가운데를 한 번 탭하면 상·하단 바가 .32s 모션으로 접혀 전체 화면 읽기, 다시 탭하면 복귀(바가 접힌 뒤 본문을 새 높이로 다시 편다).
+- **책장 넘김 모션**: `goSpread` 가 방향을 알고 `#pageTurn` 슬라이드+페이드(.30s)와 `#turnShade` 종이 그림자 스윕(.34s)을 함께 건다. `prefers-reduced-motion` 이면 둘 다 끔.
+- **형광펜**: 문장을 460ms 길게 누르거나 끌어서 선택하면 노랑·민트·분홍·지우기 팝업(`#hlPop`)이 뜨고, 색은 `localStorage(ebook.highlights.v1)` 에 책별(`book.id` → 문장번호)로 저장된다.
+  목차 드로어의 `🖍 형광펜` 탭이 모아보기 — 누르면 그 문장으로 바로 점프(책갈피 탭과 토글).
+- **본문 검색**: 헤더 `🔍` → 책 전체 `b.sentences` 를 훑어 장 이름·앞뒤 문맥과 함께 `<mark>` 로 보여주고, 누르면 해당 문장으로 이동(최대 150건 표시, 총 건수 별도).
 - **세미 오디오북(`/api/tts`)**: 문장 단위로 낭독하며 현재 문장을 하이라이트하고 쪽 끝에서 자동으로 넘긴다.
   대사는 속도·호흡(서버 음성) / 음높이(기기 음성)로 지문과 구분. `/api/tts` 가 실패하면 `speechSynthesis` 로 자동 폴백.
+- **화자 힌트 톤 분리**: 대사 앞뒤 3문장에서 노인/아이/여성/남성 키워드를 점수화(가까운 문장·`말했다/물었다` 가중, 호칭이면 반대편 화자 보정)해
+  기기 음성은 `pitch` 0.80(노인)~1.28(아이)·`rate`, 서버 음성은 `speed=0.5~1`(`ttsspeed`)과 대사 앞뒤 쉼(pre 240ms/post 330ms 등)으로 호흡을 가른다.
+- **수면 타이머**: 낭독 바의 `⏰ 타이머`(끄기→15분→30분→이 장 끝 순환)와 오디오 시트의 4버튼. 남은 시간을 1초마다 표시하고,
+  만료·장 끝이면 `Ambience.fadeOut()` + `<audio>.volume` 램프로 0.9초 페이드아웃 후 정지한다.
+- **검은 바탕(OLED)**: `--bg/--page #000000` + 글자 `#d4d8df`(눈 부심 억제). 설정 시트 3번째 버튼과 헤더 원터치 `🌙/☀️` 버튼 두 곳에서 즉시 전환.
 - **장면 효과음**: 비·천둥·바람·숲·밤·긴장·발소리·파도·불 키워드를 감지해 **Web Audio 합성음**을 겹친다(외부 오디오 파일 0).
   ON/OFF·볼륨 조절, 낭독을 멈추면 함께 멈춘다.
 - 검증: `node /workspace/_tools/e2e/ebook_local.mjs` (3화면 넘침·목차 점프·2쪽/1쪽·낭독 하이라이트·EUC-KR·이어보기·`/ebook/` 리라이트)
+  · v2: `/workspace/_ebook_v2/test_local_v2.mjs`(몰입·책장넘김·형광펜·검색·수면타이머·화자힌트·OLED·3화면 넘침) 와 `test_branch_v2.mjs`(호스트 분기)
 
 ### 4) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
 `🔎 여행·키즈 맞춤 검색기` · `✈️ 국내&해외 여행 특가(11건)` · `🎪 키즈카페·박물관(11건)`

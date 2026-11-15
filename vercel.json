@@ -36,6 +36,17 @@
       ]
     },
     {
+      "source": "/ebook-root-sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/ebook-standalone-manifest.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
       "source": "/ebook/manifest.json",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
@@ -52,6 +63,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html" },
+    { "source": "/index.html", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html" },
     { "source": "/pokemon", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/:path*", "destination": "/:path*" },

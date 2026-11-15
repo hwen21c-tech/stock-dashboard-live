@@ -1,6 +1,22 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script>
+    /* ===== 독립 eBook 도메인 분기 (가장 먼저 실행) =====
+       yeonolang-ebook.vercel.app 처럼 호스트에 'ebook' 이 들어 있으면
+       관제탑(PIN 잠금·9대 탭) 대신 eBook 리더를 곧바로 띄운다.
+       - 관제탑 도메인(stock-dashboard-live-6frm.vercel.app)에는 영향 없음.
+       - 화면을 먼저 감춰서 PIN 잠금 화면이 번쩍이는 일이 없게 한다. */
+    (function () {
+      try {
+        var h = String(location.hostname || '').toLowerCase();
+        if (h.indexOf('ebook') >= 0) {
+          document.documentElement.style.visibility = 'hidden';
+          location.replace('/ebook.html' + location.search + location.hash);
+        }
+      } catch (e) { /* */ }
+    })();
+  </script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
