@@ -3036,7 +3036,7 @@
     add(src) {
       if (!src || src.__review) return null;
       const q = cloneQ(src);
-      if (!q) return null;
+      if (!q || !Weak.usable(q)) return null;
       const id = this.idOf(q);
       if (!id) return null;
       const hit = this.items.find((it) => it.id === id);
@@ -3050,6 +3050,23 @@
       if (this.items.length > WRONG_MAX) this.items.shift();
       this.save();
       return this.items[this.items.length - 1];
+    },
+    /* 저장한 문제를 이 과목 화면에서 그대로 다시 낼 수 있는지 — 보기·정답이 온전해야 한다 */
+    usable(q) {
+      if (!q || !Array.isArray(q.choices) || !q.choices.length) return false;
+      if (GAME === 'math') {
+        if (q.ans === undefined || q.ans === null) return false;
+        return q.choices.some((c) => String(c) === String(q.ans));
+      }
+      return q.choices.filter((c) => c && c.ok === true).length === 1;
+    },
+    /* 다시 낼 수 없는 문제(예전 버전 저장분)는 조용히 버린다 */
+    drop(id) {
+      const i = this.items.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      this.items.splice(i, 1);
+      this.save();
+      return true;
     },
     bump(id) {
       const it = this.items.find((x) => x.id === id);
@@ -3097,6 +3114,7 @@
       const id = this.plan.shift();
       const it = Weak.items.find((x) => x.id === id);
       if (!it) return null;
+      if (!Weak.usable(it.q)) { Weak.drop(id); return null; }   /* 모양이 깨진 예전 저장분은 건너뛴다 */
       const Q = cloneQ(it.q);
       if (!Q) return null;
       Q.__review = it.id;
