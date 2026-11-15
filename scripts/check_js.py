@@ -20,7 +20,7 @@ JS = ["api/stock-live.js", "api/tabs-live.js", "api/live-briefing.js", "api/dart
       "public/live-extra.js", "public/live-calendar.js", "public/live-dart.js", "public/live-macro.js",
       "api/index-chart.js", "api/macro-live.js", "api/econ-calendar.js", "api/stock-trend.js", "dev_server.mjs",
       "api/content-studio.js", "public/content-engine.js", "public/overheat-badge.js", "public/ebook/sw.js",
-      "public/pokemon/sw.js", "public/watchlist.js"]
+      "public/pokemon/sw.js", "public/pokemon-audio.js", "public/pokemon-battle2.js", "public/pokemon-sync.js", "public/watchlist.js"]
 HTML = ["public/index.html", "public/ebook.html", "public/deals.html", "public/content-studio.html",
         "public/preview-leeno.html", "public/preview-honginki.html", "public/preview-bijoong.html"]
 

@@ -236,6 +236,10 @@
   }
 
   /* ---------- 5. 울음소리 ---------- */
+  /* 🔊 볼륨 분리 — 울음소리는 '발음·효과음' 쪽 크기를 따른다(설정 없으면 예전 그대로) */
+  function voiceLevel() {
+    try { return window.PKMAudio ? window.PKMAudio.voice() : 1; } catch (e) { return 1; }
+  }
   function playCry(id, force) {
     try {
       if (typeof Sound !== 'undefined' && Sound.muted) return;
@@ -245,7 +249,7 @@
       const a = PB.audio || (PB.audio = new Audio());
       a.pause();
       a.src = CRY(id);
-      a.volume = 0.5;
+      a.volume = 0.5 * voiceLevel();
       const pr = a.play();
       if (pr && pr.catch) pr.catch(() => { /* 자동재생 차단 등은 조용히 무시 */ });
     } catch (e) { /* */ }
@@ -573,6 +577,26 @@
       qa('#pb2TimerGrid button').forEach((b) => {
         b.classList.toggle('on', (b.dataset.timer === 'off') === off);
       });
+    },
+
+    /* 🔊 소리 크기 — 배경음과 단어 발음·효과음을 따로 (⚙️ 설정 안에서 바로 조절) */
+    audioGrid() {
+      const body = q('#settingsModal .sheet-body');
+      if (!body || q('#pb2AudioBlock')) return;
+      if (!window.PKMAudio) return;
+      const h = document.createElement('h3');
+      h.className = 'sect';
+      h.id = 'pb2AudioTitle';
+      h.textContent = '🔉 소리 크기';
+      const box = document.createElement('div');
+      box.className = 'pb2-audiogrid';
+      box.id = 'pb2AudioBlock';
+      const note = body.querySelector('.setnote');
+      if (note) { body.insertBefore(box, note); body.insertBefore(h, box); }
+      else { body.appendChild(h); body.appendChild(box); }
+      try {
+        window.PKMAudio.renderInto(box, { note: '🔊 버튼은 전체 끄기 · 길게 누르면 이 창을 바로 열 수 있어요' });
+      } catch (e) { warn('audio grid', e); }
     },
 
     missionModal() {
@@ -1381,7 +1405,7 @@
         const a = this.audio;
         a.onerror = () => { /* 조용히 무시 */ };
         a.onstalled = a.onerror;
-        a.volume = 0.92;
+        a.volume = 0.92 * voiceLevel();
         a.src = '/api/tts?lang=ko&text=' + encodeURIComponent(w);
         const pr = a.play();
         if (pr && pr.catch) pr.catch(() => { /* 자동재생 차단은 무시 */ });
@@ -2016,7 +2040,7 @@
       if (typeof origOpenSettings === 'function' && !origOpenSettings.__pb2) {
         const s = function () {
           const out = origOpenSettings.apply(this, arguments);
-          try { UI.paintTimerGrid(); } catch (e) { /* */ }
+          try { UI.paintTimerGrid(); UI.audioGrid(); } catch (e) { /* */ }
           return out;
         };
         s.__pb2 = true;
@@ -3303,6 +3327,7 @@
     UI.ticketBtn();
     UI.modals();
     UI.timerGrid();
+    UI.audioGrid();
     UI.rank();
     loadAll();
     initRankSeen();
@@ -3536,6 +3561,13 @@
       lastAt: () => Cheer.last,
       muted: () => Cheer.muted(),
       lastSrc: () => { try { return Cheer.audio ? Cheer.audio.src : ''; } catch (e) { return ''; } },
+    },
+    /* 🔊 볼륨 분리 검증용 */
+    audio: {
+      state: () => (window.PKMAudio ? window.PKMAudio.state() : null),
+      openSettings() { UI.audioGrid(); try { openModal('settingsModal'); } catch (e) { /* */ } },
+      cryVolume() { return PB.audio ? PB.audio.volume : null; },
+      cheerVolume() { return Cheer.audio ? Cheer.audio.volume : null; },
     },
     /* 검증용 — 보스·진화·전설 보정 없이, 재등장 섞기만 적용된 기본 등장 */
     basePick(n) {

@@ -71,6 +71,7 @@
     'pkm.family.pin.v1',       /* 기기 PIN */
     'pkm.family.unlocked.v1',  /* 잠금 해제(세션) */
     'pkm.mute.v1', 'mpb.mute', 'hpb.mute', 'epb.mute', /* 소리 */
+    'pkm.audio.v1',            /* 🔊 볼륨(배경음·발음) — 기기별 취향이라 클라우드로 보내지 않는다 */
     'pkm.timer.v1.'            /* 타이머 표시 on/off — 기기 취향 */
   ];
 
