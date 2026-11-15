@@ -2038,6 +2038,8 @@
       background: #0284c7 !important;
       transform: scale(0.95);
     }
+  /* 좁은 화면에서는 배지 범례의 부가 설명을 접는다 */
+  @media (max-width: 620px) { .oh-lg-long { display: none; } }
 </style>
 </head>
 <body>
@@ -2298,11 +2300,11 @@
   <!-- 🚦 배지 범례: 어떤 배지가 공식 지정이고 어떤 배지가 일봉 계산인지 화면에서 바로 구분 -->
   <div id="ohLegend" style="font-size:9px; color:#64748b; line-height:1.55; margin:-3px 0 8px 2px;">
     🚦 <b style="color:#94a3b8;">배지</b> ·
-    <span style="color:#fde68a;">⚠️ 투자주의</span>/
-    <span style="color:#fecaca;">🚨 투자경고</span>/
-    <span style="color:#fca5a5;">🔥 투자위험</span>/
-    <span style="color:#cbd5e1;">⛔ 거래정지</span> = 네이버 금융 「관리·거래정지·경보」(KRX 지정 현황) 실측 ·
-    <span style="color:#e9d5ff;">📈 5일/20일</span> = 내장 일봉 실측 누적 등락률 계산(5일 +30%·20일 +50% 기준, <b>공식 지정 아님</b>)
+    <span style="color:#fde68a;">⚠️투자주의</span>
+    <span style="color:#fecaca;">🚨투자경고</span>
+    <span style="color:#fca5a5;">🔥투자위험</span>
+    <span style="color:#cbd5e1;">⛔거래정지</span> = 네이버 금융 공식 경보(KRX) ·
+    <span style="color:#e9d5ff;">📈5일/20일</span> = 일봉 누적 등락률 계산(<b>공식 지정 아님</b><span class="oh-lg-long"> · 기준 5일 +30% / 20일 +50%</span>)
   </div>
 
     <!-- TICKER BAR (ALL 9 CORE INDICES CLICKABLE WITH CHART POPUPS) -->
