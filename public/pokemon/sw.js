@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v13';  /* 2026-11-15 v13: 🔊 배경음·단어 발음 볼륨 분리(pkm.audio.v1) · 📊 아빠 PIN 학습 리포트 */
+const VERSION = PREFIX + 'v14';  /* 2026-11-16 v14: 🔒 통합 도감 '바로 잠그기' + 🗑 도감 초기화(아빠 PIN·2차 확인·마을 배치 정리·resetAt 동기화) */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',

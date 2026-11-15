@@ -143,6 +143,9 @@
   function isBlankish(key, raw) {
     var v = jp(raw, null);
     if (startsWith(key, 'pkm.shared.dex.v1.')) {
+      /* 아빠가 🗑 도감 초기화로 일부러 비운 도감(resetAt)은 '빈 값'이 아니라
+         '비웠다는 기록'이다 — 이걸 빈 값으로 보면 클라우드의 옛 도감을 받아 되살려 버린다. */
+      if (v && Number(v.resetAt) > 0) return false;
       return !(v && Array.isArray(v.ids) && v.ids.length);
     }
     if (startsWith(key, 'pkm.village.v2.')) {
@@ -186,6 +189,7 @@
       if (startsWith(k, 'pkm.shared.dex.v1.')) {
         v = jp(snap[k], null);
         if (v && Array.isArray(v.ids) && v.ids.length) return true;
+        if (v && Number(v.resetAt) > 0) return true;   /* 일부러 비운 도감도 올릴 거리가 있다 */
         continue;
       }
       if (k.indexOf('profiles.v1') >= 0) {
@@ -398,6 +402,9 @@
       if (!c || typeof c !== 'object') return;
       for (var kk in c) counts[kk] = Math.max(Number(counts[kk] || 0), Number(c[kk]) || 0);
     });
+    /* 도감에 없는 포켓몽의 잡은 횟수는 남기지 않는다 — 🗑 도감 초기화 뒤
+       다시 잡았을 때 '예전 횟수'가 되살아나지 않게. */
+    for (var ck in counts) { if (!seenK[ck]) delete counts[ck]; }
     var vv = (l && l.v) || (r && r.v) || 2;
     return JSON.stringify({ ids: out, counts: counts, v: vv });
   }

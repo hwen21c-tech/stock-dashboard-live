@@ -340,6 +340,30 @@
     font-size:clamp(10px,2.8vw,12px);background:linear-gradient(180deg,#fff,#eaf8d0);border:2px solid #cfe7a2;
     box-shadow:0 3px 0 rgba(70,120,30,.22)}
   .dxempty{margin:16px 4px;text-align:center;font-size:clamp(10px,2.8vw,12px);font-weight:900;color:#7d8a63;line-height:1.65}
+  /* 도감 하단 — 아빠 바로 잠그기 · 도감 초기화 */
+  .dxfoot{flex:0 0 auto;display:flex;gap:6px;align-items:center;padding:8px 12px 10px;border-top:2px solid #eef6dd;
+    background:linear-gradient(180deg,#f9ffef,#f1fbe0);border-radius:0 0 17px 17px}
+  .dxfoot button{flex:1 1 0;min-width:0;padding:8px 6px;border-radius:12px;font-weight:900;letter-spacing:-.03em;
+    font-size:clamp(9.5px,2.6vw,11.5px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    box-shadow:0 3px 0 rgba(70,120,30,.22)}
+  .dxfoot button:active{transform:translateY(2px);box-shadow:none}
+  .dxfoot #dexLockBtn{background:linear-gradient(180deg,#fff5db,#ffdf87);border:2px solid #e5b53c;color:#7a4400}
+  .dxfoot #dexResetBtn{background:linear-gradient(180deg,#fff,#ffe7df);border:2px solid #efbda9;color:#a83a17}
+  .dxfoot button[hidden]{display:none !important}
+  /* 🧹 도감 초기화 확인 */
+  #dexResetModal{z-index:78}
+  .dxreset .msheet{width:min(400px,100%)}
+  .dxreset .drimg{display:flex;align-items:center;justify-content:center;margin:2px auto 6px;
+    width:min(86px,24vw);height:min(86px,24vw);border-radius:50%;background:#fff4ee;border:3px solid #f2cdbd;
+    font-size:clamp(32px,9.5vw,42px);line-height:1}
+  .dxreset h3{margin:4px 0 3px;text-align:center;font-size:clamp(13px,3.7vw,16px);letter-spacing:-.03em;color:#22400f}
+  .dxreset .drsub{margin:0 0 12px;text-align:center;font-size:clamp(10px,2.7vw,12px);font-weight:900;color:#8d6a4c;line-height:1.6}
+  .dxreset .drbtns{display:flex;gap:7px}
+  .dxreset .drbtns button{flex:1 1 0;min-width:0;padding:10px 6px;border-radius:13px;font-weight:900;
+    font-size:clamp(11px,3vw,13px);letter-spacing:-.03em;background:linear-gradient(180deg,#fff,#eef7dd);
+    border:2px solid #d7e6bc;color:#3b5c22;box-shadow:0 3px 0 rgba(70,120,30,.2)}
+  .dxreset .drbtns button:active{transform:translateY(2px);box-shadow:none}
+  .dxreset .drbtns button.danger{background:linear-gradient(180deg,#ffdfd5,#ff9e7f);border-color:#e86a45;color:#6d1600}
   /* 도감 상세 */
   .dxdet .msheet{width:min(430px,100%)}
   .dxdet .dart{display:block;width:min(150px,42vw);margin:2px auto 4px;object-fit:contain}
@@ -462,6 +486,26 @@
       <div class="dxgrid" id="dexGrid"></div>
       <p class="dxempty" id="dexEmpty" hidden></p>
       <div class="dxmore" id="dexMoreWrap" hidden><button type="button" id="dexMore">더 보기</button></div>
+    </div>
+    <div class="dxfoot">
+      <button type="button" id="dexLockBtn" hidden>🔒 바로 잠그기</button>
+      <button type="button" id="dexResetBtn">🗑️ 도감 초기화</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🧹 도감 초기화 확인 — 아빠 PIN 을 통과한 뒤 한 번 더 묻는다 -->
+<div class="modal dxreset" id="dexResetModal" hidden>
+  <div class="msheet" role="dialog" aria-modal="true" aria-labelledby="dxrTitle">
+    <div class="mhead"><h2 id="dxrTitle">🧹 도감 초기화</h2><button class="mx" data-close="dexResetModal" aria-label="닫기">✕</button></div>
+    <div class="mbody">
+      <div class="drimg" aria-hidden="true">🧹</div>
+      <h3 id="dxrName">정말 첫째의 도감을 초기화할까요?</h3>
+      <p class="drsub" id="dxrDesc">잡은 0마리가 모두 사라집니다. 되돌릴 수 없어요.</p>
+      <div class="drbtns">
+        <button type="button" id="dxrCancel">취소</button>
+        <button type="button" class="danger" id="dxrOk">초기화</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1466,6 +1510,7 @@
   }
   function renderDex() {
     var store = dexStore(Dex.slot);
+    startLockTick();
     var total = DB.list.length;
     var got = store.ids.size;
     setText('dexOwner', slotName(Dex.slot));
@@ -1623,8 +1668,88 @@
     var fn = Adm.pending;
     Adm.pending = null;
     closeM('dPinModal');
+    startLockTick();
     if (fn) { try { fn(); } catch (e) { /* */ } }
   };
+
+  /* ---------- 🔒 바로 잠그기 — 아빠 PIN 으로 열린 2분을 기다리지 않고 바로 잠근다 ---------- */
+  var LockTick = 0;
+  function lockLeft() { return Math.max(0, Math.ceil((Adm.until - Date.now()) / 1000)); }
+  function paintLockBtn() {
+    var b = document.getElementById('dexLockBtn');
+    if (!b) return;
+    var left = lockLeft();
+    if (left > 0) {
+      b.hidden = false;
+      b.textContent = '🔒 바로 잠그기 · ' + left + '초';
+      b.setAttribute('aria-label', '아빠 잠금 바로 걸기 — ' + left + '초 뒤 자동 잠금');
+    } else {
+      b.hidden = true;
+      b.textContent = '🔒 바로 잠그기';
+      b.setAttribute('aria-label', '아빠 잠금 바로 걸기');
+    }
+  }
+  function startLockTick() {
+    paintLockBtn();
+    if (LockTick) return;
+    LockTick = setInterval(function () {
+      paintLockBtn();
+      /* 도감 창을 닫았거나 자동 잠금 시간이 지나면 더 볼 것이 없다 */
+      if (!isOpen('dexModal') || lockLeft() <= 0) { clearInterval(LockTick); LockTick = 0; }
+    }, 1000);
+  }
+  function lockNow() {
+    var wasOpen = lockLeft() > 0;
+    Adm.until = 0;
+    Adm.pending = null;
+    paintLockBtn();
+    if (LockTick) { clearInterval(LockTick); LockTick = 0; }
+    toast(wasOpen ? '🔒 아빠 잠금을 다시 걸었어요' : '🔒 이미 잠겨 있어요');
+  }
+
+  /* ---------- 🧹 도감 초기화 — 지금 보고 있는 슬롯의 도감만 비운다 ---------- */
+  /* 마을 배치에 놓인 포켓몬만 빼고, 꾸미기 소품·테마는 그대로 둔다 */
+  function purgeVillageSlot(slot) {
+    var k = VIL + slot;
+    var o = jget(k, null);
+    if (!o || typeof o !== 'object') return false;
+    var dirty = false;
+    Object.keys(o).forEach(function (key) {
+      var st = o[key];
+      if (!st || !Array.isArray(st.poke)) return;
+      if (st.poke.length) { st.poke = []; dirty = true; }
+    });
+    if (dirty) lsSet(k, JSON.stringify(o));
+    return dirty;
+  }
+  function resetDexSlot() {
+    var slot = Dex.slot;
+    var name = slotName(slot);
+    /* resetAt — '비었다'가 아니라 '아빠가 일부러 비웠다'는 표시.
+       클라우드 동기화가 빈 값을 '아직 못 받은 것'으로 보고 되살리는 것을 막는다. */
+    lsSet(keyOf(slot), JSON.stringify({ ids: [], counts: {}, dates: {}, subjects: {}, v: 1, resetAt: Date.now() }));
+    purgeVillageSlot(slot);
+    closeM('dexResetModal');
+    renderDex();
+    refreshHome();
+    try { document.dispatchEvent(new Event('pkmcloud:refresh')); } catch (e) { /* */ }
+    toast('🧹 ' + name + '의 도감을 초기화했어요');
+  }
+  function askResetDex() {
+    var n = dexStore(Dex.slot).ids.size;
+    var name = slotName(Dex.slot);
+    var t = document.getElementById('dxrName');
+    var d = document.getElementById('dxrDesc');
+    if (t) t.textContent = '정말 ' + name + '의 도감을 초기화할까요?';
+    if (d) d.textContent = n
+      ? '잡은 ' + n + '마리가 모두 사라집니다. 마을에 놓아 둔 포켓몬도 이 자리에서 빠져요. 되돌릴 수 없어요.'
+      : '아직 잡은 포켓몬이 없어요. 그래도 도감을 한 번 더 비워 둘까요?';
+    closeM('dexResetModal');
+    openM('dexResetModal');
+  }
+  function onResetDex() {
+    gate('🗑️ 도감 초기화', slotName(Dex.slot) + '의 도감을 비우려면 가족 PIN 4자리를 눌러 주세요.', askResetDex);
+  }
 
   /* ---------- 도감 넣기/빼기 ---------- */
   function purgeVillage(id) {
@@ -1748,6 +1873,19 @@
     if (dd) {
       dd.addEventListener('click', function (e) {
         if (e.target === e.currentTarget || e.target.closest('[data-close="dexDetailModal"]')) closeM('dexDetailModal');
+      });
+    }
+    /* 🔒 바로 잠그기 · 🗑️ 도감 초기화 — 도감 모달 하단 */
+    var lb = document.getElementById('dexLockBtn');
+    if (lb) lb.addEventListener('click', lockNow);
+    var rb = document.getElementById('dexResetBtn');
+    if (rb) rb.addEventListener('click', onResetDex);
+    var rm = document.getElementById('dexResetModal');
+    if (rm) {
+      rm.addEventListener('click', function (e) {
+        if (e.target === rm || (e.target.closest && e.target.closest('[data-close="dexResetModal"]'))) { closeM('dexResetModal'); return; }
+        if (e.target.closest && e.target.closest('#dxrCancel')) { closeM('dexResetModal'); return; }
+        if (e.target.closest && e.target.closest('#dxrOk')) resetDexSlot();
       });
     }
     var pm = document.getElementById('dPinModal');
@@ -2024,7 +2162,27 @@
   window.PKHDEX = {
     open: openDex,
     openName: openName,
-    close: function () { closeM('nameModal'); closeM('dexDetailModal'); closeM('dPinModal'); closeM('dexModal'); },
+    close: function () { closeM('nameModal'); closeM('dexDetailModal'); closeM('dPinModal'); closeM('dexResetModal'); closeM('dexModal'); },
+    /* 🔒 바로 잠그기 / 🗑️ 도감 초기화 검증용 */
+    lock: lockNow,
+    lockState: function () {
+      var b = document.getElementById('dexLockBtn');
+      return {
+        unlocked: Date.now() < Adm.until,
+        left: lockLeft(),
+        btnHidden: b ? !!b.hidden : null,
+        btnText: b ? b.textContent : '',
+        resetBtn: !!(document.getElementById('dexResetBtn')),
+        resetOpen: isOpen('dexResetModal'),
+        resetTitle: (document.getElementById('dxrName') || {}).textContent,
+        resetDesc: (document.getElementById('dxrDesc') || {}).textContent
+      };
+    },
+    reset: function () { resetDexSlot(); },
+    store: function (slot) {
+      var k = keyOf(slot || Dex.slot);
+      return { key: k, raw: ls(k), village: ls(VIL + (slot || Dex.slot)) };
+    },
     names: function () {
       return {
         card: ['kidP1', 'kidP2', 'kidP3'].map(function (id) {
