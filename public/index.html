@@ -2209,6 +2209,17 @@
   }
 #tabHonginki .hi-stock-card:hover, #tabHonginki .hi-stock-card:focus-visible { border-color: var(--accent-blue); background: #131a29; outline: none; }
 #tabHonginki .hi-stock-card:active { transform: scale(0.995); }
+/* 카드 안 미니 일봉 캔들 차트 — 핀치 확대·좌우 드래그·1탭 = 큰 차트 */
+#tabHonginki .hi-stock-card .sc-mini {
+    display: block; width: 100%; height: 150px; margin: 8px 0 0;
+    border: 1px solid rgba(148,163,184,0.20); border-radius: 8px; background: #070c14;
+    touch-action: pan-y; cursor: pointer;
+  }
+#tabHonginki .sc-mini-cap {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 4px 2px 0;
+    font-size: 9.5px; font-weight: 700; color: #64748b; letter-spacing: -.2px; line-height: 1.35;
+  }
+#tabHonginki .sc-mini-cap .mc-tap { color: #7dd3fc; }
 #tabHonginki .sc-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 2px; }
 #tabHonginki .sc-name { font-weight: 800; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 5px; min-width: 0; }
 #tabHonginki .sc-name span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -13088,6 +13099,7 @@ function renderCards() {
         strip3(c) +
         '<div class="sc-price-row"><div class="sc-price">' + nf(c.close) + '<small>원</small></div><div class="sc-pct ' + pctCls(c.pct) + '">' + sign(c.pct.toFixed(2)) + '%</div></div>' +
         liveCardHtml(c) +
+        miniChartHtml(c) +
         '<div class="sc-meta">' +
           '<span class="chip blue">대금 ' + fmtEok(c.valueEok) + ' · ' + c.rank + '위</span>' +
           '<span class="chip ' + (c.kki.limitUp > 0 ? 'purple' : '') + '">끼 상한가 ' + c.kki.limitUp + '회</span>' +
@@ -13097,13 +13109,348 @@ function renderCards() {
         stepDots(c) + sparkSvg(c) + planBox(c) +
         '<div class="sc-reasons">' + c.reasons.map(function (r) { return '<div class="reason"><i>·</i><span>' + r + '</span></div>'; }).join('') + '</div>' +
         (c.flags.length ? '<div class="sc-flags">' + c.flags.map(function (f) { return '<div class="flag">⚠️ ' + f + '</div>'; }).join('') + '</div>' : '') +
-        '<div class="sc-foot"><span>일봉 130개 내장 · 120일 전고점 ' + nf(c.hi120) + '원</span><span class="open">실측 차트 →</span></div>' +
+        '<div class="sc-foot"><span>일봉 캔들 · 120일 전고점 ' + nf(c.hi120) + '원</span><span class="open">실측 차트 →</span></div>' +
         '</button>';
     }).join('');
   }
   window.__HONGINKI.cards = DATA.cards.length;
   window.__HONGINKI.shown = list.length;
     try { paintLive(); } catch (e) {}
+    /* 카드가 새로 그려질 때마다(최초 렌더·Hot-Swap·단계 필터) 미니 차트도 다시 그린다 */
+    try { hiDrawMinis(); } catch (e) { console.error('Honginki mini chart:', e); }
+}
+
+/* ===== 카드 안 미니 일봉 캔들 차트 =====
+   · 카드마다 내장 일봉(130개)으로 먼저 그리고, /api/stock-chart 200일 실측이 오면 교체
+   · 시·고·저·종 양봉/음봉 + 하단 거래량 + 전일 종가·120일 전고점 기준선(가격 라벨)
+   · 두 손가락 핀치 확대 / 좌우 드래그 이동 / 한 번 탭 = 기존 큰 차트 팝업 */
+var MINI = Object.create(null);        // code -> { len, count, start, hover, vsta, vend, iw }
+var MINI_FULL = Object.create(null);   // code -> [{d,o,h,l,c,v}] 200일 실측
+var MINI_ASKED = Object.create(null);  // code -> true (요청 1회)
+var MINI_DEF = 120;
+
+function miniSeriesOf(card) {
+  var arr = MINI_FULL[card.code] || card.candles || [];
+  return arr;
+}
+function miniState(code, len) {
+  var s = MINI[code];
+  if (!s || s.len !== len) {
+    s = MINI[code] = { len: len, count: Math.min(MINI_DEF, len), start: 0, hover: -1, vsta: 0, vend: len, iw: 0 };
+  }
+  s.count = Math.max(10, Math.min(s.count || len, len));
+  s.start = Math.max(0, Math.min(s.start || 0, Math.max(0, len - s.count)));
+  return s;
+}
+function miniChartHtml(card) {
+  return '<canvas class="sc-mini" data-mini="' + card.code + '" aria-label="' + card.name + ' 일봉 캔들 차트"></canvas>' +
+    '<div class="sc-mini-cap"><span class="mc-n" data-mini-n="' + card.code + '">일봉 —</span>' +
+    '<span>· 핀치 확대 · 좌우 드래그</span><span class="mc-tap">· 1탭 = 큰 차트</span></div>';
+}
+function miniIdxAt(cv, clientX, code) {
+  var s = MINI[code];
+  if (!s || !s.iw) return -1;
+  var n = s.vend - s.vsta;
+  if (!(n > 0)) return -1;
+  var r = cv.getBoundingClientRect();
+  var i = Math.floor(((clientX - r.left - 4) / s.iw) * n);
+  return Math.max(0, Math.min(n - 1, i));
+}
+function miniZoom(code, f) {
+  var s = MINI[code];
+  if (!s) return;
+  f = Math.min(2, Math.max(0.5, Number(f) || 1));
+  var cur = s.count || s.len;
+  var center = (s.start || 0) + cur / 2;
+  var next = Math.round(cur / f);
+  next = Math.max(10, Math.min(next, s.len));
+  if (next === cur) return;
+  s.count = next;
+  s.start = Math.max(0, Math.min(s.len - next, Math.round(center - next / 2)));
+}
+function miniPan(code, dxPx, iw) {
+  var s = MINI[code];
+  if (!s || s.len <= (s.count || s.len)) return;
+  var per = (s.count || s.len) / Math.max(1, iw);
+  s.start = Math.max(0, Math.min(s.len - s.count, (s.start || 0) - dxPx * per));
+}
+/* 200일 실측 일봉을 한 번만 받아와 카드 차트를 교체 (실패하면 내장 일봉 유지) */
+function hiLoadMiniFull(code) {
+  if (MINI_ASKED[code]) return;
+  MINI_ASKED[code] = true;
+  fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=200')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.ok || !d.candles || !d.candles.length) return;
+      var arr = d.candles.map(function (c) {
+        return { d: c.date || c.d, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
+      });
+      MINI_FULL[code] = arr;
+      var card = cardOf(code);
+      if (!card) return;
+      var cv = document.querySelector('#tabHonginki canvas.sc-mini[data-mini="' + code + '"]');
+      if (cv) hiDrawMini(card, cv);
+      window.__HONGINKI.miniFull = Object.keys(MINI_FULL).length;
+    })
+    .catch(function () { /* 폴백: 내장 일봉 */ });
+}
+
+function hiDrawMini(card, cv) {
+  if (!card || !cv) return;
+  var all = miniSeriesOf(card);
+  if (!all || !all.length) return;
+  var s = miniState(card.code, all.length);
+  var capN = cv.parentNode && cv.parentNode.querySelector('.mc-n[data-mini-n="' + card.code + '"]');
+  if (capN) capN.textContent = '일봉 ' + all.length + '개';
+  var vc = Math.max(10, Math.min(Math.round(s.count || all.length), all.length));
+  var vend = Math.max(vc, all.length - Math.max(0, Math.round(s.start || 0)));
+  var vsta = Math.max(0, vend - vc);
+  var view = all.slice(vsta, vend);
+  if (!view.length) return;
+
+  var dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2.5);
+  var W = Math.max(120, Math.round(cv.clientWidth || (cv.parentNode ? cv.parentNode.clientWidth : 0) || 300));
+  var H = Math.max(90, Math.round(cv.clientHeight || 150));
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  var ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  var pl = 4, pt = 7, axisH = 10, volH = 22, vGap = 3;
+  var ph = Math.max(28, H - pt - axisH - volH - vGap);
+  var volTop = pt + ph + vGap;
+
+  var refs = [];
+  if (isFinite(card.prevClose) && card.prevClose > 0) refs.push({ v: card.prevClose, label: '전일', color: '#fbbf24', dash: [5, 3] });
+  if (isFinite(card.hi120) && card.hi120 > 0) refs.push({ v: card.hi120, label: '전고', color: '#c084fc', dash: [2, 3] });
+
+  /* 우측 기준선 라벨 폭에 맞춰 여백을 잡는다 (라벨이 잘리지 않게) */
+  ctx.font = '8px ui-monospace, SFMono-Regular, Menlo, monospace';
+  var pr = 34;
+  if (refs.length) {
+    var lw = refs.reduce(function (m, r) { return Math.max(m, ctx.measureText('↑' + r.label + ' ' + nf(r.v)).width); }, 0);
+    pr = Math.max(pr, Math.ceil(lw) + 10);
+  }
+  var iw = Math.max(40, W - pl - pr);
+
+  var mx = -Infinity, mn = Infinity;
+  view.forEach(function (c) { if (c.h > mx) mx = c.h; if (c.l < mn) mn = c.l; });
+  if (!isFinite(mx) || !isFinite(mn)) return;
+  var rawSpan = (mx - mn) || Math.max(mx * 0.02, 1);
+  var lim = rawSpan * 0.25;
+  refs.forEach(function (r) {
+    if (r.v > mx && r.v - mx <= lim) mx = r.v;
+    if (r.v < mn && mn - r.v <= lim) mn = r.v;
+  });
+  var span = (mx - mn) || Math.max(mx * 0.02, 1);
+  mx += span * 0.07; mn -= span * 0.07;
+  span = mx - mn;
+
+  var yOf = function (v) { return pt + ph - ((v - mn) / span) * ph; };
+  var X = function (i) { return pl + (iw * (i + 0.5)) / view.length; };
+  var bw = Math.max(1.1, Math.min(9, iw / view.length - 0.8));
+
+  /* 배경 + 눈금 */
+  ctx.fillStyle = '#070c14';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(148,163,184,.10)';
+  ctx.lineWidth = 1;
+  for (var g = 1; g <= 3; g += 1) {
+    var gy = pt + (ph * g) / 4;
+    ctx.beginPath(); ctx.moveTo(pl, gy); ctx.lineTo(pl + iw, gy); ctx.stroke();
+  }
+
+  /* 캔들 + 거래량 */
+  var vMax = 0;
+  view.forEach(function (c) { if (c.v > vMax) vMax = c.v; });
+  view.forEach(function (c, i) {
+    var x = X(i);
+    var up = c.c >= c.o;
+    var col = up ? '#f43f5e' : '#38bdf8';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(1, Math.min(2, bw * 0.5));
+    ctx.beginPath(); ctx.moveTo(x, yOf(c.h)); ctx.lineTo(x, yOf(c.l)); ctx.stroke();
+    var yO = yOf(c.o), yC = yOf(c.c);
+    var bTop = Math.min(yO, yC);
+    var bH = Math.max(1, Math.abs(yC - yO));
+    ctx.fillStyle = up ? col : 'rgba(15,23,42,1)';
+    ctx.fillRect(x - bw / 2, bTop, bw, bH);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - bw / 2, bTop, bw, bH);
+    if (vMax > 0) {
+      var vh = ((c.v || 0) / vMax) * (volH - 2);
+      ctx.fillStyle = up ? 'rgba(244,63,94,.42)' : 'rgba(56,189,248,.42)';
+      ctx.fillRect(x - bw / 2, volTop + volH - vh, bw, Math.max(0.6, vh));
+    }
+  });
+  ctx.strokeStyle = 'rgba(148,163,184,.18)';
+  ctx.beginPath(); ctx.moveTo(pl, volTop - 1); ctx.lineTo(pl + iw, volTop - 1); ctx.stroke();
+
+  /* 전일 종가 · 120일 전고점 기준선 + 가격 라벨 (겹치면 위아래로 밀어낸다) */
+  var chips = [];
+  refs.forEach(function (r) {
+    var y = yOf(r.v), off = '';
+    if (r.v > mx) { y = pt + 1; off = '↑'; }
+    if (r.v < mn) { y = pt + ph - 1; off = '↓'; }
+    ctx.strokeStyle = r.color;
+    ctx.setLineDash(r.dash);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + iw, y); ctx.stroke();
+    ctx.setLineDash([]);
+    chips.push({ y: y, text: off + r.label + ' ' + nf(r.v), color: r.color });
+  });
+  ctx.font = '8px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  chips.sort(function (a, b) { return a.y - b.y; });
+  var prevY = -Infinity;
+  chips.forEach(function (c) {
+    c.ly = Math.max(Math.min(c.y, pt + ph - 5), prevY + 9.5);
+    if (c.ly < pt + 6) c.ly = pt + 6;
+    prevY = c.ly;
+  });
+  for (var ci = chips.length - 1; ci >= 0; ci -= 1) {
+    var maxY = pt + ph - 5 - (chips.length - 1 - ci) * 9.5;
+    if (chips[ci].ly > maxY) chips[ci].ly = maxY;
+  }
+  chips.forEach(function (c) {
+    if (Math.abs(c.ly - c.y) > 1) {
+      ctx.strokeStyle = c.color; ctx.globalAlpha = 0.5; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(pl + iw, c.y); ctx.lineTo(pl + iw + 3, c.ly); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    var tw = ctx.measureText(c.text).width;
+    ctx.fillStyle = 'rgba(7,12,20,.92)';
+    ctx.fillRect(pl + iw + 1.5, c.ly - 6, tw + 4, 12);
+    ctx.fillStyle = c.color;
+    ctx.fillText(c.text, pl + iw + 4, c.ly);
+  });
+
+  /* 날짜 */
+  var dTxt = function (d) { return String(d || '').length === 8 ? String(d).slice(4, 6) + '.' + String(d).slice(6, 8) : ''; };
+  ctx.fillStyle = '#64748b';
+  ctx.font = '8px ui-monospace, monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillText(dTxt(view[0].d), pl, H - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText(dTxt(view[view.length - 1].d), pl + iw, H - 2);
+
+  /* 크로스헤어 — 짚은 봉의 날짜·종가 */
+  if (s.hover != null && s.hover >= 0 && s.hover < view.length) {
+    var hc = view[s.hover];
+    var hx = X(s.hover);
+    ctx.strokeStyle = 'rgba(226,232,240,.42)';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(hx, pt); ctx.lineTo(hx, volTop + volH); ctx.stroke();
+    ctx.setLineDash([]);
+    var txt = dTxt(hc.d) + ' · ' + nf(hc.c) + '원';
+    ctx.font = '8.5px ui-monospace, monospace';
+    var tw2 = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(7,12,20,.90)';
+    ctx.fillRect(pl + 1, pt + 1, tw2 + 8, 14);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, pl + 5, pt + 8);
+  }
+
+  s.vsta = vsta; s.vend = vend; s.iw = iw;
+}
+
+/* 카드 차트 제스처 — 두 손가락 핀치·좌우 드래그(1손가락 세로 스크롤은 통과) · 탭 = 큰 차트 */
+function hiBindMini(cv, code) {
+  if (!cv || cv.__miniBind) return;
+  cv.__miniBind = true;
+  var pts = new Map();
+  var drag = null, pinch = null;
+  var dist = function () { var a = Array.from(pts.values()); return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
+  var redraw = function () { var c = cardOf(code); if (c) hiDrawMini(c, cv); };
+  var wOf = function () { var s = MINI[code]; return (s && s.iw) || Math.max(60, (cv.clientWidth || 300) - 40); };
+
+  cv.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (pts.size === 1) { drag = { x: e.clientX, moved: false }; pinch = null; cv.__miniMoved = false; }
+    else if (pts.size === 2) { pinch = { d: dist() }; drag = null; cv.__miniMoved = true; }
+    var s = MINI[code];
+    if (s) { s.hover = miniIdxAt(cv, e.clientX, code); redraw(); }
+  });
+
+  cv.addEventListener('pointermove', function (e) {
+    var s = MINI[code];
+    if (!pts.has(e.pointerId)) {
+      if (e.pointerType === 'mouse' && s) { s.hover = miniIdxAt(cv, e.clientX, code); redraw(); }
+      return;
+    }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size >= 2 && pinch) {
+      var d = dist();
+      if (d > 8 && pinch.d > 8) { miniZoom(code, d / pinch.d); cv.__miniMoved = true; redraw(); }
+      pinch.d = d;
+      return;
+    }
+    if (drag) {
+      var dx = e.clientX - drag.x;
+      if (Math.abs(dx) >= 1) {
+        if (Math.abs(dx) > 3) drag.moved = true;
+        drag.x = e.clientX;
+        miniPan(code, dx, wOf());
+        if (drag.moved) cv.__miniMoved = true;
+        if (s) s.hover = miniIdxAt(cv, e.clientX, code);
+        redraw();
+      }
+    }
+  });
+
+  var end = function (e) {
+    var wasDrag = !!(drag && drag.moved);
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) {
+      var s = MINI[code];
+      if (s && !wasDrag) s.hover = -1;
+      drag = null;
+      redraw();
+    }
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('lostpointercapture', function (e) { if (pts.has(e.pointerId)) end(e); });
+  cv.addEventListener('pointerleave', function (e) {
+    if (e.pointerType !== 'mouse' || pts.size) return;
+    var s = MINI[code];
+    if (s && s.hover >= 0) { s.hover = -1; redraw(); }
+  });
+  cv.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length >= 2) e.preventDefault(); }, { passive: false });
+  /* 카드 전체 클릭(큰 차트)과 겹치지 않게: 핀치·드래그로 끝난 제스처는 클릭으로 치지 않는다 */
+  cv.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (cv.__miniMoved) { cv.__miniMoved = false; return; }
+    openChart(code);
+  });
+}
+
+function hiDrawMinis() {
+  var grid = $('hiStockGrid');
+  if (!grid) return 0;
+  var cvs = grid.querySelectorAll('canvas.sc-mini');
+  var n = 0;
+  Array.prototype.forEach.call(cvs, function (cv) {
+    var code = cv.getAttribute('data-mini');
+    var card = cardOf(code);
+    if (!card) return;
+    hiBindMini(cv, code);
+    hiDrawMini(card, cv);
+    hiLoadMiniFull(code);
+    n += 1;
+  });
+  window.__HONGINKI.miniDrawn = n;
+  return n;
 }
 
 /* ===== ③ 1분봉 5단 타점 ===== */
@@ -13513,7 +13860,7 @@ bindChartCanvas();
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') { closeChart(); closeGuide(); closeReject(); }
 });
-window.addEventListener('resize', function () { var m = $('hiChartModal'); if (m && m.classList.contains('open')) drawChart(); });
+window.addEventListener('resize', function () { var m = $('hiChartModal'); if (m && m.classList.contains('open')) drawChart(); try { hiDrawMinis(); } catch (e) {} });
 window.__HONGINKI.ready = true;
 
 
@@ -13795,6 +14142,8 @@ window.__HONGINKI.ready = true;
     setPeriod: hiSetPeriod, zoomBy: hiZoomBy, resetView: hiResetView,
     chartView: function () { return { count: chartState.count, start: chartState.start, hover: chartState.hover, len: (chartState.full || []).length }; },
     setStage: setStage, toggleCk: toggleCk, resetChecklist: resetChecklist,
+    drawMinis: hiDrawMinis, miniStateFor: function (code) { var s = MINI[code]; return s ? { len: s.len, count: s.count, start: Math.round(s.start), hover: s.hover, vsta: s.vsta, vend: s.vend, full: !!MINI_FULL[code] } : null; },
+    zoomMini: function (code, f) { miniZoom(code, f); var c = cardOf(code); var cv = document.querySelector('#tabHonginki canvas.sc-mini[data-mini="' + code + '"]'); if (c && cv) hiDrawMini(c, cv); },
     openReject: openReject, closeReject: closeReject,
     openGuide: openGuide, closeGuide: closeGuide, toggleZoom: toggleZoom,
     scrollTo: scrollToId,
@@ -14076,17 +14425,33 @@ function drawCandles(cv, candles, opts) {
 
   const big = !!o.big;
   const pl = big ? 10 : 5;
-  const pr = big ? 58 : 42;
+  let pr = big ? 58 : 42;
   const pt = big ? 14 : 9;
   const axisH = big ? 16 : 12;
   const volH = big ? 44 : 26;
   const vGap = big ? 8 : 4;
   const ph = Math.max(24, H - pt - axisH - volH - vGap);
-  const iw = Math.max(40, W - pl - pr);
   const volTop = pt + ph + vGap;
   const volBot = volTop + volH;
 
   const sp = o.split || null;
+  const exList = (o.extras || []).filter((x) => x && x.v != null && isFinite(x.v));
+  /* 우측 선 라벨은 '이름 + 가격'이라 길다 — 4분할·종가·전고점 라벨 중 가장 긴 폭에 맞춰
+     우측 여백을 잡는다. (여백이 모자라면 라벨이 캔버스 밖으로 잘린다) */
+  {
+    const txts = [];
+    if (sp) {
+      sp.lines.forEach((l) => txts.push(l.label + ' ' + fmtPx(l.v)));
+      txts.push('종가 ' + fmtPx(sp.stop));
+    }
+    if (exList.length && !sp) exList.forEach((x) => txts.push('↑' + x.label + ' ' + fmtPx(x.v)));
+    if (txts.length) {
+      ctx.font = (big ? '9.5px' : '8px') + ' ui-monospace, SFMono-Regular, Menlo, monospace';
+      const lw = txts.reduce((m, t) => Math.max(m, ctx.measureText(t).width), 0);
+      pr = Math.max(pr, Math.ceil(lw) + 12);
+    }
+  }
+  const iw = Math.max(40, W - pl - pr);
   /* Y축 범위 = 지금 보이는 봉. 4분할선·파파선·전고점선은 범위 안이면 포함하고,
      범위 밖이면 가장자리에 붙여(↑/↓) 표기해 확대/이동 시 자동 재스케일된다. */
   let hi = -Infinity, lo = Infinity;
@@ -14101,6 +14466,16 @@ function drawCandles(cv, candles, opts) {
       if (!isFinite(v)) return;
       if (v > hi && v - hi <= lim) hi = v;
       if (v < lo && lo - v <= lim) lo = v;
+    });
+  }
+  /* 전일 종가·120일 전고점처럼 기준선을 카드에 함께 그릴 때는 그 선도 화면 안에 들어오게 잡는다
+     (fitExtras = 기준선 라벨을 카드에서도 읽어야 하는 작은 차트용) */
+  if (exList.length && o.fitExtras) {
+    const rawSpan0 = (hi - lo) || Math.max(hi * 0.02, 1);
+    const lim0 = rawSpan0 * 0.25;
+    exList.forEach((x) => {
+      if (x.v > hi && x.v - hi <= lim0) hi = x.v;
+      if (x.v < lo && lo - x.v <= lim0) lo = x.v;
     });
   }
   const span = (hi - lo) || Math.max(hi * 0.02, 1);
@@ -14198,7 +14573,7 @@ function drawCandles(cv, candles, opts) {
 
   /* 전고점(60/120일) — 범위 밖이면 위/아래로 붙여 선만 그리고, 라벨은 나중에 왼쪽에 배치 */
   const extraLbls = [];
-  (o.extras || []).forEach((ex) => {
+  exList.forEach((ex) => {
     if (ex.v == null || !isFinite(ex.v)) return;
     let y = Y(ex.v);
     let above = false;
@@ -14228,7 +14603,7 @@ function drawCandles(cv, candles, opts) {
       ctx.lineWidth = q ? (big ? 1.4 : 1) : 1;
       ctx.beginPath(); ctx.moveTo(pl, y); ctx.lineTo(pl + iw, y); ctx.stroke();
       ctx.setLineDash([]);
-      axisLbls.push({ y: y, text: cl.off + l.label, color: q ? '#34d399' : '#c084fc', kind: 'q' });
+      axisLbls.push({ y: y, text: cl.off + l.label + ' ' + fmtPx(l.v), color: q ? '#34d399' : '#c084fc', kind: 'q', v: l.v });
     });
     const scl = clampV(sp.stop);
     const sy = scl.y;
@@ -14237,7 +14612,7 @@ function drawCandles(cv, candles, opts) {
     ctx.lineWidth = big ? 2 : 1.4;
     ctx.beginPath(); ctx.moveTo(pl, sy); ctx.lineTo(pl + iw, sy); ctx.stroke();
     ctx.fillStyle = '#fbbf24';
-    axisLbls.push({ y: sy, text: scl.off + '종가', color: '#fbbf24', kind: 'stop', v: sp.stop });
+    axisLbls.push({ y: sy, text: scl.off + '종가 ' + fmtPx(sp.stop), color: '#fbbf24', kind: 'stop', v: sp.stop });
   }
 
   /* 캔버스 테두리 */
@@ -14263,10 +14638,20 @@ function drawCandles(cv, candles, opts) {
     ctx.textBaseline = 'middle';
     const gap = big ? 11 : 8.5;
     const sorted = axisLbls.slice().sort((a, b) => a.y - b.y);
-    /* 1일차 고가 기준 4분할(ref=d1)은 4/4·3/4·2/4·1/4·종가를 모두 표기하고, 밀집하면 밀어내며 연결선을 긋는다.
-       기준봉 몸통 파파선(ref=body)은 폭이 몇 px 라 라벨이 서로 덮으므로 선만 긋고 손절선 라벨만 남긴다. */
-    const wantAll = big || (sp && sp.ref === 'd1');
-    const keep = wantAll ? sorted : sorted.filter((l) => l.kind === 'stop');
+    /* 1일차 고가 기준 4분할(ref=d1)과 팝업 큰 차트는 4/4·3/4·2/4·1/4·종가를 가격까지 모두 표기하고,
+       밀집하면 위아래로 밀어내며 연결선을 긋는다. 기준봉 몸통 파파선(ref=body)의 카드 차트는 선 간격이
+       1~3px라 라벨이 서로 덮으므로, 손절선(종가)은 항상, 파파선은 서로 겹치지 않는 것만 가격과 함께 남긴다. */
+    let keep;
+    if (big || (sp && sp.ref === 'd1')) {
+      keep = sorted;
+    } else {
+      keep = sorted.filter((l) => l.kind === 'stop');
+      sorted.filter((l) => l.kind !== 'stop').forEach((l) => {
+        if (keep.some((k) => Math.abs(k.y - l.y) < gap)) return;
+        keep.push(l);
+      });
+      keep.sort((a, b) => a.y - b.y);
+    }
     if (keep.length > 1) {
       let prev = -Infinity;
       keep.forEach((l) => { l.ly = Math.max(l.y, prev + gap); prev = l.ly; });
@@ -14292,16 +14677,18 @@ function drawCandles(cv, candles, opts) {
       chip(pl + iw + 4, Math.min(Math.max(l.y, pt + 5), pt + ph - 4), l.text, l.color, 'left');
     }
   }
-  if (extraLbls.length && big) {
-    setFont('9.5px');
+  /* 전고점·기준선 라벨 — 4분할 라벨과 자리가 겹치지 않게, 4분할이 있으면 왼쪽 / 없으면 오른쪽에 둔다 */
+  if (extraLbls.length && (big || !sp)) {
+    setFont(big ? '9.5px' : '8px');
     ctx.textBaseline = 'middle';
     let prev = -Infinity;
+    const gapE = big ? 12 : 9.5;
     const sortedEx = extraLbls.slice().sort((a, b) => a.y - b.y);
     sortedEx.forEach((l) => {
-      l.ly = Math.max(Math.min(Math.max(l.y, pt + 7), pt + ph - 6), prev + 12);
+      l.ly = Math.max(Math.min(Math.max(l.y, pt + 7), pt + ph - 6), prev + gapE);
       prev = l.ly;
     });
-    sortedEx.forEach((l) => chip(pl + 3, l.ly, l.text, l.color, 'left'));
+    sortedEx.forEach((l) => chip(sp ? pl + 3 : pl + iw + 4, l.ly, l.text, l.color, 'left'));
   }
   /* 가격 눈금 라벨 — 4분할 라벨과 엄킈면 생략 */
   if (big && gridLbls.length) {
