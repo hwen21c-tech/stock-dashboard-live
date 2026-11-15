@@ -3163,6 +3163,8 @@
         UI.tickets();
         return Tickets.count();
       },
+      /* 검증·수습용 — 이 슬롯의 소환권 기록을 처음 상태로 */
+      reset() { Tickets.clear(); return { n: Tickets.count(), granted: Tickets.data.granted.slice() }; },
     },
     /* 등장 시뮬레이션 — pickWild 를 n번 돌리며 희귀 쿨다운까지 그대로 적용한다 */
     simSpawn(n) {
