@@ -1436,7 +1436,12 @@ const BGM = {
       const ctx = this.ctx;
       this.master = ctx.createGain();
       this.master.gain.value = 0;
-      this.master.connect(ctx.destination);
+      /* 진단용 분석기 — 신스·실음원이 모두 지나가므로 실제 출력 음량을 잴 수 있다 */
+      this.analyser = ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.master.connect(this.analyser);
+      this.analyser.connect(ctx.destination);
+      this.meterBuf = new Uint8Array(this.analyser.fftSize);
       /* 악기 전체가 지나는 따뜻한 로우패스 버스 */
       this.bus = ctx.createGain();
       this.bus.gain.value = 1;
@@ -1478,6 +1483,15 @@ const BGM = {
     if (!ctx) return;
     if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* */ } }
     this.applyGain();
+    /* 자동재생 정책: 첫 터치 순간, 대기 중이던 배틀 음악·환경음을 바로 시작 */
+    if (this.wantKey && this.playing && !this.src) {
+      if (this.tryFile(this.wantKey)) {
+        this.startMusic(this.musicNameFor(this.wantKey));
+        this.startAmb(this.wantPoke);
+        this.applyGain();
+      }
+    }
+    if (!this.files.music_battle && !this.loading.music_battle) this.load('music_battle');
   },
   setMuted(m) {
     this.muted = !!m;
@@ -1501,12 +1515,22 @@ const BGM = {
     clearTimeout(this.duckT);
     this.duckT = setTimeout(() => { this.duck = 1; this.applyGain(); }, Math.max(600, ms || 1200));
   },
-  play(key) {
+  play(key, poke) {
     const ctx = this.ensure();
     if (!ctx) return;
+    this.wantKey = key;
+    this.wantPoke = poke || null;
+    /* 실음원(CC0 MP3)이 준비돼 있으면 파일 재생, 아직이면 신스로 바로 시작하고 준비되는 대로 넘어간다 */
+    if (this.tryFile(key)) {
+      this.playing = true;
+      if (!this.src || this.musicName !== this.musicNameFor(key)) this.startMusic(this.musicNameFor(key));
+      this.startAmb(this.wantPoke);
+      this.applyGain();
+      return;
+    }
     const k = BGM_KITS[key] || BGM_KITS.normal;
     if (this.playing && this.kitKey === key) { this.kit = k; this.applyGain(); return; }
-    this.stop(true);
+    this.stop(true, true);
     this.kit = k;
     this.kitKey = key;
     this.playing = true;
@@ -1521,10 +1545,13 @@ const BGM = {
     this.timer = setInterval(() => this.tick(), 25);
     this.applyGain();
   },
-  stop(immediate) {
+  stop(immediate, keepWant) {
     this.playing = false;
     clearInterval(this.timer);
     this.timer = 0;
+    this.stopMusic(immediate ? 0 : 0.4);
+    this.stopAmb(immediate ? 0 : 0.6);
+    if (!keepWant) { this.wantKey = ''; this.wantPoke = null; }
     if (this.master && this.ctx) {
       try {
         if (immediate) this.master.gain.value = 0;
@@ -1655,6 +1682,192 @@ const BGM = {
     if (k.hat && s % k.hat === 0) this.hat(t);
     if (k.drone && s === 0) this.drone(this.degToMidi(chord) - 36, t);
   },
+
+  /* ============================================================
+     실음원 배틀 BGM · 속성 환경음  (public/audio/*.mp3, 전곡 CC0)
+     · 일반 야생 = music_battle / 전설·보스 = music_boss (AudioBuffer 루프)
+     · 상대 types[0] 에 맞춰 물·불·풀·전기·고스트·바위·바람 환경음을 겹친다
+     · 소리 크기는 전부 this.master 를 지나므로 음소거(🔇)·일시정지·TTS 덕킹이 그대로 먹는다
+     · 파일을 못 받으면 위의 신스 BGM 이 그대로 폴백으로 재생된다
+     ============================================================ */
+  files: {}, loading: {}, src: null, ambSrc: null,
+  wantKey: '', wantPoke: null, musicName: '', ambName: '', ambWant: '',
+  MUSIC_VOL: 1.7, AMB_VOL: 0.9, level: 0, meterT: 0,
+  AMB_GAIN: {
+    amb_water: 1.32, amb_fire: 0.83, amb_forest: 1.41, amb_thunder: 0.76,
+    amb_ghost: 0.93, amb_cave: 1.03, amb_wind: 0.67,
+  },
+  musicNameFor(key) { return key === 'boss' ? 'music_boss' : 'music_battle'; },
+  /* 상대 포켓몬 주 타입 → 환경음 파일 */
+  ambNameFor(poke) {
+    const t = (poke && poke.types && poke.types[0]) || '';
+    if (t === '물' || t === '얼음') return 'amb_water';
+    if (t === '불꽃' || t === '격투') return 'amb_fire';
+    if (t === '전기') return 'amb_thunder';
+    if (t === '고스트' || t === '에스퍼' || t === '악' || t === '독') return 'amb_ghost';
+    if (t === '바위' || t === '땅' || t === '강철') return 'amb_cave';
+    if (t === '드래곤' || t === '비행') return 'amb_wind';
+    if (t === '풀' || t === '벌레' || t === '페어리' || t === '노말' || t === '') return 'amb_forest';
+    return 'amb_forest';
+  },
+  load(name) {
+    const ctx = this.ensure();
+    if (!ctx) return Promise.resolve(null);
+    if (this.files[name]) return Promise.resolve(this.files[name]);
+    if (this.loading[name]) return this.loading[name];
+    const url = 'audio/' + name + '.mp3';
+    this.loading[name] = fetch(url, { cache: 'force-cache' })
+      .then((r) => { if (!r.ok) throw new Error(r.status + ' ' + url); return r.arrayBuffer(); })
+      .then((buf) => new Promise((res, rej) => {
+        const p = ctx.decodeAudioData(buf, res, rej);
+        if (p && typeof p.then === 'function') p.then(res, rej);
+      }))
+      .then((b) => {
+        const t = this.trimBuffer(b);
+        this.files[name] = t;
+        delete this.loading[name];
+        return t;
+      })
+      .catch((e) => {
+        delete this.loading[name];
+        console.warn('[BGM] 음원 로드 실패:', url, e && e.message);
+        return null;
+      });
+    return this.loading[name];
+  },
+  /* MP3 인코더가 붙인 수십 샘플 패딩만 잘라 내고, 실제 무음 구간은 건드리지 않는다 */
+  trimBuffer(buf) {
+    try {
+      const ctx = this.ctx;
+      if (!ctx || !buf) return buf;
+      const ch0 = buf.getChannelData(0);
+      const n = buf.length;
+      let s = 0; let e = n - 1;
+      const TH = 0.0008;
+      while (s < n && Math.abs(ch0[s]) < TH) s += 1;
+      while (e > 0 && Math.abs(ch0[e]) < TH) e -= 1;
+      if (s > 256 || (n - 1 - e) > 256) return buf;   /* 진짜 무음이면 그대로 둔다 */
+      if (s === 0 && e === n - 1) return buf;
+      const len = e - s + 1;
+      const out = ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate);
+      for (let c = 0; c < buf.numberOfChannels; c += 1) {
+        out.getChannelData(c).set(buf.getChannelData(c).subarray(s, e + 1));
+      }
+      return out;
+    } catch (err) { return buf; }
+  },
+  tryFile(key) {
+    const name = this.musicNameFor(key);
+    if (this.files[name]) return true;
+    if (!this.loading[name]) {
+      this.load(name).then((b) => {
+        if (b && this.playing && !this.paused && this.wantKey && !this.src) {
+          this.startMusic(this.musicNameFor(this.wantKey));
+          this.startAmb(this.wantPoke);
+          this.applyGain();
+        }
+      });
+    }
+    return false;
+  },
+  startMusic(name) {
+    const ctx = this.ensure();
+    if (!ctx) return false;
+    const buf = this.files[name];
+    if (!buf) { this.load(name); return false; }
+    if (this.src && this.musicName === name) return true;
+    if (this.src) { const old = this.src; this.src = null; this.fadeSrc(old, 0.7); }
+    const now = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.00001, now);
+    g.gain.linearRampToValueAtTime(this.MUSIC_VOL, now + 1.0);
+    g.connect(this.master);
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    s.loop = true;
+    s.connect(g);
+    s.start(now);
+    this.src = { node: s, gain: g, name };
+    this.musicName = name;
+    this.playing = true;
+    clearInterval(this.timer);      /* 남아 있는 신스 시퀀서 정지 */
+    this.timer = 0;
+    if (!this.meterT) this.meterT = setInterval(() => this.meter(), 200);
+    return true;
+  },
+  stopMusic(fade) {
+    const rec = this.src;
+    this.src = null;
+    this.musicName = '';
+    if (rec) this.fadeSrc(rec, fade);
+  },
+  startAmb(poke) {
+    const name = this.ambNameFor(poke);
+    if (!name) { this.stopAmb(0.5); return; }
+    this.ambWant = name;
+    if (this.ambSrc && this.ambName === name) return;
+    if (!this.files[name]) {
+      this.load(name).then((b) => {
+        if (b && this.ambWant === name && this.playing) this.startAmbNow(name);
+      });
+      return;
+    }
+    this.startAmbNow(name);
+  },
+  startAmbNow(name) {
+    const ctx = this.ensure();
+    if (!ctx) return false;
+    const buf = this.files[name];
+    if (!buf) return false;
+    if (this.ambSrc && this.ambName === name) return true;
+    if (this.ambSrc) { const old = this.ambSrc; this.ambSrc = null; this.fadeSrc(old, 1.2); }
+    const now = ctx.currentTime;
+    const g = ctx.createGain();
+    const peak = this.AMB_VOL * (this.AMB_GAIN[name] || 1);
+    g.gain.setValueAtTime(0.00001, now);
+    g.gain.linearRampToValueAtTime(peak, now + 1.6);
+    g.connect(this.master);
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    s.loop = true;
+    s.connect(g);
+    s.start(now);
+    this.ambSrc = { node: s, gain: g, name };
+    this.ambName = name;
+    return true;
+  },
+  stopAmb(fade) {
+    const rec = this.ambSrc;
+    this.ambSrc = null;
+    this.ambName = '';
+    this.ambWant = '';
+    if (rec) this.fadeSrc(rec, fade);
+  },
+  fadeSrc(rec, fade) {
+    const ctx = this.ctx;
+    if (!ctx || !rec) return;
+    const t = ctx.currentTime;
+    try {
+      if (fade > 0) {
+        const g = rec.gain.gain;
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(0.00001, t + fade);
+        rec.node.stop(t + fade + 0.05);
+      } else {
+        rec.node.stop(t + 0.01);
+      }
+    } catch (e) { /* */ }
+  },
+  meter() {
+    if (!this.analyser || !this.ctx) { this.level = 0; return; }
+    const b = this.meterBuf;
+    this.analyser.getByteTimeDomainData(b);
+    let s = 0;
+    for (let i = 0; i < b.length; i += 1) { const v = (b[i] - 128) / 128; s += v * v; }
+    this.level = Math.sqrt(s / b.length);
+  },
+
 };
 
 document.addEventListener('visibilitychange', () => {
@@ -1665,6 +1878,34 @@ document.addEventListener('visibilitychange', () => {
 ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
   try { window.addEventListener(ev, () => BGM.unlock(), { once: true, passive: true }); } catch (e) { /* */ }
 });
+
+/* 첫 터치 이후에도 자동재생 대기로 돌아간 경우를 계속 깨워 준다(음원 로드·재생 재개) */
+try {
+  const _wake = () => { try { BGM.unlock(); } catch (e) { /* */ } };
+  ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => window.addEventListener(ev, _wake, { passive: true }));
+} catch (e) { /* */ }
+
+/* 검증용 상태 노출 — 선택된 음원·재생 여부·실측 출력 음량 */
+try {
+  window.PB_AUDIO = {
+    state() {
+      return {
+        ctx: BGM.ctx ? BGM.ctx.state : 'none',
+        playing: !!BGM.playing,
+        paused: !!BGM.paused,
+        muted: !!BGM.muted,
+        wantKey: BGM.wantKey,
+        music: BGM.musicName,
+        amb: BGM.ambName,
+        level: Math.round((BGM.level || 0) * 1000) / 1000,
+        loaded: Object.keys(BGM.files),
+        musicGain: BGM.src ? Math.round(BGM.src.gain.gain.value * 100) / 100 : null,
+        ambGain: BGM.ambSrc ? Math.round(BGM.ambSrc.gain.gain.value * 100) / 100 : null,
+      };
+    },
+    files: () => Object.keys(BGM.files),
+  };
+} catch (e) { /* */ }
 
 /* ---------- 놀이 친구(프로필) & 저장소 ---------- */
 const PROF_KEY = 'epb.profiles.v1';
@@ -2227,7 +2468,7 @@ async function newEncounter(opts) {
   S.screen = 'battle';
   S.locked = false;
   newQuestion();
-  BGM.play(bgmTrackFor(S.wild));
+  BGM.play(bgmTrackFor(S.wild), S.wild);
   if ((S.wild.leg || S.wild.myth) && o.sound !== false) Sound.legend();
 }
 
