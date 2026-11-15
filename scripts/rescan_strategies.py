@@ -42,7 +42,7 @@ LATEST = os.path.join(DATA_DIR, "strategies-latest.json")
 UA = {"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"}
 WD = "월화수목금토일"
 CAFE_MIN, CAFE_STOP = 2.0, -3.0          # 카페 통계(56717·38802) 기준봉 +2% / 손절 -3%
-BIJ_TH = {"chg": 5.0, "volX": 1.8, "valueEok": 50.0, "bodyRate": 3.0, "upperMax": 12.0}
+BIJ_TH = {"chg": 5.0, "volX": 1.8, "valueEok": 300.0, "bodyRate": 10.0, "upperMax": 12.0}
 
 ETF_PAT = re.compile(r"(KODEX|TIGER|ARIRANG|KBSTAR|HANARO|SOL |ACE |RISE |PLUS |TIMEFOLIO|BNK|ETN|레버리지|인버스|스팩|리츠|KTOP|KRX|FOCUS|히어로즈|마이다스|우리 |WON |파워|합성)", re.I)
 PREF_PAT = re.compile(r"(우B?|우C|1우|2우B?|3우B?)$")
@@ -782,11 +782,11 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=12):
             if not ck["break"]:
                 why.append(f"60일 전고점 미달(종가 {r['c']:,.0f}원 · 60일 최고 {r['hi60']:,.0f}원 / 120일 최고 {r['hi120']:,.0f}원) — 돌파가 아니라 반등")
             if not ck["body"]:
-                why.append(f"몸통 {r['bodyRate']:+.2f}% — 양봉 몸통 3% 미달")
+                why.append(f"몸통 {r['bodyRate']:+.2f}% — 양봉 몸통 10% 미달(기준 상향)")
             if not ck["tail"]:
                 why.append(f"위꼬리 {r['upper']:.1f}% — 봉 위쪽 매물대")
             if not ck["value"]:
-                why.append(f"거래대금 {r['valueEok']:.1f}억 — 50억 미달(얇은 종목)")
+                why.append(f"거래대금 {r['valueEok']:.1f}억 — 300억 미달(얇은 종목)")
             if not ck["vol"]:
                 why.append(f"거래량 20일평균 대비 {r['volX']:.2f}배 — 1.8배 미달")
             r["reasons"] = why
@@ -972,6 +972,11 @@ def main():
     # ---- 유니버스 + 테마 + 일봉
     log("[1/4] 유니버스")
     uni, totals = build_universe(args.pages)
+    if not uni:
+        # 장전(09:00 이전)·휴장일에는 네이버 상승/하락 랭킹이 빈 목록이라 유니버스가 0이 된다.
+        #  이때 그대로 진행하면 index.html 의 카드·KPI 를 0건으로 덮어써 직전 확정치를 잃는다.
+        log("유니버스 0종목 — 장전·휴장·랭킹 API 이상으로 판단해 index.html 을 쓰지 않고 종료합니다(기존 스캔 유지).")
+        return 2
     if args.limit:
         uni = uni[:args.limit]
     codes = [u["code"] for u in uni]

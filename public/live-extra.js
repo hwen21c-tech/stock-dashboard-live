@@ -639,8 +639,8 @@
     var mins = t.hh * 60 + t.mm;
     if (t.wd === 'Sat' || t.wd === 'Sun') return '주말 휴장 · 직전 거래일 종가 기준';
     if (mins < 8 * 60) return '장 개시 전 · 직전 거래일 종가 기준';
-    if (mins < 8 * 60 + 30) return '장전 준비 (08:00~08:30)';
-    if (mins < 9 * 60) return '장전 시간외 종가 접수 (08:30~09:00)';
+    if (mins < 8 * 60 + 50) return 'NXT 프리마켓 진행 중 (08:00~08:50) · 프리마켓 체결 반영';
+    if (mins < 9 * 60) return '프리마켓 종료 · 정규장 개시 대기 (08:50~09:00)';
     if (mins < 15 * 60 + 30) return '정규장 진행 중 (09:00~15:30)';
     if (mins < 20 * 60) return '시간외 · NXT 애프터마켓 (15:30~20:00)';
     return '장 마감 · 시간외 종료';
@@ -699,7 +699,9 @@
       badge.setAttribute('data-live', '1');
     }
     var sessBadge = document.getElementById('pmSessionBadge');
-    if (sessBadge) {
+    // 레이더 카드를 /api/tabs-live 의 NXT 랭킹이 그렸으면(data-nxt-live) 배지·안내문은 그쪽이 관리한다.
+    var nxtOwned = box.getAttribute('data-nxt-live') === '1';
+    if (sessBadge && !nxtOwned) {
       var isWeekend = /주말/.test(sessionText());
       var stxt = isWeekend ? '🌙 주말 휴장 · 직전 종가' : '⚡ 실시간 폴링';
       if (sessBadge.textContent !== stxt) sessBadge.textContent = stxt;

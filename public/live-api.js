@@ -1556,6 +1556,7 @@
     lastBody: null,
     applied: 0,
     mounted: { news: false, after: false, afterTop: false },
+    sessionPhase: null,
     reqId: 0
   };
 
@@ -1700,17 +1701,23 @@
     if (!tile || !stock) return 0;
     var hits = 0;
 
+    // 프리마켓(08:00~08:50)에는 정규장 등락률이 0.00%로 내려온다 — 실제 체결(overPct)을 우선한다.
+    var live = isNum(stock.livePct);
+    var pctVal = live ? stock.livePct : stock.changePct;
+    var priceVal = live && isNum(stock.livePrice) ? stock.livePrice : stock.price;
+
     var changeEl = tile.querySelector('.st-change');
-    if (changeEl && isNum(stock.changePct)) {
-      changeEl.textContent = pctTxt(stock.changePct);
-      changeEl.style.color = colFor(stock.changePct);
+    if (changeEl && isNum(pctVal)) {
+      changeEl.textContent = pctTxt(pctVal) + (live ? ' 프' : '');
+      changeEl.title = live ? 'NXT 프리마켓 체결가 기준 (전일 종가 대비)' : '';
+      changeEl.style.color = colFor(pctVal);
       hits += 1;
     }
 
     var ohlcEl = tile.querySelector('.st-ohlc');
-    if (ohlcEl && isNum(stock.price)) {
+    if (ohlcEl && isNum(priceVal)) {
       ohlcEl.innerHTML =
-        '종 <strong>' + esc(fmt(stock.price)) + '</strong> | 시 ' + esc(fmt(stock.open)) +
+        (live ? '프' : '종') + ' <strong>' + esc(fmt(priceVal)) + '</strong> | 시 ' + esc(fmt(stock.open)) +
         ' 고 ' + esc(fmt(stock.high)) + ' 저 ' + esc(fmt(stock.low));
       hits += 1;
     }
@@ -1722,14 +1729,14 @@
       hits += 1;
     }
 
-    if (isNum(stock.price)) {
+    if (isNum(priceVal)) {
       var nameEl = tile.querySelector('.st-name');
       var shownName = nameEl ? nameEl.textContent.replace(/[★☆\s]/g, '') : (stock.tileName || stock.name);
       refreshTileOnclick(
         tile,
         shownName,
-        pctTxt(stock.changePct),
-        '대금 ' + (stock.valueText || '—') + ' | 현재가 ' + fmt(stock.price) + '원'
+        pctTxt(pctVal),
+        '대금 ' + (stock.valueText || '—') + ' | 현재가 ' + fmt(priceVal) + '원'
       );
     }
 
@@ -1743,8 +1750,15 @@
     if (!block) return 0;
     var avgEl = block.querySelector('.theme-avg');
     if (avgEl) {
-      avgEl.style.color = colFor(theme.avgPct);
-      avgEl.innerHTML = esc(pctTxt(theme.avgPct)) +
+      // 프리마켓에만 실측 평균(avgPctLive)이 있다 — 종목 절반 이상이 체결된 테마만 값이 내려온다.
+      var useLive = state.sessionPhase === '프리마켓' && isNum(theme.avgPctLive);
+      var avgVal = useLive ? theme.avgPctLive : theme.avgPct;
+      avgEl.style.color = colFor(avgVal);
+      avgEl.innerHTML = esc(pctTxt(avgVal)) +
+        (useLive
+          ? ' <span style="font-size:9.5px; color:#a7f3d0; font-weight:800; margin-left:3px;">프리마켓 ' +
+            esc(theme.liveCoverage || '') + '</span>'
+          : '') +
         ' <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 ' +
         esc(theme.sumValueText || '—') + ')</span>';
       block.setAttribute('data-live-avg', '1');
@@ -2178,17 +2192,18 @@
   function afterRowHtml(r) {
     if (!r) return '';
     var pct = isNum(r.overPct) ? r.overPct : null;
+    var sesWord = state.sesWord || '시간외';
     var bits = [];
-    if (isNum(r.overPrice)) bits.push('시간외 체결 ' + fmt(r.overPrice) + '원 (' + pctTxt(pct) + ')');
+    if (isNum(r.overPrice)) bits.push(sesWord + ' 체결 ' + fmt(r.overPrice) + '원 (' + pctTxt(pct) + ')');
     if (isNum(r.changePct)) bits.push('정규장 ' + pctTxt(r.changePct));
-    if (isNum(r.afterSharePct)) bits.push('통합 대금 중 시간외 ' + Number(r.afterSharePct).toFixed(1) + '%');
+    if (isNum(r.afterSharePct)) bits.push('통합 대금 중 ' + sesWord + ' ' + Number(r.afterSharePct).toFixed(1) + '%');
     if (r.groups && r.groups.length) bits.push('감시군 ' + r.groups.join('·'));
     var metaTxt = bits.join(' | ');
-    var reason = '시간외 체결 대금 ' + (r.overValueText || '—') +
-      (isNum(r.overPrice) ? ' · 시간외 체결가 ' + fmt(r.overPrice) + '원' : '') +
+    var reason = sesWord + ' 체결 대금 ' + (r.overValueText || '—') +
+      (isNum(r.overPrice) ? ' · ' + sesWord + ' 체결가 ' + fmt(r.overPrice) + '원' : '') +
       (isNum(pct) ? ' (전일 종가 대비 ' + pctTxt(pct) + ')' : '') +
       (isNum(r.changePct) ? ' · 정규장 ' + pctTxt(r.changePct) : '') +
-      ' · 네이버 시간외 애프터마켓(NXT·시간외 단일가) 누적 체결 기준';
+      ' · 네이버 ' + (state.sesWord === '프리마켓' ? 'NXT 프리마켓(08:00~08:50)' : '시간외 애프터마켓(NXT·시간외 단일가)') + ' 누적 체결 기준';
     var onclick = buildOnclick(
       r.name + ' (' + r.code + ')',
       (isNum(r.overPrice) ? fmt(r.overPrice) + '원' : '—') + ' (' + pctTxt(pct) + ')',
@@ -2218,12 +2233,19 @@
     var byBottom = af.byPctBottom || [];
     if (!byValue.length && !byTop.length) return 0;
 
+    var isPre = af.sessionPhase === '프리마켓';
+    state.sesWord = isPre ? '프리마켓' : '시간외';
+    var sesWord = isPre ? '프리마켓' : '시간외';
+    var sesMetric = isPre ? '프리마켓(08:00~08:50 NXT) 체결 대금' : '시간외 체결 대금';
+
     var panel = afterPanelEl();
     if (!panel) return 0;
 
     var head = panel.querySelector('.sec-head');
     var sub = head ? head.querySelector('.sub') : null;
-    var basisTxt = (af.inSession ? '시간외 세션 진행 중' : '시간외 세션 아님') + ' · ⚡ ' + stamp + ' 갱신';
+    var basisTxt = (af.inSession ? (isPre ? 'NXT 프리마켓 진행 중' : '시간외 세션 진행 중') : '시간외 세션 아님') +
+      (af.basisSessionType === 'PRE_MARKET' && !isPre ? ' · 기준 프리마켓' : '') +
+      ' · ⚡ ' + stamp + ' 갱신';
     if (sub) {
       sub.textContent = basisTxt;
       sub.setAttribute('data-live', '1');
@@ -2232,32 +2254,37 @@
     var html = '';
     html += '<div style="font-size:10.5px; color:#94a3b8; margin:0 0 6px 2px; line-height:1.5;">' +
       (af.inSession
-        ? '<strong style="color:#34d399;">시간외 세션 진행 중</strong> — 시간외 대금이 계속 늘어납니다 · '
-        : '<strong style="color:#cbd5e1;">직전 거래일 ' + esc(af.basisLabel || '—') + ' 시간외 마감값</strong> · ') +
-      '감시군 ' + esc(String(af.universe || 0)) + '종목(테마·RN존·종베) 중 <strong style="color:#34d399;">시간외 체결 ' +
+        ? '<strong style="color:#34d399;">' + esc(isPre ? 'NXT 프리마켓 진행 중' : '시간외 세션 진행 중') + '</strong> — ' +
+          esc(sesWord) + ' 대금이 계속 늘어납니다 · '
+        : '<strong style="color:#cbd5e1;">직전 ' + esc(af.basisLabel || '—') + ' ' + esc(sesWord) + ' 마감값</strong> · ') +
+      '감시군 ' + esc(String(af.universe || 0)) + '종목(테마·RN존·종베' +
+      ((af.universeGroups && af.universeGroups['NXT동적']) ? '·NXT동적 ' + esc(String(af.universeGroups['NXT동적'])) : '') +
+      ') 중 <strong style="color:#34d399;">' + esc(sesWord) + ' 체결 ' +
       esc(String(af.withAfterCount || 0)) + '종목</strong> 기준 · ' +
-      '시간외 체결 데이터 없는 ' + esc(String(af.noAfterCount || 0)) + '종목은 순위에서 제외</div>';
+      '체결 데이터 없는 ' + esc(String(af.noAfterCount || 0)) + '종목은 순위에서 제외</div>';
 
     html += '<div style="font-size:11px; font-weight:800; color:#6ee7b7; margin:6px 0 4px 2px;">' +
-      '💰 시간외 체결 대금 상위 ' + byValue.length + '종목</div>';
+      '💰 ' + esc(sesMetric) + ' 상위 ' + byValue.length + '종목</div>';
     html += byValue.map(afterRowHtml).join('');
 
     if (byTop.length) {
       html += '<div style="font-size:11px; font-weight:800; color:#fca5a5; margin:9px 0 4px 2px;">' +
-        '📈 시간외 등락 상위 ' + byTop.length + '종목 (전일 종가 대비)</div>';
+        '📈 ' + esc(sesMetric) + ' 등락 상위 ' + byTop.length + '종목 (전일 종가 대비)</div>';
       html += byTop.map(afterRowHtml).join('');
     }
     if (byBottom.length) {
       html += '<div style="font-size:11px; font-weight:800; color:#7dd3fc; margin:9px 0 4px 2px;">' +
-        '📉 시간외 등락 하위 ' + byBottom.length + '종목</div>';
+        '📉 ' + esc(sesMetric) + ' 등락 하위 ' + byBottom.length + '종목</div>';
       html += byBottom.map(afterRowHtml).join('');
     }
 
-    var note = '※ 시간외 대금 = 네이버 시간외 애프터마켓(NXT 애프터마켓·시간외 단일가) 누적 체결 대금(= 통합 − 정규장)입니다. ' +
-      '시간외 등락률은 시간외 체결가의 전일 종가 대비 등락입니다.<br>';
+    var note = '※ ' + esc(sesMetric) + ' = 네이버 ' +
+      (isPre ? 'NXT 프리마켓(08:00~08:50) 누적 체결 대금' : '시간외 애프터마켓(NXT·시간외 단일가) 누적 체결 대금') +
+      '입니다. ' + esc(sesWord) + ' 등락률은 ' + esc(sesWord) + ' 체결가의 전일 종가 대비 등락입니다.<br>';
     note += af.inSession
-      ? '※ 지금은 시간외 세션 진행 중입니다 — 값이 계속 늘어납니다.'
-      : '※ 지금은 시간외 세션이 아닙니다 — 직전 거래일 ' + esc(af.basisLabel || '—') + ' 마감값이며, 장마감 후 시간외 체결이 시작되면 자동으로 늘어납니다.';
+      ? '※ 지금은 ' + esc(sesWord) + ' 세션 진행 중입니다 — 값이 계속 늘어납니다.'
+      : '※ 지금은 ' + esc(sesWord) + ' 세션이 아닙니다 — 직전 ' + esc(af.basisLabel || '—') + ' 마감값이며, ' +
+        (isPre ? '장마감 후 시간외 체결이 시작되면 자동으로 늘어납니다.' : '다음 프리마켓이 열리면 자동으로 갱신됩니다.');
     html += '<div style="font-size:10px; color:#64748b; margin-top:6px;">' + note + '</div>';
 
     var host = document.getElementById('tabsLiveAfterTop');
@@ -2276,7 +2303,101 @@
     return byValue.length + byTop.length + byBottom.length;
   }
 
-  /* ------------------ 주말/휴장 표현 정정 (정적 문구) ------------------ */
+  /* ---------------- [1탭] NXT 실시간 주도주 트랙 ----------------
+   * 실시간 주도 테마 레이더 안의 3장 카드는 지금까지 11/13 고정 종목명이었다.
+   * /api/tabs-live 의 nxtLeaders(NXT 실측 랭킹: 상승률 · 거래대금 · 검색)로 그대로 다시 그린다.
+   */
+
+  function nxRowHtml(it) {
+    var pct = isNum(it.changePct) ? it.changePct : null;
+    var nm = String(it.name || '').replace(/'/g, '');
+    var onclick = "if(window.tabsLiveOpenStock){tabsLiveOpenStock('" + nm + "','" + esc(it.code) + "')}";
+    return '<div data-nxt-live="1" style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5; cursor:pointer;" ' +
+      'title="NXT 체결 기준 · 눌러서 RN존 차트" onclick="' + esc(onclick) + '">' +
+      '• <strong style="color:#fff;">' + esc(it.name) + '</strong> ' +
+      '<span style="color:' + colFor(pct) + '; font-weight:800;">' + esc(fmt(it.price)) + '원 ' + esc(pctTxt(pct)) + '</span>' +
+      ' <span style="color:#94a3b8;">· ' + esc(it.valueText || '—') + '</span>' +
+      (it.upperLimit ? ' <span style="font-size:9px; color:#fca5a5; font-weight:800;">상한가</span>' : '') +
+      ' <span style="font-size:9px; color:#64748b;">' + esc(it.market || '') + '</span>' +
+      '</div>';
+  }
+
+  function nxTrackHtml(title, color, items, note) {
+    var head =
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">' +
+        '<span style="font-size:11.5px; font-weight:800; color:' + color + ';">' + esc(title) + '</span>' +
+        '<span style="font-size:10px; background:rgba(16,185,129,0.2); color:#a7f3d0; padding:1px 4px; border-radius:3px; white-space:nowrap;">' +
+          esc(note) + '</span>' +
+      '</div>';
+    if (!items || !items.length) {
+      return head + '<div style="font-size:10.5px; color:#94a3b8; margin-top:4px;">' + esc(note === '실패' ? '⚠️ NXT 랭킹 응답 없음 — 값을 만들지 않습니다.' : '해당 세션 체결 종목이 없습니다.') + '</div>';
+    }
+    return head + items.map(nxRowHtml).join('');
+  }
+
+  function renderNxtTracks(body, stamp) {
+    var box = document.getElementById('premarketRadarBox');
+    if (!box) return 0;
+    var nx = body.nxtLeaders;
+    var cards = $$('#premarketRadarBox div[onclick*="openPremarketDetail"]');
+    if (!cards.length) return 0;
+
+    var phase = (body.aftermarket && body.aftermarket.sessionPhase) || null;
+    var ses = phase === '프리마켓' ? '프리마켓' : phase === '애프터마켓' ? '애프터마켓' : '장중';
+    var applied = 0;
+
+    if (!nx || !nx.ok) {
+      var fail = nxTrackHtml('⚡ NXT ' + ses + ' 실시간 랭킹', '#94a3b8', [], '실패');
+      cards.forEach(function (card) {
+        if (card.getAttribute('data-sig') === 'fail') return;
+        card.innerHTML = fail;
+        card.setAttribute('data-sig', 'fail');
+        applied += 1;
+      });
+      var bg = document.getElementById('pmSessionBadge');
+      if (bg) { bg.textContent = '⚠️ NXT 랭킹 실패'; bg.style.background = '#7f1d1d'; bg.style.color = '#fecaca'; }
+      return applied;
+    }
+
+    var badge = '⚡ ' + stamp;
+    var tracks = [
+      { title: '⚡ NXT ' + ses + ' 상승 주도주', color: '#6ee7b7', items: nx.byPct },
+      { title: '💰 NXT ' + ses + ' 거래대금 상위', color: '#c7d2fe', items: nx.byValue },
+      { title: '🔍 NXT 검색 상위', color: '#7dd3fc', items: nx.searchTop },
+    ];
+    tracks.forEach(function (t, i) {
+      var card = cards[i];
+      if (!card) return;
+      var html = nxTrackHtml(t.title, t.color, t.items, badge);
+      if (card.getAttribute('data-sig') !== html) {
+        card.innerHTML = html;
+        card.setAttribute('data-sig', html);
+        applied += 1;
+      }
+      card.setAttribute('data-nxt-live', '1');
+    });
+    box.setAttribute('data-nxt-live', '1');
+
+    var sessBadge = document.getElementById('pmSessionBadge');
+    if (sessBadge) {
+      var btxt = '⚡ NXT ' + (nx.sessionLabel || ses) + ' LIVE ' + stamp;
+      if (sessBadge.textContent !== btxt) sessBadge.textContent = btxt;
+      sessBadge.style.background = '#064e3b';
+      sessBadge.style.color = '#6ee7b7';
+      sessBadge.setAttribute('data-live', '1');
+    }
+    var noteEl = document.getElementById('pmNote');
+    if (noteEl) {
+      var ntxt = '※ NXT(넥스트레이드) 실시간 랭킹 ' + stamp + ' 조회 — ' + ses +
+        ' 체결가·거래대금 기준입니다(전일 종가 대비). 감시군에 NXT 랭킹 종목 ' +
+        (nx.dynamicCount || 0) + '개를 더해 3번 탭 순위에 함께 넣었습니다.';
+      if (noteEl.textContent !== ntxt) noteEl.textContent = ntxt;
+      noteEl.setAttribute('data-live', '1');
+    }
+    return applied + 1;
+  }
+
+  /* ---------------- 주말/휴장 표현 정정 (정적 문구) ---------------- */
 
   function fixSessionWording(phase) {
     if (phase !== '주말휴장') return;
@@ -2312,6 +2433,10 @@
   function apply(body) {
     var stamp = body.generatedAtKst || nowHms();
     var applied = 0;
+    state.sessionPhase = body.sessionPhase || null;
+
+    // 1번 탭 — NXT 실시간 주도주 트랙(고정 텍스트 → 실데이터)
+    applied += renderNxtTracks(body, stamp);
 
     // 1번 탭 — 8대 테마
     var themes = body.themes || [];

@@ -13,6 +13,12 @@
  *     - 각 속보는 제목·요약 키워드 규칙(lib/news-impact.js)으로
  *       impactLevel · impactDirection · matchedThemes · beneficiaryStocks · impactNote 를 붙인다.
  *       섹터·종목 키워드가 없는 기사는 빈 배열 + '참고' + '일반 속보' 로 남긴다(가짜 매칭 금지).
+ *  5) NXT(넥스트레이드) 실시간 랭킹       : stock.naver.com/api/domestic/market/stock/default
+ *     - tradeType=NXT · orderType=up(상승률) / quantTop(거래대금) / searchTop(검색)
+ *     - 프리마켓(08:00~08:50)·애프터마켓(15:30~20:00)에 고정 감시군 41종목 밖에서
+ *       실제로 움직이는 종목을 찾아 감시군에 동적으로 합친다(없는 종목은 만들지 않는다).
+ *     - 응답 items[].tradingSessionType 이 PRE_MARKET / AFTER_MARKET / REGULAR 이라
+ *       세션 표기는 추측하지 않고 이 값을 그대로 쓴다.
  *
  *  원칙
  *   - 확인된 응답값만 담는다. 없는 값은 null 로 두고 사유·전망 문장을 만들지 않는다.
@@ -40,6 +46,24 @@ const REFRESH_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=10';
 const NAVER_TIMEOUT = 5000;
 
 const VALUE_MIN = 100 * 1e8; // 100억 원
+
+/* --------------------------- 세션 시각(분) --------------------------- */
+const PRE_START = 8 * 60; // 08:00 NXT 프리마켓 시작
+const PRE_END = 8 * 60 + 50; // 08:50 NXT 프리마켓 종료
+const AFTER_START = 15 * 60 + 30; // 15:30 NXT 애프터마켓 시작
+const AFTER_END = 20 * 60; // 20:00 애프터마켓 종료
+
+/* ------------------------- NXT 실시간 랭킹 API ------------------------- */
+const NXT_RANK_URL = 'https://stock.naver.com/api/domestic/market/stock/default';
+const NXT_RANK_HEADERS = {
+  ...NAVER_HEADERS,
+  Referer: 'https://stock.naver.com/',
+  Origin: 'https://stock.naver.com',
+};
+const NXT_RANK_TIMEOUT = 3500;
+const NXT_LEAD_TOP = 6; // 카드에 그리는 상위 종목 수
+const NXT_DYNAMIC_MAX = 30; // 감시군에 동적으로 합칠 최대 종목 수
+const NXT_SESSION_KO = { PRE_MARKET: '프리마켓', AFTER_MARKET: '애프터마켓', REGULAR: '정규장', CLOSE: '장마감' };
 const PCT_MIN = 25; // +25%
 const WATCH_PCT_MIN = 18; // 관찰 후보 시작 상승률
 const NEWS_COUNT = 12;
@@ -232,7 +256,15 @@ function sessionOf(p, naverStatus) {
   if (p.wd === 'Sat' || p.wd === 'Sun') {
     return { phase: '주말휴장', label: `주말 휴장 (${WEEKDAY_KO[p.wd]}요일 · 직전 거래일 종가 기준)` };
   }
-  if (p.minutes < 9 * 60) return { phase: '장전', label: '장전 (09:00 정규장 시작 전)' };
+  if (p.minutes >= PRE_START && p.minutes < PRE_END) {
+    return {
+      phase: '프리마켓',
+      label: 'NXT 프리마켓 진행 중 (08:00~08:50) — 프리마켓 체결가·거래대금 기준',
+    };
+  }
+  if (p.minutes < 9 * 60) {
+    return { phase: '장전', label: '장전 (08:50 프리마켓 종료 · 09:00 정규장 시작 전)' };
+  }
   if (p.minutes < 15 * 60 + 30) {
     if (naverStatus && naverStatus !== 'OPEN') {
       return { phase: '장마감', label: '장마감 (네이버 장 상태 기준)' };
@@ -242,15 +274,33 @@ function sessionOf(p, naverStatus) {
   return { phase: '장마감', label: '정규장 마감 (15:30 이후 · 시간외 반영)' };
 }
 
-/** NXT 애프터마켓(15:30~20:00) · 시간외 단일가(16:00~18:00) 안인지 */
-function afterSessionOf(p) {
+/**
+ * NXT 프리마켓(08:00~08:50) · 애프터마켓(15:30~20:00) 안인지.
+ * 두 구간 모두 네이버 polling 의 overMarketPriceInfo(NXT 체결)가 실시간으로 갱신되므로
+ * 같은 "시간외" 계열로 다루되, 표기(프리마켓/애프터마켓)는 phase 로 구분한다.
+ */
+function overSessionOf(p) {
   const weekday = !(p.wd === 'Sat' || p.wd === 'Sun');
-  const inSession = weekday && p.minutes >= 15 * 60 + 30 && p.minutes < 20 * 60;
+  const pre = weekday && p.minutes >= PRE_START && p.minutes < PRE_END;
+  const after = weekday && p.minutes >= AFTER_START && p.minutes < AFTER_END;
+  if (pre) {
+    return {
+      inSession: true,
+      phase: '프리마켓',
+      label: 'NXT 프리마켓 진행 중 (08:00~08:50) — 프리마켓 체결 대금이 계속 늘어납니다',
+    };
+  }
+  if (after) {
+    return {
+      inSession: true,
+      phase: '애프터마켓',
+      label: '시간외 세션 진행 중 (NXT 애프터마켓 15:30~20:00 · 시간외 단일가 16:00~18:00)',
+    };
+  }
   return {
-    inSession,
-    label: inSession
-      ? '시간외 세션 진행 중 (NXT 애프터마켓 15:30~20:00 · 시간외 단일가 16:00~18:00)'
-      : '시간외 세션 아님 — 직전 거래일 시간외 체결 마감값',
+    inSession: false,
+    phase: null,
+    label: '시간외 세션 아님 — 직전 거래일 시간외 체결 마감값',
   };
 }
 
@@ -317,6 +367,8 @@ function normalizeQuote(d) {
     overVolume,
     overTradedAt,
     overMarketStatus: over ? over.overMarketStatus || null : null,
+    // PRE_MARKET / AFTER_MARKET / REGULAR — NXT 체결이 어느 세션의 값인지 그대로 보존
+    overSessionType: over ? over.tradingSessionType || null : null,
     valueBasis: valueInteg !== null ? '통합(KRX+NXT)' : '정규장',
     upperLimit: sign === 'UPPER_LIMIT',
     marketStatus: d.marketStatus || null,
@@ -397,28 +449,45 @@ async function pollQuotes(codes) {
   return map;
 }
 
-async function fetchThemeQuotes() {
-  // 테마 32종목 + 시간외 순위용 감시군(RN존·종베 추가분)을 한 번에 조회한다
-  const map = await pollQuotes(ALL_CODES.concat(WATCH_CODES));
+async function fetchThemeQuotes(extraCodes, premarket) {
+  // 테마 32종목 + 시간외 순위용 감시군(RN존·종베 추가분) + NXT 랭킹 동적 종목을 한 번에 조회한다
+  const extra = Array.isArray(extraCodes) ? extraCodes : [];
+  const map = await pollQuotes(ALL_CODES.concat(WATCH_CODES).concat(extra));
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   const themes = THEMES.map((t) => {
     const stocks = t.stocks.map((s) => {
-      const q = map[s.code];
+      const q = map[s.code] || {};
+      // 프리마켓(08:00~08:50)에는 정규장 등락률이 0.00%로 내려온다.
+      //  실제 체결은 overMarketPriceInfo(NXT 프리마켓)에 있으므로 그 값을 live* 로 함께 내린다.
+      const hasOver = typeof q.overPct === 'number' && q.overPct !== null;
+      const livePct = premarket && hasOver ? q.overPct : null;
+      const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
       return {
         code: s.code,
         name: s.name,
         tileName: s.name,
-        ...(q || {}),
-        missing: !q,
+        ...q,
+        livePct,
+        livePrice,
+        livePhase: livePct === null ? null : '프리마켓',
+        missing: !map[s.code],
       };
     });
     const priced = stocks.filter((s) => !s.missing && s.price !== null);
     const pcts = priced.map((s) => s.changePct).filter((v) => typeof v === 'number');
+    const livePcts = stocks.map((s) => s.livePct).filter((v) => typeof v === 'number');
     const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
     const avgPct = pcts.length
       ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2))
       : null;
+    // 프리마켓 평균은 "그 테마 종목 중 절반 이상이 프리마켓에서 거래됐을 때"만 낸다.
+    //  1~2종목만 거래된 테마의 평균을 테마 등락률처럼 보여 주면 오해를 만든다.
+    const needLive = Math.max(2, Math.ceil(stocks.length / 2));
+    const avgPctLive =
+      livePcts.length >= needLive
+        ? Number((livePcts.reduce((a, b) => a + b, 0) / livePcts.length).toFixed(2))
+        : null;
     return {
       rank: t.rank,
       name: t.name,
@@ -426,6 +495,10 @@ async function fetchThemeQuotes() {
       stockCount: stocks.length,
       pricedCount: priced.length,
       avgPct,
+      avgPctLive,
+      livePricedCount: livePcts.length,
+      liveCoverage: `${livePcts.length}/${stocks.length}`,
+      livePhase: livePcts.length ? '프리마켓' : null,
       sumValue,
       sumValueText: formatKoreanMoney(sumValue),
       stocks,
@@ -492,6 +565,100 @@ async function fetchNews() {
     if (!items.length) throw new Error(`news 비었습니다 (list: ${e1.message})`);
     return { items, via: 'news/search', errors: [`news/list 실패 → search 대체: ${e1.message}`] };
   }
+}
+
+/* ------------------- NXT 실시간 랭킹 (프리마켓 · 애프터마켓) ------------------- */
+// 네이버 데스탑 증권은 거래소를 tradeType(NXT=넥스트레이드)로 골라 랭킹을 준다.
+// 프리마켓(08:00~08:50)에는 정규장 랭킹(up/high52week)이 빈 목록으로 내려오므로,
+// 그 시간에 실제로 움직이는 종목은 이 NXT 랭킹으로만 확인된다.
+
+/** upDownGb 4·5 = 하락 계열, 1 = 상한가 (LIVE-briefing 의 parseRankItem 과 같은 규칙) */
+function nxtSigned(v, upDownGb) {
+  const n = parseNum(v);
+  if (n === null) return null;
+  const gb = String(upDownGb || '');
+  return gb === '4' || gb === '5' ? -Math.abs(n) : n;
+}
+
+function normalizeNxtRankItem(d) {
+  if (!d || !d.itemcode) return null;
+  const value = parseNum(d.tradeAmount);
+  return {
+    code: d.itemcode,
+    name: d.itemname || null,
+    market: d.sosok === '1' ? 'KOSDAQ' : d.sosok === '0' ? 'KOSPI' : null,
+    kind: d.type || null,
+    price: parseNum(d.nowPrice),
+    change: nxtSigned(d.prevChangePrice, d.upDownGb),
+    changePct: nxtSigned(d.prevChangeRate, d.upDownGb),
+    open: parseNum(d.openPrice),
+    high: parseNum(d.highPrice),
+    low: parseNum(d.lowPrice),
+    volume: parseNum(d.tradeVolume),
+    value,
+    valueText: formatKoreanMoney(value),
+    valueBasis: 'NXT 체결',
+    upperLimit: String(d.upDownGb) === '1',
+    sessionType: d.tradingSessionType || null,
+    marketStatus: d.marketStatus || null,
+    source: 'naver-nxt-rank',
+  };
+}
+
+async function fetchNxtRank(orderType, pageSize) {
+  const url =
+    NXT_RANK_URL +
+    '?tradeType=NXT&marketType=ALL&orderType=' +
+    encodeURIComponent(orderType) +
+    '&startIdx=0&pageSize=' +
+    String(pageSize);
+  const data = await fetchJson(url, { headers: NXT_RANK_HEADERS, timeout: NXT_RANK_TIMEOUT });
+  if (!Array.isArray(data) || !data.length) throw new Error(`NXT ${orderType} 목록이 비었습니다`);
+  const items = data.map(normalizeNxtRankItem).filter((x) => x && x.kind === 'ST' && !isPreferredStock(x));
+  if (!items.length) throw new Error(`NXT ${orderType} 주식이 없습니다`);
+  return items;
+}
+
+/** NXT 랭킹 세 종류를 동시에 조회한다. 하나가 죽어도 나머지는 돌려준다. */
+async function fetchNxtLeaders() {
+  const [upR, quantR, searchR] = await Promise.allSettled([
+    fetchNxtRank('up', 40),
+    fetchNxtRank('quantTop', 40),
+    fetchNxtRank('searchTop', 20),
+  ]);
+  const errors = [];
+  const take = (name, r) => {
+    if (r.status === 'fulfilled') return r.value;
+    errors.push(`NXT ${name}: ${(r.reason && r.reason.message) || r.reason}`);
+    return [];
+  };
+  const byPct = take('up', upR);
+  const byValue = take('quantTop', quantR);
+  const searchTop = take('searchTop', searchR);
+  const sessionCount = {};
+  byPct.concat(byValue).forEach((it) => {
+    const k = it.sessionType || 'UNKNOWN';
+    sessionCount[k] = (sessionCount[k] || 0) + 1;
+  });
+  const sessionType =
+    Object.keys(sessionCount).sort((a, b) => sessionCount[b] - sessionCount[a])[0] || null;
+  return { byPct, byValue, searchTop, sessionType, errors, ok: byPct.length + byValue.length > 0 };
+}
+
+/** 고정 감시군(테마32+RN11+종베10) 밖에서 지금 실제로 움직이는 종목 코드를 고른다. */
+function pickDynamicCodes(nxt, excludeCodes) {
+  const known = new Set(excludeCodes || []);
+  const out = [];
+  const push = (list) => {
+    (list || []).forEach((it) => {
+      if (!it || !it.code || known.has(it.code) || out.includes(it.code)) return;
+      if (out.length >= NXT_DYNAMIC_MAX) return;
+      out.push(it.code);
+    });
+  };
+  push(nxt.byPct); // 상승률 상위 먼저
+  push(nxt.byValue); // 그다음 거래대금 상위
+  return out;
 }
 
 /* ------------------------------ 52주 신고가 ------------------------------ */
@@ -666,15 +833,17 @@ function kstDayLabel(iso) {
 }
 
 /**
- * 감시군(테마32 + RN11 + 종베10) 중 NXT 시간외 체결이 있는 종목만 모아
- * 시간외 체결 대금·등락률 순위를 만든다. 값이 없는 종목은 0으로 채우지 않고 따로 센다.
+ * 감시군(테마32 + RN11 + 종베10 + NXT 랭킹 동적) 중 NXT 체결이 있는 종목만 모아
+ * 세션(프리마켓·애프터마켓) 체결 대금·등락률 순위를 만든다.
+ * 값이 없는 종목은 0으로 채우지 않고 따로 센다.
  */
-function buildAftermarket(map, afterSession) {
+function buildAftermarket(map, overSession, universe) {
+  const list = Array.isArray(universe) && universe.length ? universe : WATCH;
   const rows = [];
   let noAfterCount = 0;
   let missingCount = 0;
 
-  WATCH.forEach((w) => {
+  list.forEach((w) => {
     const q = map[w.code];
     if (!q) {
       missingCount += 1;
@@ -698,6 +867,7 @@ function buildAftermarket(map, afterSession) {
       overValueText: q.valueAfterText,
       overVolume: q.overVolume,
       overTradedAt: q.overTradedAt,
+      overSessionType: q.overSessionType || null,
       value: q.value,
       valueText: q.valueText,
       // 통합 대금 중 시간외 비중 (%) — 통합 값이 있을 때만 계산
@@ -716,6 +886,14 @@ function buildAftermarket(map, afterSession) {
       basis = { at: d, date: lab.date, label: lab.label };
     }
   });
+
+  // 실제 응답의 세션 타입을 그대로 집계한다(추측 금지) — PRE_MARKET / AFTER_MARKET
+  const sessCount = {};
+  rows.forEach((r) => {
+    const k = r.overSessionType || 'UNKNOWN';
+    sessCount[k] = (sessCount[k] || 0) + 1;
+  });
+  const basisSessionType = Object.keys(sessCount).sort((a, b) => sessCount[b] - sessCount[a])[0] || null;
 
   const withRank = (arr) => arr.map((r, i) => ({ ...r, rank: i + 1 }));
   const byValue = withRank(
@@ -738,27 +916,32 @@ function buildAftermarket(map, afterSession) {
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
   return {
-    universe: WATCH.length,
+    universe: list.length,
     universeGroups: {
       테마: THEMES.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), []).length,
       RN존: WATCH_RN.length,
       종베: WATCH_JONGBE.length,
+      NXT동적: Math.max(0, list.length - WATCH.length),
     },
     withAfterCount: rows.length,
     noAfterCount,
     missingCount,
-    inSession: Boolean(afterSession && afterSession.inSession),
-    sessionLabel: (afterSession && afterSession.label) || null,
+    inSession: Boolean(overSession && overSession.inSession),
+    sessionPhase: (overSession && overSession.phase) || null,
+    sessionLabel: (overSession && overSession.label) || null,
     basisDate: basis ? basis.date : null,
     basisLabel: basis ? basis.label : null,
+    basisSessionType,
     byValue,
     byPctTop,
     byPctBottom,
     rules: {
-      universe: '테마 32 + RN존 11 + 종베 10 (중복 제거)',
-      metric: '시간외 대금 = 네이버 overMarketPriceInfo 누적 체결 대금(= 통합 − 정규장 · NXT 애프터마켓·시간외 단일가)',
-      pct: '시간외 등락률 = 시간외 체결가 기준 전일 종가 대비',
-      missing: '시간외 체결 데이터가 없는 종목은 0으로 채우지 않고 순위에서 제외',
+      universe: '테마 32 + RN존 11 + 종베 10 + NXT 랭킹 동적(중복 제거)',
+      metric:
+        '체결 대금 = 네이버 overMarketPriceInfo 누적 체결 대금(프리마켓 08:00~08:50 · NXT 애프터마켓·시간외 단일가 15:30~20:00)',
+      pct: '체결 등락률 = 세션 체결가 기준 전일 종가 대비',
+      missing: '해당 세션 체결 데이터가 없는 종목은 0으로 채우지 않고 순위에서 제외',
+      dynamic: 'NXT 랭킹(상승률·거래대금)에서 찾은 종목만 추가 — 없는 종목은 만들지 않음',
     },
   };
 }
@@ -797,9 +980,16 @@ module.exports = async function handler(req, res) {
   const started = Date.now();
   const now = new Date();
   const p = kstParts(now);
+  const overSession = overSessionOf(p);
+  const premarket = overSession.phase === '프리마켓';
+
+  // 1) NXT 랭킹을 먼저 받아 "지금 실제로 움직이는 종목"을 감시군에 합친다.
+  //    (프리마켓에는 정규장 랭킹이 빈 목록이라 이 경로만 유효하다)
+  const nxt = await fetchNxtLeaders();
+  const dynCodes = nxt.ok ? pickDynamicCodes(nxt, WATCH_CODES) : [];
 
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR] = await Promise.allSettled([
-    fetchThemeQuotes(),
+    fetchThemeQuotes(dynCodes, premarket),
     fetchList('high52week', 'KOSPI'),
     fetchList('high52week', 'KOSDAQ'),
     fetchList('up', 'KOSPI'),
@@ -826,6 +1016,15 @@ module.exports = async function handler(req, res) {
   const okUpKospi = note('naver-up-KOSPI', upKospiR);
   const okUpKosdaq = note('naver-up-KOSDAQ', upKosdaqR);
   const okNews = note('naver-news', newsR);
+  sources.push({
+    name: 'naver-nxt-rank',
+    ok: nxt.ok,
+    detail: nxt.ok
+      ? `up ${nxt.byPct.length} · quantTop ${nxt.byValue.length} · searchTop ${nxt.searchTop.length} · session ${nxt.sessionType || '—'}`
+      : undefined,
+    error: nxt.ok ? undefined : nxt.errors.join(' / ') || 'NXT 랭킹 실패',
+  });
+  if (!nxt.ok) errors.push(`NXT 랭킹: ${nxt.errors.join(' / ') || '응답 없음'}`);
 
   const themeData = okTheme ? themeR.value : { themes: [], map: {}, marketStatus: null };
   const themes = themeData.themes;
@@ -886,10 +1085,30 @@ module.exports = async function handler(req, res) {
     (upLists[0] && upLists[0].marketStatus) ||
     null;
   const session = sessionOf(p, naverStatus);
-  const afterSession = afterSessionOf(p);
 
-  // 3번 탭 — 감시군 시간외 체결 대금·등락 순위 (map 은 테마 폴링에서 같이 받아온다)
-  const aftermarket = buildAftermarket(knownMap, afterSession);
+  // 3번 탭 — 감시군(고정 41 + NXT 랭킹 동적) 세션 체결 대금·등락 순위
+  //  NXT 랭킹에서 찾은 종목은 같은 polling 응답(knownMap)에서 시세·체결 대금을 가져온다.
+  const dynamicUniverse = dynCodes.map((code) => {
+    const hit = nxt.byPct.find((x) => x.code === code) || nxt.byValue.find((x) => x.code === code) || {};
+    const q = knownMap[code] || {};
+    return { code, name: hit.name || q.name || null, groups: ['NXT'] };
+  });
+  const liveUniverse = WATCH.concat(dynamicUniverse);
+  const aftermarket = buildAftermarket(knownMap, overSession, liveUniverse);
+
+  const nxtLeaders = {
+    ok: nxt.ok,
+    source: 'naver NXT 랭킹 (stock.naver.com · tradeType=NXT)',
+    sessionType: nxt.sessionType,
+    sessionLabel: NXT_SESSION_KO[nxt.sessionType] || null,
+    byPct: nxt.byPct.slice(0, NXT_LEAD_TOP),
+    byValue: nxt.byValue.slice(0, NXT_LEAD_TOP),
+    searchTop: nxt.searchTop.slice(0, NXT_LEAD_TOP),
+    counts: { byPct: nxt.byPct.length, byValue: nxt.byValue.length, searchTop: nxt.searchTop.length },
+    dynamicCodes: dynamicUniverse,
+    dynamicCount: dynamicUniverse.length,
+    errors: nxt.errors,
+  };
 
   const notes = [];
   if (session.phase === '주말휴장') {
@@ -897,9 +1116,14 @@ module.exports = async function handler(req, res) {
   }
   notes.push('거래대금은 통합(KRX+NXT·시간외 포함) 기준이며, 통합 체결이 없는 종목은 정규장 값입니다.');
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
-  if (!afterSession.inSession) {
+  if (premarket) {
     notes.push(
-      `${afterSession.label}${aftermarket.basisLabel ? ` (기준 ${aftermarket.basisLabel})` : ''} — 장중·주말에는 시간외 대금이 늘지 않습니다.`,
+      '프리마켓(08:00~08:50)에는 정규장 시세가 아직 없어 8대 테마 카드의 등락률은 NXT 프리마켓 체결가(전일 종가 대비)를 쓰고, \'프리마켓\' 기준임을 표시합니다.',
+    );
+  }
+  if (!overSession.inSession) {
+    notes.push(
+      `${overSession.label}${aftermarket.basisLabel ? ` (기준 ${aftermarket.basisLabel})` : ''} — 장중·주말에는 시간외 대금이 늘지 않습니다.`,
     );
   }
 
@@ -920,6 +1144,7 @@ module.exports = async function handler(req, res) {
     high52,
     upperLimit,
     aftermarket,
+    nxtLeaders,
     news,
     newsVia,
     enrichedCodes: enriched,

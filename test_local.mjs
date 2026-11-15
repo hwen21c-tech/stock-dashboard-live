@@ -379,12 +379,22 @@ const aftValue = tlAfter.byValue || [];
 const aftTop = tlAfter.byPctTop || [];
 const aftBottom = tlAfter.byPctBottom || [];
 {
-  check('aftermarket 감시군 41종목(테마32+RN존11+종베10 중복 제거)',
-    tlAfter.universe === 41 && tlAfter.universeGroups && tlAfter.universeGroups.테마 === 32 && tlAfter.universeGroups.RN존 === 11 && tlAfter.universeGroups.종베 === 10,
-    `universe ${tlAfter.universe} (테마 ${tlAfter.universeGroups && tlAfter.universeGroups.테마} · RN ${tlAfter.universeGroups && tlAfter.universeGroups.RN존} · 종베 ${tlAfter.universeGroups && tlAfter.universeGroups.종베})`);
+  check('aftermarket 감시군 = 고정 41(테마32+RN존11+종베10) + NXT 랭킹 동적',
+    tlAfter.universe >= 41 && tlAfter.universeGroups && tlAfter.universeGroups.테마 === 32 && tlAfter.universeGroups.RN존 === 11 && tlAfter.universeGroups.종베 === 10 &&
+      (tlAfter.universe - 41) === (tlAfter.universeGroups['NXT동적'] || 0),
+    `universe ${tlAfter.universe} (테마 ${tlAfter.universeGroups && tlAfter.universeGroups.테마} · RN ${tlAfter.universeGroups && tlAfter.universeGroups.RN존} · 종베 ${tlAfter.universeGroups && tlAfter.universeGroups.종베} · NXT동적 ${tlAfter.universeGroups && tlAfter.universeGroups['NXT동적']})`);
   check('시간외 체결 종목 수 = 있음 + 없음 합계',
     tlAfter.withAfterCount + tlAfter.noAfterCount + tlAfter.missingCount === tlAfter.universe && tlAfter.withAfterCount > 0,
     `체결 ${tlAfter.withAfterCount} · 미체결 ${tlAfter.noAfterCount} · 누락 ${tlAfter.missingCount}`);
+  const tlNxt = tlJson.nxtLeaders || {};
+  check('NXT 실시간 랭킹(nxtLeaders) — 상승률·거래대금 실측',
+    typeof tlNxt.ok === 'boolean' && Array.isArray(tlNxt.byPct) && Array.isArray(tlNxt.byValue) &&
+      (!tlNxt.ok || (tlNxt.byPct.length > 0 && tlNxt.byPct.every((x) => /^\d{6}$/.test(x.code) && typeof x.changePct === 'number' && typeof x.value === 'number'))),
+    tlNxt.ok ? `session ${tlNxt.sessionType} · 상승 ${tlNxt.counts.byPct} · 대금 ${tlNxt.counts.byValue} · 동적 +${tlNxt.dynamicCount}종목 / ${(tlNxt.byPct || []).slice(0, 3).map((x) => x.name + ' ' + x.changePct + '%').join(', ')}` : '랭킹 실패(장외)' );
+  check('프리마켓(08:00~08:50) 세션 인식',
+    !['프리마켓', '장전', '정규장', '장마감', '주말휴장'].includes(tlJson.sessionPhase) ? false :
+      (tlJson.sessionPhase !== '프리마켓' || (tlAfter.inSession === true && tlAfter.sessionPhase === '프리마켓')),
+    `sessionPhase ${tlJson.sessionPhase} · aftermarket.inSession ${tlAfter.inSession} · phase ${tlAfter.sessionPhase}`);
   check('시간외 대금 순위 = 내림차순 · 6건 이하 · 0원 없음',
     aftValue.length > 0 && aftValue.length <= 6 &&
       aftValue.every((r, i) => typeof r.overValue === 'number' && r.overValue > 0 && /^\d{6}$/.test(r.code) && (i === 0 || aftValue[i - 1].overValue >= r.overValue)),
