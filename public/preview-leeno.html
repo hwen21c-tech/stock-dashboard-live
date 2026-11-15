@@ -371,6 +371,22 @@
   .guide-img-wrap img { display: block; width: 100%; height: auto; }
   .guide-img-wrap.zoom img { width: 200%; max-width: none; height: auto; }
 
+  /* ===== 탈락 사유 모달 버튼 (본문 비노출) ===== */
+  .mini-btn {
+    font-size: 9.5px; font-weight: 800; color: #fcd34d; cursor: pointer;
+    background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.42);
+    border-radius: 5px; padding: 3px 7px; white-space: nowrap; line-height: 1.3;
+  }
+  .mini-btn b { color: #fde68a; font-weight: 900; }
+  .mini-btn:active { transform: scale(.97); }
+  .rej-row { padding: 6px 2px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .rej-row:first-child { border-top: none; }
+  .rej-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .rej-name { font-size: 11.5px; font-weight: 900; color: #e2e8f0; }
+  .rej-pct { font-size: 10.5px; font-weight: 900; font-feature-settings: "tnum"; }
+  .rej-val { font-size: 10px; font-weight: 800; color: #64748b; }
+  .rej-why { margin-top: 2px; font-size: 10px; color: #94a3b8; line-height: 1.45; }
+
   /* ===== 폴드8 3화면 반응형 ===== */
   /* 1안: 외부액정 세로 (400px급) */
   @media (max-width: 640px) {
@@ -463,7 +479,10 @@
   <section id="sec-filters">
     <div class="sec-head">
       <div class="sec-title">🧮 리노 정예 필터 5단계 — 실제 종목으로 돌린 결과</div>
-      <div class="sec-sub" id="filterSub">기준: 2026-11-13(금) 정규장 종가 · 네이버 fchart 260일봉</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <div class="sec-sub" id="filterSub">기준: 2026-11-13(금) 정규장 종가 · 네이버 fchart 260일봉</div>
+        <button class="mini-btn" onclick="openReject()">🔍 탈락 사유 보기 <b id="rejBadge">6</b></button>
+      </div>
     </div>
     <div class="panel">
       <div class="pipeline">
@@ -515,16 +534,6 @@
     <div class="stock-grid" id="stockGrid"></div>
     <div class="tl-next" style="margin-top:8px">
       ※ <b>2026-11-13(금) 종가 실측</b>으로 ①~⑤를 전부 통과한 종목만 표시했습니다. 매수 신호가 아니라 <b>모니터링 후보</b>이며, 실제 진입은 호가창·분차트 확인 후 결정해야 합니다.
-    </div>
-    <div class="panel" style="margin-top:10px">
-      <div class="sec-head" style="margin-bottom:6px">
-        <div class="sec-title" style="font-size:12px">🔍 왜 1종목만 남았나 — 탈락 사유 정밀 기록</div>
-        <div class="sec-sub" id="rejSub">—</div>
-      </div>
-      <div id="rejTable"></div>
-      <div class="tl-next" style="margin-top:6px">
-        ※ 위 종목들은 <b>화면에서 제외</b>했습니다. 기준을 느슨하게 풀면 다시 들어오지만, 그러면 <b>‘이미 달린 자리’</b>나 <b>‘전고점 -40~-60% 먼 자리’</b> 문제가 그대로 돌아옵니다.
-      </div>
     </div>
   </section>
 
@@ -640,6 +649,24 @@
   </div>
 </div>
 
+<!-- ===== 탈락 사유 모달 (본문 비노출 · 버튼 클릭 시에만) ===== -->
+<div class="modal-overlay" id="rejectModal" onclick="closeReject(event)">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div style="min-width:0">
+        <h3>🔍 왜 1종목만 남았나 — 탈락 사유 정밀 기록</h3>
+        <div class="mh-sub" id="rejSub">—</div>
+      </div>
+      <button class="btn-close" onclick="closeReject()">&times;</button>
+    </div>
+    <div class="modal-body" id="rejTable"></div>
+    <div class="modal-footer">
+      <span class="src-line" style="margin:0 auto 0 0">※ 이 종목들은 <b>화면에서 제외</b>했습니다. 기준을 느슨하게 풀면 다시 들어오지만, 그러면 <b>‘이미 달린 자리’</b>나 <b>‘전고점 -40~-60% 먼 자리’</b> 문제가 그대로 돌아옵니다.</span>
+      <button class="btn-action" style="background:#0284c7;color:#fff;border-color:#38bdf8" onclick="closeReject()">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 도해 모달 ===== -->
 <div class="modal-overlay guide-modal" id="guideModal" onclick="closeGuide(event)">
   <div class="modal-content" onclick="event.stopPropagation()">
@@ -669,7 +696,7 @@ window.addEventListener('error', function (e) {
 window.addEventListener('unhandledrejection', function (e) {
   window.__LEENO_ERRORS.push('unhandledrejection: ' + String((e && e.reason) || ''));
 });
-window.__LEENO = { cards: 0, chartDrawn: false, chartCode: null, guideOpened: false };
+window.__LEENO = { cards: 0, chartDrawn: false, chartCode: null, guideOpened: false, rejectOpen: false, rejRows: 0 };
 
 /* ===== 실측 선별 데이터 (build_data.py 생성) ===== */
 const DATA = {"basisDate":"2026-11-13","basisLabel":"2026-11-13(금) 정규장 종가","universe":1519,"stage12":47,"stage3":27,"stage34":1,"passedCount":1,"generatedAt":"2026-11-15 14:10:54","stocks":[{"code":"068270","name":"셀트리온","market":"코스피","sector":"제약·바이오(바이오시밀러)","rank":307,"close":213500.0,"pct":1.91,"valueEok":931.2,"date":"20261113","o":208500.0,"h":215000.0,"l":207000.0,"v":436767.0,"m5":209200.0,"m10":205490.0,"m20":198960.0,"m120":184153.8,"spread":5.15,"above20":true,"above120":true,"conv":false,"spotDate":"20261105","spotRatio":2.89,"spotHigh":216000.0,"spotLow":206000.0,"hi250":239244.0,"hi250Date":"20260224","dist250":12.06,"hi120":216000.0,"dist120":1.17,"chg5":2.4,"chg20":10.11,"primary":{"role":"돌파 트리거","label":"120일 고점","value":216000.0,"gap":1.17},"secondary":{"label":"5일선","value":209200.0,"gap":-2.01},"score":9.7,"reasons":["① 등락률 +1.91% — 1.5~15% 구간 안 · 상승률 순위 307위(코스피)","② 거래대금 931억 — 300억 기준 통과","③ 5일 누적 +2.4% · 20일 누적 +10.1% — 과열선(5일 20%·20일 35%) 아래","④ 120일 고점(11/05) 216,000원 대비 -1.2% — 위쪽 매물대 바로 아래","⑤ 20일선(198,960)·120일선(184,154) 위 지지 + 11/05 거래량 스팟 2.89배"],"flags":["250일 전고점(02/24)은 -12.1% — 120일 고점 기준으로 통과, 250일 매물대는 남아 있음","5·10·20 수렴 폭 5.2% — 수렴은 아직(거래량 스팟으로 통과)"],"spark15":[["20261026",190000.0,431926.0],["20261027",188900.0,433983.0],["20261028",189900.0,418176.0],["20261029",190600.0,372797.0],["20261030",190200.0,522562.0],["20261102",192900.0,331145.0],["20261103",190500.0,310531.0],["20261104",202000.0,1091653.0],["20261105",215000.0,1999977.0],["20261106",208500.0,1036846.0],["20261109",211000.0,626672.0],["20261110",204500.0,869506.0],["20261111",206500.0,745716.0],["20261112",210500.0,569041.0],["20261113",213500.0,436767.0]]}],"reject":{"s3":20,"s4":26,"s5":0,"total":47,"rows":[{"name":"우리금융지주","code":"316140","what":"④ 전고점 12% 이내","val":"120일 고점 -14.3% · 250일 -28.1%","pct":2.69,"valueEok":434.9},{"name":"원익홀딩스","code":"030530","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +11.5% · 20일 +39.3%","pct":5.59,"valueEok":1610.6},{"name":"GS건설","code":"006360","what":"④ 전고점 12% 이내","val":"120일 고점 -24.3% · 250일 -41.7%","pct":4.8,"valueEok":372.5},{"name":"엑시콘","code":"092870","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +40.1% · 20일 +15.5%","pct":7.57,"valueEok":728.1},{"name":"지니언스","code":"263860","what":"③ 과열 차단 (5일 20%·20일 35% 미달)","val":"5일 +45.9% · 20일 +55.9%","pct":8.93,"valueEok":2303.7},{"name":"삼성에스디에스","code":"018260","what":"④ 전고점 12% 이내","val":"120일 고점 -65.0% · 250일 -65.0%","pct":2.17,"valueEok":652.2}]}};
@@ -835,7 +862,7 @@ function fillHeaderStats() {
   if ($('f5count')) $('f5count').textContent = '⑤ 통과 ' + DATA.stocks.length + '종목';
   $('filterSub').textContent = '기준: ' + DATA.basisLabel + ' · 네이버 fchart 260일봉 · 상승 종목 유니버스 ' + nf(DATA.universe) + '개(코스피·코스닥 상승랭킹 전수)';
   renderStamps();
-  renderReject();
+  if ($('rejBadge')) $('rejBadge').textContent = ((DATA.reject && DATA.reject.rows) || []).length;
 }
 
 /* ===== 통과 스탬프 (정예 종목이 실제로 넘은 값) ===== */
@@ -858,25 +885,39 @@ function renderStamps() {
   }).join('') + '<span style="font-size:9.5px;color:#475569;font-weight:800;align-self:center">적합 ' + s.score.toFixed(1) + '</span>';
 }
 
-/* ===== 탈락 사유 표 (실측 수치만) ===== */
+/* ===== 탈락 사유 (모달 전용 · 본문에는 그리지 않는다) ===== */
 function renderReject() {
   const R = DATA.reject;
   if (!R) return;
   if ($('rejSub')) {
     $('rejSub').textContent = '①② 통과 ' + DATA.stage12 + '종목 중 — ③ 과열 ' + R.s3 + '건 · ④ 전고점 원거리 ' + R.s4 + '건 · ⑤ 추세 ' + R.s5 + '건 탈락 → 정예 ' + DATA.stocks.length + '종목';
   }
+  if ($('rejBadge')) $('rejBadge').textContent = (R.rows || []).length;
   const box = $('rejTable');
   if (!box) return;
-  if (!R.rows || !R.rows.length) { box.innerHTML = ''; return; }
+  if (!R.rows || !R.rows.length) { box.innerHTML = ''; window.__LEENO.rejRows = 0; return; }
   box.innerHTML = R.rows.map(function (r) {
-    return '<div style="padding:5px 2px;border-top:1px solid rgba(255,255,255,0.06)">' +
-      '<div style="font-size:11px;font-weight:900;color:#cbd5e1">' + r.name +
-        '<span style="color:#64748b;font-weight:800;margin-left:5px">' + sign(r.pct.toFixed(2)) + '%</span>' +
-        '<span style="color:#475569;font-weight:800;margin-left:5px">' + fmtEok(r.valueEok) + '</span></div>' +
-      '<div style="font-size:10px;color:#94a3b8;margin-top:2px">' + r.what +
+    return '<div class="rej-row">' +
+      '<div class="rej-top"><span class="rej-name">' + r.name + '</span>' +
+        '<span class="rej-pct ' + pctCls(r.pct) + '">' + sign(r.pct.toFixed(2)) + '%</span>' +
+        '<span class="rej-val">' + fmtEok(r.valueEok) + '</span></div>' +
+      '<div class="rej-why">' + r.what +
         ' <span style="color:#fca5a5;font-weight:800">→ ' + r.val + '</span></div>' +
-    '</div>';
+      '</div>';
   }).join('');
+  window.__LEENO.rejRows = R.rows.length;
+}
+function openReject() {
+  if (!window.__LEENO.rejRows) renderReject();
+  $('rejectModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  window.__LEENO.rejectOpen = true;
+}
+function closeReject(e) {
+  if (e && e.target !== e.currentTarget) return;
+  $('rejectModal').classList.remove('open');
+  document.body.style.overflow = '';
+  window.__LEENO.rejectOpen = false;
 }
 
 /* ===== KST 시간 ===== */
@@ -1360,7 +1401,7 @@ document.addEventListener('DOMContentLoaded', function () {
   setInterval(function () { if (simMode === 'auto') renderTimeline(); }, 30000);
   window.addEventListener('resize', function () { if (chartState.full) drawChart(); });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeChart(); closeGuide(); }
+    if (e.key === 'Escape') { closeChart(); closeGuide(); closeReject(); }
   });
 });
 </script>
