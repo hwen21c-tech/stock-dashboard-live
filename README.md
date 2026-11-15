@@ -130,8 +130,8 @@ TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효�
 
 | | 값 |
 |---|---|
-| 루트(`/`) | `vercel.json` 의 `has: host` rewrite → `/ebook.html` (+ `index.html` 최상단 호스트 분기 스크립트가 2중 안전망) |
-| 매니페스트 | `/ebook-standalone-manifest.json` (`start_url: /`, `scope: /`, `id: /`) |
+| 루트(`/`) | `vercel.json` 의 `has: host` **redirect** → `/ebook.html` (rewrite 는 파일이 있으면 진다 — `redirects` 는 파일시스템보다 먼저 처리됨) + `index.html` 최상단 호스트 분기 스크립트가 2중 안전망 |
+| 매니페스트 | `/ebook-standalone-manifest.json` (`start_url: /ebook.html`, `scope: /`, `id: /`) |
 | 서비스워커 | `/ebook-root-sw.js` (`scope: /`, `Service-Worker-Allowed: /`) |
 | 설치 이름 | 연오랑 eBook 오디오북 / eBook |
 

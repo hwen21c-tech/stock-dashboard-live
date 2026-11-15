@@ -5,7 +5,7 @@
   "description": "TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효과음까지 깔아 주는 세미 오디오북",
   "lang": "ko",
   "dir": "ltr",
-  "start_url": "/",
+  "start_url": "/ebook.html",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],

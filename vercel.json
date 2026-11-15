@@ -62,9 +62,11 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     }
   ],
+  "redirects": [
+    { "source": "/", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html", "permanent": false },
+    { "source": "/index.html", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html", "permanent": false }
+  ],
   "rewrites": [
-    { "source": "/", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html" },
-    { "source": "/index.html", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html" },
     { "source": "/pokemon", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/:path*", "destination": "/:path*" },
