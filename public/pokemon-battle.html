@@ -758,7 +758,12 @@
     return { ids: [], counts: {}, subjects: {} };
   }
   function writeSlot(slot, dex) {
-    lsSet(SHARED_PREFIX + slot, JSON.stringify({ ids: Array.from(dex.ids), counts: dex.counts, subjects: dex.subjects, v: 1 }));
+    /* 예전 도감을 옮겨 적을 때 지운 기록·다시 잡은 기록·초기화 표시를 지우지 않는다 */
+    const prev = (() => { try { return JSON.parse(ls(SHARED_PREFIX + slot) || 'null') || {}; } catch (e) { return {}; } })();
+    const out = { ids: Array.from(dex.ids), counts: dex.counts, subjects: dex.subjects, v: 1 };
+    ['dates', 'removed', 'caughtAt'].forEach((k) => { if (prev[k] && typeof prev[k] === 'object') out[k] = prev[k]; });
+    if (Number(prev.resetAt) > 0) out.resetAt = Number(prev.resetAt);
+    lsSet(SHARED_PREFIX + slot, JSON.stringify(out));
   }
   /* 게임을 한 번도 안 열고 런처를 먼저 열어도 통합 도감 숫자가 맞도록 여기서도 한 번 합친다 */
   function migrate() {
@@ -1251,7 +1256,11 @@
       ids: ids,
       counts: o.counts && typeof o.counts === 'object' ? o.counts : {},
       dates: o.dates && typeof o.dates === 'object' ? o.dates : {},
-      subjects: o.subjects && typeof o.subjects === 'object' ? o.subjects : {}
+      subjects: o.subjects && typeof o.subjects === 'object' ? o.subjects : {},
+      /* 🗑 아빠 PIN 으로 지운 기록 · 🎁 다시 잡은 기록 — 다른 기기가 예전 목록을 올려도 되살아나지 않게 */
+      removed: o.removed && typeof o.removed === 'object' ? o.removed : {},
+      caughtAt: o.caughtAt && typeof o.caughtAt === 'object' ? o.caughtAt : {},
+      resetAt: Number(o.resetAt) || 0
     };
   }
   function slotName(slot) {
@@ -1774,6 +1783,10 @@
     var counts = o.counts && typeof o.counts === 'object' ? o.counts : {};
     var dates = o.dates && typeof o.dates === 'object' ? o.dates : {};
     var subjects = o.subjects && typeof o.subjects === 'object' ? o.subjects : {};
+    /* 🗑 지운 기록 · 🎁 다시 잡은 기록 — 마지막으로 본 목록(meta.seen)과 상관없이
+       다른 기기·낡은 탭이 예전 목록을 올려도 지운 것이 되살아나지 않게 한다. */
+    var removed = o.removed && typeof o.removed === 'object' ? o.removed : {};
+    var caughtAt = o.caughtAt && typeof o.caughtAt === 'object' ? o.caughtAt : {};
     var at = ids.indexOf(Number(p.id));
     var had = at >= 0;
     if (on && !had) {
@@ -1781,14 +1794,22 @@
       counts[p.id] = Math.max(1, Number(counts[p.id]) || 0);
       dates[p.id] = dates[p.id] || stampDate();
       subjects[p.id] = subjects[p.id] || ['admin'];
+      delete removed[p.id];
+      caughtAt[p.id] = Date.now();
     } else if (!on && had) {
       ids.splice(at, 1);
       delete counts[p.id];
       delete dates[p.id];
       delete subjects[p.id];
+      delete caughtAt[p.id];
+      removed[p.id] = Date.now();
       purgeVillage(p.id);
     }
-    lsSet(key, JSON.stringify({ ids: ids, counts: counts, dates: dates, subjects: subjects, v: 1 }));
+    var out = { ids: ids, counts: counts, dates: dates, subjects: subjects, v: 1 };
+    if (Object.keys(removed).length) out.removed = removed;
+    if (Object.keys(caughtAt).length) out.caughtAt = caughtAt;
+    if (Number(o.resetAt) > 0) out.resetAt = Number(o.resetAt);
+    lsSet(key, JSON.stringify(out));
     renderDex();
     refreshHome();
     return !had;

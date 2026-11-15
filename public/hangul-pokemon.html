@@ -2000,7 +2000,9 @@ const LEGACY_DEX_KEYS = [
   { key: 'epb.dex.v1.p2', game: 'english', id: 'p2' },
 ];
 const MIGRATED_KEY = 'pkm.shared.dex.v1.migrated';
-const emptyDex = () => ({ ids: new Set(), counts: {}, dates: {}, subjects: {} });
+/* removed·caughtAt·resetAt — 🗑 지운 기록 · 🎁 다시 잡은 기록 · 일부러 비운 표시.
+   도감을 저장할 때 같이 써야 다른 기기·낡은 탭이 예전 목록을 올려도 지운 것이 되살아나지 않는다. */
+const emptyDex = () => ({ ids: new Set(), counts: {}, dates: {}, subjects: {}, removed: {}, caughtAt: {}, resetAt: 0 });
 
 function slotFromName(name) {
   const n = String(name || '');
@@ -2031,16 +2033,52 @@ function readSlot(slot) {
       dex.counts = o.counts || {};
       dex.dates = o.dates || {};
       dex.subjects = o.subjects || {};
+      dex.removed = (o.removed && typeof o.removed === 'object') ? o.removed : {};
+      dex.caughtAt = (o.caughtAt && typeof o.caughtAt === 'object') ? o.caughtAt : {};
+      dex.resetAt = Number(o.resetAt) || 0;
       return dex;
     }
   } catch (e) { /* */ }
   return emptyDex();
 }
+/* { id: 시각 } 맵 두 개를 합친다 — 같은 id 는 더 최신 시각만 남긴다 */
+function stampMax(a, b) {
+  const out = {};
+  [a, b].forEach((m) => {
+    if (!m || typeof m !== 'object') return;
+    Object.keys(m).forEach((k) => {
+      const t = Number(m[k]) || 0;
+      if (k && t > (out[k] || 0)) out[k] = t;
+    });
+  });
+  return out;
+}
+/* 🎁 다시 잡음 — 지운 기록보다 최신이면 도감에 되살아난다(mergeDex 규칙) */
+function markCaught(dex, id) {
+  if (!dex) return dex;
+  const key = String(id);
+  if (dex.removed) delete dex.removed[key];
+  if (!dex.caughtAt || typeof dex.caughtAt !== 'object') dex.caughtAt = {};
+  dex.caughtAt[key] = Date.now();
+  return dex;
+}
 function writeSlot(slot, dex) {
+  /* 저장할 때 지운 기록·다시 잡은 기록·초기화 표시를 함께 쓴다.
+     이미 저장돼 있던 기록은 지우지 않고 더 최신 시각만 남긴다(기록이 실수로 지워지지 않게). */
+  let prev = {};
+  try { prev = JSON.parse(localStorage.getItem(SHARED_PREFIX + slot) || 'null') || {}; } catch (e) { prev = {}; }
+  const removed = stampMax(prev.removed, dex.removed);
+  const caughtAt = stampMax(prev.caughtAt, dex.caughtAt);
+  const resetAt = Math.max(Number(prev.resetAt) || 0, Number(dex.resetAt) || 0);
+  dex.removed = removed;
+  dex.caughtAt = caughtAt;
+  dex.resetAt = resetAt;
+  const out = { ids: Array.from(dex.ids), counts: dex.counts || {}, dates: dex.dates || {}, subjects: dex.subjects || {}, v: 1 };
+  if (Object.keys(removed).length) out.removed = removed;
+  if (Object.keys(caughtAt).length) out.caughtAt = caughtAt;
+  if (resetAt > 0) out.resetAt = resetAt;
   try {
-    localStorage.setItem(SHARED_PREFIX + slot, JSON.stringify({
-      ids: Array.from(dex.ids), counts: dex.counts || {}, dates: dex.dates || {}, subjects: dex.subjects || {}, v: 1,
-    }));
+    localStorage.setItem(SHARED_PREFIX + slot, JSON.stringify(out));
   } catch (e) { /* */ }
 }
 function addSubject(dex, id, subject) {
@@ -3400,6 +3438,7 @@ async function captureSequence() {
     S.dex.counts[S.wild.id] = (S.dex.counts[S.wild.id] || 0) + 1;
     if (!S.dex.dates[S.wild.id]) S.dex.dates[S.wild.id] = stamp;
     addSubject(S.dex, S.wild.id, GAME);
+    markCaught(S.dex, S.wild.id);      /* 🎁 아빠가 지웠던 포켓몬이면 '다시 잡음'으로 되살린다 */
     Profiles.saveDex(pid, S.dex);
   } else {
     const d = Profiles.loadDex(pid);
@@ -3407,6 +3446,7 @@ async function captureSequence() {
     d.counts[S.wild.id] = (d.counts[S.wild.id] || 0) + 1;
     if (!d.dates[S.wild.id]) d.dates[S.wild.id] = stamp;
     addSubject(d, S.wild.id, GAME);
+    markCaught(d, S.wild.id);
     Profiles.saveDex(pid, d);
   }
   renderDexBadge();
@@ -3605,7 +3645,8 @@ function openReset() {
 }
 function doReset() {
   const p = Profiles.active();
-  S.dex = { ids: new Set(), counts: {}, dates: {}, subjects: {} };
+  /* resetAt — '비었다'가 아니라 '일부러 비웠다'는 표시. 없으면 다른 기기가 옛 도감을 되살린다. */
+  S.dex = { ids: new Set(), counts: {}, dates: {}, subjects: {}, removed: {}, caughtAt: {}, resetAt: Date.now() };
   Profiles.saveDex(p.id, S.dex);
   renderDex(false);
   renderDexBadge();

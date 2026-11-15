@@ -3173,6 +3173,10 @@
     const counts = o.counts && typeof o.counts === 'object' ? o.counts : {};
     const dates = o.dates && typeof o.dates === 'object' ? o.dates : {};
     const subjects = o.subjects && typeof o.subjects === 'object' ? o.subjects : {};
+    /* 🗑 지운 기록 · 🎁 다시 잡은 기록 · 🧹 초기화 표시 — 저장할 때 그대로 다시 써야
+       다른 기기·낡은 탭이 예전 목록을 올려도 지운 것이 되살아나지 않는다. */
+    const removed = o.removed && typeof o.removed === 'object' ? o.removed : {};
+    const caughtAt = o.caughtAt && typeof o.caughtAt === 'object' ? o.caughtAt : {};
     const at = ids.indexOf(Number(p.id));
     const had = at >= 0;
     if (on && !had) {
@@ -3180,11 +3184,15 @@
       counts[p.id] = Math.max(1, Number(counts[p.id]) || 0);
       dates[p.id] = dates[p.id] || stampDate();
       subjects[p.id] = subjects[p.id] || ['admin'];
+      delete removed[p.id];
+      caughtAt[p.id] = Date.now();
     } else if (!on && had) {
       ids.splice(at, 1);
       delete counts[p.id];
       delete dates[p.id];
       delete subjects[p.id];
+      delete caughtAt[p.id];
+      removed[p.id] = Date.now();
       /* 마을에 놓여 있던 친구도 함께 정리 */
       const v = allVillages(SLOT);
       let dirty = false;
@@ -3196,7 +3204,11 @@
       });
       if (dirty) lsSet(K_VIL(SLOT), v);
     }
-    lsSet(dexKey(SLOT), { ids: ids, counts: counts, dates: dates, subjects: subjects, v: 1 });
+    const stored = { ids: ids, counts: counts, dates: dates, subjects: subjects, v: 1 };
+    if (Object.keys(removed).length) stored.removed = removed;
+    if (Object.keys(caughtAt).length) stored.caughtAt = caughtAt;
+    if (Number(o.resetAt) > 0) stored.resetAt = Number(o.resetAt);
+    lsSet(dexKey(SLOT), stored);
     paintVillage();
     renderDex();
     return !had;

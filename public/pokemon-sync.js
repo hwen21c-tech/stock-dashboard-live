@@ -146,6 +146,9 @@
       /* 아빠가 🗑 도감 초기화로 일부러 비운 도감(resetAt)은 '빈 값'이 아니라
          '비웠다는 기록'이다 — 이걸 빈 값으로 보면 클라우드의 옛 도감을 받아 되살려 버린다. */
       if (v && Number(v.resetAt) > 0) return false;
+      /* 🗑 낱개로 지운 기록(removed)도 '올릴 거리'다 — 마지막 한 마리를 지우면 목록은 비지만
+         지운 기록은 반드시 클라우드로 가야 다른 기기가 되살리지 못한다. */
+      if (v && v.removed && typeof v.removed === 'object' && Object.keys(v.removed).length) return false;
       return !(v && Array.isArray(v.ids) && v.ids.length);
     }
     if (startsWith(key, 'pkm.village.v2.')) {
@@ -190,6 +193,7 @@
         v = jp(snap[k], null);
         if (v && Array.isArray(v.ids) && v.ids.length) return true;
         if (v && Number(v.resetAt) > 0) return true;   /* 일부러 비운 도감도 올릴 거리가 있다 */
+        if (v && v.removed && typeof v.removed === 'object' && Object.keys(v.removed).length) return true;   /* 지운 기록도 */
         continue;
       }
       if (k.indexOf('profiles.v1') >= 0) {
@@ -377,6 +381,22 @@
     var v = jp(raw, null);
     return (v && Array.isArray(v.ids)) ? v.ids.slice() : [];
   }
+  /* { id: 시각 } 맵 정리 — 문자열 키·양수 시각만 남긴다 */
+  function stampMap(o) {
+    var out = {};
+    if (o && typeof o === 'object') {
+      for (var k in o) {
+        var t = Number(o[k]);
+        if (k && isFinite(t) && t > 0) out[String(k)] = t;
+      }
+    }
+    return out;
+  }
+  function mergeStamps(a, b) {
+    var out = stampMap(a), add = stampMap(b);
+    for (var k in add) out[k] = Math.max(out[k] || 0, add[k]);
+    return out;
+  }
   function mergeDex(remoteRaw, localRaw, prevIds) {
     var r = jp(remoteRaw, {}) || {}, l = jp(localRaw, {}) || {};
     var rIds = Array.isArray(r.ids) ? r.ids : [];
@@ -388,36 +408,89 @@
     /* '뻐다'라고 부를 수 있는 경우는, 이 기기가 마지막으로 본 목록의 '일부만' 빠진 때뿐이다.
        (예전 상태·다른 기기 기록이 통째로 들어오면 그건 뻔 것이 아니라 '아직 못 받은 것' → 합친다) */
     var subset = lIds.every(function (id) { return prevSet[String(id)]; });
-    var removed = subset ? prev.filter(function (id) { return !localSet[id]; }) : [];
+    var guessed = subset ? prev.filter(function (id) { return !localSet[id]; }) : [];
+
+    /* 🗑 아빠 PIN 으로 지운 기록(removed) · 🎁 다시 잡은 기록(caughtAt).
+       이 두 기록이 있으면 '이 기기가 마지막으로 본 목록'과 상관없이 지운 것이 지워진 채로 남는다. */
+    var rem = mergeStamps(r.removed, l.removed);
+    var cau = mergeStamps(r.caughtAt, l.caughtAt);
+    var rReset = Number(r.resetAt) || 0, lReset = Number(l.resetAt) || 0;
+    var resetAt = Math.max(rReset, lReset);
+
+    /* 지운 시각보다 더 최근의 '다시 잡음'이 없으면 지워진 것으로 본다 */
+    function dead(id) {
+      var s = String(id), t = rem[s] || 0;
+      if (!t) return false;
+      return (cau[s] || 0) <= t;
+    }
+
     var seenK = {}, out = [];
-    function add(id) {
+    function add(id, fromResetSide, fresh) {
       var s = String(id);
       if (!s || seenK[s]) return;
+      if (dead(id)) return;
+      if (guessed.indexOf(s) >= 0) return;
+      /* 🗑 도감 초기화(resetAt)가 있으면, 초기화한 기기의 목록이거나 그 뒤에 다시 잡은 것만 살린다.
+         (아직 초기화를 못 받은 낡은 기기가 예전 목록을 올려도 되살아나지 않게)
+         '그 뒤에 잡은 것'은 다시 잡은 시각(caughtAt)이 있거나, 이 기기가 마지막으로 본 목록에 없던 것이다. */
+      if (resetAt && !fromResetSide && (cau[s] || 0) <= resetAt && !fresh) return;
       seenK[s] = 1; out.push(id);
     }
-    var rReset = Number(r.resetAt) || 0, lReset = Number(l.resetAt) || 0;
-    if (rReset > lReset) {
-      /* 다른 기기가 더 최근에 🗑 도감 초기화를 했다 — 그 전 목록은 되살리지 않는다.
-         대신 이 기기가 마지막으로 본 목록에 없던(초기화 뒤 새로 잡은) 포켓몽만 살린다. */
-      rIds.forEach(function (id) { if (removed.indexOf(String(id)) < 0) add(id); });
-      lIds.forEach(function (id) { if (!prevSet[String(id)]) add(id); });
-    } else {
-      rIds.forEach(function (id) { if (removed.indexOf(String(id)) < 0) add(id); });
-      lIds.forEach(add);
-    }
+    var rTrust = resetAt > 0 && rReset === resetAt;
+    var lTrust = resetAt > 0 && lReset === resetAt;
+    rIds.forEach(function (id) { add(id, rTrust, false); });
+    lIds.forEach(function (id) { add(id, lTrust, !prevSet[String(id)]); });
+
     var counts = {};
     [r.counts, l.counts].forEach(function (c) {
       if (!c || typeof c !== 'object') return;
       for (var kk in c) counts[kk] = Math.max(Number(counts[kk] || 0), Number(c[kk]) || 0);
     });
-    /* 도감에 없는 포켓몽의 잡은 횟수는 남기지 않는다 — 🗑 도감 초기화 뒤
-       다시 잡았을 때 '예전 횟수'가 되살아나지 않게. */
+    /* 날짜(가장 이른 날)·과목(합집합)도 잃지 않게 함께 합친다 */
+    var dates = {}, subjects = {};
+    [r, l].forEach(function (side) {
+      var d = side.dates, s = side.subjects;
+      if (d && typeof d === 'object') {
+        for (var dk in d) {
+          if (!d[dk]) continue;
+          if (!dates[dk] || d[dk] < dates[dk]) dates[dk] = d[dk];
+        }
+      }
+      if (s && typeof s === 'object') {
+        for (var sk in s) {
+          if (!Array.isArray(s[sk])) continue;
+          var cur = subjects[sk] || [];
+          s[sk].forEach(function (v) { if (cur.indexOf(v) < 0) cur.push(v); });
+          subjects[sk] = cur;
+        }
+      }
+    });
+    /* 도감에 없는 포켓몬의 잡은 횟수·날짜·과목은 남기지 않는다 — 🗑 도감 초기화·낱개 삭제 뒤
+       다시 잡았을 때 '예전 기록'이 되살아나지 않게. */
     for (var ck in counts) { if (!seenK[ck]) delete counts[ck]; }
+    for (var dk2 in dates) { if (!seenK[dk2]) delete dates[dk2]; }
+    for (var sk2 in subjects) { if (!seenK[sk2]) delete subjects[sk2]; }
+
     var vv = (l && l.v) || (r && r.v) || 2;
     var merged = { ids: out, counts: counts, v: vv };
+    if (Object.keys(dates).length) merged.dates = dates;
+    if (Object.keys(subjects).length) merged.subjects = subjects;
     /* 초기화 표시는 클라우드에 남겨 둔다 — 아직 초기화를 못 받은 기기가 예전 목록을
        올려도 위 가지에서 '옛 목록은 버린다'로 판단할 수 있게. */
-    if (rReset || lReset) merged.resetAt = Math.max(rReset, lReset);
+    if (resetAt) merged.resetAt = resetAt;
+    /* 지운 기록도 클라우드에 남겨 둔다 — 낡은 기기·구버전 탭이 예전 목록을 올려도 즉시 걸러지게.
+       단 초기화(resetAt)가 더 최근이면 그 전 삭제 기록은 의미가 없어 버린다. */
+    var remOut = {}, cauOut = {};
+    for (var rk in rem) {
+      if (resetAt && rem[rk] <= resetAt) continue;
+      remOut[rk] = rem[rk];
+    }
+    for (var ak in cau) {
+      if (!remOut[ak]) continue;                 /* 지운 적 있는 포켓몬만 기억한다(저장값이 늘어나지 않게) */
+      cauOut[ak] = cau[ak];
+    }
+    if (Object.keys(remOut).length) merged.removed = remOut;
+    if (Object.keys(cauOut).length) merged.caughtAt = cauOut;
     return JSON.stringify(merged);
   }
   function push(opts) {
@@ -954,6 +1027,7 @@
     hasMeaningfulLocal: hasMeaningfulLocal,
     isSyncKey: isSyncKey,
     collectLocal: collectLocal,
+    mergeDex: mergeDex,          /* 검증용 — 지운 기록·다시 잡은 기록 합치기 규칙 */
     setCode: function (c) { lsSet(K_CODE, String(c)); lsDel(K_META); S.code = String(c); paintBadge(); },
     open: openModal,
     deleteCode: delRow,

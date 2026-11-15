@@ -2641,6 +2641,10 @@
         delete S.dex.counts[id];
         delete S.dex.dates[id];
         delete S.dex.subjects[id];
+        /* 🗑 지운 시각을 남긴다 — 다른 기기·낡은 탭이 예전 목록을 올려도 되살아나지 않게 */
+        if (!S.dex.removed || typeof S.dex.removed !== 'object') S.dex.removed = {};
+        S.dex.removed[String(id)] = Date.now();
+        if (S.dex.caughtAt) delete S.dex.caughtAt[String(id)];
         Profiles.saveDex(Profiles.data.active, S.dex);
       } catch (e) { warn('dex delete', e); }
       /* 파트너였다면 파트너도 비운다 */

@@ -5,7 +5,8 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v14';  /* 2026-11-16 v14: 🔒 통합 도감 '바로 잠그기' + 🗑 도감 초기화(아빠 PIN·2차 확인·마을 배치 정리·resetAt 동기화) */
+const VERSION = PREFIX + 'v15';  /* 2026-11-16 v15: 🛡️ 아빠 PIN 도감 삭제 영구 방어 — 도감 JSON 에 removed·caughtAt 를 남겨
+                                    낡은 기기·구버전 탭·다른 게임 저장이 지운 포켓몬을 되살리지 못하게 (v14: 🔒 바로 잠그기 · 🗑 초기화 resetAt) */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
