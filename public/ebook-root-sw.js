@@ -6,10 +6,11 @@
    · 캐시 이름은 /ebook/sw.js 와 같은 ebook-reader- 접두사를 쓴다.
    ============================================================ */
 const PREFIX = 'ebook-reader-';
-const VERSION = PREFIX + 'root-v1';
+const VERSION = PREFIX + 'root-v2';
 const SHELL = [
   '/',
   '/ebook.html',
+  '/ebook-sync.js',
   '/ebook-standalone-manifest.json',
   '/ebook-icon.svg',
   '/ebook-icon-192.png',

@@ -8,20 +8,38 @@
 <title>연오랑 eBook 오디오북</title>
 <link rel="manifest" href="/ebook/manifest.json" id="ebookManifest">
 <script>
-  /* 독립 eBook 도메인(호스트에 'ebook' 포함)에서는 루트(/) 스코프 PWA 매니페스트로 바꿔 끼운다.
-     → yeonolang-ebook.vercel.app 에서 '연오랑 eBook 오디오북' 이 독립 앱으로 설치된다. */
+  /* 1) 독립 eBook 도메인(호스트에 'ebook' 포함)에서는 루트(/) 스코프 PWA 매니페스트로 바꿔 끼운다.
+        → yeonolang-ebook.vercel.app 에서 '연오랑 eBook 오디오북' 이 독립 앱으로 설치된다.
+     2) 같은 파일을 GitHub Pages(/stock-dashboard/ebook.html)에도 그대로 올리므로,
+        매니페스트·아이콘·서비스워커 경로를 '지금 이 페이지가 놓인 폴더' 기준으로 스스로 고쳐 잡는다. */
   (function () {
     var h = String(location.hostname || '').toLowerCase();
+    var p = location.pathname || '/';
+    /* /ebook · /ebook/ 처럼 확장자 없는 주소는 한 단계 위 폴더가 앱의 뿌리다 */
+    if (/\/ebook\/?$/i.test(p)) p = p.replace(/ebook\/?$/i, '');
+    var base = p.replace(/[^/]*$/, '') || '/';
+    window.__EBOOK_BASE = base;
     window.__EBOOK_STANDALONE = h.indexOf('ebook') >= 0;
-    if (window.__EBOOK_STANDALONE) {
-      var l = document.getElementById('ebookManifest');
-      if (l) l.setAttribute('href', '/ebook-standalone-manifest.json');
-      document.documentElement.className += ' ebook-standalone';
-    }
+    var man = document.getElementById('ebookManifest');
+    if (man) man.setAttribute('href', base + (window.__EBOOK_STANDALONE ? 'ebook-standalone-manifest.json' : 'ebook/manifest.json'));
+    if (window.__EBOOK_STANDALONE) document.documentElement.className += ' ebook-standalone';
+    /* ☁️ 책갈피 동기화 — 반드시 본문 스크립트보다 먼저 실행되어야 저장을 지켜볼 수 있다 */
+    document.write('<script src="' + base + 'ebook-sync.js"><\/script>');
   })();
 </script>
-<link rel="icon" type="image/svg+xml" href="/ebook-icon.svg">
-<link rel="apple-touch-icon" href="/ebook-icon-192.png">
+<link rel="icon" id="ebookIconSvg" type="image/svg+xml" href="/ebook-icon.svg">
+<link rel="apple-touch-icon" id="ebookIconTouch" href="/ebook-icon-192.png">
+<script>
+  /* 아이콘 경로도 페이지가 놓인 폴더 기준으로 (링크 태그가 먼저 해석된 뒤에 고친다) */
+  (function () {
+    var b = window.__EBOOK_BASE || '/';
+    if (b === '/') return;
+    var a = document.getElementById('ebookIconSvg');
+    if (a) a.setAttribute('href', b + 'ebook-icon.svg');
+    var t = document.getElementById('ebookIconTouch');
+    if (t) t.setAttribute('href', b + 'ebook-icon-192.png');
+  })();
+</script>
 <style>
 /* ============================================================
    연오랑 eBook 오디오북 — TXT 뷰어 + 세미 오디오북
@@ -678,6 +696,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     <button class="close-btn" data-close="settingsSheet" aria-label="닫기">✕</button>
   </div>
   <div class="sheet-body">
+    <!-- ☁️ 책갈피 동기화 상태 (ebook-sync.js 가 이 자리에 그린다) -->
+    <div id="cloudSlot"></div>
     <div class="field">
       <label>글자 크기 <b id="vFont">18px</b></label>
       <input type="range" class="sl" id="rFont" min="14" max="26" step="1" value="18">
@@ -852,6 +872,21 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   var LS_MARKS = 'ebook.bookmarks.v1';
   var LS_HL = 'ebook.highlights.v1';
   var MAX_AUDIO_TEXT = 110;
+
+  /* ---------- 저장소 키 ----------
+     · ebook.v.…     → ☁️ 클라우드로도 흐르는 기록 (ebook-sync.js 가 이 접두사만 본다)
+     · ebook.local.… → 이 기기에만 남는 것
+     값은 {"at": 밀리초, "d": 실제 데이터} 로 저장해, 기기끼리 '더 최근 기록'을 고를 수 있게 한다.
+     · 책 키(book key)는 파일명 + 용량 기준 — 폰과 태블릿의 파일 날짜가 달라도 같은 책으로 묶인다. */
+  var S_POS = 'ebook.v.pos.';      /* 책별 마지막 읽은 위치(책갈피) */
+  var S_HL = 'ebook.v.hl.';        /* 책별 형광펜 */
+  var S_MK = 'ebook.v.mk.';        /* 책별 책갈피 목록 */
+  var S_VIEW = 'ebook.v.set';      /* 보기 설정(글자·줄·글꼴·배경·1쪽/2쪽) */
+  var L_SET = 'ebook.local.set';   /* 이 기기 전용 설정(목소리·속도·효과음 포함) */
+  var L_LAST = 'ebook.local.last'; /* 이 기기에서 마지막에 펼친 책 */
+  var L_MIG = 'ebook.local.mig.v3';
+  var SAMPLE_ID = 'sample-lighthouse';
+  var VIEW_KEYS = ['fontSize', 'lineHeight', 'font', 'theme', 'perView'];
 
   var state = {
     book: null,            // { id, title, text, chapters:[{title, from, to}], sentences:[...] }
@@ -1726,13 +1761,62 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   }
 
   /* =========================================================
-     6. 저장/복원
+     6. 저장/복원 — 책별 · 타임스탬프 저장
+     · ebook.v.*  키는 ☁️ ebook-sync.js 가 그대로 클라우드로 올리고 받아 온다
      ========================================================= */
+  /* 책 키 — 'file-이름-용량-수정시각' 에서 수정시각을 떼어 낸다(파일명+용량 기준) */
+  function bkOf(id) {
+    var s = String(id || '');
+    var m = /^(file|pdf)-(.*)-(\d+)-(\d+)$/.exec(s);
+    if (m) return m[1] + ':' + m[2].toLowerCase() + ':' + m[3];
+    return s;
+  }
+  function bkOfBook(b) {
+    if (!b) return '';
+    if (!b.bk) b.bk = bkOf(b.id);
+    return b.bk;
+  }
+  function curBk() { return bkOfBook(state.book); }
+  function nowMs() { return Date.now(); }
+  function vPeek(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function vGet(key, dflt) {
+    var raw = vPeek(key);
+    if (!raw) return dflt;
+    try { var v = JSON.parse(raw); return (v && v.d !== undefined) ? v.d : dflt; } catch (e) { return dflt; }
+  }
+  function vPut(key, d, at) {
+    try { localStorage.setItem(key, JSON.stringify({ at: at || nowMs(), d: d })); } catch (e) { /* */ }
+  }
+  function vKeys(prefix) {
+    var out = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(prefix) === 0) out.push(k);
+      }
+    } catch (e) { /* */ }
+    return out;
+  }
+
+  /* ---------- 읽던 위치(책별) ---------- */
+  function posGet(bookId) {
+    var p = vGet(S_POS + bkOf(bookId), null);
+    if (p && typeof p === 'object' && p.bookId) return p;
+    var old = lsGet(LS_LAST, null);        /* 이전 판 저장값(한 권만 기억) */
+    if (old && old.bookId === bookId) return old;
+    return null;
+  }
   function savePosition() {
-    if (!state.book) return;
+    var b = state.book;
+    if (!b || !b.id) return;
+    if (b.id === SAMPLE_ID) return;          /* 샘플은 어느 기기에나 있으니 올리지 않는다 */
+    var bk = bkOfBook(b);
     var total = totalSpreads();
-    lsSet(LS_LAST, {
-      bookId: state.book.id,
+    var atStart = (state.section || 0) === 0 && !state.spread && (PDF.mode !== 'pdf' || PDF.page <= 1);
+    /* 기록이 없는 기기가 첫 장에서 열렸을 때, 클라우드의 읽던 위치를 1페이지로 덮지 않게 */
+    if (!vPeek(S_POS + bk) && atStart) return;
+    var pos = {
+      bookId: b.id, title: b.title || '',
       section: state.section || 0,
       spread: state.spread,
       ratio: total > 1 ? globalSpread() / (total - 1) : 0,
@@ -1740,43 +1824,154 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       pdfMode: PDF.mode,
       pdfPage: PDF.page,
       sent: typeof state.curSent === 'number' ? state.curSent : 0,
-      at: Date.now()
-    });
-    saveSettings();
+      at: nowMs()
+    };
+    vPut(S_POS + bk, pos, pos.at);
+    lsSet(L_LAST, { bookId: b.id, at: pos.at });
+    lsSet(LS_LAST, pos);                     /* 이전 판과 호환 */
   }
   var saveTimer = 0;
   function savePositionSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(savePosition, 500);
   }
+
+  /* ---------- 보기 설정 ---------- */
+  function viewPick(st) {
+    var o = {};
+    VIEW_KEYS.forEach(function (k) { if (st[k] !== undefined) o[k] = st[k]; });
+    return o;
+  }
   function saveSettings() {
-    lsSet(LS_SETTINGS, state.settings);
+    lsSet(L_SET, state.settings);            /* 이 기기 전용(목소리·속도·효과음 포함) */
+    var v = viewPick(state.settings);
+    var cur = vGet(S_VIEW, null);
+    /* 보기 설정이 그대로면 at 만 새로 찍어 다른 기기를 깨우지 않는다 */
+    if (cur && JSON.stringify(viewPick(cur)) === JSON.stringify(v)) return;
+    vPut(S_VIEW, v);
+  }
+  function loadSettings() {
+    var st = lsGet(L_SET, null) || lsGet(LS_SETTINGS, null);
+    if (st && typeof st === 'object') {
+      ['fontSize', 'lineHeight', 'font', 'theme', 'perView', 'voice', 'rate', 'sceneOn', 'sceneVol'].forEach(function (k) {
+        if (st[k] !== undefined && st[k] !== null) state.settings[k] = st[k];
+      });
+    }
+    /* ☁️ 받아 둔 보기 설정이 있으면 그쪽이 우선 — 다른 기기에서 맞춰 둔 화면 */
+    var v = vGet(S_VIEW, null);
+    if (v && typeof v === 'object') {
+      VIEW_KEYS.forEach(function (k) {
+        if (v[k] !== undefined && v[k] !== null) state.settings[k] = v[k];
+      });
+    }
   }
 
+  /* ---------- 책갈피 목록(책별) ---------- */
   function loadMarks() {
-    state.marks = lsGet(LS_MARKS, []);
-    if (!Array.isArray(state.marks)) state.marks = [];
+    var out = [];
+    vKeys(S_MK).forEach(function (k) {
+      var bk = k.slice(S_MK.length);
+      var arr = vGet(k, null);
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function (m) {
+        if (!m || typeof m !== 'object') return;
+        var o = {};
+        for (var kk in m) o[kk] = m[kk];
+        o.key = bk;
+        out.push(o);
+      });
+    });
+    out.sort(function (a, c) { return (c.at || 0) - (a.at || 0); });
+    state.marks = out.slice(0, 200);
   }
-  function saveMarks() { lsSet(LS_MARKS, state.marks); }
+  function marksOf(bk) {
+    return state.marks.filter(function (m) { return (m.key || bkOf(m.bookId)) === bk; });
+  }
+  function saveMarks(bk) {
+    bk = bk || curBk();
+    if (!bk) return;
+    var list = marksOf(bk).map(function (m) {
+      return {
+        section: m.section || 0, spread: m.spread || 0, perView: m.perView || 1,
+        label: m.label || '', snippet: m.snippet || '', at: m.at || nowMs()
+      };
+    }).slice(0, 60);
+    vPut(S_MK + bk, list);
+  }
+
+  /* ---------- 이전 판 저장값 → 새 저장소로 한 번만 옮긴다 ---------- */
+  function migrateLegacy() {
+    if (lsGet(L_MIG, 0) === 1) return;
+    var oldAt = nowMs() - 6 * 3600 * 1000;    /* 예전 기록은 '조금 전에 읽던 것'으로 두어 최신 클라우드 기록과 싸우지 않게 */
+    try {
+      var last = lsGet(LS_LAST, null);
+      if (last && last.bookId && last.bookId !== SAMPLE_ID) {
+        var bk0 = bkOf(last.bookId);
+        if (!vPeek(S_POS + bk0)) {
+          var p = {};
+          for (var kk in last) p[kk] = last[kk];
+          vPut(S_POS + bk0, p, p.at || oldAt);
+        }
+        if (!lsGet(L_LAST, null)) lsSet(L_LAST, { bookId: last.bookId, at: last.at || oldAt });
+      }
+      var hl = lsGet(LS_HL, {});
+      if (hl && typeof hl === 'object' && !Array.isArray(hl)) {
+        Object.keys(hl).forEach(function (rawId) {
+          var src = hl[rawId];
+          if (!src || typeof src !== 'object') return;
+          var bk = bkOf(rawId);
+          var dst = vGet(S_HL + bk, null);
+          if (!dst || typeof dst !== 'object') dst = {};
+          var n = 0;
+          Object.keys(src).forEach(function (si) {
+            var c = src[si];
+            if (c === 'y' || c === 'm' || c === 'p') { dst[si] = c; n++; }
+          });
+          if (n) vPut(S_HL + bk, dst, vPeek(S_HL + bk) ? nowMs() : oldAt);
+        });
+      }
+      var mk = lsGet(LS_MARKS, []);
+      if (Array.isArray(mk) && mk.length) {
+        var byBk = {};
+        mk.forEach(function (m) {
+          if (!m || !m.bookId) return;
+          var bk = bkOf(m.bookId);
+          (byBk[bk] = byBk[bk] || []).push({
+            section: m.section || 0, spread: m.spread || 0, perView: m.perView || 1,
+            label: m.label || '', snippet: m.snippet || '', at: m.at || oldAt
+          });
+        });
+        Object.keys(byBk).forEach(function (bk) {
+          if (vPeek(S_MK + bk)) return;
+          vPut(S_MK + bk, byBk[bk].slice(0, 60), oldAt);
+        });
+      }
+      var st = lsGet(LS_SETTINGS, null);
+      if (st && typeof st === 'object' && !vPeek(S_VIEW)) vPut(S_VIEW, viewPick(st), oldAt);
+    } catch (e) { /* 옮기다 실패해도 원래 저장값은 그대로 남는다 */ }
+    lsSet(L_MIG, 1);
+  }
 
   function addBookmark() {
     if (!state.book) return;
     var b = state.book;
+    var bk = bkOfBook(b);
     var idx = currentChapterIndex();
-    var node = $('content').querySelector('.sn[data-i]');
     var mid = Array.prototype.slice.call(document.querySelectorAll('#content .sn')).find(function (n) {
       return spreadOfElement(n) === state.spread;
     });
     var label = (b.chapters[idx] ? b.chapters[idx].title : '본문');
     var snippet = mid ? mid.textContent.slice(0, 40) : '';
-    var exists = state.marks.some(function (m) { return m.bookId === b.id && (m.section || 0) === (state.section || 0) && m.spread === state.spread && m.perView === state.perView; });
+    var exists = state.marks.some(function (m) {
+      return (m.key || bkOf(m.bookId)) === bk && (m.section || 0) === (state.section || 0) && m.spread === state.spread && m.perView === state.perView;
+    });
     if (exists) { toast('이미 책갈피가 있는 페이지예요'); return; }
     state.marks.unshift({
-      bookId: b.id, bookTitle: b.title, section: state.section || 0, spread: state.spread,
-      perView: state.perView, label: label, snippet: snippet, at: Date.now()
+      key: bk, bookId: b.id, bookTitle: b.title, section: state.section || 0, spread: state.spread,
+      perView: state.perView, label: label, snippet: snippet, at: nowMs()
     });
-    state.marks = state.marks.slice(0, 60);
-    saveMarks();
+    state.marks = state.marks.slice(0, 200);
+    saveMarks(bk);
     renderMarks();
     toast('🔖 책갈피를 남겼어요 · ' + label);
   }
@@ -1785,7 +1980,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     var box = $('markList');
     if (!box) return;
     box.innerHTML = '';
-    var list = state.marks.filter(function (m) { return state.book && m.bookId === state.book.id; });
+    var list = state.book ? marksOf(curBk()) : [];
     if (!list.length) { box.appendChild(el('div', 'empty-txt', '아직 책갈피가 없습니다. 아래 🔖 책갈피로 현재 페이지를 저장해 보세요.')); return; }
     list.forEach(function (m, i) {
       var row = el('div', 'mark-row');
@@ -1802,7 +1997,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
         ev.stopPropagation();
         var realIdx = state.marks.indexOf(m);
         if (realIdx >= 0) state.marks.splice(realIdx, 1);
-        saveMarks();
+        saveMarks(m.key);
         renderMarks();
       });
       box.appendChild(row);
@@ -1813,18 +2008,25 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
      6.5 형광펜 하이라이트 — 책별(book.id)로 영구 저장 + 모아보기
      ========================================================= */
   function loadHighlights() {
-    var all = lsGet(LS_HL, {});
-    state.highlights = (all && typeof all === 'object' && !Array.isArray(all)) ? all : {};
+    var all = {};
+    vKeys(S_HL).forEach(function (k) {
+      var d = vGet(k, null);
+      if (d && typeof d === 'object' && !Array.isArray(d)) all[k.slice(S_HL.length)] = d;
+    });
+    state.highlights = all;
   }
-  function hlStore() { lsSet(LS_HL, state.highlights); }
-  function hlFor(bookId) {
-    if (!state.highlights[bookId] || typeof state.highlights[bookId] !== 'object') state.highlights[bookId] = {};
-    return state.highlights[bookId];
+  function hlStore(bk) {
+    bk = bk || curBk();
+    if (!bk) return;
+    vPut(S_HL + bk, state.highlights[bk] || {});
+  }
+  function hlFor(bk) {
+    if (!state.highlights[bk] || typeof state.highlights[bk] !== 'object') state.highlights[bk] = {};
+    return state.highlights[bk];
   }
   function hlCount() {
-    var b = state.book;
-    if (!b) return 0;
-    var m = state.highlights[b.id];
+    if (!state.book) return 0;
+    var m = state.highlights[curBk()];
     return m ? Object.keys(m).length : 0;
   }
   function syncHlCount() {
@@ -1835,7 +2037,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   function applyHighlights() {
     var b = state.book;
     if (!b) return;
-    var m = state.highlights[b.id] || {};
+    var bk = bkOfBook(b);
+    var m = state.highlights[bk] || {};
     var nodes = document.querySelectorAll('#content .sn[data-i]');
     for (var i = 0; i < nodes.length; i++) {
       var key = nodes[i].getAttribute('data-i');
@@ -1848,7 +2051,8 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   function writeHl(idxs, color) {
     var b = state.book;
     if (!b) return 0;
-    var m = hlFor(b.id);
+    var bk = bkOfBook(b);
+    var m = hlFor(bk);
     var n = 0;
     (idxs || []).forEach(function (i) {
       if (!(i >= 0)) return;
@@ -1861,7 +2065,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
         .slice(0, keys.length - 900)
         .forEach(function (k) { delete m[k]; });
     }
-    hlStore();
+    hlStore(bk);
     applyHighlights();
     renderHighlights();
     return n;
@@ -1933,7 +2137,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
     var b = state.book;
     syncHlCount();
     if (!b) return;
-    var m = state.highlights[b.id] || {};
+    var m = state.highlights[bkOfBook(b)] || {};
     var keys = Object.keys(m).map(Number).sort(function (a, c) { return a - c; });
     if (!keys.length) {
       box.appendChild(el('div', 'empty-txt', '아직 형광펜이 없습니다. 본문 문장을 길게 누르거나 선택하면 노랑·민트·분홍으로 칠할 수 있어요.'));
@@ -2429,6 +2633,11 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       updateSleepUI();
     }
     state.book = book;
+    /* ☁️ 이 책의 읽던 위치가 저장돼 있으면 그것으로 이어 읽는다
+       (다른 기기에서 올려 둔 기록도 책 키가 같으면 그대로 찾아진다) */
+    if (!restore) {
+      try { restore = posGet(book.id); } catch (e) { /* */ }
+    }
     /* PDF 책이면 원본 페이지 모드 준비(스캔본은 바로 원본으로 열린다) */
     try { PDF.attach(book, restore); } catch (e) { /* */ }
     state.spread = 0;
@@ -2525,8 +2734,7 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
           if (ev.target && ev.target.classList.contains('del')) return;
           getBook(b.id).then(function (full) {
             var src = full || b;
-            var last = lsGet(LS_LAST, null);
-            var restore = last && last.bookId === src.id ? last : null;
+            var restore = posGet(src.id);
             var done = function (pdfRec) {
               if (!src.text && !pdfRec) { toast('책 내용을 찾지 못했어요'); return; }
               var book = buildBook(src.title, src.text || '', src.id);
@@ -3733,15 +3941,71 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
   /* =========================================================
      12. 부팅
      ========================================================= */
+  function cloudReady(ms) {
+    var c = window.EBookCloud;
+    if (!c || typeof c.ready !== 'function') return Promise.resolve('off');
+    return c.ready(ms);
+  }
+  /* ☁️ 클라우드에서 새 기록이 들어왔을 때 — 화면만 다시 맞춘다(읽던 위치는 튀지 않게 그대로 둔다) */
+  function onCloudApplied() {
+    loadMarks();
+    loadHighlights();
+    var before = JSON.stringify(viewPick(state.settings));
+    loadSettings();
+    if (JSON.stringify(viewPick(state.settings)) !== before) {
+      applyTypography();
+      syncSettingsUI();
+      layout(true);
+    }
+    applyHighlights();
+    renderMarks();
+    renderHighlights();
+  }
+
+  /* 마지막에 펼친 책 + 그 책의 책갈피(읽던 위치)로 이어 읽기 */
+  function openLastBook() {
+    var last = lsGet(L_LAST, null);
+    if (!last || !last.bookId) {
+      var oldLast = lsGet(LS_LAST, null);
+      if (oldLast && oldLast.bookId) last = oldLast;
+    }
+    var opened = false, fallbackDone = false;
+    function fallback() {
+      if (fallbackDone) return;
+      fallbackDone = true;
+      var b = buildBook(SAMPLE_TITLE, SAMPLE_TEXT, SAMPLE_ID);
+      openBook(b, null);
+      $('bookSub').textContent = '샘플로 먼저 읽어 보세요 · 📚 서재에서 TXT를 올릴 수 있어요';
+    }
+    if (last && last.bookId) {
+      getBook(last.bookId).then(function (rec) {
+        if (!rec || (!rec.text && !rec.pdf)) { fallback(); return; }
+        /* ☁️ 다른 기기에서 받아 둔 이 책의 위치가 있으면 그것으로 (PDF 책은 원본 Blob 도 함께) */
+        var restore = posGet(rec.id) || (last.bookId === rec.id ? last : null);
+        var go0 = function (pdfRec) {
+          if (opened) return;
+          opened = true;
+          var bk = buildBook(rec.title, rec.text || '', rec.id);
+          bk.title = rec.title;
+          if (pdfRec) { bk.pdfBlob = pdfRec.blob; bk.pdfPages = pdfRec.pages || rec.pdfPages || 0; }
+          bk.scan = rec.scan === 1 || rec.scan === true;
+          openBook(bk, restore);
+        };
+        if (rec.pdf) DB.getPdf(rec.id).then(go0, function () { go0(null); });
+        else go0(null);
+      }).catch(fallback);
+    } else {
+      fallback();
+    }
+    setTimeout(function () { if (!state.book) fallback(); }, 1200);
+  }
+
   function boot() {
     detectMode();
 
-    var st = lsGet(LS_SETTINGS, null);
-    if (st && typeof st === 'object') {
-      ['fontSize', 'lineHeight', 'font', 'theme', 'perView', 'voice', 'rate', 'sceneOn', 'sceneVol'].forEach(function (k) {
-        if (st[k] !== undefined && st[k] !== null) state.settings[k] = st[k];
-      });
-    }
+    /* 이전 판 저장값(책갈피·형광펜·설정)을 새 책별 저장소로 한 번만 옮긴 뒤 읽는다 */
+    migrateLegacy();
+    loadSettings();
     loadMarks();
     loadHighlights();
     Ambience.setEnabled(state.settings.sceneOn);
@@ -3756,45 +4020,27 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       window.speechSynthesis.onvoiceschanged = function () { pickKoVoice(); };
     }
 
-    // 마지막 책 복원
-    var last = lsGet(LS_LAST, null);
-    var opened = false;
-    if (last && last.bookId) {
-      getBook(last.bookId).then(function (rec) {
-        if (!rec || (!rec.text && !rec.pdf)) { fallback(); return; }
-        /* PDF 책은 원본 Blob 도 함께 붙여야 원본 모드·쪽수가 그대로 살아난다 */
-        var go0 = function (pdfRec) {
-          if (opened) return;
-          opened = true;
-          var bk = buildBook(rec.title, rec.text || '', rec.id);
-          bk.title = rec.title;
-          if (pdfRec) { bk.pdfBlob = pdfRec.blob; bk.pdfPages = pdfRec.pages || rec.pdfPages || 0; }
-          bk.scan = rec.scan === 1 || rec.scan === true;
-          openBook(bk, last);
-        };
-        if (rec.pdf) DB.getPdf(rec.id).then(go0, function () { go0(null); });
-        else go0(null);
-      }).catch(fallback);
-    } else {
-      fallback();
-    }
-    var fallbackDone = false;
-    function fallback() {
-      if (fallbackDone) return;
-      fallbackDone = true;
-      var b = buildBook(SAMPLE_TITLE, SAMPLE_TEXT, 'sample-lighthouse');
-      openBook(b, null);
-      $('bookSub').textContent = '샘플로 먼저 읽어 보세요 · 📚 서재에서 TXT를 올릴 수 있어요';
-    }
-    setTimeout(function () {
-      if (!state.book) fallback();
-    }, 1200);
+    document.addEventListener('ebookcloud:applied', function () {
+      try { onCloudApplied(); } catch (e) { /* */ }
+    });
 
-    // 서비스워커 — 독립 eBook 도메인에서는 루트 스코프(/), 관제탑 도메인에서는 /ebook/
+    /* ☁️ 다른 기기의 책갈피·형광펜을 먼저 받아 두고(최대 1.8초) 책을 펼친다
+       → 폰에서 보던 페이지·형광펜이 태블릿에서도 그대로 이어진다 */
+    cloudReady(1800).then(function () {
+      loadSettings();
+      loadMarks();
+      loadHighlights();
+      applyTypography();
+      syncSettingsUI();
+      openLastBook();
+    });
+
+    // 서비스워커 — 독립 eBook 도메인에서는 루트 스코프(/), 관제탑 도메인·GitHub Pages 에서는 앱 폴더 기준
     if ('serviceWorker' in navigator) {
       var sa = !!window.__EBOOK_STANDALONE;
-      navigator.serviceWorker.register(sa ? '/ebook-root-sw.js' : '/ebook/sw.js', {
-        scope: sa ? '/' : '/ebook/'
+      var bse = window.__EBOOK_BASE || '/';
+      navigator.serviceWorker.register(bse + (sa ? 'ebook-root-sw.js' : 'ebook/sw.js'), {
+        scope: sa ? '/' : (bse + 'ebook/')
       }).catch(function () {});
     }
 
@@ -3847,11 +4093,21 @@ body.mode-cover-landscape .nav-btn { height: 54px; }
       highlights: function () {
         var b = state.book;
         if (!b) return {};
-        var src = state.highlights[b.id] || {};
+        var src = state.highlights[bkOfBook(b)] || {};
         var out = {};
         Object.keys(src).forEach(function (k) { out[k] = src[k]; });
         return out;
       },
+      /* ---- ☁️ 책갈피 동기화 (검증·안내용) ---- */
+      bk: function () { return state.book ? bkOfBook(state.book) : ''; },
+      pos: function () { var b = state.book; return b ? posGet(b.id) : null; },
+      posOf: function (id) { return posGet(id); },
+      marksCount: function () { return state.book ? marksOf(curBk()).length : 0; },
+      viewSettings: function () { return viewPick(state.settings); },
+      cloud: function () { return window.EBookCloud ? window.EBookCloud.debug() : null; },
+      cloudPush: function () { return window.EBookCloud ? window.EBookCloud.push({ force: true }) : null; },
+      cloudPull: function () { return window.EBookCloud ? window.EBookCloud.pull({ force: true }) : null; },
+      cloudState: function () { return window.EBookCloud ? window.EBookCloud.state() : null; },
       setHighlight: function (i, color) { return writeHl([i], color || null); },
       writeHighlight: function (idxs, color) { return writeHl(idxs, color || null); },
       jumpToSentence: jumpToSentence,

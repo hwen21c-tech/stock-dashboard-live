@@ -5,13 +5,16 @@
    · 캐시 이름에 ebook-reader- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'ebook-reader-';
-const VERSION = PREFIX + 'v1';
+const VERSION = PREFIX + 'v2';
+/* 상대 경로로 적는다 — Vercel(/ebook/) 에서도, GitHub Pages(/stock-dashboard/ebook/) 에서도
+   서비스워커 파일 위치를 기준으로 같은 파일을 찾는다 */
 const SHELL = [
-  '/ebook/manifest.json',
-  '/ebook.html',
-  '/ebook-icon.svg',
-  '/ebook-icon-192.png',
-  '/ebook-icon-512.png'
+  './manifest.json',
+  '../ebook.html',
+  '../ebook-sync.js',
+  '../ebook-icon.svg',
+  '../ebook-icon-192.png',
+  '../ebook-icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
