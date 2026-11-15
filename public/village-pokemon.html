@@ -71,13 +71,19 @@
     background:linear-gradient(180deg,#e8f2ff,#c9e0ff);border:2px solid #a8c6f0;color:#1d3f6b;
     box-shadow:0 2px 0 rgba(30,80,150,.22)}
   .meadow{position:relative;border-radius:20px;overflow:hidden;isolation:isolate;
-    min-height:clamp(320px, calc(100dvh - 296px), 760px);border:2.5px solid rgba(255,255,255,.78);
+    min-height:clamp(320px, calc(100dvh - 304px), 760px);border:2.5px solid rgba(255,255,255,.78);
     /* 그림이 정사각 맵이라, 무대가 지나치게 넓적해지면 맵 위아래가 잘린다 — 1.30 비율까지만 넓힌다 */
-    max-width:calc((100dvh - 296px) * 1.30);margin:0 auto;
+    max-width:calc((100dvh - 304px) * 1.30);margin:0 auto;
     box-shadow:0 8px 22px rgba(20,60,10,.2),inset 0 0 40px rgba(0,0,0,.06);
     transition:background .5s ease}
+  /* 배경 그림 한 겹(.art) + 시간대 빛막(.wash) — 그림만 따로 색 보정해도 포켓몬·소품은 영향받지 않게 분리했다 */
+  .meadow .bg{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .meadow .art{position:absolute;inset:0;background:var(--art,url("/art/village-day.webp")) 50% 50%/cover no-repeat;
+    transition:filter .6s ease}
+  .meadow .wash{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s ease}
+  .meadow .glow{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .6s ease}
   .meadow .floor{position:absolute;inset:0;z-index:1}
-  .meadow .sky{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .meadow .sky{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden}
   .meadow .sun{position:absolute;right:12%;top:9%;width:clamp(38px,8vw,72px);aspect-ratio:1;border-radius:50%;
     background:radial-gradient(circle at 40% 35%,#fffde3,#ffe066 55%,#ffc93c 100%);
     box-shadow:0 0 26px rgba(255,214,80,.75);transition:.6s}
@@ -113,12 +119,29 @@
      그림이 준비되면(data-art) 위에 있던 CSS 가짜 지형·해·구름은 모두 끄고
      그림 속 실제 연못·언덕·배틀터만 보이게 한다. 판정 좌표는 그림에 맞춰 계산한다. */
   .meadow{background-size:cover;background-position:50% 50%;background-repeat:no-repeat}
+  /* 사진 테마(바다·고원·사막)는 낮 그림 한 장만 쓰고, 노을·밤은 그림 색 보정 + 빛막으로 만든다 */
+  .meadow.wsunset .art{filter:sepia(.20) saturate(1.24) hue-rotate(-8deg) brightness(.97) contrast(1.05)}
+  .meadow.wnight .art{filter:brightness(.94) saturate(.86) contrast(1.02)}
+  .meadow.wsunset .wash{opacity:1;
+    background:linear-gradient(180deg,rgba(255,126,44,.30) 0%,rgba(255,168,86,.18) 34%,rgba(255,198,122,.07) 58%,rgba(96,40,12,.32) 100%)}
+  .meadow.wsunset .glow{opacity:1;
+    background:radial-gradient(34% 34% at 72% 9%,rgba(255,222,150,.85) 0%,rgba(255,190,100,.42) 45%,transparent 78%)}
+  /* 밤 — 그림을 곱셈(multiply)으로 남색에 물들여 음영을 유지한 채 어둡게 */
+  .meadow.wnight .wash{opacity:1;mix-blend-mode:multiply;
+    background:linear-gradient(180deg,#5568b0 0%,#44549a 32%,#2c3766 66%,#1b2244 100%)}
+  .meadow.wnight .glow{opacity:1;animation:twinkle 3.8s ease-in-out infinite;
+    background-image:radial-gradient(1.8px 1.8px at 14% 12%,#fff,transparent),radial-gradient(1.5px 1.5px at 33% 7%,#fff,transparent),
+      radial-gradient(1.9px 1.9px at 52% 15%,#fff,transparent),radial-gradient(1.4px 1.4px at 69% 6%,#fff,transparent),
+      radial-gradient(1.6px 1.6px at 85% 11%,#fff,transparent),radial-gradient(1.3px 1.3px at 24% 22%,#fff,transparent),
+      radial-gradient(1.4px 1.4px at 45% 24%,#fff,transparent),radial-gradient(1.3px 1.3px at 63% 20%,#fff,transparent),
+      radial-gradient(42% 36% at 76% 9%,rgba(206,226,255,.42) 0%,rgba(170,196,240,.16) 45%,transparent 72%)}
+  .meadow.wnight .wash::after{content:none}
+
   /* 시간대 규칙보다 뒤에 두고 선택자 무게도 같게 — background 단축 속성이 size 를 되돌리지 않게 */
   .meadow.t-day,.meadow.t-sunset,.meadow.t-night{
     background-size:cover;background-position:50% 50%;background-repeat:no-repeat}
-  .meadow.t-day{background-image:url("/art/village-day.webp")}
-  .meadow.t-sunset{background-image:url("/art/village-sunset.webp")}
-  .meadow.t-night{background-image:url("/art/village-night.webp")}
+  /* 마을 그림은 .art 겹이 그리고(--art 변수를 JS 가 테마·시간대·가로/세로에 맞춰 바꾼다).
+     위 그라데이션은 그림을 못 받았을 때의 폴백으로만 남겼다. */
   .meadow[data-art] .terr,
   .meadow[data-art] .sky{display:none}
   .meadow[data-art]{box-shadow:0 10px 26px rgba(20,60,10,.26),inset 0 0 34px rgba(0,0,0,.10);
@@ -136,6 +159,13 @@
   .it::before{bottom:-5%;width:66%;height:15%;transform:translateX(-50%)}
   .it .g{position:relative;z-index:1}
   .pk img{z-index:1}
+  /* 수채화 소품 PNG — 1em 높이로 그리고, 그림에 이미 발밑 그림자가 들어 있어 CSS 타원 그림자는 끈다 */
+  .it .pi{display:block;width:auto;height:1.16em;max-width:none;filter:drop-shadow(0 6px 7px rgba(18,48,8,.34))}
+  .it.has-png::before{display:none}
+  .it.has-png .g{animation:itbob 4.2s ease-in-out infinite}
+  .meadow.wnight .it .pi{filter:drop-shadow(0 6px 7px rgba(0,0,0,.5)) brightness(1.06)}
+  .meadow.t-night .it .pi{filter:drop-shadow(0 6px 7px rgba(0,0,0,.5)) brightness(1.12)}
+  .icell .pie{width:auto;height:26px;display:block;filter:drop-shadow(0 2px 3px rgba(18,48,8,.28))}
   /* 소품 벡터 아트(SVG) — 이모지와 같은 크기(1em)로 그린다 */
   .it .g svg.pa{display:block;width:1em;height:1em;overflow:visible}
 
@@ -305,6 +335,9 @@
   .pcell.on{border-color:#79c94a;background:linear-gradient(180deg,#f2ffe0,#dcf7bc)}
   .pcell .zz{position:absolute;right:2px;top:2px;font-size:8px;font-weight:900;color:#fff;background:#57bd2f;
     border-radius:999px;padding:0 4px}
+  .pcell .zz.tow{background:#5b86bd;font-size:8px;padding:1px 4px;max-width:96%;overflow:hidden;text-overflow:ellipsis}
+  .pcell.away{border-color:#c9ddf2;background:linear-gradient(180deg,#f8fcff,#e9f2ff)}
+  .pcell.away img{opacity:.82}
   .pcell.dim{opacity:.55}
   .icell{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 3px;
     border-radius:13px;background:#fff;border:2px solid #e2eecd;border-bottom-width:4px;
@@ -397,13 +430,67 @@
   .zstage .zzz{font-size:clamp(12px,3.4vw,20px)}
   .zoom .ztip{margin:0;text-align:center;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
   @media (max-height:520px){ .zoom .ztip{display:none} }
+
+  /* ============ 마을 테마 선택 (도감 10마리마다 새 마을이 열린다) ============ */
+  .vtop{display:contents}
+  .themebar{display:flex;align-items:center;gap:5px;padding:7px 10px 0;max-width:760px;margin:0 auto;width:100%;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .themebar::-webkit-scrollbar{display:none}
+  .themebar button{flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;
+    font-size:clamp(9.5px,2.7vw,11.5px);font-weight:900;letter-spacing:-.03em;white-space:nowrap;
+    background:#fff;border:1.8px solid var(--line);color:#5c7a34;box-shadow:0 2px 0 rgba(60,110,30,.14)}
+  .themebar button .te{font-size:1.15em;line-height:1}
+  .themebar button.on{background:linear-gradient(180deg,#fff2c9,#ffd75e);border-color:#e0b531;color:#6a4400;
+    box-shadow:0 2px 0 rgba(150,100,10,.28)}
+  .themebar button.lock{background:#f7f7ef;border-color:#e0e0d0;color:#8b8b74;box-shadow:none}
+  .themebar button:active{transform:translateY(1px)}
+
+  /* ============ 가로(태블릿·폴드 펌침 등 넓은 화면) — 상단은 한 줄, 마을은 화면을 꽉 체운다 ============ */
+  @media (min-width:760px){
+    body{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+    .vtop{display:flex;align-items:center;gap:5px;flex:0 0 auto;padding:5px 8px;
+      background:rgba(255,255,255,.9);border-bottom:2px solid rgba(160,210,120,.72);
+      backdrop-filter:blur(6px);position:relative;z-index:30}
+    .vhead{position:static;padding:0;background:none;border:0;flex:0 0 auto;gap:5px;min-width:0}
+    .vhead h1{font-size:15px;flex:0 0 auto}
+    .vhead h1 .h1t{display:none}
+    .back{padding:5px 8px}
+    .icob{width:29px;height:27px;font-size:13px}
+    .vbar{padding:0;flex:0 1 auto;flex-wrap:nowrap;min-width:0;gap:4px}
+    .slots{flex:0 1 auto;min-width:0}
+    .slots button{padding:4px 8px;max-width:44%}
+    .stats{white-space:nowrap;padding:2px 8px}
+    .themebar{padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto;overflow:visible}
+    .themebar button{padding:4px 8px}
+    .acts{display:flex;gap:4px;padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto}
+    .acts button{flex-direction:row;gap:4px;padding:5px 8px;border-radius:11px;border-bottom-width:3px}
+    .acts button .e{font-size:15px}
+    .acts button > span:not(.e){display:none}
+    .vbar2{padding:0;flex:0 0 auto;width:auto;margin-left:auto;gap:4px}
+    .todnow .tsub{display:none}
+    .todnow{flex:0 0 auto;white-space:nowrap}
+    .shot{padding:5px 9px}
+    .village{flex:1 1 auto;min-height:0;padding:0;max-width:none;margin:0;position:relative}
+    .meadow{height:100%;min-height:0;max-width:none;width:100%;margin:0;border:0;border-radius:0;box-shadow:none}
+    .itemctl{bottom:calc(8px + env(safe-area-inset-bottom))}
+    .vtoast{bottom:calc(64px + env(safe-area-inset-bottom))}
+  }
+  @media (min-width:760px) and (max-width:999px){
+    .stats{display:none}
+    .slots button{max-width:34%}
+    .themebar button{padding:4px 7px}
+    .back{font-size:0;padding:5px 9px}
+    .back::before{content:"◀";font-size:12px}
+    .todnow{max-width:4.6em;overflow:hidden;text-overflow:ellipsis}
+  }
 </style>
 </head>
 <body>
 
+<div class="vtop">
 <div class="vhead">
   <a class="back" href="/pokemon/pokemon-battle.html">◀ 놀이터</a>
-  <h1>🏡 나만의 포켓몬 마을</h1>
+  <h1><span class="h1e">🏡</span><span class="h1t">나만의 포켓몬 마을</span></h1>
   <button class="icob" id="muteBtn" aria-label="소리 켜기/끄기">🔊</button>
 </div>
 
@@ -413,21 +500,28 @@
 </div>
 
 <div class="vbar2">
-  <p class="todnow" id="todNow" aria-live="polite">☀️ 낮 · 지금 시각에 맞춰 하늘이 바뀌어요</p>
+  <p class="todnow" id="todNow" aria-live="polite">☀️ 낮<span class="tsub"> · 지금 시각에 맞춰 하늘이 바뀌어요</span></p>
   <button type="button" class="shot" id="photoBtn">📸 사진</button>
 </div>
 
 <div class="acts">
-  <button id="pokeBtn"><span class="e">🐾</span><span>포켓몬 배치</span></button>
-  <button id="itemBtn"><span class="e">🎨</span><span>마을 꾸미기</span></button>
-  <button id="zoomBtn"><span class="e">🔍</span><span>크게 보기</span></button>
-  <button class="gift" id="giftBtn"><span class="e">🎁</span><span>아빠 선물</span></button>
+  <button id="pokeBtn" aria-label="포켓몬 배치" title="포켓몬 배치"><span class="e">🐾</span><span>포켓몬 배치</span></button>
+  <button id="itemBtn" aria-label="마을 꾸미기" title="마을 꾸미기"><span class="e">🎨</span><span>마을 꾸미기</span></button>
+  <button id="zoomBtn" aria-label="크게 보기" title="크게 보기"><span class="e">🔍</span><span>크게 보기</span></button>
+  <button class="gift" id="giftBtn" aria-label="아빠 선물" title="아빠 선물"><span class="e">🎁</span><span>아빠 선물</span></button>
+</div>
+
+<!-- 마을 테마 — 도감 10마리마다 새 마을이 하나씩 열린다 -->
+<div class="themebar" id="themeBar" role="group" aria-label="마을 테마 선택"></div>
 </div>
 
 <div class="village" id="village">
-  <div class="meadow t-day" id="meadow" data-tod="day">
-    <div class="sky" aria-hidden="true">
-      <span class="clouds"></span><span class="stars"></span><span class="sun"></span>
+  <div class="meadow t-day" id="meadow" data-tod="day" data-vtheme="meadow" data-fmt="square">
+    <div class="bg" aria-hidden="true">
+      <div class="art" id="meadowArt"></div>
+      <div class="sky"><span class="clouds"></span><span class="stars"></span><span class="sun"></span></div>
+      <div class="wash"></div>
+      <div class="glow"></div>
     </div>
     <div class="terr" id="terr" aria-hidden="true">
       <i class="t t-pond"><b class="rip"></b><b class="reeds"></b></i>
@@ -489,6 +583,20 @@
       <div class="strip">
         <h3>지금 마을에 있는 아이템</h3>
         <div class="plist" id="placedItems"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 이사 확인 -->
+<div class="modal" id="moveModal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
+    <div class="mhead"><h2 id="moveTitle">🚚 다른 마을에 살고 있어요</h2><button class="mx" data-close="moveModal" aria-label="닫기">✕</button></div>
+    <div class="mbody">
+      <p class="mnote" id="moveNote">이 마을로 이사시킬까요?</p>
+      <div class="gsel" style="margin-top:4px">
+        <button type="button" id="moveYes" class="on">🚚 이사시키기</button>
+        <button type="button" data-close="moveModal">그냥 두기</button>
       </div>
     </div>
   </div>
@@ -566,22 +674,81 @@
      cx·cy = 마을 그림 안의 중심 퍼센트, rx·ry = 반지름 퍼센트.
      그림은 정사각 1:1 이고 무대에 cover 로 깔리므로, 화면 퍼센트와 그림 퍼센트를
      mapFit()/boxToMap() 으로 서로 바꿔 판정한다 — 화면 비율이 달라져도 위치가 어긋나지 않는다. */
-  const MAP_S = 1000;   /* 그림 좌표계 한 변(정사각) — 비율만 쓰므로 임의 단위 */
-  const TERRAIN = [
-    { k: 'pond', emoji: '💧', name: '연못', cx: 27, cy: 54, rx: 16, ry: 9.5 },
-    { k: 'hill', emoji: '😴', name: '언덕', cx: 72, cy: 26, rx: 14, ry: 10 },
-    { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 53, cy: 79, rx: 15.5, ry: 8 },
-  ];
+  const MAP_W = 1000;   /* 그림 좌표계 기준 너비 — 비율만 쓰므로 임의 단위(높이는 그림 비율로 정한다) */
+  /* 테마별 자연 지형 판정 — 테마마다, 또 가로/세로 그림마다 연못·언덕·배틀터 자리가 달라서 표로 나눠 둔다.
+     sq = 정사각(세로 화면) 그림, wd = 16:9 가로 그림. k 는 행동 종류(pond 물 · hill 높은 곳 · arena 배틀터). */
+  const TERRAIN_SET = {
+    meadow: {
+      sq: [
+        { k: 'pond', emoji: '💧', name: '연못', cx: 27, cy: 54, rx: 16, ry: 9.5 },
+        { k: 'hill', emoji: '😴', name: '언덕', cx: 72, cy: 26, rx: 14, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 53, cy: 79, rx: 15.5, ry: 8 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '💧', name: '연못', cx: 28, cy: 62, rx: 14, ry: 11 },
+        { k: 'hill', emoji: '😴', name: '언덕', cx: 72, cy: 33, rx: 12, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '배틀장소', cx: 52, cy: 83, rx: 13, ry: 8 },
+      ],
+    },
+    beach: {
+      sq: [
+        { k: 'pond', emoji: '🌊', name: '바다', cx: 15, cy: 50, rx: 19, ry: 22 },
+        { k: 'hill', emoji: '😴', name: '모래언덕', cx: 74, cy: 28, rx: 14, ry: 11 },
+        { k: 'arena', emoji: '⚔️', name: '모래 운동장', cx: 55, cy: 76, rx: 16, ry: 10 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '🌊', name: '바다', cx: 17, cy: 52, rx: 17, ry: 25 },
+        { k: 'hill', emoji: '😴', name: '모래언덕', cx: 78, cy: 28, rx: 12, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '모래 운동장', cx: 58, cy: 78, rx: 15, ry: 9 },
+      ],
+    },
+    mountain: {
+      sq: [
+        { k: 'pond', emoji: '💦', name: '계곡물', cx: 15, cy: 52, rx: 16, ry: 19 },
+        { k: 'hill', emoji: '😴', name: '바위언덕', cx: 73, cy: 34, rx: 15, ry: 11 },
+        { k: 'arena', emoji: '⚔️', name: '풀밭 마당', cx: 52, cy: 77, rx: 15, ry: 9 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '💦', name: '계곡물', cx: 14, cy: 52, rx: 13, ry: 21 },
+        { k: 'hill', emoji: '😴', name: '바위언덕', cx: 76, cy: 36, rx: 13, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '풀밭 마당', cx: 50, cy: 79, rx: 14, ry: 8 },
+      ],
+    },
+    desert: {
+      sq: [
+        { k: 'pond', emoji: '💧', name: '오아시스', cx: 20, cy: 52, rx: 16, ry: 14 },
+        { k: 'hill', emoji: '😴', name: '모래언덕', cx: 76, cy: 28, rx: 13, ry: 10 },
+        { k: 'arena', emoji: '⚔️', name: '모래 마당', cx: 55, cy: 75, rx: 16, ry: 9 },
+      ],
+      wd: [
+        { k: 'pond', emoji: '💧', name: '오아시스', cx: 18, cy: 38, rx: 13, ry: 16 },
+        { k: 'hill', emoji: '😴', name: '모래언덕', cx: 78, cy: 30, rx: 12, ry: 9 },
+        { k: 'arena', emoji: '⚔️', name: '모래 마당', cx: 56, cy: 72, rx: 16, ry: 9 },
+      ],
+    },
+  };
+  let TERRAIN = TERRAIN_SET.meadow.sq;
   let MAP_FIT = null;
-  /* 마을 무대에 그림이 cover 로 깔릴 때의 배율과 여백(px) */
+  /* 지금 그림의 비율 — 가로 와이드 그림(data-fmt="wide")이면 16:9, 세로는 정사각 1:1 */
+  function mapAspect() {
+    const m = document.getElementById('meadow');
+    return (m && m.dataset && m.dataset.fmt === 'wide') ? 16 / 9 : 1;
+  }
+  function refreshTerrain() {
+    const t = TERRAIN_SET[THEME] || TERRAIN_SET.meadow;
+    TERRAIN = (mapAspect() === 1) ? t.sq : t.wd;
+    resetMapFit();
+  }
+  /* 마을 무대에 그림이 cover 로 깔렸을 때의 배율과 여백(px) */
   function mapFit() {
     if (MAP_FIT) return MAP_FIT;
     const m = document.getElementById('meadow');
     const r = m ? m.getBoundingClientRect() : null;
     const w = (r && r.width) || 1;
     const h = (r && r.height) || 1;
-    const k = Math.max(w / MAP_S, h / MAP_S);
-    MAP_FIT = { w: w, h: h, k: k, ox: (w - MAP_S * k) / 2, oy: (h - MAP_S * k) / 2 };
+    const mh = MAP_W / mapAspect();
+    const k = Math.max(w / MAP_W, h / mh);
+    MAP_FIT = { w: w, h: h, k: k, mw: MAP_W, mh: mh, ox: (w - MAP_W * k) / 2, oy: (h - mh * k) / 2 };
     return MAP_FIT;
   }
   function resetMapFit() { MAP_FIT = null; }
@@ -589,16 +756,16 @@
   function boxToMap(xb, yb) {
     const f = mapFit();
     return {
-      x: ((Number(xb) / 100) * f.w - f.ox) / (MAP_S * f.k) * 100,
-      y: ((Number(yb) / 100) * f.h - f.oy) / (MAP_S * f.k) * 100,
+      x: ((Number(xb) / 100) * f.w - f.ox) / (f.mw * f.k) * 100,
+      y: ((Number(yb) / 100) * f.h - f.oy) / (f.mh * f.k) * 100,
     };
   }
   /* 그림 퍼센트 → 화면(무대) 퍼센트 */
   function mapToBox(xa, ya) {
     const f = mapFit();
     return {
-      x: (f.ox + MAP_S * f.k * Number(xa) / 100) / f.w * 100,
-      y: (f.oy + MAP_S * f.k * Number(ya) / 100) / f.h * 100,
+      x: (f.ox + f.mw * f.k * Number(xa) / 100) / f.w * 100,
+      y: (f.oy + f.mh * f.k * Number(ya) / 100) / f.h * 100,
     };
   }
   const ZONE_ACTS = {
@@ -632,10 +799,117 @@
   const K_PIN = 'pkm.family.pin.v1';
   const DEFAULT_PIN = '0623';
 
+  /* ---------- 마을 테마 ----------
+     도감 10마리마다 새 마을이 하나씩 열린다(need). 이 배열에 한 줄만 더하면
+     40·50·60마리 마을도 그대로 다음 테마가 된다(need: 다음 해금 마릿수). */
+  const THEMES = [
+    { k: 'meadow', emoji: '🌿', name: '초원 마을', short: '초원', need: 0, tag: 'village-day' },
+    { k: 'beach', emoji: '🏖️', name: '바다 해변 마을', short: '바다', need: 10, tag: 'village-beach' },
+    { k: 'mountain', emoji: '🏔️', name: '산속 고원 마을', short: '고원', need: 20, tag: 'village-mountain' },
+    { k: 'desert', emoji: '🏜️', name: '사막 오아시스 마을', short: '사막', need: 30, tag: 'village-desert' },
+  ];
+  const K_THEME = (s) => 'pkm.village.theme.v1.' + s;
+  let THEME = 'meadow';
+  function themeDef(k) { return THEMES.find((t) => t.k === k) || THEMES[0]; }
+  function dexCount(slot) { try { return dexIds(slot || SLOT).length; } catch (e) { return 0; } }
+  /* 게스트는 체험용이라 전부 열려 있고, 나머지는 도감 마릿수만큼 열린다 */
+  function themeOpen(t) { return !t || !t.need || SLOT === 'guest' || dexCount(SLOT) >= Number(t.need); }
+  function openThemes() { return THEMES.filter(themeOpen); }
+
+  /* ---------- 마을 그림(테마 · 시간대 · 가로/세로) ---------- */
+  function villageSrc(tod, theme, wide) {
+    if (window.POK_ART && POK_ART.srcVillage) return POK_ART.srcVillage(tod, theme, wide);
+    const n = theme === 'meadow' ? 'village-' + tod : 'village-' + theme;
+    return '/art/' + n + (wide ? '-wide' : '') + '.webp';
+  }
+  /* 무대가 가로로 넓을 때만 와이드 그림을 쓴다(세로·정사각이면 정사각 그림) */
+  function isWideStage() {
+    const m = document.getElementById('meadow');
+    if (!m) return false;
+    const r = m.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    return (r.width / r.height) >= 1.15;
+  }
+  let ART_TOKEN = 0;
+  function applyArt() {
+    const m = document.getElementById('meadow');
+    if (!m) return null;
+    const tod = todNow();
+    const wide = isWideStage();
+    m.dataset.fmt = wide ? 'wide' : 'square';
+    m.dataset.vtheme = THEME;
+    m.dataset.tod = tod;
+    refreshTerrain();
+    const src = villageSrc(tod, THEME, wide);
+    const token = (ART_TOKEN += 1);
+    const paint = () => {
+      if (!m.isConnected || token !== ART_TOKEN) return;   /* 그새 테마가 또 바뀌었으면 늦게 온 그림은 버린다 */
+      m.style.setProperty('--art', 'url("' + src + '")');
+      m.removeAttribute('data-art-pending');
+      m.dataset.art = tod;
+      const tinted = THEME !== 'meadow';   /* 바다·고원·사막은 낮 그림 한 장 + 빛막으로 노을·밤을 만든다 */
+      m.classList.toggle('wsunset', tinted && tod === 'sunset');
+      m.classList.toggle('wnight', tinted && tod === 'night');
+      resetMapFit();
+    };
+    if (!src) { m.style.removeProperty('--art'); m.removeAttribute('data-art'); return tod; }
+    m.setAttribute('data-art-pending', THEME + ':' + tod);
+    if (window.POK_ART && POK_ART.ensure) {
+      POK_ART.ensure(src, (ok) => {
+        if (ok) paint();
+        else {
+          m.style.removeProperty('--art');
+          m.removeAttribute('data-art');
+          m.removeAttribute('data-art-pending');
+        }
+      });
+    } else paint();
+    return tod;
+  }
+  function loadTheme() {
+    const t = themeDef(lsGet(K_THEME(SLOT), 'meadow'));
+    THEME = themeOpen(t) ? t.k : 'meadow';
+    return THEME;
+  }
+  function paintThemeBar() {
+    const host = document.getElementById('themeBar');
+    if (!host) return;
+    const dex = dexCount(SLOT);
+    host.innerHTML = THEMES.map((t) => {
+      const on = t.k === THEME;
+      const open = themeOpen(t);
+      const cls = (on ? 'on ' : '') + (open ? '' : 'lock');
+      const tip = open ? t.name : (t.name + ' — 도감 ' + t.need + '마리를 모으면 열려요');
+      const inner = open
+        ? '<span class="te">' + t.emoji + '</span>' + t.short
+        : '<span class="te">🔒</span>' + t.need + '마리';
+      return '<button type="button" data-vtheme="' + t.k + '" class="' + cls + '" title="' + tip + '"'
+        + ' aria-label="' + tip + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + inner + '</button>';
+    }).join('');
+    host.dataset.dex = String(dex);
+  }
+  function setTheme(k) {
+    const t = themeDef(k);
+    if (!themeOpen(t)) {
+      toast('🔒 도감 ' + t.need + '마리를 모으면 열려요! (지금 ' + dexCount(SLOT) + '마리)');
+      try { Sfx.tone(220, 0.10, 'square', 0.05, 180); } catch (e) { /* */ }
+      return false;
+    }
+    THEME = t.k;
+    lsSet(K_THEME(SLOT), THEME);
+    applyArt();
+    paintThemeBar();
+    paintVillage();
+    try { Sfx.click(); } catch (e) { /* */ }
+    if (t.k !== 'meadow') toast(t.emoji + ' ' + t.name + '(으)로 놀러 왔어요!');
+    return true;
+  }
+
   const POK3 = window.POK3 || null;
   const DB = { list: [], byId: {} };
   let SLOT = 'p1';
   let swapFor = null;   // {type:'poke'|'item', ...}
+  let moveFor = null;   // 다른 마을에서 데려올 포켓몬 id
   let TOD_FORCE = null;   // 검증용 시간대 주입 훅(day|sunset|night) — 평소엔 null
   let todTimer = 0;
   let selectedItem = -1;
@@ -937,16 +1211,77 @@
     if (POK3 && POK3.isRetired) return POK3.isRetired(k);
     return ['pond', 'hill', 'arena'].indexOf(k) >= 0;
   }
-  function state() {
-    const raw = lsGet(K_PLACE(SLOT), null);
-    const s = raw && typeof raw === 'object' ? raw : {};
+
+  /* ---------- 마을별(테마별) 저장 ----------
+     초원·바다·고원·사막을 각각 따로 꾸며도 서로 덮지 않는다(기기별 저장).
+     예전 단일 저장(pkm.village.v1.*)은 초원 마을로 그대로 옮겨 와 손실 없이 이어 간다. */
+  const K_VIL = (s) => 'pkm.village.v2.' + s;
+  function blankTheme() { return { poke: [], items: [] }; }
+  function normTheme(v) {
+    const s = v && typeof v === 'object' ? v : {};
     return {
       poke: Array.isArray(s.poke) ? s.poke.filter((x) => x && Number.isFinite(Number(x.id))) : [],
       /* 예전에 연못·언덕·연습장을 아이템으로 놓아 둔 저장분은 자연 지형으로 옮겨 왔으니 지운다 */
       items: Array.isArray(s.items) ? s.items.filter((x) => x && x.k && !isRetired(x.k)) : [],
     };
   }
-  function save(st) { lsSet(K_PLACE(SLOT), st); }
+  function allVillages(slot) {
+    const s = slot || SLOT;
+    let o = lsGet(K_VIL(s), null);
+    if (!o || typeof o !== 'object' || Array.isArray(o)) {
+      const old = lsGet(K_PLACE(s), null);
+      o = {};
+      THEMES.forEach((t) => { o[t.k] = blankTheme(); });
+      o.meadow = normTheme(old);
+      lsSet(K_VIL(s), o);
+    }
+    let dirty = false;
+    THEMES.forEach((t) => {
+      const v = normTheme(o[t.k]);
+      if (!o[t.k] || JSON.stringify(v) !== JSON.stringify(o[t.k])) dirty = true;
+      o[t.k] = v;
+    });
+    if (dirty) lsSet(K_VIL(s), o);
+    return o;
+  }
+  function state() {
+    const o = allVillages(SLOT);
+    const st = o[THEME];
+    return st && typeof st === 'object' ? st : blankTheme();
+  }
+  function save(st) {
+    const o = allVillages(SLOT);
+    o[THEME] = st;
+    lsSet(K_VIL(SLOT), o);
+  }
+  /* 다른 마을에 살고 있는 포켓몬 — pid → 테마 정의 */
+  function homesElsewhere() {
+    const o = allVillages(SLOT);
+    const home = {};
+    THEMES.forEach((t) => {
+      if (t.k === THEME) return;
+      const list = (o[t.k] && o[t.k].poke) || [];
+      list.forEach((p) => { if (p && p.id != null) home[p.id] = t; });
+    });
+    return home;
+  }
+  function themesWithPoke(pid) {
+    const o = allVillages(SLOT);
+    return THEMES.filter((t) => t.k !== THEME && (o[t.k] && o[t.k].poke || []).some((p) => String(p.id) === String(pid)));
+  }
+  /* 이사 — 다른 마을에서 빼고 지금 마을로 옴(손실 없이 이동) */
+  function movePokeHere(id) {
+    const from = themesWithPoke(id);
+    if (!from.length) return placePoke(id);
+    const o = allVillages(SLOT);
+    from.forEach((t) => {
+      const list = o[t.k].poke || [];
+      const i = list.findIndex((p) => String(p.id) === String(id));
+      if (i >= 0) list.splice(i, 1);
+    });
+    lsSet(K_VIL(SLOT), o);
+    return placePoke(id);
+  }
   function inv() {
     const o = lsGet(K_INV(SLOT), {}) || {};
     const out = {};
@@ -968,6 +1303,31 @@
   }
 
   function floorOf() { return document.getElementById('meadowFloor'); }
+
+  /* 수채화 소품 PNG — 파일 이름은 꾸미기 아이템 키와 같다(저장된 배치는 그대로 살아난다) */
+  const PROP_PNG = {
+    bench: 'bench', mat: 'mat', campfire: 'campfire', tent: 'tent', arch: 'arch',
+    fountain: 'fountain', hammock: 'hammock', sign: 'sign', lantern: 'lantern',
+    flowerbed: 'flowerbed', chest: 'chest', log: 'log',
+  };
+  function PRO_PNG(k) { return !!(PROP_PNG[k]); }
+  /* 이번에 새로 그린 수채화 소품을 프로필마다 한 번씩 선물한다(이미 받았으면 그대로 둔다).
+     저장된 마을 배치·다른 아이템 개수는 건드리지 않는다. */
+  const PROP_GIFT_VER = 'p2';
+  function giftNewProps() {
+    const flagKey = 'pkm.village.propsgift.' + PROP_GIFT_VER;
+    const done = lsGet(flagKey, null) || {};
+    let changed = false;
+    SLOTS.forEach((s) => {
+      if (done[s.k]) return;
+      const o = lsGet(K_INV(s.k), {}) || {};
+      Object.keys(PROP_PNG).forEach((k) => { o[k] = Math.max(1, Number(o[k]) || 0); });
+      lsSet(K_INV(s.k), o);
+      done[s.k] = 1;
+      changed = true;
+    });
+    if (changed) lsSet(flagKey, done);
+  }
 
   /* 지형에 따른 행동 클래스 + 상태 배지(💦/💤/⚡) */
   function applyZone(el, z) {
@@ -1007,7 +1367,11 @@
       el.setAttribute('role', 'button');
       el.setAttribute('aria-label', meta.name + ' 꾸미기 아이템');
       const art = (window.POK_PROPS && POK_PROPS.has(it.k)) ? POK_PROPS.svg(it.k) : '';
-      el.innerHTML = art ? '<span class="g">' + art + '</span>' : '<span class="g">' + meta.emoji + '</span>';
+      const png = PROP_PNG[it.k];
+      if (png) el.classList.add('has-png');
+      el.innerHTML = png
+        ? '<span class="g"><img class="pi" src="/assets/props/' + png + '.png" alt="" loading="lazy" decoding="async"></span>'
+        : (art ? '<span class="g">' + art + '</span>' : '<span class="g">' + meta.emoji + '</span>');
       el.style.left = clamp(Number(it.x) || 50, 5, 95) + '%';
       el.style.top = clamp(Number(it.y) || 70, 14, 93) + '%';
       el.style.setProperty('--sc', String(Number(it.sc) || 1));
@@ -1037,6 +1401,7 @@
     const st2 = state();
     $('#stats').textContent = '🐾 ' + st2.poke.length + '/' + MAX_PK + ' · 🎨 ' + st2.items.length + '/' + MAX_ITEM;
     paintChips();
+    paintThemeBar();
     applyTod();
   }
 
@@ -1045,19 +1410,26 @@
     const st = state();
     const placed = {};
     st.poke.forEach((p) => { placed[p.id] = 1; });
+    const home = homesElsewhere();
     const ids = dexIds(SLOT).slice().sort((a, b) => a - b);
-    $('#pokeNote').textContent = '도감 ' + ids.length + '마리 중에서 고를 수 있어요 · 마을에는 최대 ' + MAX_PK + '마리';
+    $('#pokeNote').textContent = '도감 ' + ids.length + '마리 중에서 고를 수 있어요 · 마을에는 최대 ' + MAX_PK + '마리'
+      + ' · 마을마다 따로 꾸밀 수 있어요';
     $('#zoneChips').innerHTML = '<span class="mnote">🌿 넓은 풀밭 어디에나 놓을 수 있어요 · 끌거나 톡 골라 옮기면 💧연못·😴언덕·⚔️배틀장소에서 행동이 바뀌어요</span>';
 
     const grid = $('#pokeGrid');
     if (!ids.length) {
       grid.innerHTML = '<p class="mnote" style="grid-column:1/-1;text-align:center;padding:14px">아직 잡은 포켓몬이 없어요.<br>산수·한글·영어 배틀에서 먼저 잡아 보세요!</p>';
     } else {
-      grid.innerHTML = ids.map((id) =>
-        '<button class="pcell' + (placed[id] ? ' on' : '') + '" data-pid="' + id + '">'
-        + (placed[id] ? '<span class="zz">배치</span>' : '')
-        + '<img src="' + SPR(id) + '" alt="" loading="lazy"><span>' + pkName(id) + '</span></button>'
-      ).join('');
+      grid.innerHTML = ids.map((id) => {
+        const here = !!placed[id];
+        const away = !here ? home[id] : null;
+        const badge = here ? '<span class="zz">배치</span>'
+          : (away ? '<span class="zz tow">' + away.emoji + ' ' + away.short + ' 거주중</span>' : '');
+        return '<button class="pcell' + (here ? ' on' : '') + (away ? ' away' : '') + '" data-pid="' + id + '"'
+          + ' title="' + (away ? away.name + '에 살고 있어요 — 누르면 이 마을로 이사' : pkName(id)) + '">'
+          + badge
+          + '<img src="' + SPR(id) + '" alt="" loading="lazy"><span>' + pkName(id) + '</span></button>';
+      }).join('');
     }
 
     $('#placedList').innerHTML = st.poke.length
@@ -1093,6 +1465,20 @@
     paintPokeModal();
   }
 
+  /* 다른 마을(예: 초원)에 살고 있는 포켓몬을 누를 때 — 그냥 데려오지 않고 한 번 물어본다 */
+  function askMove(id) {
+    const from = themesWithPoke(id);
+    if (!from.length) { placePoke(id); return; }
+    moveFor = id;
+    const note = document.getElementById('moveNote');
+    if (note) {
+      note.innerHTML = '<b>' + pkName(id) + '</b>은(는) 지금 <b>'
+        + from.map((t) => t.emoji + ' ' + t.name).join(', ') + '</b>에 살고 있어요.<br>이 마을(' + themeDef(THEME).emoji + ' '
+        + themeDef(THEME).name + ')로 이사시킬까요? 원래 마을에서는 빠져요.';
+    }
+    open('moveModal');
+  }
+
   /* ---------- 배치: 아이템 ---------- */
   function paintItemModal() {
     const st = state();
@@ -1106,7 +1492,9 @@
       const c = free ? 1 : (bag[k] || 0);
       return '<button class="icell' + (c ? '' : ' dim') + '" data-item="' + k + '">'
         + (free ? '<span class="c">기본</span>' : (c ? '<span class="c">×' + c + '</span>' : ''))
-        + '<span class="e">' + it.emoji + '</span><span>' + it.name + '</span></button>';
+        + (PRO_PNG(k) ? '<img class="pie" src="/assets/props/' + PROP_PNG[k] + '.png" alt="" loading="lazy">'
+          : '<span class="e">' + it.emoji + '</span>')
+        + '<span>' + it.name + '</span></button>';
     }).join('');
     $('#placedItems').innerHTML = st.items.length
       ? st.items.map((it, i) => {
@@ -1578,13 +1966,12 @@
     m.classList.remove('t-day', 't-sunset', 't-night');
     m.classList.add('t-' + k);
     m.dataset.tod = k;
-    try { if (window.POK_ART) window.POK_ART.village(m); } catch (e) { /* */ }
+    try { applyArt(); } catch (e) { /* */ }
     $$('#meadowFloor .it').forEach((el) => el.classList.toggle('nightlight', k === 'night'));
     const lab = document.getElementById('todNow');
     if (lab) {
       const nm = { day: '☀️ 낮', sunset: '🌅 노을', night: '🌙 밤' }[k];
-      lab.textContent = nm + ' · 실제 시각(06~16/17~19/20~05)에 맞춰 저절로 바뀌어요'
-        + (TOD_FORCE ? ' (시간 확인 중)' : '');
+      lab.innerHTML = nm + '<span class="tsub"> · 실제 시각에 맞춰 저절로 바뀌어요</span>';
     }
     const zClone = document.querySelector('#zoomStage .meadow');
     if (zClone) {
@@ -1736,7 +2123,7 @@
       /* 배경: 마을 맵 일러스트를 무대와 똑같이 cover 로 깔고,
          그림을 못 받았을 때만 그라데이션으로 대신 그린다. */
       let artDrawn = false;
-      const bgArt = await loadImg((window.POK_ART && POK_ART.srcVillage(tod)) || '');
+      const bgArt = await loadImg(villageSrc(tod, THEME, isWideStage()));
       if (bgArt) artDrawn = drawCover(ctx, bgArt, W, H);
       if (!artDrawn) {
       /* 하늘 그라데이션 */
@@ -1781,13 +2168,26 @@
       drawTerrain(ctx, W, H, tod);
       }
       /* 포켓몬·소품이 땅(물) 위에 서 있게 — 발밑 타원 그림자 */
-      /* 꾸미기 아이템 (+ 발밑 그림자) */
+      /* 꾸미기 아이템 (+ 발밑 그림자) — 수채화 PNG 소품은 그림을 그대로 얹는다 */
+      const usedProps = {};
+      $$('#meadowFloor .it').forEach((el) => { const k = el.dataset.k || ''; if (PRO_PNG(k)) usedProps[k] = 1; });
+      const propImgs = {};
+      for (const pk of Object.keys(usedProps)) {
+        const im = await loadImg('/assets/props/' + PROP_PNG[pk] + '.png');
+        if (im) propImgs[pk] = im;
+      }
       $$('#meadowFloor .it').forEach((el) => {
         const b = el.getBoundingClientRect();
         const cx = ((b.left + b.width / 2 - fr.left) / fr.width) * W;
         const cy = ((b.top + b.height / 2 - fr.top) / fr.height) * H;
         const size = Math.max(18, (b.width / fr.width) * W);
         const key = el.dataset.k || '';
+        const pim = propImgs[key];
+        if (pim) {
+          const h2 = size * 1.16;
+          const w2 = h2 * (pim.width / pim.height);
+          try { ctx.drawImage(pim, cx - w2 / 2, cy - h2 / 2, w2, h2); return; } catch (err) { /* */ }
+        }
         softShadow(ctx, cx, cy + size * 0.42, size * 0.36, size * 0.11, '16,46,8', 0.34);
         if (window.POK_PROPS && POK_PROPS.has(key)) {
           POK_PROPS.draw(ctx, key, cx, cy, size);
@@ -1982,10 +2382,31 @@
       if (!b) return;
       SLOT = b.dataset.slot;
       Sfx.click();
+      loadTheme();
+      paintThemeBar();
       paintVillage();
     });
 
+    /* 마을 테마 선택 — 잠긴 테마는 마릿수를 알려 준다 */
+    const tb = $('#themeBar');
+    if (tb) {
+      tb.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-vtheme]');
+        if (!b) return;
+        setTheme(b.dataset.vtheme);
+      });
+    }
+
     $('#pokeBtn').addEventListener('click', () => { Sfx.click(); paintPokeModal(); open('pokeModal'); });
+    const mvYes = $('#moveYes');
+    if (mvYes) {
+      mvYes.addEventListener('click', () => {
+        const id = moveFor;
+        moveFor = null;
+        close('moveModal');
+        if (id != null) { movePokeHere(id); Sfx.pop(); }
+      });
+    }
     $('#itemBtn').addEventListener('click', () => { Sfx.click(); paintItemModal(); open('itemModal'); });
     $('#giftBtn').addEventListener('click', () => { Sfx.click(); Gift.reset(); open('giftModal'); });
     bindZoom();
@@ -2005,6 +2426,8 @@
           const st = state();
           const i = st.poke.findIndex((p) => p.id === id);
           if (i >= 0) removePoke(i);
+        } else if (pc.classList.contains('away')) {
+          askMove(id);
         } else {
           placePoke(id);
         }
@@ -2184,9 +2607,18 @@
     pad.innerHTML = keys;
 
     bind();
+    loadTheme();
+    giftNewProps();
+    paintThemeBar();
     paintVillage();
-    /* 화면 회전·창 크기 변경으로 무대 비율이 바뀌면 지형 판정 좌표를 다시 계산한다 */
-    const onResize = () => { resetMapFit(); };
+    /* 화면 회전·창 크기 변경으로 무대 비율이 바뀌면 지형 판정 좌표와 그림(가로/세로)을 다시 고른다 */
+    const onResize = () => {
+      const m = document.getElementById('meadow');
+      const was = m ? m.dataset.fmt : '';
+      resetMapFit();
+      refreshTerrain();
+      if (m && (isWideStage() ? 'wide' : 'square') !== was) applyArt();
+    };
     window.addEventListener('resize', onResize, { passive: true });
     window.addEventListener('orientationchange', onResize, { passive: true });
 
@@ -2230,8 +2662,23 @@
     todOf,
     hourKST,
     forceTod,
+    /* 테마 검증용 */
+    theme: () => THEME,
+    themes: () => THEMES.map((t) => ({ k: t.k, name: t.name, need: t.need, open: themeOpen(t), dex: dexCount(SLOT) })),
+    setTheme(k) { return setTheme(k); },
+    fmt: () => { const m = document.getElementById('meadow'); return m ? m.dataset.fmt : ''; },
+    artSrc: () => villageSrc(todNow(), THEME, isWideStage()),
+    artVar: () => { const m = document.getElementById('meadow'); return m ? getComputedStyle(m).getPropertyValue('--art').trim() : ''; },
+    dex: () => dexCount(SLOT),
+    /* 마을별 저장 검증용 */
+    villages: () => { const o = allVillages(SLOT); return Object.keys(o).map((k) => ({ k, poke: o[k].poke.map((p) => p.id), items: o[k].items.map((i) => i.k) })); },
+    homesElsewhere: () => { const h = homesElsewhere(); return Object.keys(h).map((k) => ({ id: Number(k), theme: h[k].k })); },
+    movePokeHere: (id) => movePokeHere(Number(id)),
+    askMove: (id) => { askMove(Number(id)); return document.getElementById('moveModal').hidden === false; },
     terrain: () => TERRAIN.map((t) => ({ k: t.k, emoji: t.emoji, cx: t.cx, cy: t.cy, rx: t.rx, ry: t.ry })),
     zoneAt,
+    mapToBox,
+    boxToMap,
     movePoke(id, x, y) { return movePokeTo(Number(id), Number(x), Number(y), true); },
     selectPoke(pid) { return selectPoke(pid); },
     selectedPoke: () => selectedPoke,

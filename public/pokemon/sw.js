@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v5';   /* 2026-11-15 v5: 마을 BGM(music_village) + 오디오 10개 선설치 · versus/village BGM 연동 반영 */
+const VERSION = PREFIX + 'v6';   /* 2026-11-15 v6: 마을 4테마(초원·바다·고원·사막) 수채화 배경 + 가로 와이드 배경 + 수채화 소품 PNG */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -35,6 +35,29 @@ const SHELL = [
   '/art/village-day.webp',
   '/art/village-sunset.webp',
   '/art/village-night.webp',
+  /* 마을 4테마 — 세로(정사각) + 가로(16:9) */
+  '/art/village-day-wide.webp',
+  '/art/village-sunset-wide.webp',
+  '/art/village-night-wide.webp',
+  '/art/village-beach.webp',
+  '/art/village-beach-wide.webp',
+  '/art/village-mountain.webp',
+  '/art/village-mountain-wide.webp',
+  '/art/village-desert.webp',
+  '/art/village-desert-wide.webp',
+  /* 수채화 꾸미기 소품(투명 PNG) */
+  '/assets/props/bench.png',
+  '/assets/props/mat.png',
+  '/assets/props/campfire.png',
+  '/assets/props/tent.png',
+  '/assets/props/arch.png',
+  '/assets/props/fountain.png',
+  '/assets/props/hammock.png',
+  '/assets/props/sign.png',
+  '/assets/props/lantern.png',
+  '/assets/props/flowerbed.png',
+  '/assets/props/chest.png',
+  '/assets/props/log.png',
   /* 실음원 BGM·환경음 — 첫 설치 때 받아 두어 오프라인·비행기모드에서도 소리가 난다 */
   '/audio/music_battle.mp3',
   '/audio/music_boss.mp3',

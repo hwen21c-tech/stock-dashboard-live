@@ -115,6 +115,17 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
   같은 오리진이므로 `localStorage`(`pkm.shared.dex.v1.*`, `pkm.quota.v1`, 마을 저장)는 두 앱이 그대로 공유한다.
 - 검증: `BASE=<주소> node /workspace/_tools/e2e/pk4_scope.mjs` (매니페스트·SW scope·5개 페이지 이동·콘솔 에러·localStorage 공유 실측)
 
+#### 마을(`village-pokemon.html`) — 4대 수채화 테마 · 가로/세로 · 마을별 독립 배치
+
+| 항목 | 내용 |
+|---|---|
+| 테마 | 🌿 **초원**(기본) · 🏖️ **바다 해변**(도감 10마리) · 🏔️ **산속 고원**(20) · 🏜️ **사막 오아시스**(30) — `THEMES` 배열에 `need` 한 줄만 더하면 40·50마리 마을이 된다. `guest` 프로필은 체험용으로 전부 열림 |
+| 그림 | `/art/village-{day,sunset,night}[,-wide].webp` (초원) · `/art/village-{beach,mountain,desert}[,-wide].webp` — 무대가 가로로 넓으면(비율 ≥1.15) 자동으로 `-wide`(16:9), 아니면 정사각 |
+| 노을·밤 | 초원은 시간대별 그림 3장, 사진 테마 3종은 낮 그림 + `.art` 색 보정 + `.wash`(빛막, 밤은 multiply) + `.glow`(별·달빛·해 장식)로 만든다 |
+| 소품 | `/assets/props/*.png` — 수채화 12종(벤치·돗자리·모닥불·텐트·꽃아치·우물·해먹·표지판·랜턴·화단·보물상자·통나무), `POK_PROPS` SVG·이모지보다 우선하고 파일 이름이 아이템 키와 같다 |
+| 배치 | 마을(테마)별로 따로 저장 — `pkm.village.v2.{profile}.{theme}`. 예전 단일 저장(`pkm.village.v1.*`)은 초원 마을로 자동 이전(손실 0). 다른 마을에 산 포켓몬은 `🌿 초원 거주중` 배지로 보이고 누르면 이사 확인을 거친다 |
+| 검증 | `node /workspace/_tools/e2e/village_wide.mjs` (1100×800·884×960·400×860 × 테마 4종·노을/밤·잠금·이사·콘솔 0) |
+
 ### 3) eBook 오디오북 `/ebook/` · `/ebook.html` — 독립 PWA
 
 TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효과음까지 깔아 주는 세미 오디오북.

@@ -21,12 +21,20 @@
     sky: 'battle-sky',
   };
   var VILLAGE = { day: 'village-day', sunset: 'village-sunset', night: 'village-night' };
+  /* 초원 말고 다른 마을 테마 — 낮 그림 한 장을 쓰고 노을·밤은 마을 화면이 색 보정으로 만든다 */
+  var VILLAGE_THEME = { beach: 'village-beach', mountain: 'village-mountain', desert: 'village-desert' };
 
   var state = {};   /* src → 'loading' | 'ok' | 'fail' */
   var queue = {};   /* src → [callback] */
 
   function srcBattle(key) { var n = BATTLE[key]; return n ? BASE + n + '.webp' : ''; }
-  function srcVillage(tod) { var n = VILLAGE[tod]; return n ? BASE + n + '.webp' : ''; }
+  /* srcVillage(tod, theme, wide) — 테마·가로/세로에 맞는 마을 그림 경로.
+     기존 호출(srcVillage(tod))은 그대로 초원 마을 세로 그림을 돌려준다. */
+  function srcVillage(tod, theme, wide) {
+    var n = (theme && VILLAGE_THEME[theme]) ? VILLAGE_THEME[theme] : VILLAGE[tod];
+    if (!n) return '';
+    return BASE + n + (wide ? '-wide' : '') + '.webp';
+  }
 
   function flush(src, ok) {
     state[src] = ok ? 'ok' : 'fail';
@@ -76,7 +84,9 @@
     if (!el || !el.dataset) return;
     var tod = el.dataset.tod;
     if (!tod) return;
-    var src = srcVillage(tod);
+    var theme = el.dataset.vtheme || 'meadow';
+    var wide = el.dataset.fmt === 'wide';
+    var src = srcVillage(tod, theme, wide);
     if (!src) { el.removeAttribute('data-art'); return; }
     ensure(src, function (ok) {
       if (!el.isConnected) return;

@@ -61,6 +61,7 @@
     { k: 'slide', name: '미끄럼틀', emoji: '🛝', zone: 'grass', desc: '쭉 미끄러져 내려오는 놀이기구' },
     { k: 'sign', name: '마을 표지판', emoji: '🪧', zone: 'grass', desc: '“환영해요!” 라고 적힌 팻말' },
     { k: 'log', name: '통나무 의자', emoji: '🪵', zone: 'grass', desc: '동그랗게 자른 통나무 의자' },
+    { k: 'chest', name: '보물상자', emoji: '📦', zone: 'grass', desc: '누가 숨겨 둔 보물상자' },
     { k: 'birdhouse', name: '새집', emoji: '🐦', zone: 'grass', desc: '구구가 찾아오는 작은 새집' },
     { k: 'boat', name: '작은 보트', emoji: '⛵', zone: 'pond', desc: '연못에 둥둥 떠 있는 배' },
     { k: 'waterfall', name: '작은 폭포', emoji: '🌊', zone: 'pond', desc: '시원하게 떨어지는 물줄기' },
