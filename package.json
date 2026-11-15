@@ -2,7 +2,7 @@
   "name": "stock-dashboard-live",
   "version": "1.0.0",
   "private": true,
-  "description": "연오랑 동적 관제탑 — 증시 실시간 관제탑 9대 탭 + 패밀리 특가 레이더 (Vercel Serverless API 연동)",
+  "description": "연오랑 동적 관제탑 — 증시 실시간 관제탑 10대 탭(🎯 홍인기 D+0·1·2) + 패밀리 특가 레이더 (Vercel Serverless API 연동)",
   "engines": {
     "node": ">=18"
   },
