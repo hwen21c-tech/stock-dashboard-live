@@ -2295,6 +2295,16 @@
     <button class="tab-btn" data-view="calendar" onclick="switchView('calendar', this)">📅 증시 일정 (월간 달력 & 주간 확대)</button>
   </div>
 
+  <!-- 🚦 배지 범례: 어떤 배지가 공식 지정이고 어떤 배지가 일봉 계산인지 화면에서 바로 구분 -->
+  <div id="ohLegend" style="font-size:9px; color:#64748b; line-height:1.55; margin:-3px 0 8px 2px;">
+    🚦 <b style="color:#94a3b8;">배지</b> ·
+    <span style="color:#fde68a;">⚠️ 투자주의</span>/
+    <span style="color:#fecaca;">🚨 투자경고</span>/
+    <span style="color:#fca5a5;">🔥 투자위험</span>/
+    <span style="color:#cbd5e1;">⛔ 거래정지</span> = 네이버 금융 「관리·거래정지·경보」(KRX 지정 현황) 실측 ·
+    <span style="color:#e9d5ff;">📈 5일/20일</span> = 내장 일봉 실측 누적 등락률 계산(5일 +30%·20일 +50% 기준, <b>공식 지정 아님</b>)
+  </div>
+
     <!-- TICKER BAR (ALL 9 CORE INDICES CLICKABLE WITH CHART POPUPS) -->
   <div class="ticker-bar" style="overflow-x: auto; white-space: nowrap; padding: 7px 12px; gap: 8px; display: flex; align-items: center;">
     <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스피 (KOSPI)', '5,342.73pt (-0.61%)', '거래대금 14.8조 원', '외국인 +3,702억 순매수 vs 기관 -6,887억 차익 실현. 코스피 5,342선 마감.', 'kospi')">

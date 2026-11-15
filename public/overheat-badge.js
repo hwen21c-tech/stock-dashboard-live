@@ -242,10 +242,10 @@
     var base = '일봉 실측 계산(공식 지정 아님) · ' + dateLabel(oh.baseDate) + ' 종가 기준 · ' +
       '5일 ' + signPct(oh.chg5) + ' / 20일 ' + signPct(oh.chg20);
     if (oh.chg20 >= CFG.chg20) {
-      out.push(makeChip('oh-calc', '📈 20일 ' + signPct(oh.chg20) + ' 급등', base));
+      out.push(makeChip('oh-calc', '📈20일' + signPct(oh.chg20), base + ' · 20일 누적 급등 기준(+' + CFG.chg20 + '%)'));
     }
     if (oh.chg5 >= CFG.chg5) {
-      out.push(makeChip('oh-calc', '📈 5일 ' + signPct(oh.chg5) + ' 단기과열', base));
+      out.push(makeChip('oh-calc', '📈5일' + signPct(oh.chg5), base + ' · 단기과열 기준(5일 +' + CFG.chg5 + '%)'));
     }
     return out;
   }
