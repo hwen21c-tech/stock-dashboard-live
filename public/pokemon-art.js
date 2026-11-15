@@ -171,3 +171,71 @@
     preloadSoon();
   }
 })();
+
+/* ============================================================
+   포켓몬 그림 안전망 — 외부 CDN이 느리거나 막혀도 '빈칸'이 남지 않게 한다.
+   실패 순서: official-artwork → other/home → 기본 도트 스프라이트 → 인라인 SVG(몬스터볼)
+   · 각 페이지가 붙여 둔 onerror(그림을 display:none 으로 숨기는 코드)를 capture 단계에서
+     먼저 가로채(stopPropagation) 다음 후보로 넘긴다 → 상대·파트너가 통째로 사라지지 않는다.
+   ============================================================ */
+(function () {
+  'use strict';
+  var SPRITES = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+  var BALL_SVG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
+    + '<rect width="96" height="96" rx="20" fill="#eef7df"/>'
+    + '<circle cx="48" cy="50" r="32" fill="#ffffff" stroke="#2f4a16" stroke-width="5"/>'
+    + '<path d="M16 50h64" stroke="#2f4a16" stroke-width="7"/>'
+    + '<circle cx="48" cy="50" r="12" fill="#ffffff" stroke="#2f4a16" stroke-width="5"/>'
+    + '<circle cx="48" cy="50" r="5" fill="#79c94a"/>'
+    + '</svg>');
+
+  function idOf(src) {
+    if (!src) return 0;
+    var m = /sprites\/pokemon\/(?:other\/(?:official-artwork|home)\/)?(?:shiny\/)?(\d+)\.png/.exec(src);
+    return m ? Number(m[1]) : 0;
+  }
+  /* 지금 그림의 '다음 후보' — 없으면 '' (더 내려갈 곳이 없다) */
+  function nextSrc(src) {
+    var s = String(src || '');
+    var id = idOf(s);
+    if (!id) return '';
+    var shiny = /\/shiny\//.test(s) ? 'shiny/' : '';
+    if (/other\/official-artwork\//.test(s)) return SPRITES + 'other/home/' + shiny + id + '.png';
+    if (/other\/home\//.test(s)) return SPRITES + shiny + id + '.png';
+    return '';   /* 기본 도트까지 실패 → 인라인 SVG */
+  }
+  function rescue(img, ev) {
+    if (!img || img.tagName !== 'IMG') return false;
+    var src = img.getAttribute('src') || '';
+    if (!/sprites\/pokemon\//.test(src)) return false;
+    if (ev && ev.stopPropagation) { try { ev.stopPropagation(); } catch (e) { /* */ } }
+    var nxt = nextSrc(src);
+    img.style.display = '';
+    if (img.style.opacity === '0') img.style.opacity = '1';
+    if (nxt) { img.src = nxt; return true; }
+    img.setAttribute('data-pok-fallback', '1');
+    try { img.onerror = null; } catch (e) { /* */ }
+    if (src !== BALL_SVG) img.src = BALL_SVG;
+    return true;
+  }
+  document.addEventListener('error', function (e) { rescue(e.target, e); }, true);
+
+  /* 이미 실패한 채로 남은 그림(스크립트가 늦게 실린 경우)도 한 번씩 구제한다 */
+  function sweep() {
+    var list = document.images || [];
+    for (var i = 0; i < list.length; i += 1) {
+      var img = list[i];
+      if (!img.complete || img.naturalWidth > 0) continue;
+      if (/sprites\/pokemon\//.test(img.getAttribute('src') || '')) rescue(img, null);
+    }
+  }
+  window.addEventListener('load', sweep);
+  setTimeout(sweep, 2500);
+  setTimeout(sweep, 6000);
+  window.POK_ART = Object.assign(window.POK_ART || {}, {
+    ballSvg: BALL_SVG,
+    imgNext: nextSrc,
+    imgSweep: sweep,
+  });
+})();

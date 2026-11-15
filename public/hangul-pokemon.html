@@ -167,6 +167,28 @@
     border:2px solid var(--gold-d);border-radius:8px;padding:2px 6px;background:#fff;outline:none;
   }
   .selfoot{padding:6px 12px 14px;text-align:center;font-size:10px;color:#9aa789;font-weight:700;background:linear-gradient(180deg,#f3ffdf,#eaf6c9)}
+
+  /* ============ 출전 준비 — 누가 할지 + 난이도까지 고르고 확인하면 배틀 시작 ============ */
+  .prep{padding:9px 12px 2px;background:linear-gradient(180deg,#f3ffdf,#eaf6c9)}
+  .prep[hidden]{display:none}
+  .prep-head{display:flex;align-items:center;gap:6px;margin:0 0 7px;min-width:0}
+  .prep-head b{font-size:clamp(11.5px,3.1vw,13.5px);color:#2f4a16;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prep-head .pq{margin-left:auto;flex:0 0 auto;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#1e4a6e;
+    background:#e8f3ff;border:1.6px solid #bfd9f2;border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .prep-row{display:flex;align-items:center;gap:6px;margin:0 0 6px;min-width:0}
+  .prep-lb{flex:0 0 auto;width:2.6em;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b7a3a}
+  .prep-chips{display:flex;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:1px}
+  .prep-chips::-webkit-scrollbar{display:none}
+  .prep-chips button{flex:0 0 auto;padding:5px 9px;border-radius:11px;font-weight:900;white-space:nowrap;
+    font-size:clamp(9.5px,2.7vw,11.5px);letter-spacing:-.03em;background:#fff;border:2px solid #dcebc4;color:#5c7a34}
+  .prep-chips button.on{background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a;color:#1c4a0e}
+  .prep-go{width:100%;margin:3px 0 0;padding:11px;border-radius:14px;font-weight:900;color:#fff;
+    font-size:clamp(13px,3.6vw,15.5px);background:linear-gradient(180deg,#ff9f3c,#e8760a);box-shadow:0 4px 0 #a5520a}
+  .prep-go:active{transform:translateY(2px);box-shadow:0 2px 0 #a5520a}
+  .prep-note{margin:6px 0 0;text-align:center;font-size:clamp(9px,2.5vw,10.5px);font-weight:800;color:#8b9673}
+  /* 카드 목록만 스크롤되고 준비 칸·안내줄은 늘 보이게(작은 화면에서도 잘리지 않는다) */
+  #startModal .plist{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #startModal .prep,#startModal .selfoot{flex:0 0 auto}
   #app.shake{animation:shake .45s cubic-bezier(.36,.07,.19,.97) both}
   #app.capturing .controls, #app.capturing .timerstrip{opacity:.42;filter:grayscale(.4);transition:opacity .25s}
   @keyframes shake{
@@ -1009,6 +1031,14 @@
       <p>도감은 친구마다 따로 저장돼요</p>
     </div>
     <div class="plist" id="startList"></div>
+    <!-- 출전 준비 — 누가 할지 + 난이도를 고르고 ‘확인’을 눌러야 배틀이 시작된다 -->
+    <div class="prep" id="prepBox" hidden>
+      <div class="prep-head"><b id="prepWho">👧 첫째</b><span class="pq" id="prepQuota" hidden></span></div>
+      <div class="prep-row"><span class="prep-lb">난이도</span><div class="prep-chips" id="prepDiff"></div></div>
+<div class="prep-row"><span class="prep-lb">낱말</span><div class="prep-chips" id="prepLvl"></div></div>
+      <button type="button" class="prep-go" id="prepGo">⚔️ 확인 — 배틀 시작!</button>
+      <p class="prep-note">여기서 고른 난이도는 ⚙️ 설정과 똑같이 저장돼요</p>
+    </div>
     <div class="selfoot">✏️ 이름 바꾸기 · ⚙️ 문제 단계 바꾸기 · 이모지를 누르면 캐릭터 변경</div>
   </div>
 </div>
@@ -2607,7 +2637,7 @@ async function loadBank(refresh) {
     const o = await res.json();
     const list = (o.words || [])
       .filter((x) => x && typeof x.w === 'string' && x.w.length >= 1 && x.w.length <= 5 && !/\s/.test(x.w))
-      .map((x) => [(typeof x.e === 'string' ? x.e.trim() : ''), String(x.w), x.level || 'mid']);
+      .map((x) => [(typeof x.e === 'string' ? x.e.trim() : ''), String(x.w), x.level || 'mid', (typeof x.c === 'string' ? x.c.trim() : '')]);
     if (list.length < 100) throw new Error('bank too small ' + list.length);
     WORDS = list;
     BANK_STATE = 'ready';
@@ -2682,19 +2712,40 @@ function sylVariants(syl, level) {
   return out;
 }
 
-/* 4지선다 — 정답 글자 + 그럴듯한 함정 글자 */
+/* 4지선다 — 정답 글자 + 그럴듯한 함정 글자
+   ⚠️ 보기 첫소리를 전부 정답과 같게 만들면 '첫소리 힌트'가 무력해진다(전부 ㄷ으로 시작 등).
+   그래서 다른 첫소리 보기를 최소 2개 섞고, 나머지 한두 개만 비슷한 함정으로 둔다. */
 function syllableChoices(ans, word, n) {
+  const total = Math.max(2, n || 4);
+  const need = total - 1;
   const others = new Set(Array.from(word).filter((c) => c !== ans));
-  const pool = shuffleArr(sylVariants(ans, 2).filter((s) => !others.has(s)));
-  const chosen = pool.slice(0, n - 1);
+  const ad = decSyl(ans);
+  const variants = shuffleArr(sylVariants(ans, 2).filter((s) => s !== ans && isSyl(s) && !others.has(s)));
+  const sameCho = variants.filter((s) => decSyl(s).cho === ad.cho);
+  const diffCho = variants.filter((s) => decSyl(s).cho !== ad.cho);
+  /* 실제 낱말에 쓰이는 글자에서 다른 첫소리 후보를 모은다(그럴듯한 오답) */
+  const wordSyls = shuffleArr(WORDS.reduce((a, it) => a.concat(Array.from(it[1] || '')), [])
+    .filter((c) => isSyl(c) && c !== ans && !others.has(c)));
+  const extraDiff = wordSyls.filter((c) => decSyl(c).cho !== ad.cho);
+  const chosen = [];
+  const push = (s) => { if (s && s !== ans && isSyl(s) && !others.has(s) && !chosen.includes(s)) chosen.push(s); };
+  /* ① 서로 다른 첫소리 2개를 먼저 확보 */
+  diffCho.slice(0, 2).forEach(push);
+  extraDiff.slice(0, 3).forEach((s) => { if (chosen.length < 2) push(s); });
+  /* ② 나머지 — 같은 첫소리 함정 한 개까지, 그 뒤엔 다른 첫소리로 채운다 */
+  const restPool = shuffleArr(sameCho.slice(0, 1).concat(diffCho.slice(2), extraDiff.slice(3), sameCho.slice(1)));
+  for (let i = 0; i < restPool.length && chosen.length < need; i += 1) push(restPool[i]);
   let guard = 0;
-  const spare = shuffleArr(COMMON_SYL.filter((s) => !others.has(s)));
-  while (chosen.length < n - 1 && guard < 300) {
+  const spare = shuffleArr(COMMON_SYL.filter((s) => s !== ans && !others.has(s)));
+  while (chosen.length < need && guard < 400) {
     guard += 1;
-    const s = guard < 120 ? spare.pop() : compSyl(rand(0, 18), rand(0, 20), rand(0, 27));
-    if (s && s !== ans && !others.has(s) && !chosen.includes(s)) chosen.push(s);
+    const s = spare.length && guard < 300 ? spare.pop() : compSyl(rand(0, 18), rand(0, 20), rand(0, 27));
+    if (!s) continue;
+    /* 두 번째 보기까지는 반드시 정답과 다른 첫소리 */
+    if (chosen.length < 2 && decSyl(s).cho === ad.cho) continue;
+    push(s);
   }
-  return shuffleArr([ans, ...chosen]).map((t) => ({ t, ok: t === ans }));
+  return shuffleArr([ans, ...chosen.slice(0, need)]).map((t) => ({ t, ok: t === ans }));
 }
 
 /* 낱말 한 글자만 살짝 틀리게 (2단계 함정) */
@@ -2709,6 +2760,45 @@ function mutateWord(word) {
     }
   }
   return word;
+}
+
+/* 낱말의 갈래(동물·음식 …) — 의미 힌트에 쓴다(은행에 갈래가 없으면 빈칸) */
+function catOf(item) { return item && typeof item[3] === 'string' ? item[3] : ''; }
+function firstChoOf(word) { const c = Array.from(word || '')[0] || ''; return isSyl(c) ? CHO[decSyl(c).cho] : ''; }
+function lastChoOf(word) { const a = Array.from(word || ''); const c = a[a.length - 1] || ''; return isSyl(c) ? CHO[decSyl(c).cho] : ''; }
+
+/* 🌱 1단계 힌트 — 갈래(의미) + 글자 수 + 정답 글자의 모음·받침
+   (보기 첫소리가 서로 다르니 '첫소리만' 주는 힌트 대신 실제로 가려낼 수 있는 정보를 준다) */
+function hintEasy(item, word, ans) {
+  const d = decSyl(ans);
+  const cat = catOf(item);
+  return [
+    cat ? cat + ' 낱말이에요' : '그림을 잘 보세요',
+    Array.from(word).length + '글자',
+    '정답 글자 모음은 <b>\'' + JUNG[d.jung] + '\'</b>',
+    d.jong ? '받침은 <b>\'' + JONG[d.jong] + '\'</b>' : '받침은 없어요',
+  ].join(' · ');
+}
+/* 🌿 2단계 힌트 — 의미(갈래) + 글자 수 + 첫 글자·끝 글자 첫소리 */
+function hintMid(item, word) {
+  const cat = catOf(item);
+  const n = Array.from(word).length;
+  return [
+    cat ? cat + ' 낱말이에요' : (picReady(item) ? item[0] + ' 낱말이에요' : '잘 듣고 골라 보세요'),
+    n + '글자',
+    '첫 글자 첫소리 <b>\'' + firstChoOf(word) + '\'</b>',
+    n > 1 ? '끝 글자 첫소리 <b>\'' + lastChoOf(word) + '\'</b>' : '',
+  ].filter(Boolean).join(' · ');
+}
+/* ⚡ 3단계 힌트 — 조립 칸(초성·중성·받침)은 이미 보이니 의미(갈래)와 낱말 정보를 보탠다 */
+function hintHard(item, word, d) {
+  const cat = catOf(item);
+  return [
+    cat ? cat + ' 낱말이에요' : '그림 낱말이에요',
+    Array.from(word).length + '글자',
+    '첫 글자 첫소리 <b>\'' + firstChoOf(word) + '\'</b>',
+    '빈칸 글자 가운데소리 <b>\'' + JUNG[d.jung] + '\'</b>',
+  ].filter(Boolean).join(' · ');
 }
 
 /* ---------- 문제 만들기 ---------- */
@@ -2753,7 +2843,7 @@ function makeBlankQ() {
     say: '',
     choices: syllableChoices(ans, word, 4),
     answer: ans,
-    hintHtml: `첫소리는 <b>'${CHO[decSyl(ans).cho]}'</b>! (${Array.from(word).length}글자 낱말)`,
+    hintHtml: hintEasy(item, word, ans),
   };
 }
 
@@ -2766,15 +2856,22 @@ function makeListenQ() {
   const item = takeWord(pool, 'listen:' + S.level);
   const word = item[1];
   const opts = [word];
+  const addOpt = (v) => { if (v && v !== word && !opts.includes(v)) opts.push(v); };
+  /* 첫소리가 같은 함정은 1개만 — 나머지는 첫소리가 다른 낱말로 채운다(힌트가 살아 있게) */
+  const fc0 = firstChoOf(word);
+  for (let g = 0; g < 60 && opts.length < 2; g += 1) {
+    const v = mutateWord(word);
+    if (firstChoOf(v) === fc0) addOpt(v);
+  }
+  const diffPool = shuffleArr(pool.map((it) => it[1]).concat(WORDS.map((it) => it[1]))
+    .filter((w, i, a) => a.indexOf(w) === i && w !== word && firstChoOf(w) && firstChoOf(w) !== fc0));
+  diffPool.forEach((v) => { if (opts.length < 4) addOpt(v); });
   let guard = 0;
   while (opts.length < 4 && guard < 200) {
     guard += 1;
-    const v = mutateWord(word);
-    if (v !== word && !opts.includes(v)) opts.push(v);
-  }
-  while (opts.length < 4) {
-    const o = pick(pool)[1];
-    if (!opts.includes(o)) opts.push(o);
+    addOpt(mutateWord(word));
+    if (opts.length < 4) addOpt(pick(pool)[1]);
+    if (opts.length < 4) addOpt(pick(WORDS)[1]);
   }
   return {
     stage: 'mid',
@@ -2783,7 +2880,7 @@ function makeListenQ() {
     say: word,
     choices: shuffleArr(opts).map((t) => ({ t, ok: t === word })),
     answer: word,
-    hintHtml: (picReady(item) ? item[0] + ' ' : '') + `<b>${Array.from(word).length}글자</b> 낱말 · 첫소리는 <b>'${CHO[decSyl(Array.from(word)[0]).cho]}'</b>`,
+    hintHtml: hintMid(item, word),
   };
 }
 
@@ -2820,7 +2917,7 @@ function makeAssembleQ() {
     say: item[1],
     choices: syllableChoices(ans, item[1], 4),
     answer: ans,
-    hintHtml: `'<b>${compSyl(d.cho, d.jung, 0)}</b>'에 받침 <b>'${JONG[d.jong]}'</b>!`,
+    hintHtml: hintHard(item, item[1], d),
   };
 }
 
@@ -3523,13 +3620,13 @@ function renderProfileCards(sel, start) {
   Profiles.data.list.forEach((p) => {
     const d = Profiles.loadDex(p.id);
     const card = document.createElement('div');
-    card.className = 'pfl' + (p.id === Profiles.data.active ? ' on' : '');
+    card.className = 'pfl' + ((start ? prepTarget() : Profiles.data.active) === p.id ? ' on' : '');
     card.dataset.id = p.id;
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
     card.innerHTML = `
       <span class="pe" data-emoji title="캐릭터 바꾸기">${p.emoji}</span>
-      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${stageLabel(p)}</span></span>
+      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${stageLabel(p)}${quotaShort(p.id) ? ' · ' + quotaShort(p.id) : ''}${partnerShort() ? ' · ' + partnerShort() : ''}</span></span>
       <button class="pedit pset" title="문제 단계 설정" aria-label="설정">⚙️</button>
       <button class="pedit" title="이름 바꾸기" aria-label="이름 바꾸기">✏️</button>`;
     card.addEventListener('click', (e) => {
@@ -3549,9 +3646,9 @@ function renderProfileCards(sel, start) {
         renderProfileBar();
         return;
       }
-      chooseProfile(p.id);
+      pickProfile(p.id, start);
     });
-    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseProfile(p.id); } });
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickProfile(p.id, start); } });
     host.appendChild(card);
   });
 }
@@ -3619,6 +3716,128 @@ function chooseProfile(id) {
   Sound.click();
   toast(`${p.emoji} ${p.name} 시작!`, 'good', 900);
   speakCurrent();
+}
+
+/* ---------- 출전 준비 (누가 할지 + 난이도 → 확인하면 배틀 시작) ---------- */
+const Starter = { sel: '' };
+function prepTarget() { return Profiles.get(Starter.sel) ? Starter.sel : Profiles.data.active; }
+/* 오늘 남은 공정 횟수 — 공정 잠금(pokemon-battle2.js)과 같은 저장소를 읽는다 */
+function quotaShort(profId) {
+  try {
+    if (!window.PB2 || !PB2.quota) return '';
+    const slot = PB2.quota.keyOf(profId);
+    if (String(slot) === 'guest') return '🧪 무제한';
+    const st = PB2.quota.state();
+    if (!st || !st.limit) return '🎫 무제한';
+    const left = Math.max(0, Number(st.limit) - (Number(st[slot]) || 0));
+    return left ? '🎫 ' + left + '판' : '🔒 0판';
+  } catch (e) { return ''; }
+}
+function quotaLong(profId) {
+  try {
+    if (!window.PB2 || !PB2.quota) return '';
+    const slot = PB2.quota.keyOf(profId);
+    if (String(slot) === 'guest') return '🧪 게스트 · 무제한';
+    const st = PB2.quota.state();
+    if (!st || !st.limit) return '🎫 오늘 무제한';
+    const left = Math.max(0, Number(st.limit) - (Number(st[slot]) || 0));
+    return left ? '🎫 오늘 ' + left + '판 남음' : '🔒 오늘 다 놀았어요';
+  } catch (e) { return ''; }
+}
+function partnerShort() {
+  try {
+    if (!window.PB2 || !PB2.partnerId) return '';
+    const id = PB2.partnerId();
+    const p = id ? byId(id) : null;
+    return p ? '🐾 ' + p.name : '';
+  } catch (e) { return ''; }
+}
+function renderPrep() {
+  const box = $('#prepBox');
+  if (!box) return;
+  const p = Profiles.get(prepTarget()) || Profiles.active();
+  box.hidden = false;
+  $('#prepWho').textContent = p.emoji + ' ' + p.name;
+  const bits = [quotaLong(p.id), partnerShort()].filter(Boolean);
+  const q = $('#prepQuota');
+  q.textContent = bits.join(' · ');
+  q.hidden = !bits.length;
+  const diff = $('#prepDiff');
+  if (diff) {
+    diff.innerHTML = DIFF_KEYS.map((k) => '<button type="button" data-pdiff="' + k + '" class="' + (p.diff === k ? 'on' : '') + '">'
+      + DIFF_LABEL[k] + '</button>').join('');
+  }
+  const lvl = $('#prepLvl');
+  if (lvl) {
+    lvl.innerHTML = LEVEL_KEYS.map((k) => '<button type="button" data-plvl="' + k + '" class="' + (p.level === k ? 'on' : '') + '">'
+      + LEVEL_LABEL[k] + '</button>').join('');
+  }
+}
+function openStart() {
+  Starter.sel = Profiles.data.active;
+  renderProfileCards('#startList', true);
+  renderPrep();
+  openModal('startModal');
+}
+function startBattle() {
+  const id = prepTarget();
+  applyProfile(id, {});
+  closeModal('startModal');
+  const p = Profiles.active();
+  Sound.ensure();
+  Sound.click();
+  toast(p.emoji + ' ' + p.name + ' 출전! · ' + (DIFF_LABEL[S.diff] || ''), 'good', 1300);
+  speakCurrent();
+}
+function pickProfile(id, start) {
+  if (!start) { chooseProfile(id); return; }
+  Starter.sel = id;
+  try { Sound.ensure(); Sound.click(); } catch (e) { /* */ }
+  renderProfileCards('#startList', true);
+  renderPrep();
+  const go = $('#prepGo');
+  if (go && go.scrollIntoView) { try { go.scrollIntoView({ block: 'nearest' }); } catch (e) { /* */ } }
+}
+function bindPrep() {
+  const box = $('#prepBox');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const d = e.target.closest('#prepDiff button');
+    if (d) {
+      const p = Profiles.get(prepTarget());
+      if (!p) return;
+      Sound.ensure(); Sound.click();
+      p.diff = d.dataset.pdiff;
+      Profiles.save();
+      renderPrep();
+      renderProfileCards('#startList', true);
+      toast(DIFF_LABEL[p.diff] + ' 난이도', 'info', 900);
+      return;
+    }
+    const lv = e.target.closest('#prepLvl button');
+    if (lv) {
+      const p = Profiles.get(prepTarget());
+      if (!p) return;
+      Sound.ensure(); Sound.click();
+      p.level = lv.dataset.plvl;
+      Profiles.save();
+      renderPrep();
+      renderProfileCards('#startList', true);
+      toast('낱말 난이도 · ' + LEVEL_LABEL[p.level], 'info', 900);
+      return;
+    }
+
+    if (e.target.closest('#prepGo')) { startBattle(); }
+  });
+  /* 공정 잠금(PB2)은 이 화면보다 늦게 실려서, 다 실린 뒤 한 번 더 그린다 */
+  const refresh = () => {
+    const m = document.getElementById('startModal');
+    if (!m || m.hidden) return;
+    renderProfileCards('#startList', true);
+    renderPrep();
+  };
+  window.addEventListener('load', refresh);
+  setTimeout(refresh, 800);
 }
 
 /* ---------- 모달 ---------- */
@@ -3814,6 +4033,7 @@ function boot() {
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();
+  bindPrep();
   renderTypeTabs();
   spawnParticles();
   POKEMON.forEach((p) => { if (!p.level) p.level = rand(2, 9); });
@@ -3826,12 +4046,32 @@ function boot() {
   loadBank(false);
   startDayRotation();
   newEncounter({ silent: true });
-  openModal('startModal');
+  openStart();
   loadFullDex();
   const sp = $('#splash');
   if (sp) setTimeout(() => { sp.classList.add('gone'); }, 1900);
 }
 boot();
+
+/* 검증용 최소 API — 지금 문제의 보기·정답·힌트를 그대로 돌려준다 */
+window.HPB = {
+  q() {
+    if (!S.q) return null;
+    return {
+      stage: S.q.stage,
+      answer: S.q.answer,
+      choices: (S.q.choices || []).map((c) => ({ t: c.t, ok: !!c.ok })),
+      hint: S.q.hintHtml || '',
+      cat: catOf((WORDS || []).find((it) => it && it[1] === S.q.answer) || []),
+    };
+  },
+  hint() { showHint(); return ($('#hintBox') || {}).textContent || ''; },
+  next() { newQuestion(); return true; },
+  diff() { return S.diff; },
+  setDiff(d) { S.diff = ['easy', 'mid', 'hard', 'mix'].includes(d) ? d : S.diff; Deck.reset(); recentWords.length = 0; newQuestion(); return S.diff; },
+  level() { return S.level; },
+  setLevel(l) { S.level = ['easy', 'mid', 'hard'].includes(l) ? l : S.level; newQuestion(); return S.level; },
+};
 </script>
 <script src="/pokemon-3rd.js"></script>
 <script src="/pokemon-art.js"></script>

@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v7';   /* 2026-11-15 v7: 마을 9테마 — 태초·항구·숲속·설원·운하 수채화 배경(세로+가로) 10장 추가 */
+const VERSION = PREFIX + 'v9';   /* 2026-11-15 v9: 마을 📖 도감 보기 · 시작 전 출전 준비(누가+난이도) · 아이템 잠금/아빠 PIN 토글 · 그림 안전망(빈칸 0) */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',

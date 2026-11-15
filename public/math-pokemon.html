@@ -167,6 +167,28 @@
     border:2px solid var(--gold-d);border-radius:8px;padding:2px 6px;background:#fff;outline:none;
   }
   .selfoot{padding:6px 12px 14px;text-align:center;font-size:10px;color:#9aa789;font-weight:700;background:linear-gradient(180deg,#f3ffdf,#eaf6c9)}
+
+  /* ============ 출전 준비 — 누가 할지 + 난이도까지 고르고 확인하면 배틀 시작 ============ */
+  .prep{padding:9px 12px 2px;background:linear-gradient(180deg,#f3ffdf,#eaf6c9)}
+  .prep[hidden]{display:none}
+  .prep-head{display:flex;align-items:center;gap:6px;margin:0 0 7px;min-width:0}
+  .prep-head b{font-size:clamp(11.5px,3.1vw,13.5px);color:#2f4a16;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prep-head .pq{margin-left:auto;flex:0 0 auto;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#1e4a6e;
+    background:#e8f3ff;border:1.6px solid #bfd9f2;border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .prep-row{display:flex;align-items:center;gap:6px;margin:0 0 6px;min-width:0}
+  .prep-lb{flex:0 0 auto;width:2.6em;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b7a3a}
+  .prep-chips{display:flex;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:1px}
+  .prep-chips::-webkit-scrollbar{display:none}
+  .prep-chips button{flex:0 0 auto;padding:5px 9px;border-radius:11px;font-weight:900;white-space:nowrap;
+    font-size:clamp(9.5px,2.7vw,11.5px);letter-spacing:-.03em;background:#fff;border:2px solid #dcebc4;color:#5c7a34}
+  .prep-chips button.on{background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a;color:#1c4a0e}
+  .prep-go{width:100%;margin:3px 0 0;padding:11px;border-radius:14px;font-weight:900;color:#fff;
+    font-size:clamp(13px,3.6vw,15.5px);background:linear-gradient(180deg,#ff9f3c,#e8760a);box-shadow:0 4px 0 #a5520a}
+  .prep-go:active{transform:translateY(2px);box-shadow:0 2px 0 #a5520a}
+  .prep-note{margin:6px 0 0;text-align:center;font-size:clamp(9px,2.5vw,10.5px);font-weight:800;color:#8b9673}
+  /* 카드 목록만 스크롤되고 준비 칸·안내줄은 늘 보이게(작은 화면에서도 잘리지 않는다) */
+  #startModal .plist{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #startModal .prep,#startModal .selfoot{flex:0 0 auto}
   #app.shake{animation:shake .45s cubic-bezier(.36,.07,.19,.97) both}
   #app.capturing .controls, #app.capturing .timerstrip{opacity:.42;filter:grayscale(.4);transition:opacity .25s}
   @keyframes shake{
@@ -948,6 +970,14 @@
       <p>도감은 친구마다 따로 저장돼요</p>
     </div>
     <div class="plist" id="startList"></div>
+    <!-- 출전 준비 — 누가 할지 + 난이도를 고르고 ‘확인’을 눌러야 배틀이 시작된다 -->
+    <div class="prep" id="prepBox" hidden>
+      <div class="prep-head"><b id="prepWho">👧 첫째</b><span class="pq" id="prepQuota" hidden></span></div>
+      <div class="prep-row"><span class="prep-lb">난이도</span><div class="prep-chips" id="prepDiff"></div></div>
+<div class="prep-row"><span class="prep-lb">연산</span><div class="prep-chips" id="prepOps"></div></div>
+      <button type="button" class="prep-go" id="prepGo">⚔️ 확인 — 배틀 시작!</button>
+      <p class="prep-note">여기서 고른 난이도는 ⚙️ 설정과 똑같이 저장돼요</p>
+    </div>
     <div class="selfoot">✏️ 이름 바꾸기 · ⚙️ 연산·난이도 바꾸기 · 이모지를 누르면 캐릭터 변경</div>
   </div>
 </div>
@@ -3248,13 +3278,13 @@ function renderProfileCards(sel, start) {
   Profiles.data.list.forEach((p) => {
     const d = Profiles.loadDex(p.id);
     const card = document.createElement('div');
-    card.className = 'pfl' + (p.id === Profiles.data.active ? ' on' : '');
+    card.className = 'pfl' + ((start ? prepTarget() : Profiles.data.active) === p.id ? ' on' : '');
     card.dataset.id = p.id;
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
     card.innerHTML = `
       <span class="pe" data-emoji title="캐릭터 바꾸기">${p.emoji}</span>
-      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${DIFF_LABEL[p.diff]} · ${opLabel(p)}</span></span>
+      <span class="pinfo"><span class="pn">${esc(p.name)}</span><span class="pd">📕 ${d.ids.size}마리 · ${DIFF_LABEL[p.diff]} · ${opLabel(p)}${quotaShort(p.id) ? ' · ' + quotaShort(p.id) : ''}${partnerShort() ? ' · ' + partnerShort() : ''}</span></span>
       <button class="pedit pset" title="연산·난이도 설정" aria-label="설정">⚙️</button>
       <button class="pedit" title="이름 바꾸기" aria-label="이름 바꾸기">✏️</button>`;
     card.addEventListener('click', (e) => {
@@ -3274,9 +3304,9 @@ function renderProfileCards(sel, start) {
         renderProfileBar();
         return;
       }
-      chooseProfile(p.id);
+      pickProfile(p.id, start);
     });
-    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseProfile(p.id); } });
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickProfile(p.id, start); } });
     host.appendChild(card);
   });
 }
@@ -3345,6 +3375,140 @@ function chooseProfile(id) {
   Sound.ensure();
   Sound.click();
   toast(`${p.emoji} ${p.name} 시작!`, 'good', 900);
+}
+
+/* ---------- 출전 준비 (누가 할지 + 난이도 → 확인하면 배틀 시작) ---------- */
+const Starter = { sel: '' };
+function prepTarget() { return Profiles.get(Starter.sel) ? Starter.sel : Profiles.data.active; }
+/* 오늘 남은 공정 횟수 — 공정 잠금(pokemon-battle2.js)과 같은 저장소를 읽는다 */
+function quotaShort(profId) {
+  try {
+    if (!window.PB2 || !PB2.quota) return '';
+    const slot = PB2.quota.keyOf(profId);
+    if (String(slot) === 'guest') return '🧪 무제한';
+    const st = PB2.quota.state();
+    if (!st || !st.limit) return '🎫 무제한';
+    const left = Math.max(0, Number(st.limit) - (Number(st[slot]) || 0));
+    return left ? '🎫 ' + left + '판' : '🔒 0판';
+  } catch (e) { return ''; }
+}
+function quotaLong(profId) {
+  try {
+    if (!window.PB2 || !PB2.quota) return '';
+    const slot = PB2.quota.keyOf(profId);
+    if (String(slot) === 'guest') return '🧪 게스트 · 무제한';
+    const st = PB2.quota.state();
+    if (!st || !st.limit) return '🎫 오늘 무제한';
+    const left = Math.max(0, Number(st.limit) - (Number(st[slot]) || 0));
+    return left ? '🎫 오늘 ' + left + '판 남음' : '🔒 오늘 다 놀았어요';
+  } catch (e) { return ''; }
+}
+function partnerShort() {
+  try {
+    if (!window.PB2 || !PB2.partnerId) return '';
+    const id = PB2.partnerId();
+    const p = id ? byId(id) : null;
+    return p ? '🐾 ' + p.name : '';
+  } catch (e) { return ''; }
+}
+function renderPrep() {
+  const box = $('#prepBox');
+  if (!box) return;
+  const p = Profiles.get(prepTarget()) || Profiles.active();
+  box.hidden = false;
+  $('#prepWho').textContent = p.emoji + ' ' + p.name;
+  const bits = [quotaLong(p.id), partnerShort()].filter(Boolean);
+  const q = $('#prepQuota');
+  q.textContent = bits.join(' · ');
+  q.hidden = !bits.length;
+  const diff = $('#prepDiff');
+  if (diff) {
+    diff.innerHTML = DIFF_KEYS.map((k) => '<button type="button" data-pdiff="' + k + '" class="' + (p.diff === k ? 'on' : '') + '">'
+      + DIFF_LABEL[k] + '</button>').join('');
+  }
+  const ops = $('#prepOps');
+  if (ops) {
+    const cur = opsOf(p);
+    ops.innerHTML = OP_ORDER.map((k) => '<button type="button" data-pops="' + k + '" class="' + (cur.indexOf(k) >= 0 ? ' on' : '') + '">'
+      + OP_LABEL[k] + '</button>').join('');
+  }
+}
+function openStart() {
+  Starter.sel = Profiles.data.active;
+  renderProfileCards('#startList', true);
+  renderPrep();
+  openModal('startModal');
+}
+function startBattle() {
+  const id = prepTarget();
+  applyProfile(id, {});
+  closeModal('startModal');
+  const p = Profiles.active();
+  Sound.ensure();
+  Sound.click();
+  toast(p.emoji + ' ' + p.name + ' 출전! · ' + (DIFF_LABEL[S.diff] || ''), 'good', 1300);
+
+}
+function pickProfile(id, start) {
+  if (!start) { chooseProfile(id); return; }
+  Starter.sel = id;
+  try { Sound.ensure(); Sound.click(); } catch (e) { /* */ }
+  renderProfileCards('#startList', true);
+  renderPrep();
+  const go = $('#prepGo');
+  if (go && go.scrollIntoView) { try { go.scrollIntoView({ block: 'nearest' }); } catch (e) { /* */ } }
+}
+function bindPrep() {
+  const box = $('#prepBox');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    const d = e.target.closest('#prepDiff button');
+    if (d) {
+      const p = Profiles.get(prepTarget());
+      if (!p) return;
+      Sound.ensure(); Sound.click();
+      p.diff = d.dataset.pdiff;
+      Profiles.save();
+      renderPrep();
+      renderProfileCards('#startList', true);
+      toast(DIFF_LABEL[p.diff] + ' 난이도', 'info', 900);
+      return;
+    }
+    const o = e.target.closest('#prepOps button');
+    if (o) {
+      const p = Profiles.get(prepTarget());
+      if (!p) return;
+      const op = o.dataset.pops;
+      const cur = opsOf(p);
+      const has = cur.indexOf(op) >= 0;
+      let next;
+      if (has) {
+        next = cur.filter((x) => x !== op);
+        if (!next.length) { toast('연산은 하나 이상 골라야 해요', 'bad', 1300); return; }
+      } else {
+        next = OP_ORDER.filter((x) => cur.indexOf(x) >= 0 || x === op);
+      }
+      p.ops = next;
+      p.op = next.length === OP_ORDER.length ? 'mix' : next[0];
+      p.mix = next.length === 2 && next.indexOf('add') >= 0 && next.indexOf('sub') >= 0 ? 'pm' : 'all';
+      Profiles.save();
+      Sound.ensure(); Sound.click();
+      renderPrep();
+      renderProfileCards('#startList', true);
+      return;
+    }
+
+    if (e.target.closest('#prepGo')) { startBattle(); }
+  });
+  /* 공정 잠금(PB2)은 이 화면보다 늦게 실려서, 다 실린 뒤 한 번 더 그린다 */
+  const refresh = () => {
+    const m = document.getElementById('startModal');
+    if (!m || m.hidden) return;
+    renderProfileCards('#startList', true);
+    renderPrep();
+  };
+  window.addEventListener('load', refresh);
+  setTimeout(refresh, 800);
 }
 
 /* ---------- 모달 ---------- */
@@ -3540,6 +3704,7 @@ function boot() {
   S.range = me.range === 'gen1' ? 'gen1' : 'all';
   S.dex = Profiles.loadDex(me.id);
   bind();
+  bindPrep();
   renderTypeTabs();
   spawnParticles();
   POKEMON.forEach((p) => { if (!p.level) p.level = rand(2, 9); });
@@ -3551,7 +3716,7 @@ function boot() {
   bootPreload();
   startDayRotation();
   newEncounter({ silent: true });
-  openModal('startModal');
+  openStart();
   loadFullDex();
   const sp = $('#splash');
   if (sp) setTimeout(() => { sp.classList.add('gone'); }, 1900);

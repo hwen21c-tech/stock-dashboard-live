@@ -51,13 +51,17 @@
   .stats{flex:0 0 auto;font-size:clamp(9px,2.5vw,11px);font-weight:900;color:#3c6524;
     background:rgba(255,255,255,.8);border-radius:999px;padding:3px 9px;border:1.5px solid #dcebc4}
 
-  .acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:7px 10px 0;max-width:760px;margin:0 auto;width:100%}
-  @media (min-width:560px){ .acts{grid-template-columns:repeat(4,1fr)} }
-  .acts button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:7px 2px;border-radius:13px;
-    font-size:clamp(9.5px,2.7vw,11.5px);font-weight:900;letter-spacing:-.03em;
+  /* 다섯 개 버튼(포켓몬 배치 · 마을 꾸미기 · 📖 도감 보기 · 크게 보기 · 아빠 선물)이
+     폰 세로에서도 한 줄에 그대로 선다 — 줄바꿈·가림·가로 넘침 0 */
+  .acts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;padding:7px 9px 0;max-width:760px;margin:0 auto;width:100%}
+  .acts button{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;padding:7px 1px;border-radius:12px;
+    font-size:clamp(9px,2.45vw,11.5px);font-weight:900;letter-spacing:-.04em;
     background:linear-gradient(180deg,#fff,#f6fbea);border:2px solid var(--line);border-bottom-width:4px;
     color:#2f4a16;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .acts button .e{font-size:clamp(15px,4.2vw,19px);line-height:1.1}
+  .acts button .e{font-size:clamp(14px,3.9vw,19px);line-height:1.1}
+  .acts button > span:not(.e){display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  /* 도감 보기 — 마을 꾸미기 바로 옆에서 한눈에 눈에 띄게 */
+  #dexBtn{background:linear-gradient(180deg,#fff,#eef7ff);border-color:#bfd9f2;color:#1e4a6e}
   .acts button:active{transform:translateY(2px)}
   .acts button.gift{background:linear-gradient(180deg,#fff6f0,#ffe6dc);border-color:#f3c1ac;color:#8a3a12}
 
@@ -345,7 +349,10 @@
   .icell .e{font-size:clamp(19px,5vw,24px);line-height:1}
   .icell .c{position:absolute;right:3px;top:2px;font-size:8px;font-weight:900;color:#fff;background:#f0a71c;
     border-radius:999px;padding:0 4px}
-  .icell.dim{opacity:.5}
+  .icell.dim{opacity:.55}
+  /* 아직 얻지 못한 아이템 — 잠금 표시만 하고 놓을 수 없다 */
+  .icell.lock{filter:grayscale(.6);opacity:.7;background:#f7f7ef;border-color:#e2e2d4}
+  .icell.lock .c.lockc{background:#8a9a72;color:#fff}
   .pcell:active,.icell:active{transform:translateY(2px)}
 
   .strip{margin-top:12px;padding-top:9px;border-top:2px dashed #e2eecd}
@@ -431,6 +438,67 @@
   .zoom .ztip{margin:0;text-align:center;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
   @media (max-height:520px){ .zoom .ztip{display:none} }
 
+  /* ============ 📖 도감 보기 (마을 꾸미기 옆) ============ */
+  .modal.dex{padding:9px;z-index:64}
+  .modal.dexdetail{padding:9px;z-index:72}
+  .dxsheet{width:min(760px,100%);height:min(92dvh,100%);display:flex;flex-direction:column;overflow:hidden;
+    background:linear-gradient(180deg,#fffdf3,#f4ffe8);border:3px solid var(--line);border-radius:20px;
+    box-shadow:0 18px 40px rgba(10,40,4,.45);animation:sheetin .26s cubic-bezier(.2,1.4,.4,1) both}
+  .dxhead{display:flex;align-items:center;gap:8px;padding:11px 12px 8px;border-bottom:2px solid #eef6dd}
+  .dxhead h2{margin:0;flex:1 1 auto;min-width:0;font-size:clamp(13.5px,3.7vw,17px);letter-spacing:-.03em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dxsum{padding:9px 12px 0}
+  .dxbar{height:11px;border-radius:999px;background:#e9f3d8;border:1.5px solid #d5e7b4;overflow:hidden}
+  .dxbar i{display:block;height:100%;width:0;border-radius:999px;
+    background:linear-gradient(90deg,#8ef06a,#3fc22a);transition:width .45s cubic-bezier(.2,1,.3,1)}
+  .dxnum{display:flex;align-items:baseline;gap:6px;margin:6px 0 0;flex-wrap:wrap;
+    font-size:clamp(9.5px,2.6vw,11.5px);font-weight:900;color:#4d6b32}
+  .dxnum b{color:#1f6b12;font-size:1.18em}
+  .dxnum .gene{color:#8a9a72;font-weight:800;font-size:.95em}
+  .dxtabs{display:flex;gap:5px;padding:9px 12px 0}
+  .dxtabs button{flex:1 1 0;min-width:0;padding:6px 4px;border-radius:11px;font-weight:900;
+    font-size:clamp(9.5px,2.6vw,11.5px);letter-spacing:-.03em;background:#fff;border:2px solid #e2eecd;color:#5c7a34;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dxtabs button.on{background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a;color:#1c4a0e}
+  .dxtypes{display:flex;gap:4px;padding:7px 12px 0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .dxtypes::-webkit-scrollbar{display:none}
+  .dxtypes button{flex:0 0 auto;padding:4px 9px;border-radius:999px;font-weight:900;white-space:nowrap;
+    font-size:clamp(9px,2.5vw,11px);background:#fff;border:1.8px solid #e2eecd;color:#5c7a34}
+  .dxtypes button.on{background:linear-gradient(180deg,#ffe9a8,#ffcf4d);border-color:#d9a01a;color:#5a3200}
+  .dxbody{flex:1 1 auto;min-height:0;overflow:auto;padding:9px 12px 14px;-webkit-overflow-scrolling:touch}
+  .dxtip{margin:0 0 7px;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b8547}
+  .dxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;align-items:start}
+  .dcell{position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;
+    padding:6px 3px 5px;border-radius:13px;background:#fff;border:2px solid #e2eecd;border-bottom-width:4px;
+    font-size:clamp(8.5px,2.4vw,10px);font-weight:900;letter-spacing:-.03em;text-align:center;color:#2f4a16;
+    overflow:hidden}
+  .dcell .dn{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dcell .dimg{display:flex;align-items:center;justify-content:center;width:100%;height:clamp(38px,10vw,46px)}
+  .dcell img{width:auto;max-width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+  .dcell .dy{display:flex;gap:2px;max-width:100%;overflow:hidden}
+  .dcell .dy b{font-size:.86em;line-height:1.5;padding:0 4px;border-radius:999px;color:#fff;background:#8a9a72;white-space:nowrap}
+  .dcell .tw{position:absolute;left:3px;top:2px;font-size:.9em;line-height:1}
+  .dcell .lk{position:absolute;right:3px;top:2px;font-size:9px;line-height:1}
+  .dcell.miss{background:linear-gradient(180deg,#f7f7ef,#eef1e4);border-color:#e0e0d0;color:#9a9a84}
+  .dcell.miss img{filter:brightness(0) opacity(.3)}
+  .dcell.got:active{transform:translateY(2px)}
+  .dxmore{display:flex;justify-content:center;margin:11px 0 0}
+  .dxmore button{padding:8px 16px;border-radius:999px;font-weight:900;color:#2f4a16;
+    font-size:clamp(10px,2.8vw,12px);background:linear-gradient(180deg,#fff,#eaf8d0);border:2px solid #cfe7a2;
+    box-shadow:0 3px 0 rgba(70,120,30,.22)}
+  .dxempty{margin:16px 4px;text-align:center;font-size:clamp(10px,2.8vw,12px);font-weight:900;color:#7d8a63;line-height:1.65}
+  /* 도감 상세 */
+  .dxdet .sheet{width:min(430px,100%)}
+  .dxdet .dart{display:block;width:min(150px,42vw);margin:2px auto 4px;object-fit:contain}
+  .dxdet h3{margin:2px 0 1px;text-align:center;font-size:clamp(15px,4.2vw,19px);letter-spacing:-.03em;color:#22400f}
+  .dxdet .dsub{margin:0 0 6px;text-align:center;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7d8a63}
+  .dxdet .dty{display:flex;justify-content:center;gap:4px;flex-wrap:wrap;margin-bottom:7px}
+  .dxdet .dty b{font-size:clamp(9.5px,2.6vw,11px);padding:2px 8px;border-radius:999px;color:#fff;background:#8a9a72}
+  .dxdet .ddesc{margin:0 0 8px;font-size:clamp(10px,2.7vw,12px);font-weight:800;line-height:1.55;color:#4d6b32}
+  .dxdet .dstats{display:grid;gap:5px;padding:8px 10px;border-radius:14px;background:#f6fbea;border:1.6px solid #e2eecd}
+  .dxdet .dstats span{font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#4d6b32}
+  .dxdet .dstats .dsub2{margin:0;font-size:clamp(9px,2.4vw,10.5px);font-weight:900;color:#8a9a72}
+
   /* ============ 마을 테마 선택 (도감 10마리마다 새 마을이 열린다) ============ */
   .vtop{display:contents}
   /* 마을 테마 9종 — 좁은 화면에서는 두 줄로 자연스럽게 접힌다(가로에서는 자기 줄을 하나 차지한다) */
@@ -470,10 +538,12 @@
     .themebar{padding:0;margin:0;max-width:none;width:100%;flex:0 0 100%;order:99;
       justify-content:center;flex-wrap:nowrap;overflow:visible}
     .themebar button{padding:4px 8px}
-    .acts{display:flex;gap:4px;padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto}
-    .acts button{flex-direction:row;gap:4px;padding:5px 8px;border-radius:11px;border-bottom-width:3px}
-    .acts button .e{font-size:15px}
-    .acts button > span:not(.e){display:none}
+    .acts{display:flex;gap:4px;padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto;flex-wrap:nowrap}
+    /* 가로에서도 버튼 이름이 보이게 — 아이콘 + 짧은 이름의 컴팩트 필(글자를 숨기지 않는다) */
+    .acts button{flex-direction:row;gap:3px;padding:4px 7px;border-radius:10px;border-bottom-width:3px;
+      font-size:clamp(9.5px,1.25vw,11.5px);letter-spacing:-.045em}
+    .acts button .e{font-size:clamp(12px,1.6vw,15px)}
+    .acts button > span:not(.e){display:inline;max-width:none}
     .vbar2{padding:0;flex:0 0 auto;width:auto;margin-left:auto;gap:4px}
     .todnow .tsub{display:none}
     .todnow{flex:0 0 auto;white-space:nowrap}
@@ -521,6 +591,7 @@
 <div class="acts">
   <button id="pokeBtn" aria-label="포켓몬 배치" title="포켓몬 배치"><span class="e">🐾</span><span>포켓몬 배치</span></button>
   <button id="itemBtn" aria-label="마을 꾸미기" title="마을 꾸미기"><span class="e">🎨</span><span>마을 꾸미기</span></button>
+  <button id="dexBtn" aria-label="도감 보기" title="도감 보기"><span class="e">📖</span><span>도감 보기</span></button>
   <button id="zoomBtn" aria-label="크게 보기" title="크게 보기"><span class="e">🔍</span><span>크게 보기</span></button>
   <button class="gift" id="giftBtn" aria-label="아빠 선물" title="아빠 선물"><span class="e">🎁</span><span>아빠 선물</span></button>
 </div>
@@ -602,6 +673,47 @@
   </div>
 </div>
 
+<!-- 📖 도감 보기 (마을 꾸미기 바로 옆 버튼) -->
+<div class="modal dex" id="dexModal" hidden>
+  <div class="dxsheet" role="dialog" aria-modal="true" aria-labelledby="dexTitle">
+    <div class="dxhead">
+      <h2 id="dexTitle">📖 <span id="dexOwner">첫째</span>의 도감</h2>
+      <button class="mx" data-close="dexModal" aria-label="닫기">✕</button>
+    </div>
+    <div class="dxsum">
+      <div class="dxbar"><i id="dexBar"></i></div>
+      <p class="dxnum"><b id="dexCaught">0</b><span>/ <span id="dexTotal">0</span>마리</span>
+        <span id="dexPct">0%</span><span class="gene" id="dexGen1"></span></p>
+    </div>
+    <div class="dxtabs" id="dexTabs" role="tablist" aria-label="도감 보기 방식">
+      <button type="button" data-dtab="caught" class="on" role="tab" aria-selected="true">🐾 잡은 친구 <span id="dexCaughtN">0</span></button>
+      <button type="button" data-dtab="miss" role="tab" aria-selected="false">🔒 못 잡은 친구 <span id="dexMissN">0</span></button>
+    </div>
+    <div class="dxtypes" id="dexTypes" role="group" aria-label="속성으로 보기"></div>
+    <div class="dxbody" id="dexBody">
+      <p class="dxtip" id="dexTip">잡은 친구를 누르면 자세히 볼 수 있어요</p>
+      <div class="dxgrid" id="dexGrid"></div>
+      <p class="dxempty" id="dexEmpty" hidden></p>
+      <div class="dxmore" id="dexMoreWrap" hidden><button type="button" id="dexMore">더 보기</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- 📖 도감 상세 -->
+<div class="modal dexdetail dxdet" id="dexDetailModal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dxdName">
+    <div class="mhead"><h2>📖 도감 상세</h2><button class="mx" data-close="dexDetailModal" aria-label="닫기">✕</button></div>
+    <div class="mbody">
+      <img class="dart" id="dxdImg" alt="" decoding="async">
+      <h3 id="dxdName">포켓몬</h3>
+      <p class="dsub"><span id="dxdNum"></span><span id="dxdGenusWrap"> · <span id="dxdGenus"></span></span><span id="dxdRankWrap"> <b id="dxdRank"></b></span></p>
+      <div class="dty" id="dxdTypes"></div>
+      <p class="ddesc" id="dxdDesc"></p>
+      <div class="dstats" id="dxdStats"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 이사 확인 -->
 <div class="modal" id="moveModal" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
@@ -650,6 +762,19 @@
         <button class="gbtn" id="gSend" disabled>🎁 선물 보내기</button>
         <p class="gnote">선물은 바로 그 친구의 마을 가방/볼 주머니에 들어가요</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 🗑 아빠: 아이템 지우기 (꾹 누르면 PIN) -->
+<div class="modal" id="delItemModal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="delTitle">
+    <div class="mhead"><h2 id="delTitle">🗑 아이템 지우기</h2><button class="mx" data-close="delItemModal" aria-label="닫기">✕</button></div>
+    <div class="mbody">
+      <p class="mnote" id="delNote" style="text-align:center">어른만 지울 수 있어요. 가족 PIN 4자리를 눌러 주세요.</p>
+      <div class="pindots" id="delDots"><i></i><i></i><i></i><i></i></div>
+      <p class="pinmsg" id="delMsg">가족 PIN</p>
+      <div class="pinpad" id="delPad"></div>
     </div>
   </div>
 </div>
@@ -1422,6 +1547,52 @@
     if (changed) lsSet(flagKey, done);
   }
 
+  /* 11/15 정정 — '수채화 소품 전부'를 무료로 챙겨 주던 선물을 회수한다.
+     아이템은 배틀 보상·아빠 선물로 '실제로 얻은 것'만 가방에 있어야 한다.
+     (받은 기록이 있는 프로필에서, 아이템마다 1개씩만 뺀다. 이미 놓아 둔 장식은 그대로 둔다) */
+  const PROP_UNDO_KEY = 'pkm.village.propsgift.undo.v1';
+  function revokeFreeProps() {
+    const flagKey = 'pkm.village.propsgift.' + PROP_GIFT_VER;
+    const done = lsGet(flagKey, null) || {};
+    const undone = lsGet(PROP_UNDO_KEY, null) || {};
+    let changed = false;
+    SLOTS.forEach((s) => {
+      if (!done[s.k] || undone[s.k]) return;
+      const o = lsGet(K_INV(s.k), {}) || {};
+      let touched = false;
+      Object.keys(PROP_PNG).forEach((k) => {
+        const n = Number(o[k]) || 0;
+        if (n <= 0) return;
+        if (n - 1 <= 0) delete o[k]; else o[k] = n - 1;
+        touched = true;
+      });
+      if (touched) changed = true;
+      lsSet(K_INV(s.k), o);
+      undone[s.k] = 1;
+    });
+    if (Object.keys(undone).length) lsSet(PROP_UNDO_KEY, undone);
+    return changed;
+  }
+
+  /* 아이템 하나를 가방과 마을(모든 테마)에서 완전히 회수한다 */
+  function purgeItemKey(k) {
+    const bag = inv();
+    const had = Number(bag[k]) || 0;
+    if (had) { delete bag[k]; saveInv(bag); }
+    const o = allVillages(SLOT);
+    let removed = 0;
+    THEMES.forEach((t) => {
+      const list = (o[t.k] && o[t.k].items) || [];
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        if (list[i] && String(list[i].k) === String(k)) { list.splice(i, 1); removed += 1; }
+      }
+    });
+    lsSet(K_VIL(SLOT), o);
+    selectedItem = -1;
+    paintVillage();
+    return { had: had, removed: removed };
+  }
+
   /* 지형에 따른 행동 클래스 + 상태 배지(💦/💤/⚡) */
   function applyZone(el, z) {
     const act = ZONE_ACTS[z] || ZONE_ACTS.grass;
@@ -1578,13 +1749,15 @@
     const bag = inv();
     const keys = POK3 ? POK3.itemKeys() : Object.keys(bag);
     const n = Object.keys(bag).reduce((a, k) => a + bag[k], 0);
-    $('#itemNote').textContent = '가방에 있는 꾸미기 아이템이에요 · 마을에는 최대 ' + MAX_ITEM + '개 · 💡밤에 빛나는 소품도 있어요';
+    $('#itemNote').textContent = '가방에 있는 꾸미기 아이템이에요 · 마을에는 최대 ' + MAX_ITEM + '개 · 🔒는 아직 못 얻은 아이템 · 꾹 누르면 아빠가 지울 수 있어요';
     $('#itemGrid').innerHTML = keys.map((k) => {
       const it = (POK3 && POK3.item(k)) || { emoji: '🏡', name: k };
       const free = !!(it && (it.env || it.free));
       const c = free ? 1 : (bag[k] || 0);
-      return '<button class="icell' + (c ? '' : ' dim') + '" data-item="' + k + '">'
-        + (free ? '<span class="c">기본</span>' : (c ? '<span class="c">×' + c + '</span>' : ''))
+      return '<button class="icell' + (c ? '' : ' dim lock') + '" data-item="' + k + '"'
+        + (c ? '' : ' aria-label="' + it.name + ' · 아직 얻지 못한 아이템"')
+        + '>'
+        + (free ? '<span class="c">기본</span>' : (c ? '<span class="c">×' + c + '</span>' : '<span class="c lockc">🔒</span>'))
         + (PRO_PNG(k) ? '<img class="pie" src="/assets/props/' + PROP_PNG[k] + '.png" alt="" loading="lazy">'
           : '<span class="e">' + it.emoji + '</span>')
         + '<span>' + it.name + '</span></button>';
@@ -2531,7 +2704,11 @@
 
       const ic = e.target.closest('#itemGrid .icell');
       if (ic) {
-        if (ic.classList.contains('dim')) { Sfx.tone(240, 0.1, 'sawtooth', 0.04); return; }
+        if (ic.classList.contains('dim') || ic.classList.contains('lock')) {
+          try { Sfx.tone(240, 0.1, 'sawtooth', 0.04); } catch (err) { /* */ }
+          toast('🔒 아직 얻지 못한 아이템이에요 · 배틀에서 이기면 받을 수 있어요');
+          return;
+        }
         placeItem(ic.dataset.item);
         return;
       }
@@ -2689,6 +2866,423 @@
     fxTick();
   }
 
+  /* ---------- 📖 도감 보기 ----------
+     산수·한글·영어·마을이 함께 쓰는 통합 도감(pkm.shared.dex.v1.<slot>)을 마을 화면에서 바로 펼쳐 본다.
+     잡은 친구 · 진행률 · 속성 · 레어도 · 그림 · 미획득 실루엣/잠금까지 한 화면. */
+  const TYPE_COLOR = {
+    노말: '#9a9a84', 불꽃: '#ef6f2a', 물: '#3d8fe0', 풀: '#4aa93a', 전기: '#dfae15', 얼음: '#4fb8c9',
+    격투: '#c0392b', 독: '#9240a0', 땅: '#b58a2e', 비행: '#7f9fd0', 에스퍼: '#d64f8a', 벌레: '#8aa61f',
+    바위: '#a08a52', 고스트: '#6a5fa8', 드래곤: '#5a48c8', 악: '#5a4a44', 강철: '#8794a0', 페어리: '#e07fb8',
+  };
+  const DEX_PAGE = 60;
+  const SUBJECT_NAME = { math: '⚡ 산수', hangul: '📖 한글', english: '🔤 영어' };
+  const Dex = { tab: 'caught', type: '', shown: DEX_PAGE, obs: null };
+
+  function dexStore(slot) {
+    const o = lsGet('pkm.shared.dex.v1.' + (slot || SLOT), null) || {};
+    const ids = new Set((Array.isArray(o.ids) ? o.ids : []).filter((n) => Number.isFinite(n)));
+    return {
+      ids: ids,
+      counts: o.counts && typeof o.counts === 'object' ? o.counts : {},
+      dates: o.dates && typeof o.dates === 'object' ? o.dates : {},
+      subjects: o.subjects && typeof o.subjects === 'object' ? o.subjects : {},
+    };
+  }
+  function dexNumOf(p) { return String((p && (p.num || p.id)) || '').padStart(3, '0'); }
+  function dexRankOf(p) { return p && (p.mythical ? '🌟' : (p.legend ? '👑' : '')); }
+  function typeTags(types) {
+    return (types || []).map((t) => '<b style="background:' + (TYPE_COLOR[t] || '#8a9a72') + '">' + t + '</b>').join('');
+  }
+  function dexSortByNum(a, b) { return (Number(a.num) || a.id) - (Number(b.num) || b.id) || a.id - b.id; }
+  function dexBase(store) {
+    const all = DB.list.filter((p) => p && Number.isFinite(p.id));
+    return (Dex.tab === 'caught' ? all.filter((p) => store.ids.has(p.id)) : all.filter((p) => !store.ids.has(p.id))).sort(dexSortByNum);
+  }
+  function loadDexImg(img) {
+    const src = img.getAttribute('data-src');
+    if (!src) return;
+    img.removeAttribute('data-src');
+    img.addEventListener('error', function () {
+      const art = img.getAttribute('data-art');
+      if (art) { img.removeAttribute('data-art'); img.src = art; }
+    });
+    img.src = src;
+  }
+  function lazyDexImages(root) {
+    const imgs = $$('img[data-src]', root);
+    if (!imgs.length) return;
+    if (!('IntersectionObserver' in window)) { imgs.forEach(loadDexImg); return; }
+    if (!Dex.obs) {
+      Dex.obs = new IntersectionObserver((ents) => {
+        ents.forEach((en) => { if (en.isIntersecting) { Dex.obs.unobserve(en.target); loadDexImg(en.target); } });
+      }, { root: $('#dexBody'), rootMargin: '240px' });
+    }
+    imgs.forEach((img) => Dex.obs.observe(img));
+  }
+  function dexCellHtml(p, has) {
+    const rank = has ? dexRankOf(p) : '';
+    const label = has
+      ? p.name + ' · ' + (p.types || []).join('·') + ' · ' + dexNumOf(p)
+      : '아직 잡지 못한 포켓몬 ' + dexNumOf(p);
+    return '<button type="button" class="dcell ' + (has ? 'got' : 'miss') + '" data-dexid="' + p.id + '" aria-label="' + label + '">'
+      + (rank ? '<span class="tw">' + rank + '</span>' : '')
+      + (has ? '' : '<span class="lk">🔒</span>')
+      + '<span class="dn">#' + dexNumOf(p) + '</span>'
+      + '<span class="dimg"><img data-src="' + SPR(p.id) + '" data-art="' + ART(p.id) + '" alt="" loading="lazy" decoding="async"></span>'
+      + '<span class="dn">' + (has ? p.name : '???') + '</span>'
+      + (has ? '<span class="dy">' + typeTags(p.types) + '</span>' : '')
+      + '</button>';
+  }
+  function paintDexTypes(base) {
+    const host = $('#dexTypes');
+    if (!host) return;
+    const counts = {};
+    base.forEach((p) => (p.types || []).forEach((t) => { counts[t] = (counts[t] || 0) + 1; }));
+    if (Dex.type && !counts[Dex.type]) Dex.type = '';
+    const order = Object.keys(TYPE_COLOR).filter((t) => counts[t]);
+    host.innerHTML = '<button type="button" data-dtype=""' + (Dex.type ? '' : ' class="on"') + '>전체 ' + base.length + '</button>'
+      + order.map((t) => '<button type="button" data-dtype="' + t + '"' + (t === Dex.type ? ' class="on"' : '')
+        + ' style="' + (t === Dex.type ? '' : 'border-color:' + (TYPE_COLOR[t] || '#e2eecd')) + '">' + t + ' ' + counts[t] + '</button>').join('');
+  }
+  function renderDex() {
+    const store = dexStore(SLOT);
+    const total = DB.list.length;
+    const got = store.ids.size;
+    $('#dexOwner').textContent = slotName(SLOT);
+    $('#dexCaught').textContent = got.toLocaleString('ko-KR');
+    $('#dexTotal').textContent = total.toLocaleString('ko-KR');
+    const pct = total ? (got / total) * 100 : 0;
+    $('#dexPct').textContent = (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '%';
+    $('#dexBar').style.width = (total ? Math.min(100, pct) : 0).toFixed(2) + '%';
+    const gen1 = DB.list.filter((p) => p.id <= 151);
+    const gen1Got = gen1.filter((p) => store.ids.has(p.id)).length;
+    $('#dexGen1').textContent = gen1.length ? '· 1세대 ' + gen1Got + '/' + gen1.length : '';
+    $('#dexCaughtN').textContent = got;
+    $('#dexMissN').textContent = Math.max(0, total - got);
+    $$('#dexTabs button').forEach((b) => {
+      const on = b.dataset.dtab === Dex.tab;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const grid = $('#dexGrid');
+    const more = $('#dexMoreWrap');
+    const empty = $('#dexEmpty');
+    if (!total) {
+      grid.innerHTML = '';
+      more.hidden = true;
+      empty.hidden = false;
+      empty.textContent = '도감 목록을 불러오는 중이에요…';
+      return;
+    }
+    const base = dexBase(store);
+    paintDexTypes(base);
+    const list = Dex.type ? base.filter((p) => (p.types || []).indexOf(Dex.type) >= 0) : base;
+    const slice = list.slice(0, Dex.shown);
+    grid.innerHTML = slice.map((p) => dexCellHtml(p, store.ids.has(p.id))).join('');
+    $('#dexTip').textContent = Dex.tab === 'caught'
+      ? '잡은 친구를 누르면 자세히 볼 수 있어요'
+      : '아직 못 잡은 친구예요 · 실루엣과 잠금만 보여요';
+    empty.hidden = list.length > 0;
+    empty.textContent = Dex.tab === 'caught'
+      ? (Dex.type ? Dex.type + ' 속성으로 잡은 친구가 아직 없어요' : '아직 잡은 친구가 없어요 · 배틀에서 이기면 도감에 차곡차곡 쌓여요!')
+      : (Dex.type ? Dex.type + ' 속성은 모두 잡았어요! 🎉' : '모든 친구를 다 잡았어요! 🎉');
+    const rest = list.length - slice.length;
+    more.hidden = rest <= 0;
+    if (rest > 0) $('#dexMore').textContent = '더 보기 (+' + Math.min(DEX_PAGE, rest) + ') · 남은 ' + rest + '마리';
+    lazyDexImages(grid);
+  }
+  function dexScrollTop() { const b = $('#dexBody'); if (b) b.scrollTop = 0; }
+  function openDex() {
+    Dex.tab = 'caught';
+    Dex.type = '';
+    Dex.shown = DEX_PAGE;
+    renderDex();
+    open('dexModal');
+    dexScrollTop();
+  }
+  function openDexDetail(id) {
+    const p = byId(Number(id));
+    const store = dexStore(SLOT);
+    if (!p || !store.ids.has(p.id)) { toast('🔒 아직 잡지 못한 친구예요'); return; }
+    const times = Number(store.counts[p.id] || store.counts[String(p.id)] || 0);
+    const first = String(store.dates[p.id] || store.dates[String(p.id)] || '');
+    const subs = store.subjects[p.id] || store.subjects[String(p.id)] || [];
+    const rank = dexRankOf(p);
+    $('#dxdName').textContent = p.name;
+    $('#dxdNum').textContent = '#' + dexNumOf(p) + (p.form ? ' · 특별폼' : ' · ' + (p.gen || 1) + '세대');
+    $('#dxdGenus').textContent = p.genus || '분류 없음';
+    $('#dxdRankWrap').hidden = !rank;
+    $('#dxdRank').textContent = rank ? (p.mythical ? '🌟 환상' : '👑 전설') : '';
+    $('#dxdTypes').innerHTML = typeTags(p.types);
+    const desc = String(p.desc || '').trim();
+    $('#dxdDesc').textContent = desc;
+    $('#dxdDesc').hidden = !desc;
+    const img = $('#dxdImg');
+    img.onerror = () => { img.onerror = null; img.src = SPR(p.id); };
+    img.src = ART(p.id);
+    img.alt = p.name;
+    const rows = [
+      '<span>🐾 잡은 횟수 ' + (times || 1) + '번</span>',
+      first ? '<span>📅 처음 잡은 날 ' + first + '</span>' : '',
+      subs.length ? '<span>📚 ' + subs.map((s) => SUBJECT_NAME[s] || s).join(' · ') + '에서 잡았어요</span>' : '',
+      '<span>🏡 지금 ' + slotName(SLOT) + '의 도감에 있어요</span>',
+    ].filter(Boolean);
+    $('#dxdStats').innerHTML = rows.join('') + '<p class="dsub2">이 도감은 산수 · 한글 · 영어 · 마을이 함께 써요</p>';
+    open('dexDetailModal');
+    try { Sfx.click(); } catch (e) { /* */ }
+  }
+  function bindDex() {
+    const btn = $('#dexBtn');
+    if (btn) btn.addEventListener('click', () => { Sfx.click(); openDex(); });
+    const m = $('#dexModal');
+    if (!m) return;
+    m.addEventListener('click', (e) => {
+      if (e.target.closest('[data-close="dexModal"]')) { close('dexModal'); close('dexDetailModal'); return; }
+      const tab = e.target.closest('#dexTabs button');
+      if (tab) {
+        Dex.tab = tab.dataset.dtab === 'miss' ? 'miss' : 'caught';
+        Dex.type = '';
+        Dex.shown = DEX_PAGE;
+        try { Sfx.click(); } catch (err) { /* */ }
+        renderDex();
+        dexScrollTop();
+        return;
+      }
+      const ty = e.target.closest('#dexTypes button');
+      if (ty) {
+        Dex.type = ty.dataset.dtype || '';
+        Dex.shown = DEX_PAGE;
+        try { Sfx.click(); } catch (err) { /* */ }
+        renderDex();
+        dexScrollTop();
+        return;
+      }
+      if (e.target.closest('#dexMore')) {
+        Dex.shown += DEX_PAGE;
+        try { Sfx.click(); } catch (err) { /* */ }
+        renderDex();
+        return;
+      }
+      const cell = e.target.closest('#dexGrid .dcell');
+      if (cell) {
+        if (DexPress.fired) { DexPress.fired = false; return; }
+        if (cell.classList.contains('got')) openDexDetail(cell.dataset.dexid);
+        else { try { Sfx.tone(240, 0.08, 'sawtooth', 0.04); } catch (err) { /* */ } toast('🔒 아직 잡지 못한 친구예요'); }
+      }
+    });
+  }
+
+  /* ---------- 🛡 아빠 관리자 — 꾹 누르면 PIN, 도감·꾸미기를 자유롭게 넣었다 뺐다 ----------
+     · 한 번 PIN을 통과하면 2분 동안은 다시 묻지 않는다(여러 개를 연달아 토글).
+     · 보유 → 지우기(도감 삭제 / 아이템 회수 + 마을 배치 회수)
+     · 미보유(잠금·실루엣) → 넣기(도감 등록 / 아이템 +1개) */
+  const Adm = {
+    until: 0,
+    pending: null,
+    gate(title, desc, fn) {
+      if (Date.now() < this.until) { return fn(); }
+      this.pending = fn;
+      PinUI.reset(title, desc);
+      open('delItemModal');
+      return null;
+    },
+    pass() {
+      this.until = Date.now() + 120000;
+      const fn = this.pending;
+      this.pending = null;
+      close('delItemModal');
+      if (fn) { try { fn(); } catch (e) { /* */ } }
+    },
+    state() { return { unlocked: Date.now() < this.until, left: Math.max(0, Math.round((this.until - Date.now()) / 1000)) }; },
+  };
+
+  const PinUI = {
+    buf: '',
+    fails: 0,
+    reset(title, desc) {
+      this.buf = '';
+      this.fails = 0;
+      $$('#delDots i').forEach((d) => d.classList.remove('on'));
+      const msg = $('#delMsg');
+      if (msg) { msg.className = 'pinmsg'; msg.textContent = '가족 PIN'; }
+      const t = $('#delTitle');
+      if (t) t.textContent = title || '🛡 아빠 관리자';
+      const note = $('#delNote');
+      if (note) note.textContent = desc || '가족 PIN 4자리를 눌러 주세요.';
+      const pad = $('#delPad');
+      if (pad && !pad.children.length) {
+        let keys = '';
+        [1, 2, 3, 4, 5, 6, 7, 8, 9].forEach((n) => { keys += '<button type="button" data-dd="' + n + '">' + n + '</button>'; });
+        keys += '<button type="button" class="wide" data-dact="back">⌫</button>'
+          + '<button type="button" data-dd="0">0</button>'
+          + '<button type="button" class="blank" tabindex="-1" aria-hidden="true"></button>';
+        pad.innerHTML = keys;
+      }
+    },
+    pin() {
+      const raw = lsGet(K_PIN, DEFAULT_PIN);
+      return /^\d{4}$/.test(String(raw)) ? String(raw) : DEFAULT_PIN;
+    },
+    press(d) {
+      if (this.buf.length >= 4) this.buf = '';
+      this.buf += String(d);
+      $$('#delDots i').forEach((el, i) => el.classList.toggle('on', i < this.buf.length));
+      if (this.buf.length < 4) return;
+      if (this.buf === this.pin()) { this.buf = ''; Adm.pass(); return; }
+      this.fails += 1;
+      this.buf = '';
+      $$('#delDots i').forEach((el) => el.classList.remove('on'));
+      const msg = $('#delMsg');
+      if (msg) {
+        msg.className = 'pinmsg bad';
+        msg.textContent = this.fails >= 5 ? 'PIN을 5번 틀렸어요. 잠시 뒤 다시 해 보세요.' : 'PIN이 달라요. 다시 눌러 주세요 (' + this.fails + '/5)';
+      }
+      try { Sfx.tone(220, 0.12, 'square', 0.05, 170); } catch (e) { /* */ }
+    },
+    back() {
+      if (!this.buf) return;
+      this.buf = this.buf.slice(0, -1);
+      $$('#delDots i').forEach((el, i) => el.classList.toggle('on', i < this.buf.length));
+    },
+  };
+
+  /* ---------- 도감 넣기/빼기 ---------- */
+  function dexKey(slot) { return 'pkm.shared.dex.v1.' + (slot || SLOT); }
+  function setDexMon(id, on) {
+    const p = byId(Number(id));
+    if (!p) return null;
+    const o = lsGet(dexKey(SLOT), null) || {};
+    const ids = (Array.isArray(o.ids) ? o.ids : []).filter((n) => Number.isFinite(n));
+    const counts = o.counts && typeof o.counts === 'object' ? o.counts : {};
+    const dates = o.dates && typeof o.dates === 'object' ? o.dates : {};
+    const subjects = o.subjects && typeof o.subjects === 'object' ? o.subjects : {};
+    const at = ids.indexOf(Number(p.id));
+    const had = at >= 0;
+    if (on && !had) {
+      ids.push(Number(p.id));
+      counts[p.id] = Math.max(1, Number(counts[p.id]) || 0);
+      dates[p.id] = dates[p.id] || stampDate();
+      subjects[p.id] = subjects[p.id] || ['admin'];
+    } else if (!on && had) {
+      ids.splice(at, 1);
+      delete counts[p.id];
+      delete dates[p.id];
+      delete subjects[p.id];
+      /* 마을에 놓여 있던 친구도 함께 정리 */
+      const v = allVillages(SLOT);
+      let dirty = false;
+      THEMES.forEach((t) => {
+        const list = (v[t.k] && v[t.k].poke) || [];
+        for (let j = list.length - 1; j >= 0; j -= 1) {
+          if (String(list[j].id) === String(p.id)) { list.splice(j, 1); dirty = true; }
+        }
+      });
+      if (dirty) lsSet(K_VIL(SLOT), v);
+    }
+    lsSet(dexKey(SLOT), { ids: ids, counts: counts, dates: dates, subjects: subjects, v: 1 });
+    paintVillage();
+    renderDex();
+    return !had;
+  }
+  function askToggleDex(id) {
+    const p = byId(Number(id));
+    if (!p) return;
+    const has = dexStore(SLOT).ids.has(Number(p.id));
+    const desc = has
+      ? p.name + '을(를) 도감에서 지울까요? 마을에 놓여 있으면 그 자리에서도 사라져요.'
+      : p.name + '을(를) 도감에 넣을까요? 이제 마을에도 놓을 수 있어요.';
+    Adm.gate(has ? '🗑 도감에서 지우기' : '🎁 도감에 넣기', desc, () => {
+      const now = setDexMon(p.id, !has);
+      toast(now ? '🎁 ' + p.name + '을(를) 도감에 넣었어요' : '🗑 ' + p.name + '을(를) 도감에서 지웠어요');
+    });
+    try { Sfx.tone(420, 0.08, 'square', 0.05, 620); } catch (e) { /* */ }
+  }
+  function bindDexPress() {
+    const grid = $('#dexGrid');
+    if (!grid) return;
+    const stop = () => { if (DexPress.timer) { clearTimeout(DexPress.timer); DexPress.timer = 0; } };
+    grid.addEventListener('pointerdown', (e) => {
+      const cell = e.target.closest('.dcell');
+      if (!cell) return;
+      stop();
+      DexPress.id = cell.dataset.dexid || '';
+      DexPress.x = e.clientX;
+      DexPress.y = e.clientY;
+      DexPress.fired = false;
+      DexPress.timer = setTimeout(() => {
+        DexPress.timer = 0;
+        DexPress.fired = true;
+        askToggleDex(DexPress.id);
+      }, 620);
+    });
+    grid.addEventListener('pointerup', stop);
+    grid.addEventListener('pointercancel', stop);
+    grid.addEventListener('pointerleave', stop);
+    grid.addEventListener('pointermove', (e) => {
+      if (!DexPress.timer) return;
+      if (Math.abs(e.clientX - DexPress.x) > 12 || Math.abs(e.clientY - DexPress.y) > 12) stop();
+    });
+  }
+  const DexPress = { timer: 0, id: '', x: 0, y: 0, fired: false };
+
+  /* ---------- 아이템 주기/지우기 ---------- */
+  function askToggleItem(k) {
+    if (!k) return;
+    const meta = (POK3 && POK3.item(k)) || { k: k, name: k, emoji: '🏡' };
+    const bag = inv();
+    const has = Number(bag[k]) > 0;
+    const desc = has
+      ? meta.emoji + ' ' + meta.name + '을(를) 지울까요? 마을에 놓인 것도 함께 사라져요.'
+      : meta.emoji + ' ' + meta.name + ' 1개를 가방에 넣을까요?';
+    Adm.gate(has ? '🗑 아이템 지우기' : '🎁 아이템 주기', desc, () => {
+      if (has) {
+        const res = purgeItemKey(k);
+        paintItemModal();
+        toast('🗑 ' + meta.emoji + ' ' + meta.name + '을(를) 지웠어요' + (res.removed ? ' · 마을에 놓인 ' + res.removed + '개도 함께' : ''));
+      } else {
+        const b = inv();
+        b[k] = Math.max(0, Number(b[k]) || 0) + 1;
+        saveInv(b);
+        paintItemModal();
+        toast('🎁 ' + meta.emoji + ' ' + meta.name + ' 1개를 넣었어요');
+      }
+    });
+    try { Sfx.tone(420, 0.08, 'square', 0.05, 620); } catch (e) { /* */ }
+  }
+  const ItemPress = { timer: 0, k: '', x: 0, y: 0 };
+  function bindItemPress() {
+    const grid = $('#itemGrid');
+    if (!grid) return;
+    const stop = () => { if (ItemPress.timer) { clearTimeout(ItemPress.timer); ItemPress.timer = 0; } };
+    grid.addEventListener('pointerdown', (e) => {
+      const cell = e.target.closest('.icell');
+      if (!cell) return;
+      stop();
+      ItemPress.k = cell.dataset.item || '';
+      ItemPress.x = e.clientX;
+      ItemPress.y = e.clientY;
+      ItemPress.timer = setTimeout(() => {
+        ItemPress.timer = 0;
+        askToggleItem(ItemPress.k);
+      }, 620);
+    });
+    grid.addEventListener('pointerup', stop);
+    grid.addEventListener('pointercancel', stop);
+    grid.addEventListener('pointerleave', stop);
+    grid.addEventListener('pointermove', (e) => {
+      if (!ItemPress.timer) return;
+      if (Math.abs(e.clientX - ItemPress.x) > 12 || Math.abs(e.clientY - ItemPress.y) > 12) stop();
+    });
+    const pad = $('#delPad');
+    if (pad) {
+      pad.addEventListener('click', (e) => {
+        const n = e.target.closest('button[data-dd]');
+        if (n) { try { Sfx.click(); } catch (err) { /* */ } PinUI.press(n.dataset.dd); return; }
+        if (e.target.closest('button[data-dact="back"]')) { try { Sfx.click(); } catch (err) { /* */ } PinUI.back(); }
+      });
+    }
+  }
+
   /* ---------- 부팅 ---------- */
   function boot() {
     const pad = $('#pinPad');
@@ -2700,8 +3294,11 @@
     pad.innerHTML = keys;
 
     bind();
+    bindDex();
+    bindDexPress();
+    bindItemPress();
     loadTheme();
-    giftNewProps();
+    revokeFreeProps();
     paintThemeBar();
     paintVillage();
     /* 화면 회전·창 크기 변경으로 무대 비율이 바뀌면 지형 판정 좌표와 그림(가로/세로)을 다시 고른다 */
@@ -2722,6 +3319,8 @@
         DB.list = db;
         db.forEach((p) => { DB.byId[p.id] = p; });
         paintVillage();
+        const dm = document.getElementById('dexModal');
+        if (dm && !dm.hidden) renderDex();   /* 도감을 먼저 열고 목록이 늦게 오면 그때 다시 그린다 */
       })
       .catch(() => { /* */ });
 
@@ -2849,6 +3448,78 @@
         touchPokemon(el);
         return true;
       },
+    },
+    /* 📖 도감 보기 검증용 */
+    dex: {
+      open() { openDex(); },
+      close() { close('dexDetailModal'); close('dexModal'); },
+      state() {
+        const store = dexStore(SLOT);
+        const m = document.getElementById('dexModal');
+        return {
+          open: !!m && !m.hidden,
+          owner: (document.getElementById('dexOwner') || {}).textContent,
+          caught: store.ids.size,
+          total: DB.list.length,
+          tab: Dex.tab,
+          type: Dex.type,
+          cells: document.querySelectorAll('#dexGrid .dcell').length,
+          got: document.querySelectorAll('#dexGrid .dcell.got').length,
+          miss: document.querySelectorAll('#dexGrid .dcell.miss').length,
+          more: !document.getElementById('dexMoreWrap').hidden,
+          empty: !document.getElementById('dexEmpty').hidden,
+          types: document.querySelectorAll('#dexTypes button').length,
+        };
+      },
+      tab(t) {
+        Dex.tab = t === 'miss' ? 'miss' : 'caught';
+        Dex.type = '';
+        Dex.shown = DEX_PAGE;
+        renderDex();
+        return Dex.tab;
+      },
+      type(t) {
+        Dex.type = t || '';
+        Dex.shown = DEX_PAGE;
+        renderDex();
+        return Dex.type;
+      },
+      more() { Dex.shown += DEX_PAGE; renderDex(); return Dex.shown; },
+      tap(id) { openDexDetail(id); },
+      longPress(id) { askToggleDex(id); },
+      toggle(id, on) { const r = setDexMon(id, on); return r; },
+      ids() { return Array.from(dexStore(SLOT).ids); },
+      pin(p) { String(p || '').split('').forEach((d) => PinUI.press(d)); },
+      adm() { return Adm.state(); },
+      detail() {
+        const d = document.getElementById('dexDetailModal');
+        return {
+          open: !!d && !d.hidden,
+          name: (document.getElementById('dxdName') || {}).textContent,
+          num: (document.getElementById('dxdNum') || {}).textContent,
+          stats: (document.getElementById('dxdStats') || {}).textContent,
+        };
+      },
+    },
+    /* 🗑 아이템 잠금·꾹 누르기 삭제 검증용 */
+    items: {
+      open() { Sfx.click(); paintItemModal(); open('itemModal'); },
+      state() {
+        const bag = inv();
+        const cells = Array.from(document.querySelectorAll('#itemGrid .icell'));
+        return {
+          bag: Object.assign({}, bag),
+          cells: cells.length,
+          locked: cells.filter((c) => c.classList.contains('lock')).length,
+          owned: cells.filter((c) => !c.classList.contains('lock')).map((c) => c.dataset.item),
+          placed: state().items.map((it) => it.k),
+          delOpen: !document.getElementById('delItemModal').hidden,
+        };
+      },
+      longPress(k) { askToggleItem(k); },
+      pin(p) { String(p || '').split('').forEach((d) => PinUI.press(d)); },
+      purge(k) { const r = purgeItemKey(k); paintItemModal(); return r; },
+      adm() { return Adm.state(); },
     },
     MAX: { poke: MAX_PK, item: MAX_ITEM },
   };
