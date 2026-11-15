@@ -81,8 +81,12 @@
 
   /* 게임 카드 */
   .games{display:grid;grid-template-columns:1fr;gap:12px;margin:16px auto 0;max-width:720px}
+  /* 6개 메뉴 — 2열(600~699)은 3줄, 3열(700~)은 2줄로 딱 떨어져 한 줄만 남지 않는다 */
+  @media (min-width:600px){ .games{grid-template-columns:repeat(2,minmax(0,1fr));max-width:720px} }
   @media (min-width:700px){ .games{grid-template-columns:repeat(3,minmax(0,1fr));max-width:1040px} }
-  .games .gwrap{min-width:0}
+  .games .gwrap{min-width:0;display:flex}
+  /* 카드는 gwrap 높이를 채운다 — 같은 줄 카드의 바닥선·「?」 버튼 위치가 맞는다 */
+  .games .gwrap > .game{flex:1 1 auto}
   .game{
     position:relative;display:flex;align-items:center;gap:13px;text-decoration:none;color:inherit;
     background:linear-gradient(180deg,#ffffff,var(--card));border:2.5px solid var(--line);
@@ -111,6 +115,11 @@
   .game.english{--ac:#3d7ff0;--acbg:#e6efff;--acbd:#a8c6f0}
   .game.versus{--ac:#e0453c;--acbg:#ffe4de;--acbd:#f0a89c}
   .game.village{--ac:#2f9e7e;--acbg:#ddfbef;--acbd:#a6e6cd}
+  .game.attic{--ac:#7a5cf0;--acbg:#efe9ff;--acbd:#c8b6f5}
+  .game.attic .ico{background:linear-gradient(180deg,#f4eeff,#e7dcff);border-color:#c8b6f5}
+  /* 「3D 포켓몬 아지트」는 글자가 많아 3열에서 낱말 중간이 끊겼다 — 낱말 단위로만 줄바꿈하고 한 단계 작게 */
+  .game.attic .ttl{word-break:keep-all;overflow-wrap:normal;font-size:clamp(17px,4vw,19px)}
+  .game.attic .desc{word-break:keep-all;overflow-wrap:normal}
   .game .lv i.new3{color:#7a3c00;background:#fff2cf;border-color:#f0cf6a}
   .gwrap{position:relative}
   .rulebtn{
@@ -703,6 +712,18 @@
       </a>
       <button class="rulebtn" data-rule="village" aria-label="포켓몬 마을 규칙">❓</button>
     </div>
+    <div class="gwrap">
+      <a class="game attic" href="/pokemon-3d.html">
+        <span class="ico" aria-hidden="true">🏡</span>
+        <span class="body">
+          <span class="ttl">3D 포켓몬 아지트</span>
+          <span class="desc">가족 4명과 잡은 친구들이 입체 마을을 산책해요</span>
+          <span class="lv"><i class="new3">포켓몬 센터</i><i class="new3">가족 4인</i><i class="new3">도감 3+3</i></span>
+        </span>
+        <span class="go" aria-hidden="true">▶</span>
+      </a>
+      <button class="rulebtn" data-rule="attic" aria-label="3D 포켓몬 아지트 규칙">❓</button>
+    </div>
   </nav>
 
   <div class="foot">
@@ -889,6 +910,16 @@
         + '<li><b>📸 사진</b>을 누르면 지금 마을(자연 지형·포켓몬 상태까지)을 그림으로 담아 <b>PNG</b>로 저장해요.</li></ul>'
         + '<h3>🎁 아빠 선물</h3><ul><li>어른이 <b>가족 PIN</b>을 한 번 확인한 뒤, 첫째·둘째·게스트 중 누구에게든 아이템·볼을 선물할 수 있어요.</li></ul>',
     },
+  };
+
+  RULES.attic = {
+    title: '🏡 3D 포켓몬 아지트 규칙',
+    html: '<h3>🧊 입체 마을 산책</h3><ul><li>잡은 친구들이 <b>진짜 3D 풀밭</b>에서 걸어 다녀요. 바닥을 톡 누르거나 방향키로 <b>가족을 조종</b>해요.</li>'
+      + '<li>포켓몬을 톡 누르면 <b>속성별 인사</b>(🔥화르륵 · ⚡찌릿 · 💧첨벙)와 <b>진짜 울음소리</b>가 나요.</li></ul>'
+      + '<h3>👨‍👩‍👧‍👦 가족 4명</h3><ul><li><b>아린 · 지안 · 엄마 · 아빠</b> 네 사람이 함께 살아요. 아래 <b>가족 바</b>에서 조종할 사람을 바꾸면 나머지는 알아서 산책·벤치 휴식!</li></ul>'
+      + '<h3>🐾 친구 고르기 (도감 3+3)</h3><ul><li><b>친구 고르기</b>에서 아린 도감 <b>최대 3마리</b> + 지안 도감 <b>최대 3마리</b>를 골라 아지트에 소환해요. 고른 친구는 저장돼서 다음에도 그대로 와 있어요.</li></ul>'
+      + '<h3>🏥 포켓몬 센터</h3><ul><li>빨간 지붕 센터를 톡 누르면 <b>회복 불빛</b>이 켜지고 모두 기운을 차려요(별가루 ✨).</li></ul>'
+      + '<h3>🔊 소리</h3><ul><li><b>🔊</b> 버튼으로 마을 배경음·울음소리를 한 번에 켜고 꺼요. 울음소리 때는 배경음이 살짝 줄어요.</li></ul>',
   };
 
   const modal = document.getElementById('ruleModal');
