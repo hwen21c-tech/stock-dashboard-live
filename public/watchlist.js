@@ -397,8 +397,8 @@
 
   /* ---------------------------------------------------------- 별 붙이기 */
   var SELECTORS = ['.stock-tile', '.supply-stock-card', '.hi-stock-card', 'article.card[data-code]',
-                   '.reason-item', '.manju-item', '#stockListGrid .stock-card'];
-  var HEAD = '.sc-top, .c-head, .st-top, .ssc-top, .ri-head, .card-top, .mi-head';
+                   '.reason-item', '.manju-item', '#stockListGrid .stock-card', '.stock-list .stock-card'];
+  var HEAD = '.sc-top, .c-head, .st-top, .ssc-top, .ri-head, .card-top, .mi-head, .card-row1';
 
   function mount(el) {
     if (!el || el.__wl) return;
