@@ -134,6 +134,9 @@ function parseStock(d) {
     valueAfterText: valueAfter !== null ? formatKoreanMoney(valueAfter) : null,
     valueBasis: valueInteg !== null ? '통합(KRX+NXT)' : '정규장',
     marketStatus: d.marketStatus || null,
+    // 거래정지·거래가능 상태 (네이버 원본 필드 그대로 — 추측 없이 전달)
+    tradeStop: (d.tradeStopType && (d.tradeStopType.text || d.tradeStopType.name)) || null,
+    tradableStatus: d.tradableStatus || null,
     tradedAt: d.localTradedAt || null,
     tradedAtKst: kstLabel(d.localTradedAt),
     changeBasis: 'naver-polling(전일 종가·시간외 반영)',
@@ -283,6 +286,189 @@ async function fetchFutures() {
   return { futures: out, errors };
 }
 
+/* --------------------- 공식 시장경보 (관리·거래정지·경보) --------------------- */
+/**
+ * 네이버 Npay 증권 '관리·거래정지·경보' 화면이 실제로 호출하는 목록 API.
+ *   ?alertType=01 → 투자주의 / 02 → 투자경고 / 03 → 투자위험
+ *   &orderType=tradeStopYn → 거래정지 종목
+ * 응답 필드: itemcode, itemname, marketAlertType, tradeStopYn, manageStatusGb,
+ *            tradingHaltDate, tradableStatusUpdatedAt, nowPrice, prevChangeRate …
+ * ※ 이 목록은 KRX 지정 현황을 네이버가 정리해 내려주는 "공식 지정" 데이터다.
+ *   (추측·계산값이 아니므로 화면에서 일봉 계산 배지와 구분해 표기한다)
+ */
+const ALERT_BASE = 'https://stock.naver.com/api/domestic/market/stock/default';
+const ALERT_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'ko-KR,ko;q=0.9',
+  Referer: 'https://stock.naver.com/',
+  Origin: 'https://stock.naver.com',
+};
+const ALERT_TYPES = [
+  { code: '01', label: '투자주의', grade: 1 },
+  { code: '02', label: '투자경고', grade: 2 },
+  { code: '03', label: '투자위험', grade: 3 },
+];
+const ALERT_PAGE_SIZE = 100;
+const ALERT_MAX_PAGES = 3;
+const ALERT_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=1800';
+
+const alertCache = { at: 0, body: null };
+const ALERT_MEM_TTL_MS = 10 * 60 * 1000;
+
+async function fetchAlertPage(params) {
+  const qs = Object.keys(params)
+    .map((k) => `${k}=${encodeURIComponent(params[k])}`)
+    .join('&');
+  const rows = await fetchJson(`${ALERT_BASE}?${qs}`, {
+    headers: ALERT_HEADERS,
+    timeout: 9000,
+  });
+  if (!Array.isArray(rows)) throw new Error('alert list shape');
+  return rows;
+}
+
+/** 페이지네이션(최대 ALERT_MAX_PAGES)까지 모아서 한 목록으로 만든다. */
+async function fetchAlertAll(extra) {
+  const out = [];
+  for (let page = 0; page < ALERT_MAX_PAGES; page++) {
+    const rows = await fetchAlertPage({
+      tradeType: 'KRX',
+      marketType: 'ALL',
+      ...extra,
+      startIdx: page * ALERT_PAGE_SIZE,
+      pageSize: ALERT_PAGE_SIZE,
+    });
+    out.push(...rows);
+    if (rows.length < ALERT_PAGE_SIZE) break;
+  }
+  return out;
+}
+
+function alertRecord(row, fallback) {
+  // 거래정지 목록에는 marketAlertType 이 '00'(지정 없음)으로 오므로 경보 등급은 경보 목록에서만 읽는다
+  const haltList = fallback.kind === 'halt';
+  const type = haltList ? null : row.marketAlertType || fallback.code || null;
+  const def = ALERT_TYPES.find((t) => t.code === type) || null;
+  const isHalt = String(row.tradeStopYn || '').toUpperCase() === 'Y' || haltList;
+  return {
+    code: row.itemcode || null,
+    name: row.itemname || null,
+    market: row.sosok === '1' ? '코스닥' : row.sosok === '0' ? '코스피' : null,
+    alertType: def ? def.code : null,
+    alertLabel: def ? def.label : null,
+    grade: def ? def.grade : 0,
+    tradeStop: isHalt,
+    manageStatus: row.manageStatusGb != null ? String(row.manageStatusGb) : null,
+    tradedAt: row.tradableStatusUpdatedAt || null,
+    haltDate: row.tradingHaltDate || null,
+    haltReasonCode: row.tradingHaltReasonCode ? String(row.tradingHaltReasonCode) : null,
+    price: parseNum(row.nowPrice),
+    changePct: parseNum(row.prevChangeRate),
+  };
+}
+
+function mergeAlert(list, rec) {
+  if (!rec || !rec.code) return;
+  const prev = list.get(rec.code);
+  if (!prev) {
+    list.set(rec.code, rec);
+    return;
+  }
+  // 상위 등급(투자위험 > 투자경고 > 투자주의 > 거래정지)과 거래정지 여부를 합쳐 남긴다
+  const pick = rec.grade > prev.grade ? rec : prev;
+  list.set(rec.code, {
+    ...pick,
+    tradeStop: !!(prev.tradeStop || rec.tradeStop),
+    haltDate: pick.haltDate || prev.haltDate || rec.haltDate || null,
+    haltReasonCode: pick.haltReasonCode || prev.haltReasonCode || rec.haltReasonCode || null,
+  });
+}
+
+async function buildAlertsBody() {
+  const started = Date.now();
+  const sources = [];
+  const errors = [];
+  const map = new Map();
+
+  const settled = await Promise.allSettled(
+    ALERT_TYPES.map((t) => fetchAlertAll({ orderType: 'marketAlertType', alertType: t.code })),
+  );
+  settled.forEach((s, i) => {
+    const t = ALERT_TYPES[i];
+    if (s.status !== 'fulfilled') {
+      sources.push({ name: `naver-alert-${t.code}`, ok: false, error: String(s.reason && s.reason.message) });
+      errors.push(`${t.label}: ${s.reason && s.reason.message}`);
+      return;
+    }
+    sources.push({ name: `naver-alert-${t.code}`, ok: true, count: s.value.length });
+    s.value.forEach((row) => mergeAlert(map, alertRecord(row, { code: t.code })));
+  });
+
+  // 거래정지 목록은 별도 정렬 키로만 내려온다
+  try {
+    const halted = await fetchAlertAll({ orderType: 'tradeStopYn' });
+    sources.push({ name: 'naver-alert-halt', ok: true, count: halted.length });
+    halted.forEach((row) => mergeAlert(map, alertRecord(row, { kind: 'halt' })));
+  } catch (e) {
+    sources.push({ name: 'naver-alert-halt', ok: false, error: String(e.message) });
+    errors.push(`거래정지: ${e.message}`);
+  }
+
+  const stocks = Array.from(map.values()).sort((a, b) => b.grade - a.grade || String(a.name).localeCompare(String(b.name)));
+  const counts = { 투자주의: 0, 투자경고: 0, 투자위험: 0, 거래정지: 0 };
+  stocks.forEach((s) => {
+    if (s.alertLabel && counts[s.alertLabel] != null) counts[s.alertLabel] += 1;
+    if (s.tradeStop) counts['거래정지'] += 1;
+  });
+  return {
+    ok: stocks.length > 0 || errors.length < ALERT_TYPES.length + 1,
+    mode: 'alerts',
+    generatedAt: new Date().toISOString(),
+    generatedAtKst: kstLabel(new Date()),
+    elapsedMs: Date.now() - started,
+    asOfLabel: '네이버 금융 관리·거래정지·경보 목록 (KRX 지정 현황)',
+    counts,
+    total: stocks.length,
+    stocks,
+    byCode: stocks.reduce((acc, s) => {
+      acc[s.code] = s;
+      return acc;
+    }, {}),
+    sources,
+    errors,
+    note:
+      '투자주의·투자경고·투자위험·거래정지는 네이버 금융이 KRX 지정 현황을 정리해 내려주는 공식 목록입니다. ' +
+      '일봉 5일/20일 누적 등락률로 계산한 단기과열 배지는 이 목록과 별개(계산값)입니다.',
+  };
+}
+
+async function handleAlerts(res, fresh) {
+  if (!fresh && alertCache.body && Date.now() - alertCache.at < ALERT_MEM_TTL_MS) {
+    res.setHeader('X-Cache', 'HIT-memory');
+    return sendJson(res, 200, alertCache.body, ALERT_CACHE_CONTROL);
+  }
+  try {
+    const body = await buildAlertsBody();
+    alertCache.at = Date.now();
+    alertCache.body = body;
+    res.setHeader('X-Cache', 'MISS');
+    return sendJson(res, 200, body, ALERT_CACHE_CONTROL);
+  } catch (e) {
+    if (alertCache.body) {
+      res.setHeader('X-Cache', 'STALE');
+      return sendJson(res, 200, { ...alertCache.body, stale: true, error: String(e.message) }, 'no-store');
+    }
+    return sendJson(
+      res,
+      502,
+      { ok: false, mode: 'alerts', reason: 'upstream_failed', message: String(e.message) },
+      'no-store',
+    );
+  }
+}
+
 /* ------------------------------ handler ------------------------------ */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -294,6 +480,9 @@ module.exports = async function handler(req, res) {
 
   const q = getQuery(req);
   const fresh = q.fresh === '1' || q.fresh === 'true';
+
+  // ?mode=alerts — 공식 시장경보 목록 (서버리스 함수 수를 늘리지 않기 위한 내부 라우트)
+  if (q.mode === 'alerts') return handleAlerts(res, fresh);
   const codeList = (q.codes || '')
     .split(',')
     .map((s) => s.trim())
