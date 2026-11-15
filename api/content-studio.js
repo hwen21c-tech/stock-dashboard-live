@@ -420,23 +420,6 @@ function parseDealsHtml(html) {
   return { travelDeals: grabVar('travelDeals'), kidsDeals: grabVar('kidsDeals'), meta: grabMeta() };
 }
 
-
-function parseDealsHtml(html) {
-  const grabVar = function (name) {
-    const re = new RegExp('var\\s+' + name + '\\s*=\\s*(\\[[\\s\\S]*?\\]);');
-    const m = html.match(re);
-    if (!m) return [];
-    try { return JSON.parse(m[1]); } catch (e) { return []; }
-  };
-  const grabMeta = function () {
-    const re = new RegExp('var\\s+DEALS_SCAN_META\\s*=\\s*(\\{[\\s\\S]*?\\});');
-    const m = html.match(re);
-    if (!m) return {};
-    try { return JSON.parse(m[1]); } catch (e) { return {}; }
-  };
-  return { travelDeals: grabVar('travelDeals'), kidsDeals: grabVar('kidsDeals'), meta: grabMeta() };
-}
-
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -505,22 +488,29 @@ async function handleGenerate(req, res, parsedUrl) {
     ok: true,
     mode: mode,
     generatedAt: content.generatedAt,
+    engine: content.engine,
     headline: content.headline,
     subline: content.subline,
     source: content.source,
     summary: content.summary,
     facts: content.facts,
     notices: content.notices,
+    titleSet: content.blog.titleSet,
     blog: {
       titles: content.blog.titles,
-      metaDesc: content.blog.metaDesc,
+      hook: content.blog.hook,
       sections: content.blog.sections,
+      points: content.blog.points,
+      closing: content.blog.closing,
       cta: content.blog.cta,
+      metaDesc: content.blog.metaDesc,
       tags: content.blog.tags,
       markdown: withMd ? content.blog.markdown : undefined,
-      markdownLength: content.blog.markdown.length
+      markdownLength: content.blog.markdown.length,
+      html: parsedUrl.searchParams.get('format') === 'html' ? ENGINE.contentToHtml(content, {}) : undefined
     },
-    shorts: content.shorts
+    shorts: content.shorts,
+    shortsJson: content.shorts.json
   };
   return sendJson(res, 200, body, 'public, s-maxage=60, stale-while-revalidate=120');
 }

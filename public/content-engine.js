@@ -1,7 +1,7 @@
 /*!
- * content-engine.js — 올인원 콘텐츠 스튜디오 생성 엔진
+ * content-engine.js — 올인원 콘텐츠 스튜디오 생성 엔진 (v1.1 · 에디토리얼)
  * ------------------------------------------------------------------
- * 브라우저(window.CS_ENGINE)와 서버(api/youtube-summary.js 의 require)가
+ * 브라우저(window.CS_ENGINE)와 서버(api/content-studio.js 의 require)가
  * 같은 파일을 쓰는 UMD 모듈이다. (Vercel 은 public/ 도 함수 번들에 포함한다)
  *
  * 원칙 — "없는 사실은 만들지 않는다"
@@ -9,6 +9,13 @@
  *  - 유튜브 모드: 실제 자막 문장에서 뽑은 문장만 쓴다(추출 요약). 자막이 없으면 요약을 지어내지 않는다.
  *  - 자유 주제 모드: 사용자가 넣은 키워드·메모 문장만 쓴다. 빈 자리는 [ ] 로 남긴다.
  *  - LLM API 키 없이 도는 규칙 기반 엔진이므로, 문장은 '실데이터 + 템플릿 조합'이다.
+ *
+ * v1.1 에서 달라진 것
+ *  1) 제목 3안 — 궁금증/반전형 · 숫자/팩트형 · 핵심 요약형 (blog.titleSet)
+ *  2) 글 호흡 — 도입 훅(hook) → 핵심 표(table) → 실전 포인트(points) → 마무리 한 줄(closing)
+ *  3) 네이버·티스토리 붙여넣기용 리치 HTML(contentToHtml) + 본문 되편집(parseBlogMarkdown)
+ *  4) 쇼츠 대본 구조화(hook / cuts / cta + 자막·나레이션) + make_shorts_mp4.py 스펙 JSON(shortsSpec)
+ *  ※ 수치·종목·가격은 여전히 실측값만 쓴다. 표에 들어가는 '해석' 열은 사실이 아니라 읽는 법이다.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -16,7 +23,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
 
   /* ============================================================
    * 0. 공통 유틸
@@ -51,8 +58,43 @@
 
   function clamp(s, n) {
     const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
-    if (t.length <= n) return t;
+    if (!n || t.length <= n) return t;
     return t.slice(0, n - 1).trim() + '…';
+  }
+
+  function has(v) { return v !== null && v !== undefined && v !== '' && !Number.isNaN(Number(v)); }
+
+  /** 조사 선택 — 마지막 글자의 받침 여부 (원/은, 가/이 …) */
+  function josa(word, withBatchim, noBatchim) {
+    const s = String(word == null ? '' : word).trim();
+    if (!s) return noBatchim;
+    const c = s.charCodeAt(s.length - 1);
+    if (c >= 0xAC00 && c <= 0xD7A3) return ((c - 0xAC00) % 28) ? withBatchim : noBatchim;
+    return noBatchim;
+  }
+
+  /** ' · ' 로 이어진 긴 문장을 항목 단위로 끊어 max 자 안에서 자른다 */
+  function oneLine(text, max) {
+    const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    const lim = max || 30;
+    if (t.length <= lim) return t;
+    const parts = t.split(' · ');
+    if (parts.length > 1) {
+      let out = '';
+      for (let i = 0; i < parts.length; i++) {
+        const next = out ? out + ' · ' + parts[i] : parts[i];
+        if (next.length > lim && out) break;
+        out = next;
+      }
+      if (out) return out;
+    }
+    return clamp(t, lim);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   function kstNow(now) {
@@ -316,8 +358,50 @@
   }
 
   /* ============================================================
-   * 2. 블로그·쇼츠 공통 빌더
+   * 2. 제목 3안 · 표 · 공통 빌더
    * ============================================================ */
+  const TITLE_KINDS = {
+    curiosity: { label: '궁금증/반전형', badge: '①' },
+    numbers: { label: '숫자/팩트형', badge: '②' },
+    summary: { label: '핵심 요약형', badge: '③' }
+  };
+
+  function makeTitleSet(list) {
+    const out = [];
+    list.forEach(function (x) {
+      if (!x || !x.text) return;
+      const meta = TITLE_KINDS[x.kind] || { label: '제목', badge: '·' };
+      out.push({ kind: x.kind, label: meta.label, badge: meta.badge, text: clamp(x.text, 72) });
+    });
+    return out;
+  }
+
+  function tableOf(headers, rows, note) {
+    const body = (rows || []).filter(function (r) {
+      return (r || []).some(function (c) { return c !== null && c !== undefined && String(c).trim() !== ''; });
+    });
+    if (!body.length) return null;
+    return { headers: headers || [], rows: body, note: note || '' };
+  }
+
+  /** 첫 문단이 너무 길면 문장 경계에서 두 덩이로 끊어 준다(모바일 가독성) */
+  function paraSplit(text, limit) {
+    const t = String(text || '').trim();
+    if (!t) return [];
+    const lim = limit || 110;
+    if (t.length <= lim) return [t];
+    const parts = t.split(/(?<=[.!?])\s+/);
+    if (parts.length < 2) return [t];
+    const out = [];
+    let cur = '';
+    parts.forEach(function (p) {
+      if (cur && (cur + ' ' + p).length > lim) { out.push(cur.trim()); cur = p; }
+      else cur = cur ? cur + ' ' + p : p;
+    });
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+
   function buildHashtags(seed, mode) {
     const base = {
       stock: ['#주식', '#코스피', '#코스닥', '#국내증시', '#주도테마', '#매매일지', '#시황', '#투자공부'],
@@ -351,47 +435,9 @@
     return '궁금한 점이나 추가로 정리했으면 하는 부분은 댓글로 남겨 주세요.';
   }
 
-  /** 50초 쇼츠 대본: 후킹 3초 → 본론 3블록 → 마무리 CTA */
-  function buildShortsScript(opts) {
-    const hook = clamp(opts.hook || '', 60);
-    const blocks = (opts.blocks || []).filter(Boolean).slice(0, 4);
-    const cta = clamp(opts.cta || '더 자세한 내용은 고정 댓글 링크에서 확인하세요.', 80);
-    const total = opts.total || 50;
-
-    const plan = [];
-    plan.push({ sec: 3, role: '후킹', text: hook || '지금 확인해야 할 내용, 50초로 정리합니다.' });
-    const bodyBudget = total - 3 - 8; // 후킹 3초 + CTA 8초
-    const each = Math.max(6, Math.floor(bodyBudget / Math.max(1, blocks.length)));
-    blocks.forEach(function (b, i) {
-      plan.push({ sec: each, role: `본론 ${i + 1}`, text: clamp(b, 130) });
-    });
-    plan.push({ sec: 8, role: '마무리', text: cta });
-
-    let acc = 0;
-    const timeline = plan.map(function (p) {
-      const start = acc;
-      acc += p.sec;
-      return { start: start, end: acc, role: p.role, text: p.text, label: fmtTime(start) };
-    });
-    const duration = acc;
-
-    // 자막(SRT)
-    const srt = timeline.map(function (t, i) {
-      return `${i + 1}\n${srtTime(t.start)} --> ${srtTime(t.end)}\n${t.text}\n`;
-    }).join('\n');
-
-    const plain = timeline.map(function (t) { return `[${t.label}] (${t.role}) ${t.text}`; }).join('\n');
-
-    return {
-      total: duration,
-      hook: hook,
-      blocks: timeline,
-      srt: srt,
-      plain: plain,
-      hashtags: opts.hashtags || []
-    };
-  }
-
+  /* ============================================================
+   * 3. 쇼츠 대본 — [0~3초 훅] / 핵심 컷 / [마무리 CTA]
+   * ============================================================ */
   function srtTime(sec) {
     const s = Math.max(0, Number(sec) || 0);
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
@@ -399,88 +445,530 @@
     return `${pad2(h)}:${pad2(m)}:${pad2(ss)},${String(ms).padStart(3, '0')}`;
   }
 
-  function contentToMarkdown(content) {
-    const b = content.blog;
-    const lines = [];
-    lines.push(`# ${b.titles[0]}`);
-    lines.push('');
-    if (content.source && content.source.label) {
-      lines.push(`> 출처: ${content.source.label}${content.source.asOf ? ' · ' + content.source.asOf : ''}`);
-      lines.push('');
-    }
-    if (b.intro) { lines.push(b.intro); lines.push(''); }
-    b.sections.forEach(function (s) {
-      lines.push(`## ${s.h2}`);
-      (s.paras || []).forEach(function (p) { lines.push(''); lines.push(p); });
-      if (s.items && s.items.length) {
-        lines.push('');
-        s.items.forEach(function (it) { lines.push(`- ${it}`); });
+  function rangeLabel(start, end) {
+    return `${start}~${end}초`;
+  }
+
+  /**
+   * buildShortsScript({
+   *   hook:   {caption, narration} | '문장',
+   *   cuts:   [{caption, narration, query}] | ['문장'],
+   *   cta:    {caption, narration} | '문장',
+   *   hashtags, total, mode, kicker, sourceText
+   * })
+   */
+  function buildShortsScript(opts) {
+    const o = opts || {};
+    const total = o.total || 50;
+
+    function pair(v, fallbackCaption, fallbackNarration) {
+      if (v && typeof v === 'object') {
+        return {
+          caption: clamp(v.caption || v.text || fallbackCaption || '', 90),
+          narration: clamp(v.narration || v.caption || v.text || fallbackNarration || '', 150),
+          query: v.query || ''
+        };
       }
+      const s = clamp(v || fallbackCaption || '', 120);
+      return { caption: s, narration: s, query: '' };
+    }
+
+    const hook = pair(o.hook, '지금 확인해야 할 내용, 50초로 정리합니다.', '지금 확인해야 할 내용을 50초로 정리합니다.');
+    const rawCuts = (o.cuts || o.blocks || []).filter(Boolean).slice(0, 4);
+    const cta = pair(o.cta, '자세한 내용은 고정 댓글 링크에서 확인하세요.', '자세한 내용은 고정 댓글 링크에서 확인하세요.');
+
+    const hookSec = 3;
+    const ctaSec = 8;
+    const bodyBudget = Math.max(12, total - hookSec - ctaSec);
+    const each = Math.max(6, Math.floor(bodyBudget / Math.max(1, rawCuts.length)));
+
+    const timeline = [];
+    let acc = 0;
+    timeline.push({ role: '후킹', caption: hook.caption, narration: hook.narration, query: hook.query, start: 0, end: hookSec });
+    acc = hookSec;
+    rawCuts.forEach(function (c, i) {
+      const p = pair(c, `핵심 ${i + 1}`, `핵심 ${i + 1}`);
+      timeline.push({
+        role: `컷 ${i + 1}`,
+        caption: clamp(p.caption, 90),
+        narration: clamp(p.narration, 150),
+        query: p.query || '',
+        start: acc,
+        end: acc + each
+      });
+      acc += each;
+    });
+    timeline.push({ role: 'CTA', caption: cta.caption, narration: cta.narration, query: cta.query, start: acc, end: acc + ctaSec });
+    acc += ctaSec;
+
+    const hookItem = timeline[0];
+    const ctaItem = timeline[timeline.length - 1];
+    const cuts = timeline.slice(1, timeline.length - 1).map(function (c, i) {
+      return {
+        i: i + 1,
+        role: c.role,
+        range: rangeLabel(c.start, c.end),
+        start: c.start, end: c.end,
+        caption: c.caption,
+        narration: c.narration,
+        query: c.query,
+        label: fmtTime(c.start)
+      };
+    });
+
+    // SRT — 읽는 속도보다 자막이 길면 문장 단위로 쪼갠다
+    const srtLines = [];
+    timeline.forEach(function (t, idx) {
+      const cap = String(t.caption || '').replace(/\*\*/g, '');
+      const chunks = cap.length > 40 ? splitSentenceChunks(cap, 34) : [cap];
+      const span = Math.max(1, (t.end - t.start) / Math.max(1, chunks.length));
+      chunks.forEach(function (c, j) {
+        const s = t.start + span * j;
+        srtLines.push(`${srtLines.length + 1}\n${srtTime(s)} --> ${srtTime(s + span - 0.05)}\n${c}\n`);
+      });
+    });
+
+    const plain = [`■ 50초 쇼츠 대본 (${acc}초)`, '']
+      .concat([
+        `[${rangeLabel(hookItem.start, hookItem.end)} 훅]`,
+        `  자막: ${stripMd(hookItem.caption)}`,
+        `  나레이션: ${stripMd(hookItem.narration)}`
+      ])
+      .concat(cuts.map(function (c) {
+        return [`[${c.range} 컷 ${c.i}]`, `  자막: ${stripMd(c.caption)}`, `  나레이션: ${stripMd(c.narration)}`].join('\n');
+      }))
+      .concat([
+        `[${rangeLabel(ctaItem.start, ctaItem.end)} 마무리 CTA]`,
+        `  자막: ${stripMd(ctaItem.caption)}`,
+        `  나레이션: ${stripMd(ctaItem.narration)}`
+      ])
+      .concat(['', '■ 해시태그', (o.hashtags || []).join(' ')]);
+
+    return {
+      total: acc,
+      hook: {
+        range: rangeLabel(hookItem.start, hookItem.end),
+        start: hookItem.start, end: hookItem.end,
+        caption: hookItem.caption, narration: hookItem.narration
+      },
+      cuts: cuts,
+      cta: {
+        range: rangeLabel(ctaItem.start, ctaItem.end),
+        start: ctaItem.start, end: ctaItem.end,
+        caption: ctaItem.caption, narration: ctaItem.narration
+      },
+      // 구버전 호환(타임라인 배열)
+      blocks: timeline.map(function (t) {
+        return { start: t.start, end: t.end, role: t.role, text: stripMd(t.caption), label: fmtTime(t.start) };
+      }),
+      srt: srtLines.join('\n'),
+      plain: plain.join('\n'),
+      hashtags: o.hashtags || []
+    };
+  }
+
+  function splitSentenceChunks(text, size) {
+    const s = String(text || '').trim();
+    if (s.length <= size) return [s];
+    const words = s.split(' ');
+    const out = [];
+    let cur = '';
+    words.forEach(function (w) {
+      if (cur && (cur + ' ' + w).length > size) { out.push(cur); cur = w; }
+      else cur = cur ? cur + ' ' + w : w;
+    });
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  function stripMd(s) {
+    return String(s == null ? '' : s).replace(/\*\*/g, '').replace(/~~/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  /* ---- make_shorts_mp4.py 스펙 ---- */
+  const KICKERS = { stock: 'MARKET CLOSE', deals: 'WEEKEND PICKS', video: 'VIDEO SUMMARY', topic: 'NOTE' };
+  const SHORT_ACCENTS = { stock: '#38BDF8', deals: '#34D399', video: '#F472B6', topic: '#C084FC' };
+  const PIXABAY = {
+    stock: ['stock market chart', 'seoul city skyline night', 'finance graph screen', 'trader monitor numbers'],
+    deals: ['family theme park', 'kids playing indoor playground', 'hotel resort pool', 'weekend family travel'],
+    video: ['person talking podcast', 'laptop typing notes', 'city timelapse lights', 'audio waveform'],
+    topic: ['writing notebook desk', 'coffee laptop morning', 'bookshelf reading', 'calendar planning']
+  };
+
+  /** 자막용 숫자 강조 — 이미 ** 강조가 있으면 건드리지 않는다 */
+  function emphasizeNumbers(text) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return t;
+    if (t.indexOf('**') !== -1) return t;
+    let used = 0;
+    return t.replace(/-?\d[\d,]*(?:\.\d+)?\s*(?:%|퍼센트|원|억|조|만|개|곳|명|배|분|초|줄)?/g, function (m) {
+      if (!m || used >= 2) return m;
+      used++;
+      return '**' + m + '**';
+    });
+  }
+
+  /** TTS 가 읽기 좋게 — 마크다운·괄호·기호 정리 */
+  function ttsClean(text) {
+    return stripMd(text)
+      .replace(/[\[\]]/g, ' ')
+      .replace(/[·•]/g, ', ')
+      .replace(/[▲▼–]/g, ' ')
+      .replace(/%/g, '퍼센트')
+      .replace(/\s*,\s*(?=\d{3}\b)/g, ',')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function splitTitleLines(text, maxLines, maxChars) {
+    const words = stripMd(text).split(/\s+/).filter(Boolean);
+    const lines = [];
+    let cur = '';
+    words.forEach(function (w) {
+      if (cur && (cur + ' ' + w).length > maxChars) { lines.push(cur); cur = w; }
+      else cur = cur ? cur + ' ' + w : w;
+    });
+    if (cur) lines.push(cur);
+    const out = lines.slice(0, maxLines);
+    if (lines.length > maxLines) out[maxLines - 1] = clamp(out[maxLines - 1] + ' ' + lines.slice(maxLines).join(' '), maxChars + 2);
+    // 한 줄로 다 들어가도 두 줄이면 길이를 반반으로 나눈다(쇼츠 상단 타이틀 균형)
+    if (out.length === 1 && maxLines >= 2 && out[0].length > maxChars) {
+      const ws = out[0].split(' ');
+      if (ws.length > 1) {
+        let best = 1, bestDiff = Infinity;
+        for (let i = 1; i < ws.length; i++) {
+          const diff = Math.abs(ws.slice(0, i).join(' ').length - ws.slice(i).join(' ').length);
+          if (diff < bestDiff) { bestDiff = diff; best = i; }
+        }
+        return [ws.slice(0, best).join(' '), ws.slice(best).join(' ')];
+      }
+    }
+    return out.map(function (l) { return l.length > maxChars + 4 ? clamp(l, maxChars + 3) : l; });
+  }
+
+  /** studio.html → [🎬 쇼츠 JSON 복사] 로 나가는 스펙 (scripts/make_shorts_mp4.py) */
+  function shortsSpec(content) {
+    if (!content || !content.shorts) return null;
+    const sh = content.shorts;
+    const mode = content.mode || 'topic';
+    const mainTitle = (content.blog && content.blog.titles && content.blog.titles[0]) || content.headline || '쇼츠';
+    const plainTitle = stripMd(content.shortsTitle || mainTitle);
+    const videoTitle = plainTitle.length <= 32 ? plainTitle : clamp(stripMd(content.headline || plainTitle), 32);
+    const timeline = [sh.hook].concat(sh.cuts || []).concat([sh.cta]);
+    const pool = PIXABAY[mode] || PIXABAY.topic;
+    const spec = {
+      title: clamp(videoTitle, 40),
+      kicker: (content.kicker || KICKERS[mode] || 'NOTE'),
+      accent: (content.accent || SHORT_ACCENTS[mode] || '#FFC53D'),
+      layout: 'letterbox',
+      title_lines: splitTitleLines(videoTitle, 2, 16),
+      source_text: clamp(stripMd((content.source && (content.source.short || content.source.label)) || ''), 28),
+      tts_lang: 'ko',
+      bgm_volume: 0.12,
+      cuts: timeline.map(function (c, i) {
+        const cap = emphasizeNumbers(c.caption);
+        const cut = {
+          text: cap,
+          tts_text: ttsClean(c.narration || c.caption),
+          pixabay_query: c.query || pool[i % pool.length]
+        };
+        if (i === 0) cut.hook = clamp(stripMd(c.caption), 22);
+        return cut;
+      })
+    };
+    return spec;
+  }
+
+  /* ============================================================
+   * 4. Markdown · 리치 HTML (네이버/티스토리 붙여넣기)
+   * ============================================================ */
+  function sectionToMd(s) {
+    const lines = [];
+    lines.push(`## ${stripMd(s.h2)}`);
+    lines.push('');
+    if (s.lead) { lines.push(`**${stripMd(s.lead)}**`); lines.push(''); }
+    (s.paras || []).forEach(function (p) {
+      if (!p) return;
+      lines.push(p);
       lines.push('');
     });
+    if (s.table && s.table.rows && s.table.rows.length) {
+      const heads = s.table.headers || [];
+      if (heads.length) {
+        lines.push('| ' + heads.join(' | ') + ' |');
+        lines.push('| ' + heads.map(function () { return '---'; }).join(' | ') + ' |');
+      }
+      s.table.rows.forEach(function (r) {
+        lines.push('| ' + r.map(function (c) { return stripMd(String(c == null ? '' : c)).replace(/\|/g, '/'); }).join(' | ') + ' |');
+      });
+      lines.push('');
+      if (s.table.note) { lines.push(`*${stripMd(s.table.note)}*`); lines.push(''); }
+    }
+    if (s.items && s.items.length) {
+      s.items.forEach(function (it) { lines.push(`- ${stripMd(it)}`); });
+      lines.push('');
+    }
+    return lines;
+  }
+
+  function contentToMarkdown(content) {
+    if (!content || !content.blog) return '';
+    const b = content.blog;
+    const lines = [];
+    lines.push(`# ${stripMd((b.titles && b.titles[0]) || content.headline || '제목')}`);
+    lines.push('');
+    if (content.source && content.source.label) {
+      lines.push(`> 출처: ${content.source.label}${content.source.asOf ? ' · 기준 ' + content.source.asOf : ''}`);
+      lines.push('');
+    }
+    (b.hook ? paraSplit(b.hook) : []).forEach(function (p) { lines.push(p); lines.push(''); });
+    (b.sections || []).forEach(function (s) { lines.push.apply(lines, sectionToMd(s)); });
+    if (b.points && b.points.length) {
+      lines.push('## 실전 포인트 — 이렇게 쓰세요');
+      lines.push('');
+      b.points.forEach(function (p, i) {
+        lines.push(`${i + 1}. **${stripMd(p.t)}** — ${stripMd(p.d)}`);
+      });
+      lines.push('');
+    }
     lines.push('## 마무리');
     lines.push('');
-    lines.push(b.cta);
-    lines.push('');
+    if (b.closing) { lines.push(stripMd(b.closing)); lines.push(''); }
+    if (b.cta) { lines.push(b.cta); lines.push(''); }
     if (b.tags && b.tags.length) lines.push(b.tags.join(' '));
-    return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  }
+
+  /* -------- 리치 HTML (붙여넣기용 인라인 스타일) -------- */
+  const S = {
+    p: 'margin:0 0 16px;font-size:16px;line-height:1.85;color:#222;letter-spacing:-0.01em;word-break:keep-all',
+    h2: 'margin:32px 0 14px;padding:0 0 8px 12px;border-left:4px solid #2563eb;font-size:20px;line-height:1.4;font-weight:700;color:#111;letter-spacing:-0.02em;word-break:keep-all',
+    lead: 'margin:0 0 14px;font-size:16px;line-height:1.8;font-weight:700;color:#1d4ed8;word-break:keep-all',
+    li: 'margin:0 0 8px;font-size:15.5px;line-height:1.75;color:#222;word-break:keep-all',
+    hr: 'border:none;border-top:1px solid #e5e7eb;margin:32px 0',
+    quote: 'margin:0 0 20px;padding:12px 16px;background:#f8fafc;border-left:3px solid #94a3b8;color:#475569;font-size:14px;line-height:1.7',
+    tbl: 'width:100%;border-collapse:collapse;margin:0 0 12px;font-size:14.5px;line-height:1.6',
+    th: 'border:1px solid #cbd5e1;background:#f1f5f9;padding:9px 10px;font-weight:700;color:#0f172a;text-align:left',
+    td: 'border:1px solid #dbe3ec;padding:9px 10px;color:#1f2937;vertical-align:top',
+    note: 'margin:0 0 20px;font-size:13px;color:#64748b;line-height:1.6',
+    point: 'margin:0 0 12px;padding:12px 14px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;font-size:15.5px;line-height:1.75;color:#222',
+    pointT: 'display:block;font-weight:700;color:#1d4ed8;margin-bottom:4px',
+    closing: 'margin:0 0 18px;padding:16px;background:#eef2ff;border-radius:8px;font-size:16px;line-height:1.8;font-weight:700;color:#1e293b;word-break:keep-all',
+    cta: 'margin:0 0 14px;font-size:14px;line-height:1.7;color:#64748b',
+    tag: 'margin:6px 0 0;font-size:14px;color:#2563eb;line-height:1.7'
+  };
+
+  function paraHtml(text) {
+    return paraSplit(text).map(function (p) { return `<p style="${S.p}">${esc(p)}</p>`; }).join('\n');
+  }
+
+  function tableHtml(t) {
+    if (!t || !t.rows || !t.rows.length) return '';
+    const heads = t.headers || [];
+    let h = `<table style="${S.tbl}">`;
+    if (heads.length) {
+      h += '<thead><tr>' + heads.map(function (c) { return `<th style="${S.th}">${esc(c)}</th>`; }).join('') + '</tr></thead>';
+    }
+    h += '<tbody>' + t.rows.map(function (r) {
+      return '<tr>' + r.map(function (c, i) {
+        const label = heads[i] ? ` data-label="${esc(heads[i])}"` : '';
+        return `<td${label} style="${S.td}">${esc(c)}</td>`;
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table>';
+    if (t.note) h += `<p style="${S.note}">* ${esc(t.note)}</p>`;
+    return h;
+  }
+
+  /** opts: {includeTitle=false, includeTags=true} */
+  function contentToHtml(content, opts) {
+    if (!content || !content.blog) return '';
+    const o = opts || {};
+    const b = content.blog;
+    const out = [];
+    if (o.includeTitle) out.push(`<h1 style="font-size:26px;line-height:1.4;font-weight:800;color:#0f172a;margin:0 0 16px;letter-spacing:-0.03em;word-break:keep-all">${esc(stripMd(b.titles[0]))}</h1>`);
+    if (content.source && content.source.label) {
+      out.push(`<p style="${S.quote}">출처: ${esc(content.source.label)}${content.source.asOf ? ' · 기준 ' + esc(content.source.asOf) : ''}</p>`);
+    }
+    if (b.hook) out.push(paraHtml(b.hook));
+    (b.sections || []).forEach(function (s) {
+      out.push(`<h2 style="${S.h2}">${esc(stripMd(s.h2))}</h2>`);
+      if (s.lead) out.push(`<p style="${S.lead}">${esc(stripMd(s.lead))}</p>`);
+      (s.paras || []).forEach(function (p) { if (p) out.push(paraHtml(p)); });
+      const tbl = tableHtml(s.table);
+      if (tbl) out.push(tbl);
+      if (s.items && s.items.length) {
+        out.push('<ul style="margin:0 0 20px;padding-left:20px">' + s.items.map(function (it) {
+          return `<li style="${S.li}">${esc(stripMd(it))}</li>`;
+        }).join('') + '</ul>');
+      }
+    });
+    if (b.points && b.points.length) {
+      out.push(`<hr style="${S.hr}">`);
+      out.push(`<h2 style="${S.h2}">실전 포인트 — 이렇게 쓰세요</h2>`);
+      b.points.forEach(function (p, i) {
+        out.push(`<div style="${S.point}"><span style="${S.pointT}">${i + 1}. ${esc(stripMd(p.t))}</span>${esc(stripMd(p.d))}</div>`);
+      });
+    }
+    out.push(`<hr style="${S.hr}">`);
+    out.push(`<h2 style="${S.h2}">마무리</h2>`);
+    if (b.closing) out.push(`<p style="${S.closing}">${esc(stripMd(b.closing))}</p>`);
+    if (b.cta) out.push(`<p style="${S.cta}">${esc(b.cta)}</p>`);
+    if (o.includeTags !== false && b.tags && b.tags.length) out.push(`<p style="${S.tag}">${esc(b.tags.join(' '))}</p>`);
+    return out.join('\n');
+  }
+
+  /** 붙여넣기용 평문(서식 없는 에디터 대비) */
+  function contentToPlain(content) {
+    const b = content.blog;
+    const out = [];
+    if (b.hook) out.push(stripMd(b.hook));
+    (b.sections || []).forEach(function (s) {
+      out.push('[ ' + stripMd(s.h2) + ' ]');
+      if (s.lead) out.push(stripMd(s.lead));
+      (s.paras || []).forEach(function (p) { if (p) out.push(stripMd(p)); });
+      if (s.table && s.table.rows) {
+        if (s.table.headers) out.push(s.table.headers.join(' | '));
+        s.table.rows.forEach(function (r) { out.push(r.join(' | ')); });
+      }
+      (s.items || []).forEach(function (it) { out.push('· ' + stripMd(it)); });
+      out.push('');
+    });
+    if (b.points && b.points.length) {
+      out.push('[ 실전 포인트 ]');
+      b.points.forEach(function (p, i) { out.push(`${i + 1}. ${stripMd(p.t)} — ${stripMd(p.d)}`); });
+      out.push('');
+    }
+    if (b.closing) out.push('[ 마무리 ]', stripMd(b.closing));
+    if (b.cta) out.push(stripMd(b.cta));
+    if (b.tags && b.tags.length) out.push(b.tags.join(' '));
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  /** 편집기에서 돌려받은 markdown → blog 구조 복원 */
+  function parseBlogMarkdown(md, base) {
+    const src = String(md || '').replace(/\r\n?/g, '\n');
+    const blog = Object.assign({}, (base && base.blog) || {});
+    const sections = [];
+    const points = [];
+    const closingBuf = [];
+    let hookParas = [];
+    let cur = null;
+    let mode = 'body';           // body | points | closing
+    let title = '';
+    let tableBuf = [];
+
+    function flushTable() {
+      if (!cur || !tableBuf.length) { tableBuf = []; return; }
+      const rows = tableBuf.map(function (line) {
+        return line.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(function (c) { return c.trim(); });
+      }).filter(function (r) {
+        return !r.every(function (c) { return /^:?-{2,}:?$/.test(c) || c === ''; });
+      });
+      if (!rows.length) { tableBuf = []; return; }
+      const headers = rows.shift();
+      cur.table = { headers: headers, rows: rows, note: '' };
+      tableBuf = [];
+    }
+
+    src.split('\n').forEach(function (raw) {
+      const line = raw.replace(/\s+$/, '');
+      if (/^#\s+/.test(line)) { title = line.replace(/^#\s+/, '').trim(); return; }
+      if (/^##\s+/.test(line)) {
+        flushTable();
+        const h = line.replace(/^##\s+/, '').trim();
+        if (/^실전\s*포인트/.test(h)) { mode = 'points'; cur = null; return; }
+        if (/^마무리$/.test(h)) { mode = 'closing'; cur = null; return; }
+        mode = 'body';
+        cur = { h2: h, paras: [], items: [] };
+        sections.push(cur);
+        return;
+      }
+      if (/^>\s?/.test(line)) return;        // 출처 줄은 무시(원본 유지)
+      if (/^\|/.test(line)) { if (mode === 'body' && cur) tableBuf.push(line); return; }
+      if (/^\*[^*].*\*$/.test(line.trim()) && cur && cur.table && !cur.table.note) {
+        cur.table.note = line.trim().replace(/^\*\s?/, '').replace(/\*$/, '').trim();
+        return;
+      }
+      flushTable();
+      if (!line.trim()) return;
+      if (mode === 'points') {
+        const m = line.match(/^(\d+)\.\s*\*\*(.+?)\*\*\s*[—–-]\s*(.*)$/) || line.match(/^(\d+)\.\s*(.+)$/);
+        if (m) points.push({ t: stripMd(m[2]), d: stripMd(m[3] || '') });
+        return;
+      }
+      if (mode === 'closing') {
+        closingBuf.push(line.trim());
+        return;
+      }
+      if (/^-\s+/.test(line) && cur) { cur.items.push(line.replace(/^-\s+/, '').trim()); return; }
+      if (/^\*\*.+\*\*$/.test(line) && cur && !cur.lead) { cur.lead = line.replace(/\*\*/g, '').trim(); return; }
+      if (/^#/.test(line)) return;
+      if (cur) cur.paras.push(line.trim());
+      else hookParas.push(line.trim());
+    });
+    flushTable();
+
+    // 마무리 블록: [한 줄 결론] → [CTA] → [태그] 순서로 되살린다
+    if (closingBuf.length) {
+      const body = closingBuf.slice();
+      const last = body[body.length - 1] || '';
+      if (/^#[^\s#]+(\s+#[^\s#]+)*$/.test(last)) {
+        blog.tags = last.split(/\s+/).filter(Boolean);
+        body.pop();
+      }
+      blog.closing = (body.shift() || '').trim();
+      blog.cta = body.join(' ').trim();
+    }
+
+    blog.titles = blog.titles || [];
+    if (title) blog.titles[0] = title;
+    blog.hook = hookParas.join(' ');
+    blog.sections = sections;
+    if (points.length) blog.points = points;
+    return { blog: blog, title: title };
   }
 
   function shortsToText(shorts) {
+    if (!shorts) return '';
+    if (shorts.plain) return shorts.plain;
     return [`■ 50초 쇼츠 대본 (${shorts.total}초)`, ''].concat(
-      shorts.blocks.map(function (b) { return `[${b.label} · ${b.role}] ${b.text}`; }),
+      (shorts.blocks || []).map(function (b) { return `[${b.label} · ${b.role}] ${b.text}`; }),
       ['', '■ 해시태그', (shorts.hashtags || []).join(' ')]
     ).join('\n');
   }
 
-  function blogTitleCandidates(subject, mode, kst) {
-    const s = clamp(subject, 46);
-    const dateShort = kst ? kst.short : '';
-    if (mode === 'stock') {
-      return [
-        `${dateShort} 국내 증시 마감 총정리 — ${s}`,
-        `${s} | 코스피·코스닥 흐름과 주도 테마 3가지`,
-        `오늘 장, 무엇이 올랐나 — ${s}`
-      ];
-    }
-    if (mode === 'deals') {
-      return [
-        `${dateShort} 동탄 4인 가족 나들이 추천 — ${s}`,
-        `이번 주말 아이와 어디 갈까? ${s}`,
-        `${s} (가격·주차·이동시간 비교)`
-      ];
-    }
-    if (mode === 'video') {
-      return [
-        `${s} — 영상 핵심 5줄 요약`,
-        `"${clamp(s, 34)}" 영상 정리, 3분이면 충분합니다`,
-        `${s} | 자막으로 직접 확인한 핵심 정리`
-      ];
-    }
-    return [
-      `${s} — 한 번에 정리했습니다`,
-      `${s}, 이렇게 보면 쉽습니다`,
-      `${s} 핵심만 뽑은 정리 노트`
-    ];
-  }
-
   function finishContent(content) {
-    content.blog.metaDesc = buildSeoMeta(content);
-    content.blog.cta = content.blog.cta || buildCta(content.mode);
-    content.blog.tags = content.blog.tags && content.blog.tags.length
-      ? content.blog.tags
-      : buildHashtags(content.keywords || [], content.mode);
-    content.shorts.hashtags = content.blog.tags;
-    content.blog.markdown = contentToMarkdown(content);
+    const b = content.blog;
+    if (!b.titleSet && b.titles) {
+      b.titleSet = makeTitleSet(b.titles.map(function (t, i) {
+        return { kind: ['summary', 'curiosity', 'numbers'][i] || 'summary', text: t };
+      }));
+    }
+    // 제목 3안은 후보일 뿐 — 사용자가 고른 제목(b.titles[0])은 건드리지 않는다
+    if (b.titleSet && b.titleSet.length && (!b.titles || !b.titles.length)) {
+      b.titles = b.titleSet.map(function (t) { return t.text; });
+    }
+    b.metaDesc = buildSeoMeta(content);
+    b.cta = b.cta || buildCta(content.mode);
+    b.tags = b.tags && b.tags.length ? b.tags : buildHashtags(content.keywords || [], content.mode);
+    content.shorts.hashtags = b.tags;
     content.shorts.plain = shortsToText(content.shorts);
+    content.blog.markdown = contentToMarkdown(content);
+    content.blog.plain = contentToPlain(content);
+    content.shorts.spec = shortsSpec(content);
+    content.shorts.json = content.shorts.spec ? JSON.stringify(content.shorts.spec, null, 2) : '';
     content.generatedAt = kstNow().label + ' ' + kstNow().time;
     content.engine = 'content-engine ' + VERSION;
     return content;
   }
 
   /* ============================================================
-   * 3. 📈 주식 관제탑 모드
+   * 5. 📈 주식 관제탑 모드
    * ============================================================ */
+  function themeName(t) {
+    return String((t && t.name) || '').split(' ·')[0].trim();
+  }
+
   function themeLine(theme) {
     const top = (theme.stocks || []).slice(0, 2).map(function (s) {
       return `${s.name} ${num(s.price, 0)}원(${pct(s.changePct)})`;
@@ -498,18 +986,20 @@
     const fx = live.fx || {};
     const futures = (live.futures || [])[0] || {};
     const themes = (tabs.themes || []).slice(0, 3);
+    const allThemes = (tabs.themes || []).slice(0, 5);
     const high52 = (tabs.high52 && tabs.high52.byValue) || [];
     const upper = tabs.upperLimit || {};
     const confirmed = upper.confirmed || [];
     const near = upper.near || [];
     const news = (tabs.news || []).slice(0, 3);
     const sessionLabel = tabs.sessionLabel || '';
-    const closed = /휴장|마감|CLOSE/.test(String(tabs.sessionPhase || '')) || live.marketStatus === 'CLOSE';
     const basis = tabs.generatedAtLabel || live.generatedAtKst || '';
     const isWeekend = kst.dow === 0 || kst.dow === 6;
+    const rise = has(kospi.changePct) ? Number(kospi.changePct) >= 0 : null;
 
     const headlineBase = `코스피 ${num(kospi.price)} ${arrow(kospi.changePct)} ${pct(kospi.changePct)}`;
     const headline = isWeekend ? `${kst.short} 주말 결산 — ${headlineBase}` : `${kst.short} 국내 증시 마감 — ${headlineBase}`;
+    const topTheme = themes[0] ? themeName(themes[0]) : '';
 
     const pills = [
       `코스피 ${num(kospi.price)} (${pct(kospi.changePct)})`,
@@ -531,7 +1021,7 @@
     /* ---- 5줄 요약: 실측 수치만 ---- */
     const summary = [];
     if (kospi.price) {
-      summary.push(`코스피는 ${num(kospi.price)}(${pct(kospi.changePct)})로 ${Number(kospi.changePct) >= 0 ? '상승' : '하락'} 마감했습니다. 거래대금은 ${kospi.valueText || '-'}입니다.`);
+      summary.push(`코스피는 ${num(kospi.price)}(${pct(kospi.changePct)})로 ${rise ? '상승' : '하락'} 마감했습니다. 거래대금은 ${kospi.valueText || '-'}입니다.`);
     }
     if (kosdaq.price) {
       summary.push(`코스닥은 ${num(kosdaq.price)}(${pct(kosdaq.changePct)})를 기록했습니다. 거래대금은 ${kosdaq.valueText || '-'}입니다.`);
@@ -553,32 +1043,51 @@
       summary.push(('특이 뉴스가 수집되지 않았습니다. ' + fxLine).trim());
     }
 
-    /* ---- 블로그 ---- */
-    const sections = [];
-    sections.push({
-      h2: '오늘 시장 한눈에',
-      paras: [
-        `${isWeekend ? '주말 휴장 기준으로 직전 거래일' : '오늘'} 증시는 ${headlineBase}로 마무리됐습니다. 코스닥은 ${num(kosdaq.price)}(${pct(kosdaq.changePct)})를 기록했고, 코스피 거래대금은 ${kospi.valueText || '-'}였습니다.`,
-        fx.price ? `환율은 원/달러 ${num(fx.price, 1)}원(${pct(fx.changePct)})에서 움직였고, ${futures.price ? `${futures.name || '나스닥 선물'}은 ${num(futures.price)}(${pct(futures.changePct)})로 ` : ''}${futures.price ? '해외 선행 지표도 함께 확인할 수 있습니다.' : '해외 지표는 별도 확인이 필요합니다.'}` : '환율·해외 지표는 수집되지 않았습니다.'
-      ],
-      items: facts.map(function (f) { return `${f.k}: ${f.v}`; })
+    /* ---- 표 1: 지수·환율 ---- */
+    const t1Rows = [];
+    if (kospi.price) t1Rows.push(['코스피', `${num(kospi.price)} (${pct(kospi.changePct)})`, kospi.valueText || '-', '대형주 방향']);
+    if (kosdaq.price) t1Rows.push(['코스닥', `${num(kosdaq.price)} (${pct(kosdaq.changePct)})`, kosdaq.valueText || '-', '중소형 온도']);
+    if (fx.price) t1Rows.push(['원/달러', `${num(fx.price, 1)}원 (${pct(fx.changePct)})`, '-', '외국인 수급 변수']);
+    if (futures.price) t1Rows.push([futures.name || '나스닥 선물', `${num(futures.price)} (${pct(futures.changePct)})`, '-', '밤사이 해외 방향']);
+
+    /* ---- 표 2: 주도 테마 ---- */
+    const t2Rows = allThemes.map(function (t) {
+      const reps = (t.stocks || []).slice(0, 2).map(function (s) { return s.name; }).join(', ');
+      return [clamp(themeName(t), 14), pct(t.avgPct), t.sumValueText || num(t.sumValue, 0) + '원', reps || '-'];
     });
 
-    if (themes.length) {
+    /* ---- 본문 ---- */
+    const sections = [];
+
+    sections.push({
+      h2: '먼저 숫자부터 — 오늘 시장 온도',
+      lead: '지수는 방향만 알려 줍니다. 온도는 거래대금과 같이 봐야 정확합니다.',
+      paras: [
+        `${isWeekend ? '주말 휴장이라 직전 거래일 종가' : '오늘'} 기준으로 코스피는 ${num(kospi.price)}(${pct(kospi.changePct)}), 코스닥은 ${num(kosdaq.price)}(${pct(kosdaq.changePct)})입니다. ${rise === null ? '' : rise ? '지수가 올라도 거래대금이 줄면 상승이 버티기 어렵습니다.' : '지수가 밀려도 거래대금이 붙는 곳은 따로 있습니다.'}`,
+        fx.price ? `환율은 원/달러 ${num(fx.price, 1)}원(${pct(fx.changePct)})${futures.price ? `, ${futures.name || '나스닥 선물'}은 ${num(futures.price)}(${pct(futures.changePct)})` : ''}로 움직였습니다. 이 두 숫자는 다음 날 아침 수급의 출발점이 됩니다.` : '환율·해외 지표는 이번 수집에서 확인되지 않았습니다.'
+      ],
+      items: [],
+      table: tableOf(['구분', '오늘 수치', '거래대금', '읽는 법'], t1Rows, `기준 ${basis || kst.label + ' ' + kst.time} · 출처: 네이버 증권 폴링 + 야후 선물`)
+    });
+
+    if (allThemes.length) {
       sections.push({
-        h2: '주도 테마 — 오늘 돈이 몰린 곳',
+        h2: '돈이 몰린 곳 — 주도 테마',
+        lead: '등락률 순서와 거래대금 순서가 다를 때, 진짜 자금은 후자에 있습니다.',
         paras: [
-          `오늘 상위 테마는 ${themes.map(function (t) { return t.name; }).join(', ')} 순으로 정렬됐습니다. 정렬 기준은 평균 등락률이며, 각 테마의 1~4등 합산 거래대금을 함께 봐야 실제 자금 유입을 가늠할 수 있습니다.`
+          `오늘 상위 테마는 ${allThemes.slice(0, 3).map(function (t) { return themeName(t); }).join(', ')} 순으로 정렬됐습니다. 평균 등락률이 높아도 거래대금이 얇으면 다음 날 되돌림이 나오기 쉽고, 반대로 등락률은 작아도 대금이 두꺼우면 자리가 남아 있습니다.`
         ],
-        items: themes.map(function (t) { return themeLine(t); })
+        items: themes.map(function (t) { return themeLine(t); }),
+        table: tableOf(['테마', '평균 등락률', '합산 거래대금', '대표 종목'], t2Rows, '테마별 1~4등 합산 거래대금 기준(관제탑 실시간 집계)')
       });
     }
 
     if (high52.length || confirmed.length || near.length) {
       sections.push({
         h2: '신고가 · 상한가 — 대금이 붙은 종목만',
+        lead: '기준을 통과한 종목만 남겼습니다. 통과하지 못한 종목은 관찰로 따로 봅니다.',
         paras: [
-          `52주 신고가는 ${tabs.high52 && tabs.high52.counts ? `${tabs.high52.counts.KOSPI}개(코스피) · ${tabs.high52.counts.KOSDAQ}개(코스닥)` : high52.length + '종목'}가 잡혔습니다. 상한가 판정은 거래대금 100억 이상 · 상승률 +25% 이상 기준을 통과한 종목만 인정하고, 이 기준을 못 넘은 종목은 '관찰'로 따로 분리합니다.`
+          `52주 신고가는 ${tabs.high52 && tabs.high52.counts ? `${tabs.high52.counts.KOSPI}개(코스피) · ${tabs.high52.counts.KOSDAQ}개(코스닥)` : high52.length + '종목'}가 잡혔습니다. 상한가 판정은 거래대금 100억 이상 · 상승률 +25% 이상 기준을 통과한 종목만 인정합니다.`
         ],
         items: []
           .concat(confirmed.slice(0, 5).map(function (s) { return `상한가 확정: ${s.name}(${s.code}) ${pct(s.changePct)} · 거래대금 ${s.valueText || '-'}`; }))
@@ -589,50 +1098,112 @@
 
     if (news.length) {
       sections.push({
-        h2: '오늘의 뉴스 체크',
-        paras: ['기사 제목과 요약에서 뽑은 키워드로 영향도·테마를 자동 분류했습니다. 숫자와 함께 봐야 할 기사만 골랐습니다.'],
+        h2: '오늘의 뉴스, 숫자와 함께',
+        lead: '기사 제목·요약에서 뽑은 키워드로 영향도와 테마를 자동 분류했습니다.',
+        paras: [
+          `가장 눈에 띈 기사는 "${clamp(news[0].title, 60)}"(${news[0].press || '언론사'})이고, ${news[0].impactDirection || '중립'} · ${news[0].impactLevel || '-'} 신호로 분류됐습니다. 뉴스는 재료일 뿐이고, 실제 매매는 거래대금이 붙는지로 확인하는 편이 안전합니다.`
+        ],
         items: news.map(function (n) {
           return `${n.title} (${n.press || ''} ${n.time || ''}) — ${n.impactDirection || '중립'} · ${n.impactLevel || '-'}${n.impactNote ? ' · ' + n.impactNote : ''}`;
         })
       });
     }
 
-    sections.push({
-      h2: '내일 체크 포인트',
-      paras: [
-        `① 주도 테마가 이틀 연속 유지되는지 ② 상한가 종목의 다음 날 시초가와 거래대금 유지 여부 ③ 환율·해외 선물의 야간 방향 — 이 세 가지를 먼저 보면 됩니다. 오늘 수치는 ${basis || kst.label + ' ' + kst.time} 기준 실측입니다.`
-      ],
-      items: []
+    const points = [];
+    points.push({
+      t: '테마가 이틀 연속 가는지 본다',
+      d: `하루 반짝한 테마는 다음 날 시초에 물량이 나옵니다. ${topTheme ? topTheme + '가' : '같은 테마가'} 내일도 상위에 있으면 자금이 남아 있다는 신호로 읽습니다.`
+    });
+    points.push({
+      t: '상한가 종목의 다음 날 시초가',
+      d: confirmed.length
+        ? `오늘 확정된 ${confirmed.slice(0, 3).map(function (s) { return s.name; }).join(', ')}의 다음 날 시초 갭과 거래대금을 봅니다. 시초에 크게 뜨고 대금이 줄면 추격은 피하는 편이 안전합니다.`
+        : '오늘 기준을 통과한 상한가 종목이 없었습니다. 내일은 조건(거래대금 100억 · +25%)을 넘는 종목이 나오는지부터 보세요.'
+    });
+    points.push({
+      t: '환율·선물로 밤사이 방향',
+      d: fx.price
+        ? `원/달러 ${num(fx.price, 1)}원, ${futures.price ? (futures.name || '나스닥 선물') + ' ' + pct(futures.changePct) : '해외 선물'} — 이 두 개가 다음 날 아침 수급의 출발점입니다.`
+        : '환율·선물 데이터가 없어 이 항목은 확인 후 판단하세요.'
     });
 
-    const hook = `코스피 ${num(kospi.price)}, ${pct(kospi.changePct)}. 오늘 돈이 몰린 테마는?`;
-    const blocks = [];
-    if (kospi.price) blocks.push(`코스피 ${num(kospi.price)} ${pct(kospi.changePct)}, 코스닥 ${num(kosdaq.price)} ${pct(kosdaq.changePct)}로 마감했습니다.`);
-    if (themes[0]) blocks.push(`1위 테마는 ${themes[0].name}. 평균 ${pct(themes[0].avgPct)}, 거래대금 ${themes[0].sumValueText || '-'} 규모입니다.`);
-    if (confirmed.length) blocks.push(`상한가 확정은 ${confirmed.slice(0, 2).map(function (s) { return s.name; }).join(', ')}. 거래대금 100억을 넘긴 종목만 셌습니다.`);
-    else if (high52.length) blocks.push(`52주 신고가 ${high52.slice(0, 2).map(function (s) { return s.name; }).join(', ')} 등, 대금이 붙은 종목만 골랐습니다.`);
+    const closing = topTheme
+      ? `한 줄로 정리하면, 오늘은 '${topTheme}'에 자금이 몰린 날입니다. 내일은 그 테마가 이어지는지, 그리고 거래대금이 따라오는지 딱 두 가지만 확인하세요.`
+      : `한 줄로 정리하면, 오늘은 테마가 뚜렷하지 않은 날입니다. 내일은 거래대금이 붙는 첫 테마가 나오는지부터 확인하세요.`;
+
+    const titleSet = makeTitleSet([
+      { kind: 'curiosity', text: `코스피 ${pct(kospi.changePct)}, 지수보다 먼저 봐야 할 건 따로 있었습니다` },
+      { kind: 'numbers', text: `${kst.short} 마감 — 코스피 ${num(kospi.price)}(${pct(kospi.changePct)}) · 코스닥 ${num(kosdaq.price)}(${pct(kosdaq.changePct)}) · 주도테마 ${allThemes.length}곳` },
+      { kind: 'summary', text: `${kst.short} 국내 증시 정리 — ${topTheme ? topTheme + ' 주도' : '테마 혼조'}${high52.length ? `, 신고가 ${(tabs.high52 && tabs.high52.counts) ? tabs.high52.counts.KOSPI + tabs.high52.counts.KOSDAQ : high52.length}종목` : ''}` }
+    ]);
+
+    const hook = rise === null
+      ? `오늘 시장은 ${num(kospi.price)}에서 마무리됐습니다. 숫자보다 먼저 볼 것은 '어디에 돈이 남아 있었는가'입니다. 결과부터 보시죠.`
+      : `코스피가 ${num(kospi.price)}(${pct(kospi.changePct)})로 마감했습니다. 지수만 보면 ${rise ? '상승' : '하락'}으로 끝나지만, 장 안에서 실제로 돈이 움직인 곳은 따로 있습니다. 아래 표부터 보시면 오늘 시장 온도가 잡힙니다.`;
+
+    /* ---- 쇼츠 ---- */
+    const hookCap = '오늘 돈이 몰린 곳은?';
+    const cuts = [];
+    if (kospi.price) {
+      cuts.push({
+        caption: `코스피 **${num(kospi.price)}** · 코스닥 **${num(kosdaq.price)}**`,
+        narration: `코스피는 ${num(kospi.price)}, 코스닥은 ${num(kosdaq.price)}로 마감했습니다.`
+      });
+    }
+    if (themes[0]) {
+      cuts.push({
+        caption: `1위 테마 **${themeName(themes[0])}** 평균 ${pct(themes[0].avgPct)}`,
+        narration: `오늘 가장 돈이 몰린 테마는 ${themeName(themes[0])}, 평균 ${pct(themes[0].avgPct)}입니다.`
+      });
+    }
+    if (confirmed.length) {
+      cuts.push({
+        caption: `상한가 확정 **${confirmed[0].name}** 외 ${Math.max(0, confirmed.length - 1)}종목`,
+        narration: `상한가 확정은 ${confirmed.slice(0, 2).map(function (s) { return s.name; }).join(', ')}입니다. 거래대금 100억을 넘긴 종목만 셌습니다.`
+      });
+    } else if (high52.length) {
+      cuts.push({
+        caption: `52주 신고가 **${high52[0].name}** 등 ${high52.length}종목`,
+        narration: `52주 신고가는 ${high52.slice(0, 2).map(function (s) { return s.name; }).join(', ')} 등 ${high52.length}종목입니다.`
+      });
+    }
+    if (!cuts.length) {
+      cuts.push({ caption: `거래대금 **${kospi.valueText || '-'}**`, narration: `코스피 거래대금은 ${kospi.valueText || '집계되지 않았습니다'}.` });
+    }
 
     const content = {
       mode: 'stock',
+      kicker: KICKERS.stock,
+      shortsTitle: `코스피 ${num(kospi.price)} ${pct(kospi.changePct)} 마감`,
       source: {
         label: '주식 관제탑 실시간 (/api/stock-live · /api/tabs-live)',
+        short: '주식 관제탑 실시간',
         url: '/index.html',
         asOf: basis
       },
       headline: headline,
-      subline: themes.length ? `주도 테마 ${themes[0].name} · ${pct(themes[0].avgPct)}` : '',
+      subline: themes.length ? `주도 테마 ${themeName(themes[0])} · ${pct(themes[0].avgPct)}` : '',
       pills: pills,
       facts: facts,
-      keywords: themes.map(function (t) { return t.name.split(' ·')[0]; }).concat(['코스피', '코스닥']),
+      keywords: themes.map(function (t) { return themeName(t); }).concat(['코스피', '코스닥']),
       summary: summary,
       blog: {
-        titles: blogTitleCandidates(`코스피 ${num(kospi.price)} ${pct(kospi.changePct)} 마감, ${themes[0] ? themes[0].name + ' 주도' : '테마 혼조'}`, 'stock', kst),
-        intro: `${kst.short} 국내 증시를 숫자로만 정리했습니다. 코스피 ${num(kospi.price)}(${pct(kospi.changePct)}), 코스닥 ${num(kosdaq.price)}(${pct(kosdaq.changePct)}). 아래 내용은 관제탑이 실시간으로 받아온 값 그대로이며, 추론한 시나리오는 넣지 않았습니다.`,
+        titleSet: titleSet,
+        titles: titleSet.map(function (t) { return t.text; }),
+        hook: hook,
         sections: sections,
+        points: points,
+        closing: closing,
         cta: buildCta('stock'),
         tags: []
       },
-      shorts: buildShortsScript({ hook: hook, blocks: blocks, cta: '자세한 수치와 종목 정리는 고정 댓글 링크에서 확인하세요.', total: 50 }),
+      shorts: buildShortsScript({
+        hook: { caption: hookCap, narration: `오늘 코스피는 ${num(kospi.price)}, ${pct(kospi.changePct)} 마감했습니다. 어디에 돈이 몰렸는지 50초로 정리합니다.` },
+        cuts: cuts,
+        cta: { caption: '내일 아침 체크 3가지', narration: '내일 아침에는 테마 지속성, 상한가 종목의 시초가, 환율과 선물 방향 세 가지만 확인하세요.' },
+        hashtags: buildHashtags(themes.map(function (t) { return themeName(t); }), 'stock'),
+        total: 50
+      }),
       notices: [
         { level: 'info', text: `기준 시각: ${basis || '-'} · 출처: 네이버 증권 폴링 + 야후 선물` },
         sessionLabel ? { level: 'info', text: `세션 상태: ${sessionLabel}` } : null,
@@ -644,12 +1215,13 @@
   }
 
   /* ============================================================
-   * 4. 🎡 특가 레이더 모드
+   * 6. 🎡 특가 레이더 모드
    * ============================================================ */
   function dealPriceNumber(d) {
-    const txt = String(d.deal_price || d.price_info || '');
-    const m = txt.replace(/,/g, '').match(/(\d{4,})/);
-    return m ? Number(m[1]) : (Number(d.unit_price) || 0);
+    const txt = String(dealPriceText(d) || '').replace(/,/g, '');
+    const m = txt.match(/(\d{3,})/);
+    if (m) return Number(m[1]);
+    return Number(d.unit_price) || 0;
   }
 
   /** 표시용 가격 문구 — '정상 8,000원 → 카톡 특가 7,000원 (12% 할인)' 같은 문장에서 실제 특가만 */
@@ -668,7 +1240,11 @@
   /** '동탄 4인 가족' 눈높이 순서: 국내 체험/테마파크 → 국내 숙소 → 해외 */
   function pickFamilyDeals(deals, limit) {
     const A = [], B = [], C = [];
+    const seen = new Set();
     (deals || []).forEach(function (d) {
+      const key = String((d && d.title) || '').replace(/\s+/g, ' ').trim();
+      if (!key || seen.has(key)) return;   // 같은 상품이 중복으로 들어오면 한 번만
+      seen.add(key);
       const overseas = /overseas/.test(String(d.type || ''));
       const lodging = /stay|resort|snow|city/.test(String(d.theme || ''))
         && !/themepark|kids_cafe|museum/.test(String(d.category || ''))
@@ -687,6 +1263,26 @@
 
   function titleOf(d) {
     return clamp(String((d && d.title) || '').replace(/^[^\w가-힣]+/, ''), 60);
+  }
+
+  /** 제목·자막용 짧은 이름 — 괄호(지점·층·기준)를 덜어낸다 */
+  function shortTitle(d) {
+    const raw = String((d && d.title) || '')
+      .replace(/^[^\w가-힣]+/, '')
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/\s*（[^）]*）/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clamp(raw || titleOf(d), 24);
+  }
+
+  /** 위치를 짧게 — 도로명까지 다 넣으면 표가 깨진다 */
+  function shortPlace(d) {
+    const raw = String(d.region || d.location || '-').replace(/\s+/g, ' ').trim();
+    if (!raw) return '-';
+    if (raw.length <= 20) return raw;
+    const parts = raw.split(' ');
+    return parts.slice(0, 3).join(' ');
   }
 
   /** 스캔 팁 문장을 문장 경계에서 자른다 */
@@ -711,6 +1307,11 @@
     const kidsTop = pickFamilyDeals(kids, 3);
     const travelTop = pickFamilyDeals(travel, 2);
 
+    const prices = top.map(dealPriceNumber).filter(function (n) { return n > 0; });
+    const minPrice = prices.length ? Math.min.apply(null, prices) : 0;
+    const maxPrice = prices.length ? Math.max.apply(null, prices) : 0;
+    const firstPrice = top[0] ? dealPriceText(top[0]) : '';
+
     const headline = `동탄 4인 가족 ${isWeekend ? '이번 주말' : '다음 주말'} 이 가격에 가볼 만한 곳 ${top.length}곳`;
     const pills = top.slice(0, 4).map(function (d) { return clamp(titleOf(d), 22); });
 
@@ -727,32 +1328,46 @@
     });
     if (meta.scannedAt) summary.push(`가격은 ${meta.scannedAt} 실측 스캔 기준이며, 예약 화면에서 날짜·인원에 따라 달라질 수 있습니다.`);
 
+    /* ---- 표: 비교 ---- */
+    const rows = top.map(function (d) {
+      const where = shortPlace(d);
+      const memo = d.family_fit ? oneLine(d.family_fit, 30) : (d.benefit_tag ? oneLine(d.benefit_tag, 28) : (tipOf(d) ? oneLine(tipOf(d), 30) : '-'));
+      return [shortTitle(d), dealPriceText(d), where, memo];
+    });
+
     const sections = [
       {
         h2: '이번 주말, 이 가격이면 갈 만합니다',
+        lead: '판매 화면에서 실제로 확인된 가격만 담았습니다. 확인되지 않은 평점·할인율은 비워 뒀습니다.',
         paras: [
-          `${meta.scannedAt ? meta.scannedAt + ' 기준으로 ' : ''}실제 판매 화면에서 확인된 가격만 골랐습니다. 후기·평점이 있는 상품은 함께 표시했고, 확인되지 않은 값은 비워 뒀습니다.`,
-          isWeekend ? '오늘 바로 움직일 수 있는 곳은 이동 시간과 주차 조건을 먼저 보세요. 동탄 기준 자차 40분~1시간 30분이면 당일 코스로 충분합니다.' : '주말 예약은 금요일 저녁에 마감되는 경우가 많으니 미리 날짜를 잡아 두는 편이 좋습니다.'
+          `${meta.scannedAt ? meta.scannedAt + ' 스캔 기준으로 ' : ''}여행 ${travel.length}건 · 키즈 ${kids.length}건 중에서 4인 가족 기준으로 ${top.length}곳을 골랐습니다. 가격은 1인권과 4인 기준이 섞여 있으니 표의 가격 옆 조건을 꼭 같이 보세요.`,
+          isWeekend
+            ? '오늘 바로 움직인다면 이동 시간과 주차 조건부터 확인하세요. 동탄 기준 자차 40분~1시간 30분이면 당일 코스로 충분합니다.'
+            : '주말 예약은 금요일 저녁에 마감되는 경우가 많습니다. 날짜를 먼저 잡아 두면 가격이 덜 흔들립니다.'
         ],
-        items: []
+        items: [],
+        table: tableOf(['장소', '가격', '위치', '한 줄 포인트'], rows, clamp(meta.scannedAt ? `실측 스캔 ${meta.scannedAt} · ${meta.source || ''}` : '실측 스캔 기준', 110))
       },
       {
         h2: '아이와 가기 좋은 곳 — 키즈·실내',
-        paras: ['실내 위주라 날씨 영향을 덜 받고, 미취학·초등이 함께 놀기 좋은 곳부터 정리했습니다.'],
+        lead: '날씨 영향을 덜 받고, 미취학·초등이 함께 놀기 좋은 곳부터 정리했습니다.',
+        paras: [],
         items: kidsTop.map(function (d) {
           return `${clamp(titleOf(d), 44)} — ${dealPriceText(d)} · ${d.location || ''}${d.tips ? ' · ' + tipOf(d) : ''}`;
         })
       },
       {
         h2: '1박으로 쉬어가는 코스',
-        paras: ['숙소는 4인 기준 객실인지, 조식·부대시설이 포함인지까지 확인해야 실제 결제 금액이 맞습니다.'],
+        lead: '숙소는 4인 기준 객실인지, 조식·부대시설이 포함인지까지 확인해야 실제 결제 금액이 맞습니다.',
+        paras: [],
         items: travelTop.map(function (d) {
           return `${clamp(titleOf(d), 44)} — ${dealPriceText(d)} · ${d.region || ''}${d.family_fit ? ' · ' + clamp(d.family_fit, 60) : ''}`;
         })
       },
       {
         h2: '예약 전 체크리스트',
-        paras: ['가격은 실측 시점 기준입니다. 결제 직전 화면에서 아래 항목을 꼭 다시 확인하세요.'],
+        lead: '가격은 실측 시점 기준입니다. 결제 직전 화면에서 이 다섯 가지만 다시 보세요.',
+        paras: [],
         items: [
           '이용일·시간 지정 여부 (당일 취소 불가 상품이 많습니다)',
           '인원 기준 — 4인 기준인지, 1인권이라 4장 필요한지',
@@ -763,16 +1378,45 @@
       }
     ];
 
-    const hook = top[0] ? `${clamp(titleOf(top[0]), 30)}, ${dealPriceText(top[0])}?` : '이번 주말 동탄에서 갈 만한 곳, 정리했습니다.';
-    const blocks = top.slice(0, 3).map(function (d) {
-      return `${clamp(titleOf(d), 30)} ${dealPriceText(d)}.`;
+    const points = [
+      { t: '인원 기준을 먼저 맞춘다', d: '1인권 상품은 4장을 사야 하고, 패밀리룸은 4인 기준인지 초과 요금이 붙는지 확인해야 합니다. 표의 가격은 상품 표기 기준입니다.' },
+      { t: '주말·공휴일 가격을 따로 본다', d: '같은 상품도 날짜를 바꾸면 가격이 달라집니다. 예약 화면에서 이용일을 먼저 넣고 가격을 확인하세요.' },
+      { t: '취소 규정과 현장 결제', d: '당일 취소 불가 상품이 많습니다. 수영장·바베큐처럼 현장에서 따로 내는 항목이 있으면 총액이 달라집니다.' }
+    ];
+
+    const closing = top[0]
+      ? `한 줄로 정리하면, ${shortTitle(top[0])}부터 확인하세요. ${firstPrice}${josa(firstPrice, '은', '는')} 스캔 시점 가격이니 예약 화면이 마지막 기준입니다.`
+      : '한 줄로 정리하면, 이번 주말은 예약 화면에서 날짜를 먼저 넣고 가격을 확인하는 것부터 시작하세요.';
+
+    const titleSet = makeTitleSet([
+      { kind: 'curiosity', text: top[1] ? `${shortTitle(top[0])} vs ${shortTitle(top[1])} — 4인 가족에게 유리한 쪽은?` : (top[0] ? `${shortTitle(top[0])}, 정말 이 가격에 갈 수 있을까?` : '동탄 4인 가족, 이번 주말 어디 갈까?') },
+      { kind: 'numbers', text: `동탄 4인 가족 특가 ${top.length}곳 — 최저 ${won(minPrice)}부터` },
+      { kind: 'summary', text: `${kst.short} 가족 나들이 정리 — 가격·위치·주차 한 번에 비교` }
+    ]);
+
+    const hook = top.length
+      ? `이번 주말, 아이 둘 데리고 나가려면 결국 '가격 · 이동 시간 · 주차' 세 가지에서 갈립니다. 실제 판매 화면에서 확인된 ${top.length}곳을 표로 먼저 비교해 보세요.`
+      : '이번 스캔에서 4인 가족 기준으로 바로 추천할 특가를 찾지 못했습니다.';
+
+    const cutItems = top.slice(0, 3).map(function (d) {
+      return {
+        caption: `${shortTitle(d)} **${dealPriceText(d)}**`,
+        narration: `${shortTitle(d)}, ${dealPriceText(d)}입니다.`
+      };
     });
-    blocks.push('가격은 실측 시점 기준이니 예약 화면에서 한 번 더 확인하세요.');
+    if (!cutItems.length) cutItems.push({ caption: '이번 주 스캔 결과 확인', narration: '이번 주 스캔 결과를 확인해 보세요.' });
+    cutItems.push({
+      caption: '가격은 예약 화면이 마지막 기준',
+      narration: '가격은 스캔 시점 기준이니 예약 화면에서 날짜와 인원을 넣고 한 번 더 확인하세요.'
+    });
 
     const content = {
       mode: 'deals',
+      kicker: KICKERS.deals,
+      shortsTitle: `동탄 4인 가족 ${isWeekend ? '주말' : '주말'} 나들이 ${top.length}곳`,
       source: {
         label: '패밀리 특가 레이더 (/deals.html 실측 스캔)',
+        short: '패밀리 특가 레이더',
         url: '/deals.html',
         asOf: meta.scannedAt || ''
       },
@@ -783,13 +1427,24 @@
       keywords: ['동탄', '가족나들이', '키즈카페', '여행특가', '주말나들이'],
       summary: summary.slice(0, 5),
       blog: {
-        titles: blogTitleCandidates(`가볼 만한 곳 ${top.length}곳`, 'deals', kst),
-        intro: `${kst.short} 기준 동탄 4인 가족 눈높이로 다시 골랐습니다. 여행 ${travel.length}건 · 키즈 ${kids.length}건 중에서 아이와 바로 갈 수 있는 곳, 1박으로 쉬어갈 곳을 나눠 정리했습니다.`,
+        titleSet: titleSet,
+        titles: titleSet.map(function (t) { return t.text; }),
+        hook: hook,
         sections: sections,
+        points: points,
+        closing: closing,
         cta: buildCta('deals'),
         tags: []
       },
-      shorts: buildShortsScript({ hook: hook, blocks: blocks, cta: '주소와 가격은 고정 댓글에 정리해 뒀습니다.', total: 50 }),
+      shorts: buildShortsScript({
+        hook: top[0]
+          ? { caption: `이번 주말 **${top.length}곳** 골랐습니다`, narration: `이번 주말 동탄에서 4인 가족이 갈 만한 곳 ${top.length}곳, 가격부터 비교합니다.` }
+          : { caption: '이번 주 동탄 가족 나들이', narration: '이번 주 동탄 가족 나들이 특가를 정리했습니다.' },
+        cuts: cutItems,
+        cta: { caption: '저장해 두고 예약 전 확인', narration: '마음에 드는 곳은 저장해 두고, 예약 화면에서 가격과 운영 시간을 꼭 확인하세요.' },
+        hashtags: buildHashtags(['동탄', '가족나들이', '키즈카페'], 'deals'),
+        total: 50
+      }),
       notices: [
         meta.scannedAt ? { level: 'info', text: `실측 스캔: ${meta.scannedAt} · ${meta.source || ''}` } : null,
         { level: 'warn', text: '가격·운영시간은 실측 시점 기준입니다. 결제 화면에서 날짜·인원에 따라 달라집니다.' },
@@ -800,7 +1455,7 @@
   }
 
   /* ============================================================
-   * 5. ▶️ 유튜브 요약 모드
+   * 7. ▶️ 유튜브 요약 모드
    * ============================================================ */
   function buildFromVideo(payload) {
     const video = payload.video || {};
@@ -812,27 +1467,33 @@
     const hasTranscript = points.length >= 1 && (parsed.text || '').length >= 60;
 
     if (!hasTranscript) {
+      const titleSetNone = makeTitleSet([
+        { kind: 'curiosity', text: `${clamp(title, 40)} — 자막이 없어 요약을 만들지 않았습니다` },
+        { kind: 'numbers', text: `${clamp(title, 40)} · 자막 미확인` },
+        { kind: 'summary', text: `${clamp(title, 44)} — 영상 정보만 확인` }
+      ]);
       return finishContent({
         mode: 'video',
+        kicker: KICKERS.video,
         ok: false,
-        source: { label: '유튜브', url: video.url || '', asOf: kst.label },
+        source: { label: '유튜브', short: '유튜브', url: video.url || '', asOf: kst.label },
         headline: title,
         subline: channel,
         pills: channel ? [channel] : [],
         facts: [],
         keywords: tokenize(title).slice(0, 5),
         summary: [],
-        blog: { titles: blogTitleCandidates(title, 'video', kst), intro: '', sections: [], cta: buildCta('video'), tags: [] },
-        shorts: buildShortsScript({ hook: title, blocks: [], cta: '', total: 50 }),
+        blog: { titleSet: titleSetNone, titles: titleSetNone.map(function (t) { return t.text; }), hook: '', sections: [], points: [], closing: '', cta: buildCta('video'), tags: [] },
+        shorts: buildShortsScript({ hook: { caption: title, narration: title }, cuts: [], cta: { caption: '자막이 필요합니다', narration: '자막이 없어 대본을 만들지 않았습니다.' }, total: 50 }),
         notices: [{ level: 'warn', text: '자막이 없어 요약을 만들지 않았습니다. 가짜 요약은 생성하지 않습니다.' }],
         reason: 'no_captions'
       });
     }
 
     const allText = parsed.text;
-    const rank = keywordRank(allText, 14).map(function (x) { return x.w; });
-    const key3 = rank.slice(0, 3);
-    const summary = points.map(function (p, i) {
+    const rankAll = keywordRank(allText, 14);
+    const key3 = rankAll.slice(0, 3).map(function (x) { return x.w; });
+    const summary = points.map(function (p) {
       return (p.t !== null && p.t !== undefined ? `[${fmtTime(p.t)}] ` : '') + p.text;
     });
 
@@ -842,35 +1503,35 @@
 
     /* 구간별 정리: 타임라인 3분할 + 각 구간의 핵심 문장 */
     const thirds = [[], [], []];
+    const segs = parsed.segments.filter(function (s) { return s && s.text; });
+    const dur = video.duration || (segs.length ? segs[segs.length - 1].t : 0) || 0;
     points.forEach(function (p) {
       const t = p.t === null || p.t === undefined ? 0 : p.t;
-      const dur = video.duration || (parsed.segments.length ? parsed.segments[parsed.segments.length - 1].t : 0) || 1;
-      const idx = Math.min(2, Math.floor((t / dur) * 3));
+      const idx = Math.min(2, Math.floor((t / Math.max(1, dur)) * 3));
       thirds[idx].push(p);
     });
 
     const sections = [];
     sections.push({
       h2: '영상 한 줄 결론',
+      lead: '영상에서 가장 먼저 남는 문장 하나입니다.',
       paras: [points[0].text],
       items: []
     });
     sections.push({
       h2: '핵심 5줄 요약',
-      paras: ['영상에서 실제로 말한 문장 중 핵심만 시간 순으로 추렸습니다.'],
+      lead: '영상에서 실제로 말한 문장 중 핵심만 시간 순으로 추렸습니다.',
+      paras: [],
       items: points.map(function (p, i) {
         return `${i + 1}. ${p.text}${p.t !== null && p.t !== undefined ? ` (${fmtTime(p.t)})` : ''}`;
       })
     });
 
     const partNames = ['도입 — 문제 제기', '본론 — 근거와 사례', '정리 — 결론과 시사점'];
-    const segs = parsed.segments.filter(function (s) { return s && s.text; });
-    const dur = video.duration || (segs.length ? segs[segs.length - 1].t : 0) || 0;
     const pickedText = new Set(points.map(function (p) { return p.text; }));
     thirds.forEach(function (group, i) {
       const from = dur ? dur * i / 3 : 0;
       const to = dur ? dur * (i + 1) / 3 : Infinity;
-      // 그 구간 자막에서 요약에 안 뽑힌 보조 문장 2개 (문장 길이 우선)
       const extras = [];
       segs.forEach(function (s) {
         if (s.t === null || s.t === undefined) return;
@@ -886,6 +1547,7 @@
       const range = dur ? ` (${fmtTime(from)}~${fmtTime(to)})` : '';
       sections.push({
         h2: `${partNames[i]}${range}`,
+        lead: '',
         paras: []
           .concat(group.length ? [group.map(function (p) { return p.text; }).join(' ')] : [])
           .concat(extras.slice(0, 2)),
@@ -893,24 +1555,56 @@
       });
     });
 
+    const kwRows = rankAll.slice(0, 6).map(function (x) { return [x.w, x.n + '회']; });
+    sections.push({
+      h2: '키워드로 다시 보기',
+      lead: '자막 전체에서 가장 자주 나온 단어입니다. 영상의 무게중심이 어디인지 보여 줍니다.',
+      paras: [],
+      items: [],
+      table: tableOf(['키워드', '언급'], kwRows, `자막 ${parsed.segments.length ? parsed.segments.length + '구간' : '전문'} · ${(parsed.text || '').length.toLocaleString()}자 기준`)
+    });
+
     sections.push({
       h2: '이 영상에서 확인해야 할 점',
+      lead: '요약은 자막 추출이라, 화면에만 나온 숫자는 빠져 있을 수 있습니다.',
       paras: [
-        `영상은 ${channel || '해당 채널'}에서 ${video.duration ? fmtTime(video.duration) + ' 분량으로 ' : ''}다뤘습니다. 자막 ${parsed.segments.length ? parsed.segments.length + '개 구간' : '전문'}에서 뽑은 내용이라, 영상에 없는 해석이나 추정은 넣지 않았습니다.`,
-        `키워드: ${key3.join(', ') || '-'}`
+        `영상은 ${channel || '해당 채널'}에서 ${video.duration ? fmtTime(video.duration) + ' 분량으로 ' : ''}다뤘습니다. 자막에서 뽑은 내용이라 영상에 없는 해석이나 추정은 넣지 않았습니다.`
       ],
       items: []
     });
 
+    const pointsOut = [
+      { t: '말한 문장과 해석을 구분한다', d: '이 글의 요약은 자막에 실제로 있는 문장입니다. 해석이 필요한 부분은 따로 표시해 두고 읽으세요.' },
+      { t: '숫자는 영상 화면과 대조한다', d: '자막은 숫자를 잘못 인식하는 경우가 있습니다. 중요한 수치는 영상 화면이나 설명란에서 한 번 더 확인하세요.' },
+      { t: '자막 오인식 구간을 확인한다', d: `자동 생성 자막${video.captionSource ? '(' + video.captionSource + ')' : ''}은 고유명사를 흔히 틀립니다. 종목명·제품명은 원본에서 확인하는 편이 안전합니다.` }
+    ];
+
+    const closing = points[0]
+      ? `한 줄로 정리하면, 이 영상의 핵심은 "${clamp(points[0].text, 70)}"입니다.`
+      : `한 줄로 정리하면, ${clamp(title, 30)}의 핵심은 자막에 담긴 그대로입니다.`;
+
+    const titleSet = makeTitleSet([
+      { kind: 'curiosity', text: `이 영상에서 진짜 중요한 말은 ${points.length}문장이었습니다` },
+      { kind: 'numbers', text: `${fmtTime(video.duration || 0)} 영상 → 핵심 ${points.length}줄 · 구간 ${segs.length}개 정리` },
+      { kind: 'summary', text: `${clamp(title, 40)} — 자막에서 직접 뽑은 핵심 정리` }
+    ]);
+
+    const hook = `"${clamp(title, 46)}"${channel ? ' (' + channel + ')' : ''} 영상에서 실제로 말한 문장만 골랐습니다. 자막 ${segs.length ? segs.length + '구간' : '전문'}에서 남은 핵심은 ${points.length}줄입니다.`;
+
     const hookPoint = points[0] ? points[0].text : title;
-    const blocks = points.slice(1, 4).map(function (p) { return p.text; });
-    if (!blocks.length) blocks.push(clamp(title, 60));
+    const cutSource = points.slice(1, 4).map(function (p) {
+      return { caption: clamp(p.text, 46), narration: p.text };
+    });
+    if (!cutSource.length) cutSource.push({ caption: clamp(title, 40), narration: title });
 
     const content = {
       mode: 'video',
+      kicker: KICKERS.video,
+      shortsTitle: clamp(title, 28),
       ok: true,
       source: {
         label: `유튜브 — ${channel || '채널 미확인'}`,
+        short: channel ? '유튜브 · ' + channel : '유튜브',
         url: video.url || '',
         asOf: video.fetchedAt || kst.label
       },
@@ -926,16 +1620,20 @@
       keywords: key3,
       summary: summary,
       blog: {
-        titles: blogTitleCandidates(title, 'video', kst),
-        intro: `${video.url ? `[${title}](${video.url})` : title}${channel ? ' · ' + channel : ''} 영상을 실제 자막으로 정리했습니다. 5줄 요약과 구간별 내용을 한 번에 볼 수 있게 구성했습니다.`,
+        titleSet: titleSet,
+        titles: titleSet.map(function (t) { return t.text; }),
+        hook: hook,
         sections: sections,
+        points: pointsOut,
+        closing: closing,
         cta: buildCta('video'),
         tags: []
       },
       shorts: buildShortsScript({
-        hook: clamp(hookPoint, 60),
-        blocks: blocks,
-        cta: '영상 전체는 고정 댓글 링크에서 확인하세요.',
+        hook: { caption: `핵심은 **${points.length}문장**`, narration: `${channel ? channel + ' 영상, ' : ''}자막에서 핵심 ${points.length}문장만 뽑았습니다.` },
+        cuts: cutSource,
+        cta: { caption: '영상 전체는 고정 댓글 링크', narration: '영상 전체가 궁금하면 고정 댓글의 원본 링크를 확인하세요.' },
+        hashtags: buildHashtags(key3, 'video'),
         total: 50
       }),
       notices: [
@@ -948,7 +1646,7 @@
   }
 
   /* ============================================================
-   * 6. ✍️ 자유 주제/키워드 모드
+   * 8. ✍️ 자유 주제/키워드 모드
    * ============================================================ */
   function buildFromTopic(payload) {
     const keyword = clamp(payload.keyword || '', 60);
@@ -957,19 +1655,18 @@
     const points = memo ? summarizeText({ text: memo, maxLines: 5 }) : [];
     const templates = payload.template || 'info';
 
-    if (!keyword) {
-      return null;
-    }
+    if (!keyword) return null;
 
     const summary = points.length
       ? points.map(function (p) { return p.text; })
-      : [`키워드: ${keyword}`, '메모가 비어 있어 뼈대만 만들었습니다. [ ] 자리에 실제 내용을 채우면 그대로 발행할 수 있습니다.']; 
+      : [`키워드: ${keyword}`, '메모가 비어 있어 뼈대만 만들었습니다. [ ] 자리에 실제 내용을 채우면 그대로 발행할 수 있습니다.'];
 
     const sections = [];
     sections.push({
       h2: '왜 이 주제인가',
+      lead: memo ? '메모로 주신 내용에서 출발합니다.' : '확인된 내용만으로 뼈대를 잡았습니다.',
       paras: points.length
-        ? [points[0].text]
+        ? paraSplit(points[0].text)
         : [`${keyword}에 대해 정리합니다. 이 글은 메모로 받은 내용만으로 작성됐고, 확인되지 않은 수치나 사례는 넣지 않았습니다.`],
       items: []
     });
@@ -977,43 +1674,73 @@
     if (points.length > 1) {
       sections.push({
         h2: '핵심 정리',
-        paras: ['메모에서 뽑은 핵심 문장을 순서대로 정리했습니다.'],
+        lead: '메모에서 뽑은 핵심 문장을 순서대로 정리했습니다.',
+        paras: [],
         items: points.slice(1).map(function (p) { return p.text; })
       });
     } else {
       sections.push({
         h2: '핵심 정리',
-        paras: ['아래 항목을 채우면 글이 됩니다.'],
+        lead: '아래 네 칸을 채우면 글이 됩니다.',
+        paras: [],
         items: [
           `① ${keyword}이 중요한 이유 — [한 문장]`,
-          `② 실제 사례·수치 — [확인한 자료 1개]`,
-          `③ 내 경험·의견 — [직접 겪은 내용]`,
-          `④ 주의할 점 — [반대 의견이나 한계]`
+          '② 실제 사례·수치 — [확인한 자료 1개]',
+          '③ 내 경험·의견 — [직접 겪은 내용]',
+          '④ 주의할 점 — [반대 의견이나 한계]'
         ]
       });
     }
 
     sections.push({
       h2: '적용 방법',
-      paras: [templates === 'review'
-        ? `${keyword}를 직접 써 본 기준으로 정리합니다. 좋았던 점과 아쉬웠던 점을 나눠 쓰면 읽는 사람이 판단하기 쉽습니다.`
-        : `${keyword}를 실제로 써먹으려면 순서를 정해 두는 게 좋습니다. 한 번에 다 하기보다 작은 단위로 나눠 시도하고, 결과를 기록해 두세요.`],
-      items: [
-        templates === 'review' ? '장점 — [ ]' : '1단계 — [ ]',
-        templates === 'review' ? '아쉬운 점 — [ ]' : '2단계 — [ ]',
-        templates === 'review' ? '이런 분께 추천 — [ ]' : '3단계 — [ ]'
-      ]
+      lead: templates === 'review' ? '직접 써 본 기준으로 좋았던 점과 아쉬웠던 점을 나눠 씁니다.' : '한 번에 다 하기보다 작은 단위로 나눠 시도하고, 결과를 기록해 두세요.',
+      paras: [
+        templates === 'review'
+          ? `${keyword}를 직접 써 본 기준으로 정리합니다. 좋았던 점과 아쉬웠던 점을 나눠 쓰면 읽는 사람이 판단하기 쉽습니다.`
+          : `${keyword}를 실제로 써먹으려면 순서를 정해 두는 게 좋습니다. 아래 단계는 뼈대이니 상황에 맞게 고쳐 쓰세요.`
+      ],
+      items: templates === 'review'
+        ? ['장점 — [ ]', '아쉬운 점 — [ ]', '이런 분께 추천 — [ ]']
+        : ['1단계 — [ ]', '2단계 — [ ]', '3단계 — [ ]']
     });
 
     sections.push({
-      h2: '정리',
-      paras: [`${keyword}에 대해 지금까지 확인한 내용을 정리했습니다. 추가로 확인되는 자료가 있으면 이 글에 이어서 업데이트합니다.`],
-      items: []
+      h2: '구성안 — 이 순서로 쓰면 읽힙니다',
+      lead: '발행 전에 이 표대로 목차를 한 번 점검하세요.',
+      paras: [],
+      items: [],
+      table: tableOf(['파트', '넣을 내용', '분량'], [
+        ['도입', `${keyword} — 독자가 겪는 상황 한 문장`, '2~3줄'],
+        ['핵심', '[확인한 사실] + [내 기준]', '3~5문단'],
+        ['사례', '[직접 겪은 내용] 또는 [자료 1개]', '1~2문단'],
+        ['마무리', '한 줄 결론 + 다음 행동', '2줄']
+      ], '표는 글 구성 계획입니다. 빈 칸은 확인 후 채우세요.')
     });
+
+    const pointsOut = [
+      { t: '첫 문단에서 약속을 먼저 한다', d: `"${keyword}를 읽고 나면 무엇을 알게 되는지"를 첫 세 문장 안에 넣으세요. 독자는 그 약속을 보고 끝까지 읽습니다.` },
+      { t: '확인한 것과 추측을 섞지 않는다', d: '수치·사례는 출처가 있는 것만 쓰고, 추측은 "제 생각에는"처럼 표시를 남기면 신뢰가 올라갑니다.' },
+      { t: '한 문단 한 가지', d: '문단이 길어지면 끊으세요. 모바일에서는 3~4줄이 한 덩어리로 읽힙니다.' }
+    ];
+
+    const closing = `${keyword} — 오늘은 여기까지 정리했습니다. [ ] 자리만 채우면 그대로 발행할 수 있습니다.`;
+
+    const titleSet = makeTitleSet([
+      { kind: 'curiosity', text: `${keyword} — 어디서부터 손대야 할까요?` },
+      { kind: 'numbers', text: points.length ? `메모 ${points.length}문장으로 만든 ${keyword} 초안` : `${keyword} 글, 4단 구성으로 잡았습니다` },
+      { kind: 'summary', text: `${keyword} 정리 노트 — 구성·포인트·주의점` }
+    ]);
+
+    const hook = points.length
+      ? `${points[0].text} 이 한 문장에서 시작해, ${keyword} 글을 끝까지 읽히는 구조로 다시 잡았습니다.`
+      : `${keyword}로 글을 쓰려면 순서가 먼저입니다. 메모가 비어 있어 뼈대만 잡았고, [ ] 자리를 채우면 그대로 발행할 수 있습니다.`;
 
     const content = {
       mode: 'topic',
-      source: { label: '자유 주제 입력', url: '', asOf: kst.label + ' ' + kst.time },
+      kicker: KICKERS.topic,
+      shortsTitle: clamp(keyword, 26),
+      source: { label: '자유 주제 입력', short: '직접 입력', url: '', asOf: kst.label + ' ' + kst.time },
       headline: keyword,
       subline: memo ? clamp(memo, 50) : '메모 없이 뼈대만 생성',
       pills: keyword ? [keyword] : [],
@@ -1021,17 +1748,26 @@
       keywords: tokenize(keyword + ' ' + memo).slice(0, 5),
       summary: summary,
       blog: {
-        titles: blogTitleCandidates(keyword, 'topic', kst),
-        intro: `${keyword} — ${memo ? '메모로 주신 내용을 기준으로' : '기본 뼈대를 기준으로'} 정리했습니다.`,
+        titleSet: titleSet,
+        titles: titleSet.map(function (t) { return t.text; }),
+        hook: hook,
         sections: sections,
+        points: pointsOut,
+        closing: closing,
         cta: buildCta('topic'),
         tags: []
       },
       shorts: buildShortsScript({
-        hook: `${keyword}, 이거 하나만 알면 됩니다`,
-        blocks: points.length ? points.slice(0, 3).map(function (p) { return p.text; })
-          : [`${keyword}가 필요한 순간은 [상황]입니다.`, `핵심은 [한 가지]입니다.`, `실제로 해보면 [결과]가 나옵니다.`],
-        cta: '자세한 내용은 고정 댓글 링크에서 확인하세요.',
+        hook: { caption: `${keyword}`, narration: `${keyword}, 이 순서로 정리하면 됩니다.` },
+        cuts: points.length
+          ? points.slice(0, 3).map(function (p) { return { caption: clamp(p.text, 44), narration: p.text }; })
+          : [
+            { caption: '① 왜 이 주제인가', narration: '첫째, 왜 이 주제를 다루는지 한 문장으로 말합니다.' },
+            { caption: '② 확인한 근거', narration: '둘째, 확인한 근거와 수치를 넣습니다.' },
+            { caption: '③ 실제 적용', narration: '셋째, 실제로 어떻게 쓰는지 설명합니다.' }
+          ],
+        cta: { caption: '자세한 내용은 고정 댓글 링크', narration: '자세한 내용은 고정 댓글 링크에서 확인하세요.' },
+        hashtags: buildHashtags([keyword], 'topic'),
         total: 50
       }),
       notices: [
@@ -1044,7 +1780,7 @@
   }
 
   /* ============================================================
-   * 7. 📅 요일별 추천
+   * 9. 📅 요일별 추천
    * ============================================================ */
   function weekdayPlan(now) {
     const kst = kstNow(now);
@@ -1106,10 +1842,18 @@
     _debug: { splitSentences: splitSentences, tokenize: tokenize },
     buildHashtags: buildHashtags,
     contentToMarkdown: contentToMarkdown,
+    contentToHtml: contentToHtml,
+    contentToPlain: contentToPlain,
+    parseBlogMarkdown: parseBlogMarkdown,
+    shortsSpec: shortsSpec,
     shortsToText: shortsToText,
+    makeTitleSet: makeTitleSet,
+    finishContent: finishContent,
     fmtTime: fmtTime,
     num: num,
     pct: pct,
-    clamp: clamp
+    clamp: clamp,
+    esc: esc,
+    stripMd: stripMd
   };
 });

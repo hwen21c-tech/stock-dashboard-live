@@ -7,8 +7,8 @@ GitHub Pages로 서빙하던 **정적 관제탑**(`deploy_repo/`)의 **9대 탭 
 ```
 public/index.html          증시 실시간 관제탑 — 9대 탭 풀버전 (3.5MB 단일 파일, 차트·브리핑 모달·데이터셋 그대로)
 public/deals.html          패밀리 특가 레이더 — 여행·키즈·캘린더 + 🛒 쇼핑 최저가 탭
-public/content-studio.html ✍️ 올인원 콘텐츠 스튜디오 — 관제탑/특가/유튜브/자유주제 → 블로그·쇼츠·썸네일
-public/content-engine.js   콘텐츠 생성 엔진(브라우저 + 서버 공용, UMD) — 추출 요약·템플릿 조합
+public/content-studio.html ✍️ 올인원 콘텐츠 스튜디오 — 관제탑/특가/유튜브/자유주제 → 제목 3안·블로그 원고·쇼츠 대본·썸네일·원고 보관함
+public/content-engine.js   콘텐츠 생성 엔진 v1.1(브라우저 + 서버 공용, UMD) — 추출 요약 · 제목 3안 · 표/실전 포인트 · 리치 HTML · 쇼츠 MP4 스펙
 public/live-api.js         동적 연동 레이어 (15초 지수/감시종목 · 30초 1·3·5탭 · RN존 실시간 종목 조회)
 public/live-extra.js       1·2·3번 탭 잔여 고도화 (신호등 6칩 자동 생성 · NXT 랭킹 · 수급 카드 · 요약 문장)
 public/deals-shopping.js   쇼핑 최저가 Top 5 렌더러 (키 미등록 시 안내 배너로 대체)
@@ -30,7 +30,7 @@ lib/news-impact.js         뉴스 제목·요약 키워드 → 영향도·테마
 api/live-briefing.js       ⚡ 클릭 순간 실시간 팩트 브리핑 (지수·선물·환율·급등/대금 상위·최신 뉴스)
 api/stock-chart.js         종목명/코드 → 60거래일 일봉 + RN 지지/저항
 api/deals-shopping.js      네이버 쇼핑 최저가 Top 5
-api/content-studio.js      ✍️ 콘텐츠 스튜디오 API — ?url=유튜브요약(oEmbed+Piped 자막) / ?mode=stock|deals|topic 서버 원고 생성
+api/content-studio.js      ✍️ 콘텐츠 스튜디오 API — ?url=유튜브요약(oEmbed+Piped 자막) / ?mode=stock|deals|topic 서버 원고 생성 (titleSet·hook·points·shortsJson 포함)
 lib/http.js                fetch 타임아웃 · EUC-KR 디코딩 · 숫자/금액 파싱 공용 유틸
 vercel.json                /api/* 함수 + public/ 정적 서빙 설정
 dev_server.mjs             Vercel 없이 로컬에서 그대로 띄우는 개발용 서버
