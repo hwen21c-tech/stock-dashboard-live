@@ -457,7 +457,7 @@
     .back{padding:5px 8px}
     .icob{width:29px;height:27px;font-size:13px}
     .vbar{padding:0;flex:0 1 auto;flex-wrap:nowrap;min-width:0;gap:4px}
-    .slots{flex:0 1 auto;min-width:0}
+    .slots{flex:0 0 auto;min-width:0}
     .slots button{padding:4px 8px;max-width:44%}
     .stats{white-space:nowrap;padding:2px 8px}
     .themebar{padding:0;margin:0;max-width:none;width:auto;flex:0 0 auto;overflow:visible}
@@ -477,11 +477,20 @@
   }
   @media (min-width:760px) and (max-width:999px){
     .stats{display:none}
-    .slots button{max-width:34%}
+    .slots button{max-width:48%}
     .themebar button{padding:4px 7px}
     .back{font-size:0;padding:5px 9px}
     .back::before{content:"◀";font-size:12px}
     .todnow{max-width:4.6em;overflow:hidden;text-overflow:ellipsis}
+  }
+  /* 좀 더 짧은 가로 화면(폰을 옆으로) — 이름은 아이콘으로, 잠금 숫자는 그대로 보인다 */
+  @media (min-width:760px) and (max-width:819px){
+    .vhead h1{display:none}
+    .todnow{display:none}
+    .themebar .tn{display:none}
+    .themebar .tn.lockn{display:inline}
+    .themebar button{padding:4px 6px;gap:2px}
+    .slots button{max-width:48%;padding:4px 6px}
   }
 </style>
 </head>
@@ -881,8 +890,8 @@
       const cls = (on ? 'on ' : '') + (open ? '' : 'lock');
       const tip = open ? t.name : (t.name + ' — 도감 ' + t.need + '마리를 모으면 열려요');
       const inner = open
-        ? '<span class="te">' + t.emoji + '</span>' + t.short
-        : '<span class="te">🔒</span>' + t.need + '마리';
+        ? '<span class="te">' + t.emoji + '</span><span class="tn">' + t.short + '</span>'
+        : '<span class="te">🔒</span><span class="tn lockn">' + t.need + '마리</span>';
       return '<button type="button" data-vtheme="' + t.k + '" class="' + cls + '" title="' + tip + '"'
         + ' aria-label="' + tip + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + inner + '</button>';
     }).join('');
