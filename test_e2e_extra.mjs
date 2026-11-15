@@ -85,6 +85,12 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 884, height: 1100, deviceScaleFactor: 2 });
 
+// PIN 0623 잠금이 켜져 있으므로 검증 세션은 '해제된 기기'로 시작한다
+// (잠금은 화면 가림 오버레이라, 이 한 줄 없이는 탭 클릭이 오버레이에 막힌다)
+await page.evaluateOnNewDocument(() => {
+  try { localStorage.setItem('stock_dashboard_pin_auth', '0623_verified'); } catch (e) {}
+});
+
 const consoleErrors = [];
 const pageErrors = [];
 const httpErrors = [];

@@ -1314,9 +1314,14 @@
       const uncaught = base.filter((p) => !ids.has(p.id));
       /* 한쪽이 비어 있으면 섞을 것이 없다(본체가 알아서 고른다) */
       if (!owned.length || !uncaught.length) return orig.apply(null, args);
+      /* 직전에 나온 포켓몬은 다시 고르지 않는다.
+         도감에 1마리(예: 콘치 #118)만 있으면 owned = [콘치] 라서
+         본체 pickWild 의 excludeId 가 무력화되고 콘치만 연속 등장하던 버그 수정. */
+      const excludeId = args && args[0];
+      const ownedAvail = owned.filter((p) => String(p.id) !== String(excludeId));
       const saved = POKEMON;
       try {
-        POKEMON = (Math.random() < RECATCH_NEW) ? owned : uncaught;
+        POKEMON = (ownedAvail.length > 0 && Math.random() < RECATCH_NEW) ? ownedAvail : uncaught;
         return orig.apply(null, args);
       } finally {
         POKEMON = saved;

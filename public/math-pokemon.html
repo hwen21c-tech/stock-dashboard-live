@@ -1904,6 +1904,23 @@ function setWildImages(p) {
   wrap.classList.remove('noimg');
   art.style.cssText = '';
   spr.style.cssText = '';
+  /* 일러스트(art)와 도트 스프라이트(spr)의 실패를 따로 센다.
+     도트가 잠깐 실패했다고 고화질 일러스트까지 꺼 버리면 상대 포켓몬이 통째로 사라진다. */
+  let artBroken = false;
+  let sprBroken = false;
+  const showArt = (w) => {
+    if (artBroken) return false;
+    art.style.display = '';
+    art.style.opacity = '1';
+    if (w) art.style.width = w;
+    return true;
+  };
+  const fallbackIfBothGone = () => {
+    if (!artBroken || !sprBroken) return;
+    art.style.display = 'none';
+    spr.style.display = 'none';
+    wrap.classList.add('noimg');
+  };
   const isBoss = !!(p.leg || p.myth);
   if (isBoss) {
     /* 전설·환상은 정체를 가리지 않는다 — 일러스트와 이름을 처음부터 선명하게 */
@@ -1913,21 +1930,35 @@ function setWildImages(p) {
     art.style.transition = 'none';
     art.style.filter = '';
     art.style.width = '';
-    art.onload = null;
-    art.onerror = () => { art.style.display = 'none'; spr.style.display = ''; spr.style.opacity = '1'; spr.style.width = '86%'; };
+    art.onload = () => { artBroken = false; showArt(); };
+    art.onerror = () => {
+      artBroken = true;
+      art.style.display = 'none';
+      if (!sprBroken) { spr.style.display = ''; spr.style.opacity = '1'; spr.style.width = '86%'; }
+      else fallbackIfBothGone();
+    };
   } else {
     spr.style.display = '';
     // 도트 스프라이트(5KB)를 먼저 깔아 두어 기다림 없이 바로 등장하게 한다
     spr.style.opacity = '1';
     art.style.opacity = '0';
     art.style.transition = 'opacity .22s';
-    art.onload = () => { art.style.opacity = '1'; spr.style.opacity = '0'; };
-    art.onerror = () => { art.style.display = 'none'; spr.style.opacity = '1'; spr.style.width = '72%'; };
+    art.onload = () => { artBroken = false; sprBroken = false; art.style.opacity = '1'; spr.style.opacity = '0'; };
+    art.onerror = () => {
+      artBroken = true;
+      art.style.display = 'none';
+      if (!sprBroken) { spr.style.opacity = '1'; spr.style.width = '72%'; }
+      else fallbackIfBothGone();
+    };
   }
+  /* 도트 스프라이트가 실패해도 일러스트는 그대로 둔다(둘 다 실패했을 때만 fallback) */
+  spr.onload = () => { sprBroken = false; };
   spr.onerror = () => {
+    sprBroken = true;
     spr.style.display = 'none';
-    art.style.display = 'none';
-    wrap.classList.add('noimg');
+    spr.style.opacity = '0';
+    if (artBroken) { fallbackIfBothGone(); return; }
+    if (art.complete && art.naturalWidth > 0) showArt();
   };
   art.src = ART(p.id);
   spr.src = SPR(p.id);

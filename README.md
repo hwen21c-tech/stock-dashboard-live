@@ -16,6 +16,11 @@ public/sw.js               PWA 서비스워커 (network-first, 캐시 없음) �
 public/manifest.json       PWA 매니페스트 (연오랑 관제탑, scope ./)
 public/pokemon/manifest.json  포켓몬 배틀 월드 매니페스트 (id·start_url·scope = /pokemon/)
 public/pokemon/sw.js          포켓몬 배틀 월드 서비스워커 (scope /pokemon/)
+public/ebook.html          📖 eBook 오디오북 — TXT 뷰어 + 세미 오디오북 (단일 파일, 외부 의존 없음)
+public/ebook/manifest.json    eBook 매니페스트 (id·start_url = /ebook.html, scope = /ebook/)
+public/ebook/sw.js            eBook 서비스워커 (scope /ebook/, 캐시 접두사 ebook-reader-)
+public/ebook-icon.svg         eBook 앱 아이콘(책+헤드폰) — 192/512 PNG 동봉
+check-inline.mjs           HTML 안의 인라인 <script> 구문 검사기 (index.html 3.5MB 본체 보호용)
 public/downloads/          앱 아이콘 192/512
 api/stock-live.js          지수·환율·해외선물·종목 현재가
 api/tabs-live.js           1·3·5번 탭 — 8대 테마 32종목·52주 신고가·100억+ 상한가·최신 뉴스 12건(키워드 영향도·수혜주)
@@ -37,6 +42,13 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 · `📰 시간별 뉴스` · `🎯 RN존 실전 차트` · `🎯 만쥬 종가베팅` · `🏆 종가베팅 마스터` · `📅 증시 일정`
 
 상단 헤더의 `✈️ 특가 레이더` 링크는 `/deals.html` 로 연결됩니다.
+
+**PIN 0623 잠금**: 처음 열면 다크 PIN 키패드 화면이 뜨고 `0623` 을 넣어야 본문이 보입니다
+(키패드·키보드 숫자키·Backspace·Enter). `이 기기에서 유지`(기본 체크)를 켜면 `localStorage`,
+끄면 `sessionStorage` 에만 남아 탭을 닫으면 다시 잠깁니다. 헤더의 `🔒 잠금` 버튼으로 언제든 재잠금.
+**이 잠금은 화면만 가리는 오버레이**라, 잠긴 동안에도 `/api/stock-live`·`/api/tabs-live` 와
+9대 탭 데이터 로드는 그대로 돌아갑니다. (해제 엔진은 본문 스크립트와 분리된 전용 `<script>` 블록 —
+관제탑 본체 JS 가 어떤 이유로 멈춰도 잠금 해제는 항상 동작)
 
 **동적 연동 추가분 (기존 화면은 삭제·변경 없음)**
 - 페이지 로드 직후 + **15초마다** `/api/stock-live` 호출 →
@@ -101,7 +113,30 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
   같은 오리진이므로 `localStorage`(`pkm.shared.dex.v1.*`, `pkm.quota.v1`, 마을 저장)는 두 앱이 그대로 공유한다.
 - 검증: `BASE=<주소> node /workspace/_tools/e2e/pk4_scope.mjs` (매니페스트·SW scope·5개 페이지 이동·콘솔 에러·localStorage 공유 실측)
 
-### 3) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
+### 3) eBook 오디오북 `/ebook/` · `/ebook.html` — 독립 PWA
+
+TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효과음까지 깔아 주는 세미 오디오북.
+파일 하나(`public/ebook.html`)로 끝나며 외부 CSS/JS 에 의존하지 않는다.
+
+| | 연오랑 관제탑 | eBook 오디오북 |
+|---|---|---|
+| 매니페스트 | `/manifest.json` (`scope: ./`) | `/ebook/manifest.json` (`start_url: /ebook.html`, `scope: /ebook/`) |
+| 서비스워커 | `/sw.js` (`scope: /`) | `/ebook/sw.js` (`scope: /ebook/`, 캐시 접두사 `ebook-reader-`) |
+| 진입 | `/` | `/ebook.html`, `/ebook/` (`vercel.json` rewrite) |
+
+- **TXT 열기**: 드래그&드롭 · 파일 선택. `TextDecoder('utf-8',{fatal:true})` 실패 시 `euc-kr` 로 자동 폴백.
+  올린 책은 IndexedDB(`ebook-library`), 읽던 위치·책갈피·설정은 `localStorage` 에만 저장(서버 전송 없음).
+- **본문 구조**: `제1장`·`1장`·`Chapter 1`·`1.`·`프롤로그/에필로그` 등을 장으로 인식해 목차 드로어를 만들고,
+  장 첫머리는 새 쪽에서 시작한다. 문단은 문장 단위 `<span class="sn">` 로 쪼개 대사(`"…"`, `“…”`, 「…」)와 지문을 구분한다.
+- **화면**: 멀티컬럼 페이지 엔진. 넓은 화면(≥780px) 2쪽 펼침(책등 표시) / 좁은 화면 1쪽, 푸터에서 전환 가능.
+  좌우 화면 끝 탭·스와이프·←/→ 키로 넘김, 진행률 슬라이더, 글자 14~26px · 줄간격 1.4~2.4 · 고딕/명조 · 종이/세피아/다크.
+- **세미 오디오북(`/api/tts`)**: 문장 단위로 낭독하며 현재 문장을 하이라이트하고 쪽 끝에서 자동으로 넘긴다.
+  대사는 속도·호흡(서버 음성) / 음높이(기기 음성)로 지문과 구분. `/api/tts` 가 실패하면 `speechSynthesis` 로 자동 폴백.
+- **장면 효과음**: 비·천둥·바람·숲·밤·긴장·발소리·파도·불 키워드를 감지해 **Web Audio 합성음**을 겹친다(외부 오디오 파일 0).
+  ON/OFF·볼륨 조절, 낭독을 멈추면 함께 멈춘다.
+- 검증: `node /workspace/_tools/e2e/ebook_local.mjs` (3화면 넘침·목차 점프·2쪽/1쪽·낭독 하이라이트·EUC-KR·이어보기·`/ebook/` 리라이트)
+
+### 4) 패밀리 특가 레이더 `deals.html` — 5탭 (정적 본체 4탭 + 쇼핑 1탭)
 `🔎 여행·키즈 맞춤 검색기` · `✈️ 국내&해외 여행 특가(11건)` · `🎪 키즈카페·박물관(11건)`
 · `📅 다가오는 특가 & 예약 캘린더(9건)` · **`🛒 쇼핑 실시간 최저가 Top 5`(신규)**
 
@@ -138,7 +173,7 @@ test_local.mjs             API 실동작 테스트 (실제 네이버·야후 응
 ## 로컬 실행 · 검증
 
 ```bash
-npm run check                 # 모든 서버·프론트 JS 구문 검사
+npm run check                 # 모든 서버·프론트 JS 구문 + HTML 인라인 <script> 구문 검사 (check-inline.mjs)
 node test_local.mjs           # 실제 네이버·야후 응답으로 110개 항목 검증 (stock-live/chart/deals/live-briefing/tabs-live/신호등·NXT·수급 규칙)
 node test_e2e_extra.mjs       # 헤드리스 E2E: 1·2·3·6·8·9번 탭 + 폴드8(884px) 넘침 + 콘솔·HTTP 오류 0
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)

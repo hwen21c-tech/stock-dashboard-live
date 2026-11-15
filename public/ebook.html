@@ -1,0 +1,2385 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12100c">
+<meta name="description" content="TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면음까지 깔아 주는 세미 오디오북">
+<title>연오랑 eBook 오디오북</title>
+<link rel="manifest" href="/ebook/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/ebook-icon.svg">
+<link rel="apple-touch-icon" href="/ebook-icon-192.png">
+<style>
+/* ============================================================
+   연오랑 eBook 오디오북 — TXT 뷰어 + 세미 오디오북
+   · 단일 파일(외부 CSS/JS 의존 없음) → 오프라인에서도 그대로 동작
+   · 폴드8 3화면(외부 세로 / 외부 가로 / 내부 가로) 대응
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* ---------- 테마 변수 ---------- */
+body[data-theme="paper"] {
+  --bg: #e9e4d8; --page: #fbf8f1; --fg: #26221c; --muted: #7b7263; --line: #d8d1c0;
+  --accent: #8a6a3b; --accent-soft: #f0e4cd; --hl: #ffe9a8; --hl-para: rgba(170,130,60,0.06);
+  --sheet: #fbf8f1; --sheet-fg: #26221c; --shadow: 0 10px 34px rgba(60,45,20,0.22);
+  --btn: #ffffff; --btn-line: #d8d1c0; --scene: #8a6a3b;
+}
+body[data-theme="sepia"] {
+  --bg: #e2cba4; --page: #f6e8cd; --fg: #4a3722; --muted: #8a7250; --line: #dcc39a;
+  --accent: #96601f; --accent-soft: #f0dab4; --hl: #ffd98a; --hl-para: rgba(150,96,31,0.07);
+  --sheet: #f8ecd4; --sheet-fg: #4a3722; --shadow: 0 10px 34px rgba(90,60,20,0.26);
+  --btn: #fdf3e0; --btn-line: #dcc39a; --scene: #96601f;
+}
+body[data-theme="dark"] {
+  --bg: #0b0f16; --page: #131a24; --fg: #dfe7f1; --muted: #8595a8; --line: #24303f;
+  --accent: #6fb0ff; --accent-soft: #1a2737; --hl: #2f4a6b; --hl-para: rgba(111,176,255,0.07);
+  --sheet: #121a24; --sheet-fg: #dfe7f1; --shadow: 0 10px 34px rgba(0,0,0,0.7);
+  --btn: #17212e; --btn-line: #2a3849; --scene: #7fc4ff;
+}
+
+#app {
+  height: 100vh; height: 100dvh;
+  width: 100%;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  transition: background .2s ease, color .2s ease;
+}
+
+/* ---------- 헤더 ---------- */
+.eb-header {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  background: var(--page);
+  border-bottom: 1px solid var(--line);
+  position: relative; z-index: 20;
+}
+.eb-title {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 14px; font-weight: 800; letter-spacing: -0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-align: center;
+}
+.eb-title small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); }
+.icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-width: 34px; height: 34px; padding: 0 9px;
+  border: 1px solid var(--btn-line); border-radius: 10px;
+  background: var(--btn); color: var(--fg);
+  font-size: 12px; font-weight: 800; cursor: pointer;
+  transition: transform .1s ease, background .15s ease;
+}
+.icon-btn:active { transform: scale(0.95); }
+.icon-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.icon-btn .lbl { display: inline; }
+
+/* ---------- 본문 뷰포트 ---------- */
+#readerWrap {
+  flex: 1 1 auto; min-height: 0;
+  position: relative;
+  display: flex;
+  padding: 10px;
+  gap: 0;
+}
+#viewport {
+  position: relative;
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  padding: var(--pad-y, 20px) var(--pad-x, 22px);
+  touch-action: pan-y;
+}
+#viewport.spread::after {   /* 2쪽 펼침 — 가운데 책등 */
+  content: "";
+  position: absolute; top: 8px; bottom: 8px; left: 50%;
+  width: 1px; transform: translateX(-0.5px);
+  background: linear-gradient(to bottom, transparent, var(--line) 12%, var(--line) 88%, transparent);
+  pointer-events: none;
+}
+#content {
+  height: 100%;
+  column-fill: auto;
+  -webkit-column-fill: auto;
+  column-gap: var(--gap, 44px);
+  will-change: transform;
+  transition: transform .26s cubic-bezier(.22,.61,.36,1);
+  text-rendering: optimizeLegibility;
+}
+#content.no-anim { transition: none; }
+
+/* ---------- 본문 타이포 ---------- */
+#content .chapter-h {
+  font-size: 1.24em; font-weight: 800;
+  margin: 0 0 0.9em 0; padding-bottom: 0.5em;
+  border-bottom: 1px solid var(--line);
+  color: var(--accent);
+  letter-spacing: -0.3px;
+  break-before: column;
+  break-after: avoid; page-break-after: avoid;
+}
+#content .chapter-h:first-child { break-before: auto; }
+#content .chapter-body { display: block; }
+#content p.para {
+  margin: 0 0 0.95em 0;
+  text-align: left;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  hyphens: none;
+  break-inside: auto;
+}
+#content p.para.indent { text-indent: 1em; }
+#content p.para.para-active { background: var(--hl-para); border-radius: 4px; }
+#content .sn { border-radius: 3px; transition: background .18s ease; }
+#content .sn.dlg { color: var(--scene); }
+#content .sn.speaking {
+  background: var(--hl);
+  box-shadow: 0 0 0 2px var(--hl);
+  color: inherit;
+}
+#content .scene-break {
+  height: 1px; margin: 1.2em auto; width: 42%;
+  background: var(--line); border: 0;
+}
+#content .empty-note { color: var(--muted); font-size: 13px; line-height: 1.8; }
+
+/* ---------- 페이지 넘김 버튼 ---------- */
+.nav-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 70px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--page) 90%, transparent);
+  color: var(--muted); font-size: 18px; font-weight: 800;
+  cursor: pointer; z-index: 6;
+  opacity: .3; transition: opacity .15s ease;
+}
+.nav-btn:hover { opacity: .95; }
+.nav-btn:disabled { opacity: 0; pointer-events: none; }
+.nav-btn.prev { left: 2px; }
+.nav-btn.next { right: 2px; }
+
+/* ---------- 푸터 ---------- */
+.eb-footer {
+  flex: 0 0 auto;
+  padding: 6px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--page);
+  border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 6px;
+  position: relative; z-index: 20;
+}
+.progress-row { display: flex; align-items: center; gap: 10px; }
+#progressRange {
+  -webkit-appearance: none; appearance: none;
+  flex: 1 1 auto; height: 4px; border-radius: 3px;
+  background: var(--line); outline: none; cursor: pointer;
+}
+#progressRange::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--page);
+  box-shadow: 0 1px 5px rgba(0,0,0,.3);
+}
+#progressRange::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--page);
+  background: var(--accent);
+}
+.progress-label { flex: 0 0 auto; font-size: 10.5px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; }
+.footer-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.footer-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 28px; padding: 0 10px;
+  border: 1px solid var(--btn-line); border-radius: 999px;
+  background: var(--btn); color: var(--fg);
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  white-space: nowrap;
+}
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 800; }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.footer-spacer { flex: 1 1 auto; }
+
+/* ---------- 드로어/시트 ---------- */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40;
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.backdrop.show { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; z-index: 50;
+  background: var(--sheet); color: var(--sheet-fg);
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  transition: transform .24s cubic-bezier(.22,.61,.36,1);
+  will-change: transform;
+}
+/* 모바일: 아래에서 올라오는 시트 */
+.sheet { left: 0; right: 0; bottom: 0; max-height: 82vh; border-radius: 16px 16px 0 0; transform: translateY(102%); }
+.sheet.open { transform: translateY(0); }
+/* 목차는 왼쪽 서랍 */
+#tocSheet {
+  left: 0; right: auto; top: 0; bottom: 0;
+  width: min(360px, 86vw); max-height: none;
+  border-radius: 0 16px 16px 0;
+  transform: translateX(-102%);
+}
+#tocSheet.open { transform: translateX(0); }
+.sheet-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; border-bottom: 1px solid var(--line);
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+}
+.sheet-head h2 { margin: 0; font-size: 13.5px; font-weight: 800; flex: 1 1 auto; letter-spacing: -0.2px; }
+.sheet-body { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 10px 14px calc(18px + env(safe-area-inset-bottom, 0px)); }
+.sheet-foot { flex: 0 0 auto; padding: 10px 14px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
+.close-btn { border: 0; background: transparent; color: var(--muted); font-size: 18px; font-weight: 800; cursor: pointer; padding: 2px 6px; }
+
+.toc-item {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 9px 8px; border-radius: 8px; cursor: pointer;
+  font-size: 12.5px; line-height: 1.45;
+}
+.toc-item:hover { background: var(--accent-soft); }
+.toc-item.current { background: var(--accent-soft); font-weight: 800; color: var(--accent); }
+.toc-item .n { flex: 0 0 auto; color: var(--muted); font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 26px; }
+.toc-item .t { flex: 1 1 auto; }
+.toc-item .pg { flex: 0 0 auto; color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+.field { margin: 0 0 16px 0; }
+.field > label { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 800; color: var(--muted); margin-bottom: 7px; letter-spacing: -0.1px; }
+.field > label b { color: var(--accent); font-size: 12px; }
+input[type="range"].sl { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 3px; background: var(--line); outline: none; }
+input[type="range"].sl::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 17px; height: 17px; border-radius: 50%; background: var(--accent); border: 2px solid var(--sheet); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+input[type="range"].sl::-moz-range-thumb { width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--sheet); background: var(--accent); }
+.seg { display: flex; gap: 6px; }
+.seg button {
+  flex: 1 1 0; height: 34px; border-radius: 9px;
+  border: 1px solid var(--btn-line); background: var(--btn); color: var(--fg);
+  font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+.seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 800; }
+.hint { font-size: 10.5px; color: var(--muted); line-height: 1.6; margin: 6px 0 0; }
+.row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-main {
+  flex: 1 1 auto; min-height: 40px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff;
+  font-size: 12.5px; font-weight: 800; cursor: pointer;
+}
+.btn-sub {
+  flex: 1 1 auto; min-height: 40px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--btn-line);
+  background: var(--btn); color: var(--fg);
+  font-size: 12.5px; font-weight: 800; cursor: pointer;
+}
+
+/* 드롭존 */
+.dropzone {
+  border: 2px dashed var(--btn-line); border-radius: 12px;
+  padding: 18px 12px; text-align: center; cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.dropzone.hot { border-color: var(--accent); background: var(--accent-soft); }
+.dropzone .dz-ico { font-size: 26px; }
+.dropzone .dz-t { font-size: 12.5px; font-weight: 800; margin-top: 6px; }
+.dropzone .dz-s { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+
+.book-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 8px; border-radius: 9px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.book-row:hover { background: var(--accent-soft); }
+.book-row.current { border-color: var(--accent); background: var(--accent-soft); }
+.book-row .bi { font-size: 16px; }
+.book-row .bt { flex: 1 1 auto; min-width: 0; }
+.book-row .bt b { display: block; font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-row .bt span { font-size: 10.5px; color: var(--muted); }
+.book-row .del { border: 0; background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px 6px; }
+.section-label { font-size: 10.5px; font-weight: 800; color: var(--muted); letter-spacing: .4px; margin: 16px 0 6px; text-transform: uppercase; }
+.section-label:first-child { margin-top: 2px; }
+.mark-row { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.mark-row:hover { background: var(--accent-soft); }
+.mark-row .mi { flex: 1 1 auto; min-width: 0; }
+.mark-row .mi b { display: block; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mark-row .mi span { font-size: 10.5px; color: var(--muted); }
+.mark-row .del { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; }
+.empty-txt { font-size: 11.5px; color: var(--muted); padding: 10px 8px; line-height: 1.6; }
+
+/* ---------- 오디오 플레이어 ---------- */
+.audio-now {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--accent-soft); margin-bottom: 14px;
+}
+.audio-now .an-ico { font-size: 20px; }
+.audio-now .an-txt { flex: 1 1 auto; min-width: 0; }
+.audio-now .an-txt b { display: block; font-size: 11.5px; font-weight: 800; }
+.audio-now .an-txt span { display: block; font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.transport { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 4px 0 16px; }
+.tp-btn {
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 1px solid var(--btn-line); background: var(--btn); color: var(--fg);
+  font-size: 17px; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.tp-btn.play { width: 60px; height: 60px; font-size: 23px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.tp-btn:active { transform: scale(0.96); }
+.scene-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 800; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 3px 9px; margin: 0 4px 4px 0;
+}
+.switch { position: relative; width: 44px; height: 24px; flex: 0 0 auto; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .track {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: var(--line); transition: background .18s ease; cursor: pointer;
+}
+.switch .track::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform .18s ease; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(20px); }
+.sw-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; }
+.sw-row .sw-l { font-size: 12px; font-weight: 800; }
+.sw-row .sw-s { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin-top: 2px; }
+
+/* 토스트 */
+#toast {
+  position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 16px);
+  background: rgba(20,20,20,.92); color: #fff;
+  font-size: 12px; font-weight: 700; padding: 9px 15px; border-radius: 999px;
+  opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease;
+  z-index: 80; max-width: 88vw; text-align: center; line-height: 1.4;
+}
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 드래그 오버레이 */
+#dragOverlay {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(10,20,35,.72); color: #fff;
+  display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+  font-size: 15px; font-weight: 800; pointer-events: none;
+}
+#dragOverlay.show { display: flex; }
+#dragOverlay .dz-big { font-size: 46px; }
+
+/* ---------- 폴드8 3화면 / 반응형 ---------- */
+/* 외부 세로 (Cover Portrait) */
+body.mode-cover-portrait #readerWrap { padding: 6px; }
+body.mode-cover-portrait #viewport { --pad-y: 14px; --pad-x: 15px; border-radius: 9px; }
+body.mode-cover-portrait .eb-header { padding: 6px 7px; padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
+body.mode-cover-portrait .eb-title { font-size: 12.5px; }
+body.mode-cover-portrait .icon-btn .lbl { display: none; }
+body.mode-cover-portrait .icon-btn { min-width: 32px; padding: 0 7px; }
+body.mode-cover-portrait .nav-btn { width: 24px; height: 56px; font-size: 15px; }
+body.mode-cover-portrait .nav-btn.prev { left: 1px; }
+body.mode-cover-portrait .nav-btn.next { right: 1px; }
+
+/* 외부 가로 (Cover Landscape) — 높이가 낮다 */
+body.mode-cover-landscape .eb-header { padding: 3px 8px; padding-top: calc(3px + env(safe-area-inset-top, 0px)); }
+body.mode-cover-landscape .eb-title { font-size: 12px; text-align: left; }
+body.mode-cover-landscape .eb-title small { display: none; }
+body.mode-cover-landscape .icon-btn { height: 28px; min-width: 28px; font-size: 11px; }
+body.mode-cover-landscape #readerWrap { padding: 4px 8px; }
+body.mode-cover-landscape #viewport { --pad-y: 10px; --pad-x: 18px; border-radius: 8px; }
+body.mode-cover-landscape .eb-footer { padding: 3px 10px calc(4px + env(safe-area-inset-bottom, 0px)); gap: 3px; }
+body.mode-cover-landscape .chip { height: 24px; font-size: 10px; padding: 0 8px; }
+body.mode-cover-landscape .progress-label { font-size: 9.5px; }
+body.mode-cover-landscape .nav-btn { height: 54px; }
+
+/* 내부 가로 넓은 화면 — 시트를 사이드 패널처럼 */
+@media (min-width: 900px) {
+  .sheet { left: auto; right: 0; top: 0; bottom: 0; width: min(420px, 40vw); max-height: none; border-radius: 16px 0 0 16px; transform: translateX(102%); }
+  .sheet.open { transform: translateX(0); }
+  #tocSheet { left: 0; right: auto; border-radius: 0 16px 16px 0; transform: translateX(-102%); width: min(380px, 34vw); }
+  #tocSheet.open { transform: translateX(0); }
+  #readerWrap { padding: 14px 16px; }
+  /* 넓은 화면의 시트는 '사이드 패널' — 본문을 가리지 않고 헤더 버튼도 계속 쓸 수 있게 배경막 제거 */
+  #backdrop { display: none; }
+}
+@media (max-width: 430px) {
+  body.mode-cover-portrait .footer-row .chip { padding: 0 8px; font-size: 10.5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #content, .sheet, .backdrop, #toast { transition: none !important; }
+}
+</style>
+</head>
+<body data-theme="paper">
+<div id="app">
+  <header class="eb-header">
+    <button class="icon-btn" id="btnToc" title="목차" aria-label="목차">☰</button>
+    <div class="eb-title" id="bookTitle">연오랑 eBook 오디오북<small id="bookSub">TXT를 올려 책처럼 읽고, 라디오처럼 들어요</small></div>
+    <button class="icon-btn" id="btnLibrary" title="서재 · TXT 올리기">📚<span class="lbl">서재</span></button>
+    <button class="icon-btn" id="btnSettings" title="읽기 설정">Aa</button>
+    <button class="icon-btn primary" id="btnAudio" title="오디오북">🎧<span class="lbl">듣기</span></button>
+  </header>
+
+  <div id="readerWrap">
+    <div id="viewport">
+      <div id="content"></div>
+    </div>
+    <button class="nav-btn prev" id="navPrev" aria-label="이전 페이지">‹</button>
+    <button class="nav-btn next" id="navNext" aria-label="다음 페이지">›</button>
+  </div>
+
+  <footer class="eb-footer">
+    <div class="progress-row">
+      <input type="range" id="progressRange" min="0" max="0" value="0" step="1" aria-label="진행률">
+      <span class="progress-label" id="progressLabel">0 / 0 · 0%</span>
+    </div>
+    <div class="footer-row">
+      <button class="chip" id="btnFontDown" title="글자 작게">A−</button>
+      <button class="chip" id="btnFontUp" title="글자 크게">A+</button>
+      <button class="chip" id="btnViewToggle" title="1쪽/2쪽 보기">📖 1쪽</button>
+      <button class="chip" id="btnMark" title="현재 페이지 책갈피">🔖 책갈피</button>
+      <span class="footer-spacer"></span>
+      <button class="chip text-only" id="btnPlayQuick" title="오디오북 재생">▶︎ 낭독</button>
+    </div>
+  </footer>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+
+<!-- 목차 -->
+<aside class="sheet" id="tocSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <h2>📖 목차</h2>
+    <button class="close-btn" data-close="tocSheet" aria-label="닫기">✕</button>
+  </div>
+  <div class="sheet-body" id="tocBody"></div>
+  <div class="sheet-foot" style="display:block;">
+    <div class="section-label" style="margin-top:0;">🔖 책갈피</div>
+    <div id="markList"></div>
+  </div>
+</aside>
+
+<!-- 읽기 설정 -->
+<aside class="sheet" id="settingsSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <h2>🎨 읽기 설정</h2>
+    <button class="close-btn" data-close="settingsSheet" aria-label="닫기">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label>글자 크기 <b id="vFont">18px</b></label>
+      <input type="range" class="sl" id="rFont" min="14" max="26" step="1" value="18">
+    </div>
+    <div class="field">
+      <label>줄 간격 <b id="vLine">1.9</b></label>
+      <input type="range" class="sl" id="rLine" min="1.4" max="2.4" step="0.1" value="1.9">
+    </div>
+    <div class="field">
+      <label>글꼴</label>
+      <div class="seg" id="segFont">
+        <button data-font="myeongjo">명조 (책 느낌)</button>
+        <button data-font="gothic">고딕 (또렷하게)</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>배경 테마</label>
+      <div class="seg" id="segTheme">
+        <button data-theme="paper">종이</button>
+        <button data-theme="sepia">세피아</button>
+        <button data-theme="dark">다크</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>한 화면에</label>
+      <div class="seg" id="segView">
+        <button data-view="1">1쪽</button>
+        <button data-view="2">2쪽 펼침</button>
+      </div>
+      <p class="hint">넓은 화면(780px 이상)에서는 2쪽 펼침이 기본입니다. 좁은 화면은 자동으로 1쪽이 됩니다.</p>
+    </div>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn-sub" id="btnResetSettings">설정 초기화</button>
+    <button class="btn-main" data-close="settingsSheet">적용 완료</button>
+  </div>
+</aside>
+
+<!-- 서재 -->
+<aside class="sheet" id="librarySheet" aria-hidden="true">
+  <div class="sheet-head">
+    <h2>📚 내 서재</h2>
+    <button class="close-btn" data-close="librarySheet" aria-label="닫기">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="dropzone" id="dropzone">
+      <div class="dz-ico">📄</div>
+      <div class="dz-t">TXT 파일을 끌어다 놓거나 눌러서 고르기</div>
+      <div class="dz-s">UTF-8 · EUC-KR 자동 감지 · .txt / .md</div>
+    </div>
+    <input type="file" id="fileInput" accept=".txt,.md,.text,text/plain" style="display:none">
+    <div class="section-label">책 목록</div>
+    <div id="bookList"></div>
+    <div class="section-label">체험용 샘플 동화</div>
+    <div class="book-row" id="sampleRow">
+      <span class="bi">🌊</span>
+      <span class="bt"><b>비 오는 밤의 등대지기</b><span>샘플 · 6장 · 약 4,000자 (대사·장면음 체험)</span></span>
+      <span>›</span>
+    </div>
+    <p class="hint">올린 책은 이 기기(브라우저) 안에만 저장됩니다. 서버로 보내지 않습니다.</p>
+  </div>
+</aside>
+
+<!-- 오디오북 -->
+<aside class="sheet" id="audioSheet" aria-hidden="true">
+  <div class="sheet-head">
+    <h2>🎧 세미 오디오북</h2>
+    <button class="close-btn" data-close="audioSheet" aria-label="닫기">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="audio-now">
+      <span class="an-ico" id="anIco">🎙️</span>
+      <span class="an-txt">
+        <b id="anState">대기 중</b>
+        <span id="anText">재생을 누르면 지금 읽는 문장을 짚어 드려요.</span>
+      </span>
+    </div>
+
+    <div class="transport">
+      <button class="tp-btn" id="btnPrevSent" title="이전 문장">⏮</button>
+      <button class="tp-btn play" id="btnPlay" title="재생">▶</button>
+      <button class="tp-btn" id="btnNextSent" title="다음 문장">⏭</button>
+    </div>
+
+    <div id="sceneChips" style="text-align:center; margin-bottom:12px;"></div>
+
+    <div class="field">
+      <label>음성 방식</label>
+      <div class="seg" id="segVoice">
+        <button data-voice="server">서버 음성 (권장)</button>
+        <button data-voice="device">기기 음성</button>
+      </div>
+      <p class="hint">서버 음성은 모바일에서도 확실히 들립니다. 대사는 속도·호흡을 살짝 바꿔 지문과 구분하고, 기기 음성은 음높이까지 조절합니다(성우 1명 수준).</p>
+    </div>
+
+    <div class="field">
+      <label>낭독 속도 <b id="vRate">1.0x</b></label>
+      <input type="range" class="sl" id="rRate" min="0.7" max="1.4" step="0.05" value="1">
+    </div>
+
+    <div class="sw-row">
+      <span>
+        <span class="sw-l">장면 효과음 · 배경음</span>
+        <span class="sw-s" id="sceneHint">비·천둥·바람·숲·밤·긴장·발소리를 키워드로 감지해 합성음으로 깔아 줍니다.</span>
+      </span>
+      <label class="switch"><input type="checkbox" id="swScene" checked><span class="track"></span></label>
+    </div>
+    <div class="field" id="sceneVolField">
+      <label>효과음 볼륨 <b id="vScene">45%</b></label>
+      <input type="range" class="sl" id="rScene" min="0" max="100" step="1" value="45">
+    </div>
+    <p class="hint">효과음은 오디오 파일 없이 브라우저가 실시간으로 합성합니다(Web Audio). 낭독을 멈추면 함께 멈춥니다.</p>
+  </div>
+  <div class="sheet-foot">
+    <button class="btn-sub" id="btnStopAll">■ 정지</button>
+    <button class="btn-main" data-close="audioSheet">닫기</button>
+  </div>
+</aside>
+
+<div id="toast"></div>
+<div id="dragOverlay"><span class="dz-big">📖</span><span>TXT 파일을 놓으면 바로 펼쳐 드려요</span></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     0. 상태 · 상수
+     ========================================================= */
+  var LS_SETTINGS = 'ebook.settings.v1';
+  var LS_LAST = 'ebook.last.v1';
+  var LS_MARKS = 'ebook.bookmarks.v1';
+  var MAX_AUDIO_TEXT = 110;
+
+  var state = {
+    book: null,            // { id, title, text, chapters:[{title, from, to}], sentences:[...] }
+    spread: 0,
+    spreads: 1,
+    pages: 1,
+    perView: 1,
+    colW: 320,
+    gap: 44,
+    step: 364,
+    settings: {
+      fontSize: 18, lineHeight: 1.9, font: 'myeongjo', theme: 'paper',
+      perView: 0,          // 0 = 자동
+      voice: 'server', rate: 1, sceneOn: true, sceneVol: 45
+    },
+    marks: [],
+    // 낭독
+    playing: false,
+    curSent: -1,
+    token: 0,
+    _ro: 0
+  };
+
+  var SAMPLE_TITLE = '비 오는 밤의 등대지기';
+  var SAMPLE_TEXT = [
+    '비 오는 밤의 등대지기',
+    '',
+    '프롤로그',
+    '',
+    '바다는 밤마다 다른 목소리로 말을 건다. 잔잔한 밤에는 오래된 자장가처럼, 거친 밤에는 무언가를 재촉하듯이. 등대지기 노인은 그 목소리를 사십 년째 듣고 있었다.',
+    '',
+    '사람들은 그를 등대지기라고만 불렀다. 이름을 잊은 지도 오래였다. 새벽에는 렌즈를 닦고, 낮에는 심지를 손보고, 해가 지면 스위치를 올렸다. 그 일 말고는 아무것도 하지 않았지만, 노인은 자신의 하루가 부족하다고 생각해 본 적이 없었다.',
+    '',
+    '바다가 조용한 밤에는 배들의 불빛이 하나둘 지나갔다. 노인은 그 불빛을 세다가 잠이 들곤 했다. 어느 배가 어디로 가는지 알 수는 없었지만, 잘 가라는 말은 마음속으로 했다.',
+    '',
+    '제1장 · 꺼진 불빛',
+    '',
+    '그날 밤, 비가 쏟아졌다. 빗소리가 낡은 지붕을 두드리는 소리에 노인은 잠에서 깼다. 창밖은 온통 물빛이었고, 유리에는 빗방울이 쉬지 않고 흘러내렸다.',
+    '',
+    '"이런 밤에 손님이 올 리가 없는데."',
+    '',
+    '노인은 혼잣말을 하고 다시 누우려다가, 창가에 걸린 작은 거울 속에서 무엇인가를 보았다. 등대의 불빛이 꺼져 있었다. 사십 년 동안 단 한 번도 꺼진 적이 없는 불빛이었다.',
+    '',
+    '우르릉. 천둥이 바다 위를 굴러갔다. 번개가 하얗게 언덕을 비추자, 젖은 풀밭이 잠깐 낮처럼 환해졌다가 다시 어둠에 잠겼다.',
+    '',
+    '바람이 창문을 흔들었다. 노인은 낡은 우비를 걸치고 손전등을 챙겼다. 계단을 내려가면서 그는 오래된 규칙을 떠올렸다. 등대는 바다의 약속이고, 약속은 날씨를 가리지 않는다는 규칙이었다.',
+    '',
+    '현관 옆 벽에는 사십 년 치 달력이 겹겹이 붙어 있었다. 노인은 그중 가장 오래된 장을 손끝으로 짚었다. 처음 이 등대에 왔던 날의 날짜가 연필로 흐릿하게 적혀 있었다. 그날도 비가 왔다.',
+    '',
+    '"비 오는 날은 불빛이 더 멀리 간다."',
+    '',
+    '선배 등대지기가 해 주던 말이었다. 노인은 그 말을 매년 비 오는 밤마다 되뇌었다. 문을 열자 빗줄기가 얼굴을 때렸다. 그는 우비 모자를 눌러쓰고 언덕으로 나섰다.',
+    '',
+    '제2장 · 숲길의 발소리',
+    '',
+    '등대까지는 자작나무 숲을 지나야 한다. 바람이 나뭇잎을 뒤집는 소리, 나뭇가지가 서로 부딪히는 소리, 그리고 그 사이로 들리는 무언가 다른 소리.',
+    '',
+    '발소리였다. 젖은 흙을 밟는, 그러나 노인보다 훨씬 가벼운.',
+    '',
+    '"누구십니까?"',
+    '',
+    '노인이 손전등을 들이밀자, 숲이 잠깐 숨을 죽였다. 대답 대신 나뭇잎이 흔들렸다.',
+    '',
+    '발소리는 점점 가까워졌다. 천천히, 일정한 간격으로. 노인은 손전등을 낮추고 귀를 기울였다. 그 소리는 어린애의 걸음이었다. 아니, 어린애라기에는 너무 조용한.',
+    '',
+    '숲은 비를 머금어 무거웠다. 나뭇잎에서 떨어진 물방울이 어깨를 두드릴 때마다 노인은 잠깐씩 멈춰 섰다. 바람이 나무 사이를 지나가며 낮게 울었다. 그 소리는 누군가 숨을 죽이고 있는 것 같기도 했다.',
+    '',
+    '"거기 있니?"',
+    '',
+    '노인이 물었다. 대답은 없었다. 대신 조그만 그림자가 나무 뒤에서 한 걸음 나왔다. 노란 우비의 모자 끝이 바람에 펄럭였다.',
+    '',
+    '제3장 · 별이 뜨는 창가',
+    '',
+    '숲을 빠져나오자 등대가 보였다. 비는 아직 그치지 않았지만 구름 사이로 별이 하나 둘 비치고 있었다. 달빛이 등대의 하얀 몸통에 얇게 내려앉았다.',
+    '',
+    '등대 아래에는 작은 아이가 서 있었다. 노란 우비를 입고, 깨진 우산을 들고, 아무 말 없이 노인을 올려다보고 있었다.',
+    '',
+    '"여기까지 어떻게 왔니?"',
+    '',
+    '"할아버지 불이 안 켜져서요. 저희 배가 길을 잃었어요."',
+    '',
+    '노인은 아이의 손을 잡았다. 손은 얼음처럼 차가웠다. 그는 아이를 등대 안으로 데려가 낡은 담요를 둘러 주고, 곧바로 계단을 올랐다. 별이 뜨는 밤이었다. 별이 뜨는 밤에는 불빛이 더 멀리 간다.',
+    '',
+    '창가에는 오래된 나무 의자가 하나 있었다. 아이는 그 의자에 앉아 무릎을 끌어안았다. 젖은 머리카락 사이로 별빛이 스며들었다.',
+    '',
+    '"할아버지는 여기 혼자 사세요?"',
+    '',
+    '"응. 사십 년째."',
+    '',
+    '"외롭지 않아요?"',
+    '',
+    '노인은 대답 대신 웃었다. 외롭다는 말을 생각해 본 적이 없었다. 바다가 있고, 불빛이 있고, 밤마다 지나가는 배가 있었다. 그것으로 충분하다고 그는 늘 생각했다.',
+    '',
+    '제4장 · 심장이 멎을 듯한 순간',
+    '',
+    '등대의 등잔은 꺼져 있었지만 고장 난 것은 아니었다. 심지가 젖어 있었을 뿐이었다. 노인은 심지를 갈아 끼우고 성냥을 그었다.',
+    '',
+    '그때, 아래에서 유리 깨지는 소리가 났다.',
+    '',
+    '긴장한 노인이 계단 난간을 붙잡았다. 심장이 두근거렸다. 발소리가 다시 들렸다. 이번에는 계단을 오르는 소리였다. 한 칸, 또 한 칸.',
+    '',
+    '"할아버지, 빨리요."',
+    '',
+    '아이의 목소리였다. 노인은 성냥을 다시 그었다. 손이 떨려 세 번 만에야 불이 붙었다. 등잔에 불이 옮겨 붙자, 렌즈가 하얀 빛을 모아 바다로 내던졌다.',
+    '',
+    '빛이 바다 위를 쓸고 지나갔다. 안개 사이로 작은 배 한 척이 고개를 들었다. 배 위에서 손을 흔드는 사람들이 보였다. 아이는 창가에 이마를 대고 조용히 웃었다.',
+    '',
+    '심장이 아직도 두근거렸다. 노인은 난간에 손을 얹고 숨을 골랐다. 젖은 계단, 깨진 유리, 그리고 아이의 목소리. 무엇이 진짜였는지 알 수 없었지만 배는 분명히 있었다.',
+    '',
+    '"할아버지, 저 배 우리 배예요."',
+    '',
+    '아이가 말했다. 노인은 아이의 어깨를 감쌌다. 등대 불빛이 다시 한 번 바다를 쓸었다. 멀리서 뱃고동이 세 번 울렸다. 밤이 조금씩 밝아지고 있었다.',
+    '',
+    '에필로그',
+    '',
+    '비는 새벽에 그쳤다. 아이는 어느새 사라지고, 등대 아래에는 노란 우비 한 벌만 가지런히 놓여 있었다.',
+    '',
+    '노인은 그 우비를 오래 바라보았다. 그리고는 웃었다. 바다는 밤마다 다른 목소리로 말을 건다. 그날 이후 노인은 그 목소리 중에 아주 작고 맑은 대답 하나를 더 듣게 되었다.',
+    '',
+    '그날 저녁, 노인은 등대 계단을 오르며 노래를 흥얼거렸다. 사십 년 만에 처음 있는 일이었다. 렌즈를 닦고 심지를 손보고 스위치를 올렸다. 그리고 창가에 서서 아주 오래 바다를 보았다.',
+    '',
+    '바다는 대답하지 않았다. 대신 별이 하나 떴다. 노인은 그 별을 오래 바라보다가, 조용히 말했다.',
+    '',
+    '"잘 가라."'
+  ].join('\n');
+
+  /* =========================================================
+     1. 작은 도우미
+     ========================================================= */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, html) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+  var toastTimer = 0;
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function lsGet(k, d) {
+    try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; }
+  }
+  function lsSet(k, v) {
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; }
+  }
+
+  /* 인코딩 자동 감지 — UTF-8 우선, 실패하면 EUC-KR */
+  function decodeText(buf) {
+    try {
+      return { text: new TextDecoder('utf-8', { fatal: true }).decode(buf), enc: 'UTF-8' };
+    } catch (e) {
+      try {
+        return { text: new TextDecoder('euc-kr').decode(buf), enc: 'EUC-KR' };
+      } catch (e2) {
+        return { text: new TextDecoder('utf-8').decode(buf), enc: 'UTF-8(대체문자)' };
+      }
+    }
+  }
+
+  /* =========================================================
+     2. 본문 파싱 — 장/절 분리 + 문장 분리 + 대사 판별
+     ========================================================= */
+  var RE_HEAD = [
+    /^(?:프롤로그|에필로그|서장|종장|서문|발문|들어가며|나가며|차례|목차|작가의\s*말|머리말|맺음말|외전|번외)/,
+    /^제\s*\d{1,3}\s*[장화편부절막권]/,
+    /^\d{1,3}\s*[장화편부절권]/,
+    /^(?:chapter|chap\.|part|episode|prologue|epilogue)\s*[0-9ivxlc]+/i,
+    /^\d{1,3}\s*[.)]\s*\S/,
+    /^[ivxlc]{1,6}\s*[.)]\s*\S/i,
+    /^\d{1,2}\s*[-–]\s*\S{1,30}$/
+  ];
+  var RE_BREAK = /^(?:[*＊×✕✖~～\-–—=_·•◇◆■□▲△▼▽※]\s*){3,}$/;
+  var RE_QUOTE_OPEN = /^[\s]*["“「『]/;
+
+  function isHeading(line) {
+    var s = line.trim();
+    if (!s || s.length > 42) return false;
+    if (RE_BREAK.test(s)) return false;
+    if (/[,，]$/.test(s)) return false;
+    for (var i = 0; i < RE_HEAD.length; i++) {
+      if (RE_HEAD[i].test(s)) return true;
+    }
+    return false;
+  }
+
+  function splitSentences(text) {
+    var s = String(text).replace(/\s+/g, ' ').trim();
+    if (!s) return [];
+    var out = [], start = 0, i, n = s.length;
+    for (i = 0; i < n; i++) {
+      var c = s.charAt(i);
+      if (c === '.' || c === '!' || c === '?' || c === '…') {
+        var j = i;
+        while (j + 1 < n && /[.!?…]/.test(s.charAt(j + 1))) j++;
+        var k = j;
+        while (k + 1 < n && /["”’」』)\]]/.test(s.charAt(k + 1))) k++;
+        var nxt = s.charAt(k + 1);
+        if (nxt === '' || nxt === ' ') {
+          var piece = s.slice(start, k + 1).trim();
+          if (piece) out.push(piece);
+          start = k + 1;
+          i = k;
+        } else {
+          i = j;
+        }
+      }
+    }
+    var tail = s.slice(start).trim();
+    if (tail) out.push(tail);
+    return out.length ? out : [s];
+  }
+
+  function buildBook(title, text, id) {
+    var raw = String(text).replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
+    var lines = raw.split('\n');
+    var chapters = [];
+    var blocks = [];        // {type:'h'|'p'|'hr', text, chapter}
+    var curChapter = null;
+
+    // 제목 줄(첫 줄)이 파일명과 비슷하면 본문에서 제외
+    var firstNonEmpty = -1;
+    for (var i = 0; i < lines.length; i++) { if (lines[i].trim()) { firstNonEmpty = i; break; } }
+
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li].replace(/\s+$/, '');
+      var t = line.trim();
+      if (!t) continue;
+      if (li === firstNonEmpty && lines.length > 3 && t.length <= 60 && !isHeading(t) &&
+          (t === title || t.replace(/\s+/g, '') === String(title).replace(/\s+/g, '') || /(?:제\d+장|프롤로그)/.test(lines[li + 1] || ''))) {
+        continue; // 파일 첫 줄 = 책 제목
+      }
+      if (RE_BREAK.test(t)) { blocks.push({ type: 'hr' }); continue; }
+      if (isHeading(t)) {
+        curChapter = { title: t, blockIndex: blocks.length };
+        chapters.push(curChapter);
+        blocks.push({ type: 'h', text: t });
+        continue;
+      }
+      blocks.push({ type: 'p', text: t });
+    }
+
+    // 장이 하나도 없으면 전체를 1개 장으로
+    if (!chapters.length) {
+      chapters.push({ title: '본문', blockIndex: 0 });
+      blocks.unshift({ type: 'h', text: '본문' });
+      // 다시 인덱스 보정
+      for (var ci = 0; ci < chapters.length; ci++) chapters[ci].blockIndex = 0;
+    }
+
+    // 긴 문단은 문장 단위로 쪼개서 넣는다(멀티컬럼에서 문단이 통째로 잘리지 않게)
+    var sentences = [];   // {i, text, kind, block}
+    var outBlocks = blocks;
+    var chapterOf = [];
+    // 각 블록이 속한 장 인덱스 계산
+    var curCh = 0;
+    for (var b2 = 0; b2 < outBlocks.length; b2++) {
+      var hit = -1;
+      for (var c3 = 0; c3 < chapters.length; c3++) {
+        if (chapters[c3].blockIndex === b2) { hit = c3; break; }
+      }
+      if (hit >= 0) curCh = hit;
+      chapterOf[b2] = curCh;
+      chapters[curCh].toBlock = b2;
+    }
+    for (var c4 = 0; c4 < chapters.length; c4++) {
+      if (chapters[c4].toBlock == null) chapters[c4].toBlock = outBlocks.length - 1;
+    }
+
+    // 문장 목록 만들기 (블록 순서 그대로)
+    var sentBlocks = [];   // 각 블록의 문장 인덱스 배열
+    for (var b3 = 0; b3 < outBlocks.length; b3++) {
+      var blk = outBlocks[b3];
+      if (blk.type !== 'p') { sentBlocks.push([]); continue; }
+      var parts = splitSentences(blk.text);
+      var arr = [];
+      for (var pi = 0; pi < parts.length; pi++) {
+        var st = parts[pi];
+        var kind = RE_QUOTE_OPEN.test(st) ? 'dialogue' : 'narration';
+        arr.push(sentences.length);
+        sentences.push({ i: sentences.length, text: st, kind: kind, block: b3, chapter: chapterOf[b3] || 0 });
+      }
+      sentBlocks.push(arr);
+    }
+
+    return {
+      id: id || ('book-' + Date.now()),
+      title: String(title || '제목 없는 책').slice(0, 120),
+      text: raw,
+      chars: raw.length,
+      chapters: chapters,
+      blocks: outBlocks,
+      sentBlocks: sentBlocks,
+      sentences: sentences,
+      addedAt: Date.now()
+    };
+  }
+
+  /* =========================================================
+     3. 렌더링
+     ========================================================= */
+  function renderBook() {
+    var c = $('content');
+    c.innerHTML = '';
+    var b = state.book;
+    if (!b) return;
+
+    if (!b.blocks.length) {
+      c.appendChild(el('p', 'empty-note', '본문이 비어 있습니다. 다른 TXT 파일을 올려 주세요.'));
+      return;
+    }
+    for (var i = 0; i < b.blocks.length; i++) {
+      var blk = b.blocks[i];
+      if (blk.type === 'h') {
+        c.appendChild(el('h2', 'chapter-h', escHtml(blk.text)));
+      } else if (blk.type === 'hr') {
+        c.appendChild(el('hr', 'scene-break'));
+      } else {
+        var p = el('p', 'para');
+        var ids = b.sentBlocks[i] || [];
+        var frag = document.createDocumentFragment();
+        for (var j = 0; j < ids.length; j++) {
+          var s = b.sentences[ids[j]];
+          var span = el('span', 'sn' + (s.kind === 'dialogue' ? ' dlg' : ''), escHtml(s.text));
+          span.setAttribute('data-i', String(s.i));
+          frag.appendChild(span);
+          if (j < ids.length - 1) frag.appendChild(document.createTextNode(' '));
+        }
+        p.appendChild(frag);
+        c.appendChild(p);
+      }
+    }
+    applyTypography();
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function applyTypography() {
+    var st = state.settings, c = $('content');
+    var fam = st.font === 'gothic'
+      ? '-apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", Roboto, "Helvetica Neue", sans-serif'
+      : '"Nanum Myeongjo", "Noto Serif KR", "Apple SD Gothic Neo", "Batang", "바탕", serif';
+    c.style.fontFamily = fam;
+    c.style.fontSize = st.fontSize + 'px';
+    c.style.lineHeight = String(st.lineHeight);
+    c.style.wordSpacing = '0.01em';
+    document.body.setAttribute('data-theme', st.theme);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', st.theme === 'dark' ? '#0b0f16' : (st.theme === 'sepia' ? '#e2cba4' : '#e9e4d8'));
+    }
+  }
+
+  /* =========================================================
+     4. 페이지 계산(멀티컬럼) · 이동
+     ========================================================= */
+  function layout(keepRatio) {
+    var vp = $('viewport');
+    var c = $('content');
+    if (!vp || !c) return;
+    var b = state.book;
+    if (!b) return;
+
+    var ratio = null;
+    if (keepRatio === true && state.pages > 0) {
+      ratio = (state.spread * state.perView) / Math.max(1, state.pages);
+    }
+
+    var vert = isLandscapeish();
+    var padX = vert ? 18 : (matchMedia('(max-width: 640px)').matches ? 15 : 22);
+    var padY = vert ? 10 : (matchMedia('(max-width: 640px)').matches ? 14 : 20);
+    vp.style.setProperty('--pad-x', padX + 'px');
+    vp.style.setProperty('--pad-y', padY + 'px');
+
+    var availW = Math.max(120, vp.clientWidth - padX * 2);
+    var availH = Math.max(80, vp.clientHeight - padY * 2);
+
+    // 화면당 쪽 수
+    var pv = state.settings.perView;
+    if (!pv) pv = availW >= 780 ? 2 : 1;
+    pv = clamp(pv, 1, 2);
+    if (availW < 560) pv = 1;
+    state.perView = pv;
+
+    // 푸터의 1쪽/2쪽 칩은 지금 실제 화면 구성을 보여 준다
+    (function () {
+      var vt = document.getElementById('btnViewToggle');
+      if (vt) {
+        vt.textContent = '📖 ' + pv + '쪽';
+        vt.classList.toggle('on', pv === 2);
+      }
+    })();
+
+    var gap = availW >= 780 ? 52 : 36;
+    state.gap = gap;
+    var colW = pv === 2 ? (availW - gap) / 2 : availW;
+    colW = Math.max(100, Math.floor(colW));
+    state.colW = colW;
+    state.step = colW + gap;
+
+    c.classList.add('no-anim');
+    c.style.width = (pv === 2 ? (colW * 2 + gap) : colW) + 'px';
+    c.style.height = availH + 'px';
+    c.style.columnWidth = colW + 'px';
+    c.style.columnGap = gap + 'px';
+    c.style.setProperty('--gap', gap + 'px');
+    vp.classList.toggle('spread', pv === 2);
+
+    // 강제 리플로
+    void c.offsetWidth;
+
+    var totalCols = Math.max(1, Math.round((c.scrollWidth + gap - 1) / (colW + gap)));
+    state.pages = totalCols;
+    state.spreads = Math.max(1, Math.ceil(totalCols / pv));
+
+    var target;
+    if (ratio != null) {
+      target = Math.floor(ratio * totalCols / pv);
+    } else {
+      target = state.spread;
+    }
+    state.spread = clamp(target, 0, state.spreads - 1);
+    applyTransform();
+    c.classList.remove('no-anim');
+    void c.offsetWidth;
+    cacheChapterSpreads();
+    updateProgressUI();
+    updateTocPages();
+    updateNavBtns();
+  }
+
+  /* 장 제목이 놓인 화면 위치를 한 번만 계산해 둔다(매 페이지 넘김 반복 측정 방지) */
+  function cacheChapterSpreads() {
+    var b = state.book;
+    state.chapterSpreads = [];
+    if (!b) return;
+    var heads = $('content').querySelectorAll('.chapter-h');
+    for (var i = 0; i < b.chapters.length; i++) {
+      state.chapterSpreads.push(heads[i] ? spreadOfElement(heads[i]) : null);
+    }
+  }
+
+  function isLandscapeish() {
+    return window.innerHeight <= 520 && window.innerWidth <= 980;
+  }
+
+  function applyTransform() {
+    var c = $('content');
+    var off = state.spread * state.perView * state.step;
+    c.style.transform = 'translateX(' + (-off) + 'px)';
+  }
+
+  function goSpread(n, silent) {
+    var t = clamp(n, 0, Math.max(0, state.spreads - 1));
+    if (t === state.spread && silent !== 'force') { updateProgressUI(); return; }
+    state.spread = t;
+    applyTransform();
+    updateProgressUI();
+    updateNavBtns();
+    markCurrentChapter();
+    savePosition();
+    if (!silent) { /* 낭독 중이면 그대로 따라간다 */ }
+  }
+
+  function nextPage() { goSpread(state.spread + 1); }
+  function prevPage() { goSpread(state.spread - 1); }
+
+  function updateNavBtns() {
+    var p = $('navPrev'), n = $('navNext');
+    if (p) p.disabled = state.spread <= 0;
+    if (n) n.disabled = state.spread >= state.spreads - 1;
+  }
+
+  function updateProgressUI() {
+    var r = $('progressRange');
+    r.max = String(Math.max(0, state.spreads - 1));
+    r.value = String(state.spread);
+    var pct = state.spreads > 1 ? Math.round((state.spread / (state.spreads - 1)) * 100) : 100;
+    $('progressLabel').textContent = (state.spread + 1) + ' / ' + state.spreads + ' · ' + pct + '%';
+  }
+
+  /* 페이지/문장 → 화면 위치 계산 */
+  function spreadOfElement(node) {
+    var c = $('content');
+    if (!c || !node) return null;
+    var cr = c.getBoundingClientRect();
+    var r = node.getBoundingClientRect();
+    var x = r.left - cr.left;
+    var col = Math.floor((x + 2) / state.step);
+    col = clamp(col, 0, Math.max(0, state.pages - 1));
+    return Math.floor(col / state.perView);
+  }
+
+  /* =========================================================
+     5. 목차
+     ========================================================= */
+  function buildToc() {
+    var body = $('tocBody');
+    body.innerHTML = '';
+    var b = state.book;
+    if (!b || !b.chapters.length) {
+      body.appendChild(el('div', 'empty-txt', '목차가 없습니다.'));
+      return;
+    }
+    b.chapters.forEach(function (ch, idx) {
+      var row = el('div', 'toc-item');
+      row.setAttribute('data-ch', String(idx));
+      row.innerHTML = '<span class="n">' + (idx + 1) + '</span><span class="t">' + escHtml(ch.title) + '</span><span class="pg" data-pg="' + idx + '">–</span>';
+      row.addEventListener('click', function () {
+        jumpToChapter(idx);
+        closeAllSheets();
+      });
+      body.appendChild(row);
+    });
+    updateTocPages();
+    markCurrentChapter();
+    renderMarks();
+  }
+
+  function chapterHeadingNode(idx) {
+    var c = $('content');
+    if (!c) return null;
+    var heads = c.querySelectorAll('.chapter-h');
+    return heads[idx] || null;
+  }
+
+  function updateTocPages() {
+    var b = state.book;
+    if (!b) return;
+    var cs = state.chapterSpreads || [];
+    for (var i = 0; i < b.chapters.length; i++) {
+      var span = document.querySelector('#tocBody .pg[data-pg="' + i + '"]');
+      if (!span) continue;
+      var sp = cs[i];
+      span.textContent = (sp == null ? '–' : (sp + 1) + 'p');
+    }
+  }
+
+  function jumpToChapter(idx) {
+    var node = chapterHeadingNode(idx);
+    if (!node) return;
+    var sp = spreadOfElement(node);
+    if (sp != null) goSpread(sp, 'force');
+    state.chapterIndex = idx;
+    markCurrentChapter();
+  }
+
+  function currentChapterIndex() {
+    var b = state.book;
+    if (!b) return 0;
+    var cs = state.chapterSpreads || [];
+    var best = 0;
+    for (var i = 0; i < cs.length; i++) {
+      if (cs[i] != null && cs[i] <= state.spread) best = i;
+    }
+    return best;
+  }
+
+  function markCurrentChapter() {
+    var idx = currentChapterIndex();
+    state.chapterIndex = idx;
+    var rows = document.querySelectorAll('#tocBody .toc-item');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].classList.toggle('current', Number(rows[i].getAttribute('data-ch')) === idx);
+    }
+    var ch = state.book && state.book.chapters[idx];
+    if (ch) {
+      $('bookSub').textContent = (idx + 1) + '/' + state.book.chapters.length + ' · ' + ch.title.slice(0, 28);
+    }
+  }
+
+  /* =========================================================
+     6. 저장/복원
+     ========================================================= */
+  function savePosition() {
+    if (!state.book) return;
+    lsSet(LS_LAST, {
+      bookId: state.book.id,
+      spread: state.spread,
+      ratio: state.spreads > 1 ? state.spread / (state.spreads - 1) : 0,
+      chapterIndex: state.chapterIndex || 0,
+      at: Date.now()
+    });
+    saveSettings();
+  }
+  var saveTimer = 0;
+  function savePositionSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(savePosition, 500);
+  }
+  function saveSettings() {
+    lsSet(LS_SETTINGS, state.settings);
+  }
+
+  function loadMarks() {
+    state.marks = lsGet(LS_MARKS, []);
+    if (!Array.isArray(state.marks)) state.marks = [];
+  }
+  function saveMarks() { lsSet(LS_MARKS, state.marks); }
+
+  function addBookmark() {
+    if (!state.book) return;
+    var b = state.book;
+    var idx = currentChapterIndex();
+    var node = $('content').querySelector('.sn[data-i]');
+    var mid = Array.prototype.slice.call(document.querySelectorAll('#content .sn')).find(function (n) {
+      return spreadOfElement(n) === state.spread;
+    });
+    var label = (b.chapters[idx] ? b.chapters[idx].title : '본문');
+    var snippet = mid ? mid.textContent.slice(0, 40) : '';
+    var exists = state.marks.some(function (m) { return m.bookId === b.id && Math.abs(m.spread - state.spread) <= 0 && m.perView === state.perView; });
+    if (exists) { toast('이미 책갈피가 있는 페이지예요'); return; }
+    state.marks.unshift({
+      bookId: b.id, bookTitle: b.title, spread: state.spread,
+      perView: state.perView, label: label, snippet: snippet, at: Date.now()
+    });
+    state.marks = state.marks.slice(0, 60);
+    saveMarks();
+    renderMarks();
+    toast('🔖 책갈피를 남겼어요 · ' + label);
+  }
+
+  function renderMarks() {
+    var box = $('markList');
+    if (!box) return;
+    box.innerHTML = '';
+    var list = state.marks.filter(function (m) { return state.book && m.bookId === state.book.id; });
+    if (!list.length) { box.appendChild(el('div', 'empty-txt', '아직 책갈피가 없습니다. 아래 🔖 책갈피로 현재 페이지를 저장해 보세요.')); return; }
+    list.forEach(function (m, i) {
+      var row = el('div', 'mark-row');
+      row.innerHTML = '<span>🔖</span><span class="mi"><b>' + escHtml(m.label) + '</b><span>' + escHtml(m.snippet || '') + '</span></span><button class="del" data-del="' + i + '">✕</button>';
+      row.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.getAttribute('data-del') != null) return;
+        goSpread(m.spread, 'force');
+        closeAllSheets();
+      });
+      var del = row.querySelector('.del');
+      del.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var realIdx = state.marks.indexOf(m);
+        if (realIdx >= 0) state.marks.splice(realIdx, 1);
+        saveMarks();
+        renderMarks();
+      });
+      box.appendChild(row);
+    });
+  }
+
+  /* =========================================================
+     7. IndexedDB 서재
+     ========================================================= */
+  var DB = (function () {
+    var dbp = null, NAME = 'ebook-library', STORE = 'books';
+    function open() {
+      if (dbp) return dbp;
+      dbp = new Promise(function (res, rej) {
+        if (!window.indexedDB) { rej(new Error('no-idb')); return; }
+        var req = indexedDB.open(NAME, 1);
+        req.onupgradeneeded = function () {
+          var db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+        };
+        req.onsuccess = function () { res(req.result); };
+        req.onerror = function () { rej(req.error || new Error('idb-open')); };
+      });
+      return dbp;
+    }
+    function tx(mode, fn) {
+      return open().then(function (db) {
+        return new Promise(function (res, rej) {
+          var t = db.transaction(STORE, mode);
+          var st = t.objectStore(STORE);
+          var out = fn(st);
+          t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
+          t.onerror = function () { rej(t.error || new Error('idb-tx')); };
+          t.onabort = function () { rej(t.error || new Error('idb-abort')); };
+        });
+      });
+    }
+    return {
+      put: function (book) { return tx('readwrite', function (st) { st.put(book); }); },
+      get: function (id) { return tx('readonly', function (st) { return st.get(id); }); },
+      all: function () {
+        return open().then(function (db) {
+          return new Promise(function (res, rej) {
+            var t = db.transaction(STORE, 'readonly');
+            var st = t.objectStore(STORE);
+            var r = st.getAll();
+            r.onsuccess = function () { res(r.result || []); };
+            r.onerror = function () { rej(r.error); };
+          });
+        });
+      },
+      del: function (id) { return tx('readwrite', function (st) { st.delete(id); }); }
+    };
+  })();
+
+  var memBooks = {};   // IDB 불가 시 폴백
+
+  function saveBook(book) {
+    memBooks[book.id] = book;
+    return DB.put({
+      id: book.id, title: book.title, text: book.text, chars: book.chars, addedAt: book.addedAt
+    }).catch(function () { return null; });
+  }
+  function listBooks() {
+    return DB.all().catch(function () {
+      return Object.keys(memBooks).map(function (k) { return memBooks[k]; });
+    });
+  }
+  function deleteBook(id) {
+    delete memBooks[id];
+    return DB.del(id).catch(function () { return null; });
+  }
+  function getBook(id) {
+    if (memBooks[id]) return Promise.resolve(memBooks[id]);
+    return DB.get(id).catch(function () { return null; });
+  }
+
+  /* =========================================================
+     8. 책 열기
+     ========================================================= */
+  function openBook(book, restore) {
+    stopNarration(true);
+    state.book = book;
+    state.spread = 0;
+    state.chapterIndex = 0;
+    $('bookTitle').firstChild.nodeValue = book.title + ' ';
+    $('bookSub').textContent = (book.chapters.length || 0) + '장 · ' + Math.round((book.chars || book.text.length) / 100) / 10 + '천 자';
+    document.title = book.title + ' · 연오랑 eBook';
+    renderBook();
+    buildToc();
+    layout(false);
+    if (restore && typeof restore.ratio === 'number') {
+      var target = Math.round(restore.ratio * (state.spreads - 1));
+      goSpread(target, 'force');
+    } else {
+      goSpread(0, 'force');
+    }
+    markCurrentChapter();
+    savePosition();
+    renderBookList();
+    renderMarks();
+    $('audioSheet').setAttribute('data-book', book.id);
+    updateAudioNow();
+  }
+
+  function openSample() {
+    var b = buildBook(SAMPLE_TITLE, SAMPLE_TEXT, 'sample-lighthouse');
+    openBook(b, null);
+    saveBook(b);
+    toast('샘플 동화를 펼쳤어요 · 🎧 듣기로 낭독해 보세요');
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    if (!/\.(txt|md|text)$/i.test(file.name) && !/^text\//.test(file.type || '')) {
+      toast('TXT 파일만 열 수 있어요 (' + (file.name || '') + ')');
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var dec = decodeText(reader.result);
+      var title = (file.name || 'TXT').replace(/\.(txt|md|text)$/i, '');
+      var book = buildBook(title, dec.text, 'file-' + (file.name || 'x') + '-' + (file.size || 0) + '-' + (file.lastModified || 0));
+      openBook(book, null);
+      saveBook(book).then(function () { renderBookList(); });
+      closeAllSheets();
+      if (!book.sentences.length) {
+        toast('본문을 읽지 못했어요 — 다른 인코딩의 TXT인지 확인해 주세요');
+      } else if (book.chapters.length > 1) {
+        toast('📖 ' + book.chapters.length + '장 · ' + book.sentences.length + '문장 · ' + dec.enc + ' 로 열었어요');
+      } else {
+        toast('📖 ' + book.sentences.length + '문장 · ' + dec.enc + ' 로 열었어요');
+      }
+    };
+    reader.onerror = function () { toast('파일을 읽지 못했어요'); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderBookList() {
+    var box = $('bookList');
+    box.innerHTML = '';
+    listBooks().then(function (books) {
+      books = (books || []).filter(function (b) { return b && b.id && b.id !== 'sample-lighthouse'; });
+      books.sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
+      if (!books.length) {
+        box.appendChild(el('div', 'empty-txt', '아직 올린 책이 없습니다. 위에 TXT를 올리거나 아래 샘플로 먼저 읽어 보세요.'));
+        return;
+      }
+      books.forEach(function (b) {
+        var row = el('div', 'book-row' + (state.book && state.book.id === b.id ? ' current' : ''));
+        row.innerHTML = '<span class="bi">📕</span><span class="bt"><b>' + escHtml(b.title) + '</b><span>' +
+          (b.chars ? (b.chars.toLocaleString() + '자') : '') + '</span></span><button class="del" title="삭제">🗑</button>';
+        row.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.classList.contains('del')) return;
+          getBook(b.id).then(function (full) {
+            var src = full || b;
+            if (!src.text) { toast('책 내용을 찾지 못했어요'); return; }
+            var last = lsGet(LS_LAST, null);
+            var book = buildBook(src.title, src.text, src.id);
+            openBook(book, last && last.bookId === src.id ? last : null);
+            closeAllSheets();
+          });
+        });
+        row.querySelector('.del').addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          if (!confirm('"' + b.title + '" 책을 서재에서 지울까요?')) return;
+          deleteBook(b.id).then(function () { renderBookList(); });
+        });
+        box.appendChild(row);
+      });
+    }).catch(function () { box.appendChild(el('div', 'empty-txt', '서재를 읽지 못했습니다.')); });
+  }
+
+  /* =========================================================
+     9. Web Audio 장면 효과음 엔진
+     ========================================================= */
+  var SCENES = {
+    rain:      { icon: '🌧️', name: '빗소리', re: /(?:비가|비는|비를|비에|빗소리|빗줄기|빗방울|폭우|소나기|장맛비|이슬비|장대비|빗물)/ },
+    thunder:   { icon: '⚡', name: '천둥·번개', re: /(?:천둥|번개|우르릉|벼락|천둥소리|번쩍)/ },
+    wind:      { icon: '🍃', name: '바람', re: /(?:바람|돌풍|회오리|산들바람|휭|바람소리|바람이)/ },
+    forest:    { icon: '🌲', name: '숲', re: /(?:숲|나뭇잎|나뭇가지|풀잎|숲길|자작나무|새소리|새가|새들)/ },
+    night:     { icon: '🌙', name: '밤·별', re: /(?:밤하늘|밤이|밤은|밤을|별이|별빛|별들|달빛|달이|어둠|깊은\s*밤|고요|자정|새벽)/ },
+    tension:   { icon: '💓', name: '긴장·심장', re: /(?:긴장|심장|두근|공포|무서|서늘|떨리|떨렸|위험|숨이\s*멎|숨을\s*죽)/ },
+    footsteps: { icon: '👣', name: '발소리', re: /(?:발소리|걸음|걸어|다가오|다가왔|뒤따라|쫓아|발자국)/ },
+    waves:     { icon: '🌊', name: '파도·물', re: /(?:파도|바다|물결|강물|호수|물소리|밀물|썰물)/ },
+    fire:      { icon: '🔥', name: '불·모닥불', re: /(?:모닥불|장작|불꽃|촛불|촛불이|화롯불|타닥)/ }
+  };
+  var SCENE_ORDER = ['thunder', 'rain', 'tension', 'footsteps', 'fire', 'forest', 'wind', 'waves', 'night'];
+
+  var Ambience = (function () {
+    var ctx = null, master = null, noiseBuf = null;
+    var layers = {};      // id → {gain, stop}
+    var enabled = true, vol = 0.45;
+    var started = false;
+
+    function ensure() {
+      if (!ctx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        try { ctx = new AC(); } catch (e) { return null; }
+        master = ctx.createGain();
+        master.gain.value = 0;
+        master.connect(ctx.destination);
+      }
+      if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+      return ctx;
+    }
+    function noise() {
+      if (!noiseBuf) {
+        var len = Math.floor(ctx.sampleRate * 2);
+        noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+        var d = noiseBuf.getChannelData(0);
+        for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      }
+      return noiseBuf;
+    }
+    function srcNoise() {
+      var s = ctx.createBufferSource();
+      s.buffer = noise();
+      s.loop = true;
+      return s;
+    }
+    function targetGain() {
+      return enabled ? Math.max(0, Math.min(1, vol)) * 0.9 : 0;
+    }
+
+    /* --- 장면별 합성 --- */
+    function mkRain(dest) {
+      var s = srcNoise();
+      var bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 0.55;
+      var hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+      var g = ctx.createGain(); g.gain.value = 0.5;
+      var lfo = ctx.createOscillator(); lfo.frequency.value = 0.11;
+      var lg = ctx.createGain(); lg.gain.value = 0.16;
+      lfo.connect(lg); lg.connect(g.gain);
+      s.connect(bp); bp.connect(hp); hp.connect(g); g.connect(dest);
+      s.start(); lfo.start();
+      return { stop: function () { try { s.stop(); lfo.stop(); } catch (e) {} } };
+    }
+    function mkThunder(dest) {
+      var alive = true, timer = 0;
+      function burst() {
+        if (!alive) return;
+        var s = srcNoise();
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 150; lp.Q.value = 0.8;
+        var g = ctx.createGain();
+        var t = ctx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.95, t + 0.14);
+        g.gain.exponentialRampToValueAtTime(0.0008, t + 3.0);
+        s.connect(lp); lp.connect(g); g.connect(dest);
+        s.start(t); s.stop(t + 3.2);
+        timer = setTimeout(burst, 5200 + Math.random() * 7000);
+      }
+      burst();
+      return { stop: function () { alive = false; clearTimeout(timer); } };
+    }
+    function mkWind(dest) {
+      var s = srcNoise();
+      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.6;
+      var g = ctx.createGain(); g.gain.value = 0.45;
+      var lfo = ctx.createOscillator(); lfo.frequency.value = 0.075;
+      var lg = ctx.createGain(); lg.gain.value = 300;
+      lfo.connect(lg); lg.connect(lp.frequency);
+      var lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.17;
+      var lg2 = ctx.createGain(); lg2.gain.value = 0.18;
+      lfo2.connect(lg2); lg2.connect(g.gain);
+      s.connect(lp); lp.connect(g); g.connect(dest);
+      s.start(); lfo.start(); lfo2.start();
+      return { stop: function () { try { s.stop(); lfo.stop(); lfo2.stop(); } catch (e) {} } };
+    }
+    function mkForest(dest) {
+      var wind = mkWind(dest);
+      var alive = true, timer = 0;
+      function chirp() {
+        if (!alive) return;
+        var n = 1 + Math.floor(Math.random() * 3);
+        for (var k = 0; k < n; k++) {
+          (function (delay) {
+            var o = ctx.createOscillator(); o.type = 'sine';
+            var g = ctx.createGain();
+            var t = ctx.currentTime + delay;
+            var f0 = 1900 + Math.random() * 1300;
+            o.frequency.setValueAtTime(f0, t);
+            o.frequency.exponentialRampToValueAtTime(f0 * (1.18 + Math.random() * 0.2), t + 0.07);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(0.16, t + 0.012);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+            o.connect(g); g.connect(dest);
+            o.start(t); o.stop(t + 0.14);
+          })(k * (0.13 + Math.random() * 0.1));
+        }
+        timer = setTimeout(chirp, 1800 + Math.random() * 3600);
+      }
+      chirp();
+      return { stop: function () { alive = false; clearTimeout(timer); wind.stop(); } };
+    }
+    function mkNight(dest) {
+      var drone = ctx.createOscillator(); drone.type = 'sine'; drone.frequency.value = 118;
+      var dg = ctx.createGain(); dg.gain.value = 0.07;
+      drone.connect(dg); dg.connect(dest); drone.start();
+      var alive = true, timer = 0;
+      function crickets() {
+        if (!alive) return;
+        var t0 = ctx.currentTime;
+        for (var k = 0; k < 5; k++) {
+          var o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 4100 + Math.random() * 260;
+          var g = ctx.createGain();
+          var t = t0 + k * 0.055;
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(0.05, t + 0.008);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+          o.connect(g); g.connect(dest); o.start(t); o.stop(t + 0.05);
+        }
+        timer = setTimeout(crickets, 1300 + Math.random() * 2200);
+      }
+      crickets();
+      return { stop: function () { alive = false; clearTimeout(timer); try { drone.stop(); } catch (e) {} } };
+    }
+    function mkTension(dest) {
+      var alive = true, timer = 0;
+      function beat() {
+        if (!alive) return;
+        var t0 = ctx.currentTime;
+        [[0, 0.55], [0.26, 0.36]].forEach(function (pair) {
+          var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 58;
+          var g = ctx.createGain();
+          var t = t0 + pair[0];
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(pair[1], t + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+          o.connect(g); g.connect(dest); o.start(t); o.stop(t + 0.26);
+        });
+        timer = setTimeout(beat, 1150);
+      }
+      beat();
+      return { stop: function () { alive = false; clearTimeout(timer); } };
+    }
+    function mkFootsteps(dest) {
+      var alive = true, timer = 0;
+      function step() {
+        if (!alive) return;
+        var s = srcNoise();
+        var bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 780 + Math.random() * 260; bp.Q.value = 1.4;
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+        var g = ctx.createGain();
+        var t = ctx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.5, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+        s.connect(bp); bp.connect(lp); lp.connect(g); g.connect(dest);
+        s.start(t); s.stop(t + 0.2);
+        timer = setTimeout(step, 560 + Math.random() * 90);
+      }
+      step();
+      return { stop: function () { alive = false; clearTimeout(timer); } };
+    }
+    function mkWaves(dest) {
+      var s = srcNoise();
+      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+      var g = ctx.createGain(); g.gain.value = 0.3;
+      var lfo = ctx.createOscillator(); lfo.frequency.value = 0.09;
+      var lg = ctx.createGain(); lg.gain.value = 0.24;
+      lfo.connect(lg); lg.connect(g.gain);
+      var lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.045;
+      var lg2 = ctx.createGain(); lg2.gain.value = 420;
+      lfo2.connect(lg2); lg2.connect(lp.frequency);
+      s.connect(lp); lp.connect(g); g.connect(dest);
+      s.start(); lfo.start(); lfo2.start();
+      return { stop: function () { try { s.stop(); lfo.stop(); lfo2.stop(); } catch (e) {} } };
+    }
+    function mkFire(dest) {
+      var alive = true, timer = 0;
+      function crackle() {
+        if (!alive) return;
+        var s = srcNoise();
+        var hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1400;
+        var g = ctx.createGain();
+        var t = ctx.currentTime;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.18, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+        s.connect(hp); hp.connect(g); g.connect(dest);
+        s.start(t); s.stop(t + 0.09);
+        timer = setTimeout(crackle, 90 + Math.random() * 420);
+      }
+      crackle();
+      return { stop: function () { alive = false; clearTimeout(timer); } };
+    }
+    var MAKERS = {
+      rain: mkRain, thunder: mkThunder, wind: mkWind, forest: mkForest,
+      night: mkNight, tension: mkTension, footsteps: mkFootsteps, waves: mkWaves, fire: mkFire
+    };
+
+    function setScenes(ids) {
+      if (!ensure()) return;
+      var want = {};
+      (ids || []).forEach(function (id) { if (MAKERS[id]) want[id] = true; });
+
+      // 끌 것
+      Object.keys(layers).forEach(function (id) {
+        if (want[id]) return;
+        var L = layers[id];
+        delete layers[id];
+        try {
+          var t = ctx.currentTime;
+          L.gain.gain.cancelScheduledValues(t);
+          L.gain.gain.setValueAtTime(L.gain.gain.value, t);
+          L.gain.gain.linearRampToValueAtTime(0.0001, t + 0.9);
+        } catch (e) {}
+        setTimeout(function () {
+          try { L.layer.stop(); } catch (e) {}
+          try { L.gain.disconnect(); } catch (e) {}
+        }, 1000);
+      });
+
+      // 켤 것
+      Object.keys(want).forEach(function (id) {
+        if (layers[id]) return;
+        try {
+          var g = ctx.createGain();
+          g.gain.value = 0.0001;
+          g.connect(master);
+          var layer = MAKERS[id](g);
+          layers[id] = { gain: g, layer: layer };
+          var t = ctx.currentTime;
+          g.gain.cancelScheduledValues(t);
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(targetGain(), t + 1.1);
+        } catch (e) {}
+      });
+
+      if (!started) { started = true; }
+      window.__lastScenes = Object.keys(want);
+      applyMaster();
+      return Object.keys(want);
+    }
+
+    function applyMaster() {
+      if (!ctx || !master) return;
+      var t = ctx.currentTime;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value, t);
+      master.gain.linearRampToValueAtTime(targetGain(), t + 0.4);
+    }
+
+    return {
+      setScenes: setScenes,
+      setEnabled: function (on) { enabled = !!on; applyMaster(); },
+      setVolume: function (v) {
+        vol = clamp(v, 0, 1);
+        applyMaster();
+        Object.keys(layers).forEach(function (id) {
+          try {
+            var t = ctx.currentTime;
+            layers[id].gain.gain.cancelScheduledValues(t);
+            layers[id].gain.gain.setValueAtTime(layers[id].gain.gain.value, t);
+            layers[id].gain.gain.linearRampToValueAtTime(targetGain(), t + 0.5);
+          } catch (e) {}
+        });
+      },
+      stopAll: function () { setScenes([]); },
+      resume: function () { ensure(); applyMaster(); },
+      isEnabled: function () { return enabled; }
+    };
+  })();
+
+  function detectScenes(text) {
+    var hits = [];
+    for (var i = 0; i < SCENE_ORDER.length; i++) {
+      var id = SCENE_ORDER[i];
+      if (SCENES[id].re.test(text)) hits.push(id);
+    }
+    return hits.slice(0, 2);
+  }
+
+  /* =========================================================
+     10. 낭독 엔진
+     ========================================================= */
+  var audioEl = null;
+  var urlCache = new Map();
+  var prefetching = {};
+
+  function getPlayer() {
+    if (!audioEl) {
+      audioEl = new Audio();
+      audioEl.preload = 'auto';
+    }
+    return audioEl;
+  }
+
+  function chunkText(text) {
+    var s = String(text).trim();
+    if (s.length <= MAX_AUDIO_TEXT) return [s];
+    var out = [], buf = '';
+    var parts = s.split(/(?<=[,、。.!?…·])\s*/);
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (!p) continue;
+      if (p.length > MAX_AUDIO_TEXT) {
+        // 그래도 길면 강제 절단
+        for (var q = 0; q < p.length; q += MAX_AUDIO_TEXT) {
+          out.push(p.slice(q, q + MAX_AUDIO_TEXT));
+        }
+        continue;
+      }
+      if ((buf + ' ' + p).trim().length > MAX_AUDIO_TEXT) {
+        if (buf) out.push(buf.trim());
+        buf = p;
+      } else {
+        buf = (buf ? buf + ' ' : '') + p;
+      }
+    }
+    if (buf.trim()) out.push(buf.trim());
+    return out.length ? out : [s.slice(0, MAX_AUDIO_TEXT)];
+  }
+
+  function fetchAudioUrl(text) {
+    if (urlCache.has(text)) return Promise.resolve(urlCache.get(text));
+    if (prefetching[text]) return prefetching[text];
+    var p = fetch('/api/tts?lang=ko&text=' + encodeURIComponent(text))
+      .then(function (res) {
+        if (!res.ok) throw new Error('tts_' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        if (urlCache.size > 120) {
+          var firstKey = urlCache.keys().next().value;
+          urlCache.delete(firstKey);
+        }
+        urlCache.set(text, url);
+        delete prefetching[text];
+        return url;
+      })
+      .catch(function () {
+        urlCache.set(text, null);
+        delete prefetching[text];
+        return null;
+      });
+    prefetching[text] = p;
+    return p;
+  }
+
+  function playUrl(url, rate, preDelay, postDelay) {
+    return new Promise(function (resolve) {
+      var a = getPlayer();
+      var done = false;
+      var finish = function () {
+        if (done) return;
+        done = true;
+        a.onended = null;
+        a.onerror = null;
+        setTimeout(resolve, postDelay || 0);
+      };
+      try {
+        a.onended = finish;
+        a.onerror = finish;
+        a.pause();
+        a.src = url;
+        a.playbackRate = clamp(rate, 0.6, 1.6);
+        a.defaultPlaybackRate = clamp(rate, 0.6, 1.6);
+        var start = function () {
+          var pr = a.play();
+          if (pr && pr.catch) {
+            pr.catch(function () { finish(); });
+          }
+        };
+        if (preDelay) setTimeout(start, preDelay); else start();
+        // 안전장치: 아주 긴 문장도 30초 안에 끝난다
+        setTimeout(finish, 30000);
+      } catch (e) {
+        finish();
+      }
+    });
+  }
+
+  function pickKoVoice() {
+    if (!window.speechSynthesis) return null;
+    var vs = window.speechSynthesis.getVoices() || [];
+    for (var i = 0; i < vs.length; i++) {
+      if (/^ko/i.test(vs[i].lang || '')) return vs[i];
+    }
+    return null;
+  }
+
+  function speakDevice(text, kind) {
+    return new Promise(function (resolve) {
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return resolve(false);
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR';
+      var base = state.settings.rate;
+      u.rate = clamp(base * (kind === 'dialogue' ? 1.05 : 1.0), 0.5, 2);
+      u.pitch = kind === 'dialogue' ? 1.18 : 0.97;
+      u.volume = 1;
+      var v = pickKoVoice();
+      if (v) u.voice = v;
+      var done = false;
+      var guard = setTimeout(function () {
+        if (done) return;
+        done = true;
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        resolve(true);
+      }, Math.max(5000, text.length * 320));
+      u.onend = function () { if (!done) { done = true; clearTimeout(guard); resolve(true); } };
+      u.onerror = function () { if (!done) { done = true; clearTimeout(guard); resolve(true); } };
+      try { window.speechSynthesis.speak(u); } catch (e) { clearTimeout(guard); resolve(false); }
+    });
+  }
+
+  function highlightSentence(rec) {
+    var prev = document.querySelector('#content .sn.speaking');
+    if (prev) prev.classList.remove('speaking');
+    var prevP = document.querySelector('#content p.para.para-active');
+    if (prevP) prevP.classList.remove('para-active');
+    if (!rec) return;
+    var node = document.querySelector('#content .sn[data-i="' + rec.i + '"]');
+    if (node) {
+      node.classList.add('speaking');
+      var p = node.closest ? node.closest('p.para') : node.parentNode;
+      if (p && p.classList) p.classList.add('para-active');
+    }
+  }
+
+  function followPage(rec) {
+    var node = document.querySelector('#content .sn[data-i="' + rec.i + '"]');
+    if (!node) return;
+    var sp = spreadOfElement(node);
+    if (sp == null) return;
+    if (sp !== state.spread) goSpread(sp, 'force');
+  }
+
+  function updateAudioNow(text, sub) {
+    var t = $('anText');
+    if (t && text != null) t.textContent = text;
+    if (sub != null) {
+      var b = $('anState');
+      if (b) b.textContent = sub;
+    }
+  }
+
+  function renderSceneChips(ids) {
+    var box = $('sceneChips');
+    if (!box) return;
+    if (!ids || !ids.length) { box.innerHTML = '<span class="hint">이 문장에는 장면 키워드가 없어요 (효과음 없음)</span>'; return; }
+    box.innerHTML = ids.map(function (id) {
+      return '<span class="scene-badge">' + SCENES[id].icon + ' ' + SCENES[id].name + '</span>';
+    }).join('');
+  }
+
+  async function playSentenceAt(idx) {
+    var b = state.book;
+    if (!b || !b.sentences.length) return;
+    idx = clamp(idx, 0, b.sentences.length - 1);
+    var rec = b.sentences[idx];
+    state.curSent = idx;
+
+    highlightSentence(rec);
+    followPage(rec);
+
+    var scenes = state.settings.sceneOn ? detectScenes(rec.text) : [];
+    Ambience.setScenes(scenes);
+    renderSceneChips(scenes);
+
+    var preview = rec.text.length > 46 ? rec.text.slice(0, 46) + '…' : rec.text;
+    updateAudioNow(preview, (rec.kind === 'dialogue' ? '💬 대사' : '📖 지문') + ' · ' + (idx + 1) + '/' + b.sentences.length);
+
+    // 다음 문장 미리 받아 두기
+    if (b.sentences[idx + 1]) {
+      var nx = chunkText(b.sentences[idx + 1].text)[0];
+      if (nx) fetchAudioUrl(nx);
+    }
+
+    if (state.settings.voice === 'device') {
+      await speakDevice(rec.text, rec.kind);
+      return true;
+    }
+
+    var chunks = chunkText(rec.text);
+    for (var i = 0; i < chunks.length; i++) {
+      if (!state.playing) return false;
+      var url = await fetchAudioUrl(chunks[i]);
+      if (!state.playing) return false;
+      if (!url) {
+        // 서버 음성 실패 → 기기 음성으로 폴백 (한 번만 알림)
+        if (!state._ttsWarned) {
+          state._ttsWarned = true;
+          toast('서버 음성이 응답하지 않아 기기 음성으로 낭독합니다');
+        }
+        await speakDevice(rec.text, rec.kind);
+        return true;
+      }
+      var rate = state.settings.rate * (rec.kind === 'dialogue' ? 1.06 : 1.0);
+      await playUrl(url, rate, (i === 0 && rec.kind === 'dialogue') ? 120 : 0, (i === chunks.length - 1 && rec.kind === 'dialogue') ? 160 : 40);
+    }
+    return true;
+  }
+
+  async function narrationLoop(startIdx) {
+    var my = ++state.token;
+    state.playing = true;
+    setPlayUI(true);
+    var idx = startIdx;
+    var b = state.book;
+    if (!b) return;
+    while (state.playing && my === state.token && idx < b.sentences.length) {
+      var ok = await playSentenceAt(idx);
+      if (!state.playing || my !== state.token) break;
+      if (ok === false) break;
+      idx++;
+      state.curSent = idx;
+      savePositionSoon();
+    }
+    if (my === state.token) {
+      state.playing = false;
+      setPlayUI(false);
+      highlightSentence(null);
+      Ambience.setScenes([]);
+      renderSceneChips([]);
+      updateAudioNow('낭독이 끝났어요', '끝');
+      if (idx >= b.sentences.length) updateAudioNow('이 책을 끝까지 읽었어요 🎉', '완독');
+    }
+  }
+
+  function startNarration(fromIdx) {
+    var b = state.book;
+    if (!b || !b.sentences.length) { toast('먼저 책을 열어 주세요'); return; }
+    Ambience.resume();
+    var start = (typeof fromIdx === 'number') ? fromIdx : Math.max(0, state.curSent);
+    if (start < 0) start = 0;
+    // 현재 화면에서 시작
+    if (typeof fromIdx !== 'number') {
+      var first = null;
+      var nodes = document.querySelectorAll('#content .sn');
+      for (var i = 0; i < nodes.length; i++) {
+        if (spreadOfElement(nodes[i]) === state.spread) { first = Number(nodes[i].getAttribute('data-i')); break; }
+      }
+      start = (first == null) ? Math.max(0, state.curSent) : first;
+    }
+    narrationLoop(start);
+  }
+
+  function stopNarration(silent) {
+    state.playing = false;
+    state.token++;
+    try { if (audioEl) { audioEl.pause(); } } catch (e) {}
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+    Ambience.setScenes([]);
+    renderSceneChips([]);
+    highlightSentence(null);
+    setPlayUI(false);
+    if (!silent) updateAudioNow('멈췄어요', '정지');
+  }
+
+  function setPlayUI(playing) {
+    var btn = $('btnPlay');
+    if (btn) { btn.textContent = playing ? '⏸' : '▶'; btn.setAttribute('title', playing ? '일시정지' : '재생'); }
+    var quick = $('btnPlayQuick');
+    if (quick) quick.textContent = playing ? '⏸ 멈춤' : '▶︎ 낭독';
+    $('anIco').textContent = playing ? '🎙️' : '🎧';
+    if (playing) updateAudioNow(null, '낭독 중');
+  }
+
+  /* =========================================================
+     11. UI 배선
+     ========================================================= */
+  function openSheet(id) {
+    closeAllSheets();
+    var s = $(id);
+    if (!s) return;
+    s.classList.add('open');
+    s.setAttribute('aria-hidden', 'false');
+    $('backdrop').classList.add('show');
+    if (id === 'librarySheet') renderBookList();
+    if (id === 'audioSheet') { updateAudioNow(null, state.playing ? '낭독 중' : '대기 중'); }
+  }
+  function closeAllSheets() {
+    ['tocSheet', 'settingsSheet', 'librarySheet', 'audioSheet'].forEach(function (id) {
+      var s = $(id);
+      if (s) { s.classList.remove('open'); s.setAttribute('aria-hidden', 'true'); }
+    });
+    $('backdrop').classList.remove('show');
+  }
+
+  function syncSettingsUI() {
+    var st = state.settings;
+    $('rFont').value = String(st.fontSize);
+    $('vFont').textContent = st.fontSize + 'px';
+    $('rLine').value = String(st.lineHeight);
+    $('vLine').textContent = Number(st.lineHeight).toFixed(1);
+    $('rRate').value = String(st.rate);
+    $('vRate').textContent = Number(st.rate).toFixed(2).replace(/0$/, '') + 'x';
+    $('rScene').value = String(st.sceneVol);
+    $('vScene').textContent = st.sceneVol + '%';
+    $('swScene').checked = !!st.sceneOn;
+    $('sceneVolField').style.display = st.sceneOn ? '' : 'none';
+    document.querySelectorAll('#segFont button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-font') === st.font);
+    });
+    document.querySelectorAll('#segTheme button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-theme') === st.theme);
+    });
+    var effView = st.perView || (window.innerWidth >= 780 ? 2 : 1);
+    document.querySelectorAll('#segView button').forEach(function (b) {
+      b.classList.toggle('on', Number(b.getAttribute('data-view')) === state.perView);
+    });
+    document.querySelectorAll('#segVoice button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-voice') === st.voice);
+    });
+    var vt = $('btnViewToggle');
+    if (vt) vt.textContent = '📖 ' + state.perView + '쪽';
+    $('btnViewToggle').classList.toggle('on', state.perView === 2);
+  }
+
+  function bindUI() {
+    $('btnToc').addEventListener('click', function () { buildToc(); openSheet('tocSheet'); });
+    $('btnSettings').addEventListener('click', function () { syncSettingsUI(); openSheet('settingsSheet'); });
+    $('btnLibrary').addEventListener('click', function () { getBooksThenOpen(); });
+    $('btnAudio').addEventListener('click', function () { syncSettingsUI(); openSheet('audioSheet'); });
+    $('backdrop').addEventListener('click', closeAllSheets);
+    document.querySelectorAll('[data-close]').forEach(function (b) {
+      b.addEventListener('click', function () { closeAllSheets(); });
+    });
+
+    $('navPrev').addEventListener('click', prevPage);
+    $('navNext').addEventListener('click', nextPage);
+
+    $('progressRange').addEventListener('input', function (e) {
+      goSpread(Number(e.target.value), 'force');
+    });
+
+    $('btnFontUp').addEventListener('click', function () { setFont(state.settings.fontSize + 1); });
+    $('btnFontDown').addEventListener('click', function () { setFont(state.settings.fontSize - 1); });
+    $('btnViewToggle').addEventListener('click', function () {
+      state.settings.perView = state.perView === 2 ? 1 : 2;
+      saveSettings();
+      layout(true);
+      syncSettingsUI();
+      toast('📖 ' + state.perView + '쪽 보기');
+    });
+    $('btnMark').addEventListener('click', addBookmark);
+    $('btnPlayQuick').addEventListener('click', function () {
+      if (state.playing) { stopNarration(); return; }
+      startNarration();
+      syncSettingsUI();
+      openSheet('audioSheet');
+    });
+
+    // 설정 시트
+    $('rFont').addEventListener('input', function (e) { setFont(Number(e.target.value), true); });
+    $('rLine').addEventListener('input', function (e) {
+      state.settings.lineHeight = Number(e.target.value);
+      $('vLine').textContent = state.settings.lineHeight.toFixed(1);
+      applyTypography(); layout(true); saveSettings();
+    });
+    $('rRate').addEventListener('input', function (e) {
+      state.settings.rate = Number(e.target.value);
+      $('vRate').textContent = state.settings.rate.toFixed(2).replace(/0$/, '') + 'x';
+      saveSettings();
+    });
+    $('rScene').addEventListener('input', function (e) {
+      state.settings.sceneVol = Number(e.target.value);
+      $('vScene').textContent = state.settings.sceneVol + '%';
+      Ambience.setVolume(state.settings.sceneVol / 100);
+      saveSettings();
+    });
+    $('swScene').addEventListener('change', function (e) {
+      state.settings.sceneOn = e.target.checked;
+      Ambience.setEnabled(state.settings.sceneOn);
+      if (!state.settings.sceneOn) Ambience.setScenes([]);
+      $('sceneVolField').style.display = state.settings.sceneOn ? '' : 'none';
+      saveSettings();
+    });
+    document.querySelectorAll('#segFont button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.settings.font = b.getAttribute('data-font');
+        applyTypography(); layout(true); syncSettingsUI(); saveSettings();
+      });
+    });
+    document.querySelectorAll('#segTheme button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.settings.theme = b.getAttribute('data-theme');
+        applyTypography(); syncSettingsUI(); saveSettings();
+      });
+    });
+    document.querySelectorAll('#segView button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.settings.perView = Number(b.getAttribute('data-view'));
+        layout(true); syncSettingsUI(); saveSettings();
+      });
+    });
+    document.querySelectorAll('#segVoice button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.settings.voice = b.getAttribute('data-voice');
+        if (state.playing) { stopNarration(true); startNarration(); }
+        syncSettingsUI(); saveSettings();
+      });
+    });
+    $('btnResetSettings').addEventListener('click', function () {
+      state.settings = { fontSize: 18, lineHeight: 1.9, font: 'myeongjo', theme: 'paper', perView: 0, voice: 'server', rate: 1, sceneOn: true, sceneVol: 45 };
+      saveBookListReset();
+      applyTypography(); layout(true); syncSettingsUI(); saveSettings();
+      toast('읽기 설정을 초기화했어요');
+    });
+
+    // 오디오 시트
+    $('btnPlay').addEventListener('click', function () {
+      if (state.playing) { stopNarration(); }
+      else { startNarration(); }
+    });
+    $('btnPrevSent').addEventListener('click', function () {
+      var to = Math.max(0, state.curSent - 1);
+      stopNarration(true);
+      startNarration(to);
+    });
+    $('btnNextSent').addEventListener('click', function () {
+      var to = Math.min(state.book.sentences.length - 1, state.curSent + 1);
+      stopNarration(true);
+      startNarration(to);
+    });
+    $('btnStopAll').addEventListener('click', function () { stopNarration(); });
+
+    // 서재
+    $('dropzone').addEventListener('click', function () { $('fileInput').click(); });
+    $('fileInput').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      handleFile(f);
+      e.target.value = '';
+    });
+    $('sampleRow').addEventListener('click', function () { openSample(); closeAllSheets(); });
+
+    // 키보드
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') { nextPage(); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { prevPage(); e.preventDefault(); }
+      else if (e.key === ' ' && !state.playing) { startNarration(); e.preventDefault(); }
+      else if (e.key === 'Escape') { closeAllSheets(); }
+      else if (e.key === 't' || e.key === 'T') { buildToc(); openSheet('tocSheet'); }
+    });
+
+    // 스와이프 / 클릭 페이지 넘김
+    var vp = $('viewport');
+    var sx = 0, sy = 0, swiping = false, moved = false;
+    vp.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      sx = e.clientX; sy = e.clientY; swiping = true; moved = false;
+    });
+    vp.addEventListener('pointermove', function (e) {
+      if (!swiping) return;
+      if (Math.abs(e.clientX - sx) > 12) moved = true;
+    });
+    vp.addEventListener('pointerup', function (e) {
+      if (!swiping) return;
+      swiping = false;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        if (dx < 0) nextPage(); else prevPage();
+        return;
+      }
+      // 탭: 화면 좌/우 22% 지점이면 넘김
+      if (!moved && Math.abs(dx) < 10) {
+        var r = vp.getBoundingClientRect();
+        var rel = (e.clientX - r.left) / r.width;
+        if (rel > 0.8) nextPage();
+        else if (rel < 0.2) prevPage();
+      }
+    });
+    vp.addEventListener('pointercancel', function () { swiping = false; });
+
+    // 드래그&드롭 (전역)
+    var dOver = $('dragOverlay'), dragDepth = 0;
+    window.addEventListener('dragenter', function (e) {
+      if (!e.dataTransfer) return;
+      var hasFile = Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0;
+      if (!hasFile) return;
+      dragDepth++;
+      dOver.classList.add('show');
+    });
+    window.addEventListener('dragover', function (e) { e.preventDefault(); });
+    window.addEventListener('dragleave', function () {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) dOver.classList.remove('show');
+    });
+    window.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dragDepth = 0;
+      dOver.classList.remove('show');
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+
+    // 리사이즈
+    var rt = 0;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () {
+        detectMode();
+        state.settings.perView = state.settings.perView; // 자동 규칙은 layout 에서
+        layout(true);
+        syncSettingsUI();
+      }, 180);
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () { detectMode(); layout(true); }, 260);
+    });
+
+    // 화면 꺼짐/전환 시 정지
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && state.playing) stopNarration(true);
+    });
+    window.addEventListener('beforeunload', function () { savePosition(); });
+  }
+
+  function getBooksThenOpen() {
+    openSheet('librarySheet');
+    renderBookList();
+  }
+
+  function setFont(v, silent) {
+    state.settings.fontSize = clamp(v, 14, 26);
+    applyTypography(); layout(true); syncSettingsUI(); saveSettings();
+    if (!silent) toast('글자 ' + state.settings.fontSize + 'px');
+  }
+
+  function saveBookListReset() { /* 설정 초기화 시 서재는 그대로 둔다 */ }
+
+  /* 폴드8 3화면 감지 */
+  function detectMode() {
+    var w = window.innerWidth, h = window.innerHeight;
+    document.body.classList.remove('mode-cover-portrait', 'mode-cover-landscape', 'mode-main-screen');
+    if (h <= 520 && w <= 980) document.body.classList.add('mode-cover-landscape');
+    else if (w <= 640) document.body.classList.add('mode-cover-portrait');
+    else document.body.classList.add('mode-main-screen');
+  }
+
+  /* 여백 탭(빈 곳)으로도 넘기기: 뷰포트 포인터 핸들러에서 처리 */
+
+  /* =========================================================
+     12. 부팅
+     ========================================================= */
+  function boot() {
+    detectMode();
+
+    var st = lsGet(LS_SETTINGS, null);
+    if (st && typeof st === 'object') {
+      ['fontSize', 'lineHeight', 'font', 'theme', 'perView', 'voice', 'rate', 'sceneOn', 'sceneVol'].forEach(function (k) {
+        if (st[k] !== undefined && st[k] !== null) state.settings[k] = st[k];
+      });
+    }
+    loadMarks();
+    Ambience.setEnabled(state.settings.sceneOn);
+    Ambience.setVolume(state.settings.sceneVol / 100);
+
+    bindUI();
+    applyTypography();
+    syncSettingsUI();
+
+    if (window.speechSynthesis && typeof window.speechSynthesis.getVoices === 'function') {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = function () { pickKoVoice(); };
+    }
+
+    // 마지막 책 복원
+    var last = lsGet(LS_LAST, null);
+    var opened = false;
+    if (last && last.bookId) {
+      getBook(last.bookId).then(function (rec) {
+        if (rec && rec.text && !opened) {
+          opened = true;
+          openBook(buildBook(rec.title, rec.text, rec.id), last);
+          return;
+        }
+        fallback();
+      }).catch(fallback);
+    } else {
+      fallback();
+    }
+    var fallbackDone = false;
+    function fallback() {
+      if (fallbackDone) return;
+      fallbackDone = true;
+      var b = buildBook(SAMPLE_TITLE, SAMPLE_TEXT, 'sample-lighthouse');
+      openBook(b, null);
+      $('bookSub').textContent = '샘플로 먼저 읽어 보세요 · 📚 서재에서 TXT를 올릴 수 있어요';
+    }
+    setTimeout(function () {
+      if (!state.book) fallback();
+    }, 1200);
+
+    // 서비스워커 (독립 캐시 네임스페이스 ebook-reader-)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/ebook/sw.js', { scope: '/ebook/' }).catch(function () {});
+    }
+
+    window.__ebookReady = true;
+    // E2E/검증용 최소 훅
+    window.EBOOK = {
+      state: state,
+      openSample: openSample,
+      openText: function (title, text) { openBook(buildBook(title, text, 'adhoc-' + Date.now()), null); },
+      goSpread: function (n) { goSpread(n, 'force'); },
+      layout: function () { layout(true); },
+      startNarration: startNarration,
+      stopNarration: stopNarration,
+      speech: function (i) { return state.book.sentences[i]; },
+      detectScenes: detectScenes,
+      setScenes: function (ids) { return Ambience.setScenes(ids); },
+      scenesActive: function () { return (window.__lastScenes || []).slice(); },
+      chapterSpreads: function () { return (state.chapterSpreads || []).slice(); }
+    };
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+</body>
+</html>

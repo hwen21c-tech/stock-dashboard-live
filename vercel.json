@@ -25,6 +25,21 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
+      "source": "/ebook.html",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/ebook/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/ebook/" }
+      ]
+    },
+    {
+      "source": "/ebook/manifest.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
       "source": "/pokemon/sw.js",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
@@ -39,6 +54,8 @@
   "rewrites": [
     { "source": "/pokemon", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
-    { "source": "/pokemon/:path*", "destination": "/:path*" }
+    { "source": "/pokemon/:path*", "destination": "/:path*" },
+    { "source": "/ebook", "destination": "/ebook.html" },
+    { "source": "/ebook/", "destination": "/ebook.html" }
   ]
 }

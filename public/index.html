@@ -5,10 +5,29 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <script>
-    try { localStorage.setItem('stock_dashboard_pin_auth', '9035_verified'); } catch(e) {}
+    /* PIN 0623 잠금 — 첫 진입 시 화면만 가린다(데이터 로드·9대 탭은 그대로 동작).
+       · 저장소를 못 쓰는 환경(사파리 프라이빗 등)이면 잠그지 않는다 → 잠김 사고 방지 */
+    (function () {
+      var unlocked = null;
+      try {
+        unlocked = (localStorage.getItem('stock_dashboard_pin_auth') === '0623_verified') ||
+                   (sessionStorage.getItem('stock_dashboard_pin_auth') === '0623_verified');
+      } catch (e) { unlocked = null; }
+      if (unlocked === false) document.documentElement.className += ' pin-locked';
+    })();
   </script>
   <style>
-    #pinLockOverlay { display: none !important; }
+    /* ===== PIN 0623 잠금 (화면 가림 전용) ===== */
+    #pinLockOverlay { display: none; }
+    html.pin-locked body > *:not(#pinLockOverlay) { visibility: hidden !important; }
+    html.pin-locked #pinLockOverlay { display: flex !important; }
+    @keyframes pinShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-9px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(4px); }
+    }
   
     /* ========================================================
        FOLD 8 PRO MULTI-SCREEN DUAL ENGINE (Media Query + Class)
@@ -2008,11 +2027,11 @@
 <body>
 
   <!-- PIN CODE SECURITY LOCK OVERLAY -->
-  <div id="pinLockOverlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #070c14; z-index: 999999; display: none !important; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-    <div style="background: #0b1120; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 18px; padding: 28px 24px; max-width: 320px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.85); text-align: center;">
+  <div id="pinLockOverlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #070c14; z-index: 999999; display: none; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+    <div id="pinCard" style="background: #0b1120; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 18px; padding: 28px 24px; max-width: 340px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.85); text-align: center;">
       <div style="font-size: 34px; margin-bottom: 8px;">🛡️</div>
       <div style="font-size: 16px; font-weight: 800; color: #f8fafc; margin-bottom: 4px;">태수 님의 실전 주식 관제탑</div>
-      <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 22px;">보안 잠금 해제를 위해 PIN을 입력하세요</div>
+      <div style="font-size: 11.5px; color: #94a3b8; margin-bottom: 22px;">보안 잠금 해제를 위해 PIN 4자리를 입력하세요</div>
 
       <!-- PIN Dots Display -->
       <div id="pinDotsWrap" style="display: flex; justify-content: center; gap: 14px; margin-bottom: 18px;">
@@ -2044,10 +2063,127 @@
       <!-- Auto Login Checkbox -->
       <label style="display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11.5px; color: #cbd5e1; cursor: pointer; user-select: none;">
         <input type="checkbox" id="chkAutoLogin" checked style="accent-color: #0284c7; width: 15px; height: 15px;">
-        <span>이 기기에서 자동 로그인 유지</span>
+        <span>이 기기에서 유지 (다음부터 바로 열림)</span>
       </label>
+      <div style="margin-top:12px; font-size:10.5px; color:#64748b; line-height:1.5;">
+        키보드 숫자키·Backspace·Enter 로도 입력할 수 있어요
+      </div>
     </div>
   </div>
+
+  <!-- PIN 잠금 엔진 (이 블록만 따로 — 본문 스크립트가 어떤 이유로 멈춰도 잠금 해제는 항상 동작) -->
+  <script>
+  (function () {
+    var PIN = '0623';
+    var KEY = 'stock_dashboard_pin_auth';
+    var VAL = '0623_verified';
+    var entered = '';
+
+    function isUnlocked() {
+      try {
+        return (localStorage.getItem(KEY) === VAL) || (sessionStorage.getItem(KEY) === VAL);
+      } catch (e) { return false; }
+    }
+    function paint(locked) {
+      try {
+        var root = document.documentElement;
+        if (locked) { if (root.className.indexOf('pin-locked') < 0) root.className += ' pin-locked'; }
+        else { root.className = root.className.replace(/\s*pin-locked/g, ''); }
+        var ov = document.getElementById('pinLockOverlay');
+        if (ov) ov.style.display = locked ? 'flex' : 'none';
+      } catch (e) {}
+    }
+    function dots() {
+      for (var i = 0; i < 4; i++) {
+        var d = document.getElementById('dot' + i);
+        if (!d) continue;
+        if (i < entered.length) { d.style.background = '#38bdf8'; d.style.transform = 'scale(1.2)'; }
+        else { d.style.background = 'transparent'; d.style.transform = 'scale(1)'; }
+      }
+    }
+    function say(msg) {
+      var e = document.getElementById('pinErrMsg');
+      if (e) e.textContent = msg || '';
+    }
+    function shake() {
+      var c = document.getElementById('pinCard');
+      if (!c) return;
+      c.style.animation = 'pinShake .34s ease';
+      setTimeout(function () { c.style.animation = ''; }, 360);
+    }
+    function remember() {
+      var chk = document.getElementById('chkAutoLogin');
+      return !chk || chk.checked;
+    }
+    function unlock() {
+      var keep = remember();
+      try {
+        if (keep) {
+          localStorage.setItem(KEY, VAL);
+          try { sessionStorage.removeItem(KEY); } catch (e) {}
+        } else {
+          try { localStorage.removeItem(KEY); } catch (e) {}
+          sessionStorage.setItem(KEY, VAL);
+        }
+      } catch (e) {
+        try { sessionStorage.setItem(KEY, VAL); } catch (e2) {}
+      }
+      entered = '';
+      dots();
+      say('');
+      paint(false);
+    }
+    function verify() {
+      if (entered === PIN) { unlock(); return; }
+      say('❌ PIN이 맞지 않습니다. 다시 입력해 주세요.');
+      entered = '';
+      dots();
+      shake();
+    }
+
+    window.pressPin = function (n) {
+      n = String(n);
+      if (!/^[0-9]$/.test(n)) return;
+      if (entered.length >= 4) return;
+      entered += n;
+      dots();
+      say('');
+      if (entered.length === 4) setTimeout(verify, 120);
+    };
+    window.clearPin = function () { entered = ''; dots(); say(''); };
+    window.backspacePin = function () {
+      if (!entered.length) return;
+      entered = entered.slice(0, -1);
+      dots();
+      say('');
+    };
+    /* 헤더의 🔒 잠금 버튼 */
+    window.lockDashboard = function () {
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      try { sessionStorage.removeItem(KEY); } catch (e) {}
+      entered = '';
+      dots();
+      say('');
+      paint(true);
+      window.scrollTo(0, 0);
+    };
+
+    /* 키보드 입력 (잠긴 동안만) */
+    document.addEventListener('keydown', function (e) {
+      if (isUnlocked()) return;
+      var k = e.key || '';
+      if (/^[0-9]$/.test(k)) { window.pressPin(k); e.preventDefault(); }
+      else if (k === 'Backspace') { window.backspacePin(); e.preventDefault(); }
+      else if (k === 'Enter') { verify(); e.preventDefault(); }
+      else if (k === 'Escape') { window.clearPin(); }
+    });
+
+    /* 시작: 저장된 해제 상태면 바로 열고, 아니면 잠근다 */
+    if (!isUnlocked()) paint(true);
+    else paint(false);
+    window.addEventListener('DOMContentLoaded', function () { paint(!isUnlocked()); });
+  })();
+  </script>
 
 
     <!-- REAL-TIME LIVE MARKET SESSION RADAR & COUNTDOWN -->
@@ -11150,96 +11286,9 @@ window.DAILY_500_CANDLES = {"451760": [["20251105", 8460.0, 8500.0, 8200.0, 8280
     window.drawModalSupplyFlowCanvas = drawModalSupplyFlowCanvas;
 
     // ==========================================
-    // PIN SECURITY LOCK & AUTO-LOGIN ENGINE (PIN: 9035)
+    // PIN 잠금은 본문 상단의 전용 <script> 블록(PIN 0623)으로 옮겼다.
+    // (이 거대 스크립트가 어떤 이유로 멈춰도 잠금 해제는 항상 동작하도록 분리)
     // ==========================================
-    var enteredPin = '';
-    var CORRECT_PIN = '9035';
-
-    function checkSavedAuth() {
-      try {
-        localStorage.setItem('stock_dashboard_pin_auth', '9035_verified');
-      } catch(e) {}
-      var overlay = document.getElementById('pinLockOverlay');
-      if (overlay) overlay.style.display = 'none';
-    }
-
-    function updatePinDots() {
-      for (var i = 0; i < 4; i++) {
-        var dot = document.getElementById('dot' + i);
-        if (dot) {
-          if (i < enteredPin.length) {
-            dot.style.background = '#38bdf8';
-            dot.style.transform = 'scale(1.2)';
-          } else {
-            dot.style.background = 'transparent';
-            dot.style.transform = 'scale(1)';
-          }
-        }
-      }
-    }
-
-    function pressPin(num) {
-      if (enteredPin.length < 4) {
-        enteredPin += num;
-        updatePinDots();
-        document.getElementById('pinErrMsg').innerText = '';
-
-        if (enteredPin.length === 4) {
-          setTimeout(function() {
-            verifyPin();
-          }, 100);
-        }
-      }
-    }
-    window.pressPin = pressPin;
-
-    function clearPin() {
-      enteredPin = '';
-      updatePinDots();
-      document.getElementById('pinErrMsg').innerText = '';
-    }
-    window.clearPin = clearPin;
-
-    function backspacePin() {
-      if (enteredPin.length > 0) {
-        enteredPin = enteredPin.slice(0, -1);
-        updatePinDots();
-        document.getElementById('pinErrMsg').innerText = '';
-      }
-    }
-    window.backspacePin = backspacePin;
-
-    function verifyPin() {
-      if (enteredPin === CORRECT_PIN) {
-        var chk = document.getElementById('chkAutoLogin');
-        if (chk && chk.checked) {
-          try {
-            localStorage.setItem('stock_dashboard_pin_auth', '9035_verified');
-          } catch (e) {}
-        }
-        var overlay = document.getElementById('pinLockOverlay');
-        if (overlay) overlay.style.display = 'none';
-        enteredPin = '';
-      } else {
-        document.getElementById('pinErrMsg').innerText = '❌ 비밀번호가 올바르지 않습니다.';
-        enteredPin = '';
-        updatePinDots();
-      }
-    }
-
-    function lockDashboard() {
-      try {
-        localStorage.removeItem('stock_dashboard_pin_auth');
-      } catch (e) {}
-      var overlay = document.getElementById('pinLockOverlay');
-      if (overlay) overlay.style.display = 'flex';
-      clearPin();
-    }
-    window.lockDashboard = lockDashboard;
-
-    // Check auth immediately on DOM ready
-    checkSavedAuth();
-    window.addEventListener('DOMContentLoaded', checkSavedAuth);
 
 
     // ==========================================

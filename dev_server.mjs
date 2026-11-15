@@ -75,6 +75,11 @@ const server = http.createServer(async (req, res) => {
   } else if (pathname.startsWith('/pokemon/')) {
     candidates.push('/' + pathname.slice('/pokemon/'.length));
   }
+  // vercel.json 의 `/ebook` · `/ebook/` rewrite 를 로컬에서도 똑같이 흉내낸다.
+  // (실제 파일이 먼저 — public/ebook/manifest.json · sw.js 는 그대로 서빙)
+  if (pathname === '/ebook' || pathname === '/ebook/') {
+    candidates.push('/ebook.html');
+  }
 
   let filePath = null;
   let buf = null;

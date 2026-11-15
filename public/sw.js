@@ -1,5 +1,5 @@
 // Service Worker for Yeonolang Stock Dashboard PWA (Live Real-time Force Network)
-const CACHE_NAME = 'yeonolang-terminal-v20';
+const CACHE_NAME = 'yeonolang-terminal-v21';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -8,8 +8,9 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
-      // 포켓몬 배틀 월드(/pokemon/, 접두사 pkm-world-)의 오프라인 캐시는 건드리지 않는다 — 독립 앱.
-      return Promise.all(keys.filter((key) => !key.startsWith('pkm-world-')).map((key) => caches.delete(key)));
+      // 포켓몬 배틀 월드(/pokemon/, 접두사 pkm-world-)와 eBook(/ebook/, 접두사 ebook-reader-)의
+      // 오프라인 캐시는 건드리지 않는다 — 각각 독립 앱.
+      return Promise.all(keys.filter((key) => !key.startsWith('pkm-world-') && !key.startsWith('ebook-reader-')).map((key) => caches.delete(key)));
     }).then(() => self.clients.claim())
   );
 });
