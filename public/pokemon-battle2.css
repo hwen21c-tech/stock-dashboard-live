@@ -888,3 +888,14 @@
 .pb2-sumempty{grid-column:1/-1;text-align:center;padding:18px 8px;font-weight:800;
   color:#8a9a6a;font-size:clamp(10.5px,2.8vw,12px)}
 .pb2-confirm:disabled,.pb2-confirm.off{opacity:.5;filter:grayscale(.35);box-shadow:none}
+
+/* ---------- 7. 🔁 오답 복습 배지 · 출전 화면 복습 개수 ---------- */
+/* 문제 머리의 태그 자리를 잠깐 '🔁 복습!' 으로 바꿔 쓴다(폭 변화 없음) */
+.qhead .tag.pb2-rvtag{background:linear-gradient(180deg,#ffd76e,#ffb733);color:#7a3d00;
+  box-shadow:0 1px 0 rgba(0,0,0,.12);animation:pb2rvt 1.1s ease-in-out infinite alternate}
+@keyframes pb2rvt{from{transform:scale(1)}to{transform:scale(1.06)}}
+@media (prefers-reduced-motion:reduce){.qhead .tag.pb2-rvtag{animation:none}}
+/* 출전 준비 줄 — 복습 개수 (아주 작은 칩) */
+.pb2-rvpq{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;
+  background:#fff1cf;border:1.5px solid #f0c979;border-radius:999px;
+  padding:1px 7px;font-weight:900;color:#8a5300}

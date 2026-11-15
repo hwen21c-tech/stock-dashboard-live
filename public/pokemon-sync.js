@@ -48,6 +48,8 @@
     'pkm.rank.v1.',            /* 랭크 */
     'pkm.boss.v1.',            /* 보스 */
     'pkm.streak.v1.',          /* 연속 출석 */
+    'pkm.wrong.v1.',           /* 🔁 오답 노트(약점 덱) — 문제·정답·틀린 횟수 */
+    'pkm.stamp.v1.',           /* 🗓️ 주간 출석 스탬프(월~일) */
     'pkm.ticket.v1.',          /* 응원권 */
     'pkm.versus.cfg.v1.',      /* 대전 설정 */
     'pkm.versus.mode.v1'/*(정확히 일치)*/

@@ -1398,6 +1398,7 @@
         const active = S.screen === 'battle' && !S.locked && !!S.q;
         try { if (q('#pb2Banner') && q('#pb2Banner').dataset.kind === 'combo') q('#pb2Banner').hidden = true; } catch (e) { /* */ }
         const snap = active ? snapshotQuestion() : null;
+        const asked = active ? S.q : null;      /* 이 문제가 바뀌기 전에 붙잡아 둔다 */
         const btn = qa('#choices .choice')[idx];
         const r = orig.apply(this, arguments);
         if (!active || !btn) return r;
@@ -1423,10 +1424,24 @@
               /* 3연속 정답 순간에 가끔 짧은 응원 한마디 */
               if (Math.random() < 0.6) Cheer.play();
             }
+            /* 복습 문제를 맞혔으면 오답 노트에서 졸업 */
+            if (asked && asked.__review) {
+              if (Weak.graduate(asked.__review)) {
+                UI.toast('🎓 오답 졸업! 이제 이 문제는 자신 있어요', 'good', 2000);
+                try { Sound.fanfare(); } catch (e) { /* */ }
+                try { WeakBadge.paint(); } catch (e) { /* */ }
+              }
+            }
           } else {
             PB.combo = 0;
             UI.combo();
             recordWrong(snap);
+            /* 오답 노트에 쌓기 — 복습으로 다시 나온 문제는 틀린 횟수만 올린다 */
+            try {
+              if (asked && asked.__review) Weak.bump(asked.__review);
+              else if (asked) Weak.add(asked);
+              WeakBadge.paint();
+            } catch (e) { warn('weak add', e); }
             try { Streak.reset(); } catch (e) { /* */ }
             wildAttack();
           }
@@ -1445,6 +1460,7 @@
       const wrapped = function () {
         const active = S.screen === 'battle';
         const snap = active ? snapshotQuestion() : null;
+        const asked = active ? S.q : null;
         if (active && TimerPref.off()) return;
         const r = orig.apply(this, arguments);
         if (!active) return r;
@@ -1452,6 +1468,9 @@
           PB.combo = 0;
           UI.combo();
           recordWrong(snap);
+          if (asked && asked.__review) Weak.bump(asked.__review);
+          else if (asked) Weak.add(asked);
+          try { WeakBadge.paint(); } catch (e) { /* */ }
           try { Streak.reset(); } catch (e) { /* */ }
           wildAttack();
         } catch (e) { warn('timeout hook', e); }
@@ -1752,6 +1771,7 @@
         const newEnc = function (opts) {
           PB.combo = 0;
           PB.wrong = [];
+          try { WeakServe.reset(); } catch (e) { warn('weak reset', e); }
           const o = opts || {};
           const r = origNew.apply(this, arguments);
           const after = () => {
@@ -1879,6 +1899,7 @@
           const after = () => {
             try { UI.reviewBtn('faintModal'); } catch (e) { /* */ }
             try { QuotaLock.onPlay('faint'); } catch (e) { warn('quota faint', e); }
+            try { Stamp.mark(); } catch (e) { warn('stamp faint', e); }
           };
           if (r && typeof r.then === 'function') r.then(after, after); else after();
           return r;
@@ -1929,6 +1950,8 @@
       try { maybeDropItem(); } catch (e) { warn('dropItem', e); }
       /* 공정 횟수 — 포획 1마리 = 1판 (게스트 제외) */
       try { QuotaLock.onPlay('capture'); } catch (e) { warn('quota capture', e); }
+      /* 🗓️ 출석 도장 — 오늘 한 판 놀았으니 오늘 칸에 도장 */
+      try { Stamp.mark(); } catch (e) { warn('stamp', e); }
       void used;
     },
   };
@@ -2958,7 +2981,289 @@
     try { Rare.load(); } catch (e) { warn('rare load', e); }
     try { Streak.load(); } catch (e) { warn('streak load', e); }
     try { Tickets.load(); } catch (e) { warn('ticket load', e); }
+    try { Weak.load(); } catch (e) { warn('weak load', e); }
   }
+
+  /* ============================================================
+     17. 🔁 오답 노트(약점 덱) · 🗓️ 주간 출석 스탬프
+     ─ 오답: 프로필별 pkm.wrong.v1.<slot>
+         문제 객체(S.q)를 통째로 저장해 세 게임(산수·한글·영어)의
+         기존 렌더러를 그대로 다시 쓴다 — 문제·보기·힌트·듣기가 그대로 재현된다.
+     ─ 다음 판에 1~2문제를 2번째·4번째 문제로 다시 내고(🔁 복습! 배지),
+         맞히면 그 문제는 오답 노트에서 졸업(삭제)된다.
+     ─ 스탬프: 프로필별 pkm.stamp.v1.<slot> — 그 주 월~일,
+         하루 한 판(포획 또는 기절)이면 오늘 칸에 도장.
+         3일 슈퍼볼 ×2 · 5일 하이퍼볼 ×1 · 7일 마스터볼 ×1 자동 지급(주 1회).
+     ============================================================ */
+  const K_WRONG = (s) => 'pkm.wrong.v1.' + s;
+  const K_STAMP = (s) => 'pkm.stamp.v1.' + s;
+  const WRONG_MAX = 20;
+  const REVIEW_AT = [2, 4];        /* 한 판에서 복습 문제가 나가는 순번(질문 기준) */
+
+  function cloneQ(src) {
+    try {
+      const o = JSON.parse(JSON.stringify(src));
+      delete o.__review;
+      return o;
+    } catch (e) { return null; }
+  }
+  function ansTextOf(src) {
+    if (!src) return '';
+    if (src.answer != null) return String(src.answer);
+    if (src.ans != null) return String(src.ans);
+    const c = (src.choices || []).find((x) => x && x.ok === true);
+    return c ? String(c.t || c.v || '') : '';
+  }
+
+  const Weak = {
+    items: [],
+    key() { return K_WRONG(slotId()); },
+    load() {
+      const o = lsGet(this.key(), null);
+      const list = (o && Array.isArray(o.items)) ? o.items : [];
+      this.items = list.filter((it) => it && it.id && it.q).slice(-WRONG_MAX);
+      return this.items;
+    },
+    save() {
+      lsSet(this.key(), { v: 1, items: this.items.slice(-WRONG_MAX), updated: kstDate() });
+    },
+    count() { return this.items.length; },
+    /* 같은 문제인지 — 과목 + 문제 본문(수식·낱말)이 같으면 같은 문제로 본다 */
+    idOf(src) {
+      const body = String((src && (src.text || src.qhtml || src.say)) || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+      return GAME + '|' + body;
+    },
+    add(src) {
+      if (!src || src.__review) return null;
+      const q = cloneQ(src);
+      if (!q) return null;
+      const id = this.idOf(q);
+      if (!id) return null;
+      const hit = this.items.find((it) => it.id === id);
+      if (hit) {
+        hit.wrong = Math.min(99, (Number(hit.wrong) || 1) + 1);
+        hit.at = kstDate();
+        this.save();
+        return hit;
+      }
+      this.items.push({ id, subj: GAME, q, ans: ansTextOf(q), wrong: 1, at: kstDate() });
+      if (this.items.length > WRONG_MAX) this.items.shift();
+      this.save();
+      return this.items[this.items.length - 1];
+    },
+    bump(id) {
+      const it = this.items.find((x) => x.id === id);
+      if (!it) return null;
+      it.wrong = Math.min(99, (Number(it.wrong) || 1) + 1);
+      it.at = kstDate();
+      this.save();
+      return it;
+    },
+    /* 복습에서 맞히면 졸업 — 오답 노트에서 지운다 */
+    graduate(id) {
+      const i = this.items.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      this.items.splice(i, 1);
+      this.save();
+      return true;
+    },
+    clear() { this.items = []; this.save(); },
+  };
+
+  /* 이번 판에 어떤 복습 문제를 몇 번째에 낼지 정하고, 차례가 되면 하나씩 내준다 */
+  const WeakServe = {
+    plan: [],
+    asked: 0,
+    reset() {
+      this.plan = [];
+      this.asked = 0;
+      try {
+        /* 같은 과목 문제만 다시 낸다 — 저장한 문제 객체는 그 과목 화면(렌더러)에서만 그대로 그려진다 */
+        const pool = Weak.items.filter((it) => it.subj === GAME);
+        const n = pool.length;
+        if (!n) return;
+        for (let i = pool.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+        }
+        /* 쌓인 오답이 4개 이상이면 2문제, 그보다 적으면 1문제 */
+        this.plan = pool.slice(0, n >= 4 ? 2 : 1).map((it) => it.id);
+      } catch (e) { warn('weak plan', e); }
+    },
+    take() {
+      this.asked += 1;
+      if (!this.plan.length) return null;
+      if (REVIEW_AT.indexOf(this.asked) < 0) return null;
+      const id = this.plan.shift();
+      const it = Weak.items.find((x) => x.id === id);
+      if (!it) return null;
+      const Q = cloneQ(it.q);
+      if (!Q) return null;
+      Q.__review = it.id;
+      return Q;
+    },
+  };
+
+  /* 문제 머리의 태그 자리를 복습 배지로 잠깐 바꿔 쓴다(레이아웃을 건드리지 않는다) */
+  const ReviewTag = {
+    def: '',
+    el() { return q('#qTag') || q('.qhead .tag'); },
+    remember() {
+      const el = this.el();
+      if (el && el.textContent && el.textContent !== '🔁 복습!') this.def = el.textContent;
+    },
+    paint() {
+      const el = this.el();
+      if (!el) return;
+      const on = !!(S.q && S.q.__review);
+      if (on) {
+        if (el.textContent !== '🔁 복습!') el.textContent = '🔁 복습!';
+        el.classList.add('pb2-rvtag');
+      } else {
+        el.classList.remove('pb2-rvtag');
+        if (el.textContent === '🔁 복습!') el.textContent = this.def || '문제';
+      }
+    },
+  };
+
+  const WeakHook = {
+    attach() {
+      /* 문제 생성 — 복습 차례면 저장해 둔 문제를 그대로 돌려준다 */
+      const origMQ = window.makeQuestion;
+      if (typeof origMQ === 'function' && !origMQ.__pb2w) {
+        const mq = function () {
+          try {
+            const rv = WeakServe.take();
+            if (rv) return rv;
+          } catch (e) { warn('weak take', e); }
+          return origMQ.apply(this, arguments);
+        };
+        mq.__pb2w = true;
+        window.makeQuestion = mq;
+      }
+      /* 문제를 화면에 그린 뒤 배지 */
+      const origNew = window.newQuestion;
+      if (typeof origNew === 'function' && !origNew.__pb2n) {
+        const nq = function () {
+          const out = origNew.apply(this, arguments);
+          try { ReviewTag.paint(); } catch (e) { warn('rv tag', e); }
+          return out;
+        };
+        nq.__pb2n = true;
+        window.newQuestion = nq;
+      }
+      /* 출전 화면에 복습 개수 한 줄 */
+      const origPrep = window.renderPrep;
+      if (typeof origPrep === 'function' && !origPrep.__pb2p) {
+        const rp = function () {
+          const out = origPrep.apply(this, arguments);
+          try { WeakBadge.paint(); } catch (e) { warn('rv prep', e); }
+          return out;
+        };
+        rp.__pb2p = true;
+        window.renderPrep = rp;
+      }
+    },
+  };
+
+  /* 출전 화면(누가 놀까요 → 준비)에 '🔁 복습 N' 한 줄 */
+  const WeakBadge = {
+    paint() {
+      const quota = q('#prepQuota');
+      if (!quota) return;
+      let el = q('#pb2RvPq');
+      let slot = slotId();
+      try { slot = Quota.keyOfProfile(prepTarget()) || slot; } catch (e) { /* */ }
+      let n = 0;
+      try {
+        n = slot === slotId() ? Weak.count() : ((lsGet(K_WRONG(slot), null) || {}).items || []).length;
+      } catch (e) { n = 0; }
+      if (!n) { if (el) el.hidden = true; return; }
+      if (!el) {
+        el = document.createElement('span');
+        el.id = 'pb2RvPq';
+        el.className = 'pq pb2-rvpq';
+        quota.parentNode.insertBefore(el, quota.nextSibling);
+      }
+      el.hidden = false;
+      el.textContent = '🔁 복습 ' + n;
+      el.title = '틀린 문제 ' + n + '개 — 다음 판에 다시 나와요';
+    },
+  };
+
+  /* ---------- 🗓️ 주간 출석 스탬프 ---------- */
+  function kstDay() {
+    const p = kstDate().split('-');
+    return new Date(Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2])));
+  }
+  /* 그 주 월요일(월~일 7칸) — 날짜 키는 KST 기준 YYYY-MM-DD */
+  function weekInfo() {
+    const d = kstDay();
+    const idx = (d.getUTCDay() + 6) % 7;            /* 0=월 … 6=일 */
+    const mon = new Date(d.getTime() - idx * 86400000);
+    const days = [];
+    for (let i = 0; i < 7; i += 1) days.push(new Date(mon.getTime() + i * 86400000).toISOString().slice(0, 10));
+    return { key: days[0], idx, days, today: kstDate() };
+  }
+  const STAMP_LABEL = ['월', '화', '수', '목', '금', '토', '일'];
+  /* 3·5·7일 보상 — 한 주에 한 번씩 */
+  const STAMP_GIFTS = [
+    { at: 3, add: { super: 2 }, name: '슈퍼볼 ×2' },
+    { at: 5, add: { hyper: 1 }, name: '하이퍼볼 ×1' },
+    { at: 7, add: { master: 1 }, name: '마스터볼 ×1' },
+  ];
+
+  function stampRead(slot) {
+    const w = weekInfo();
+    const raw = lsGet(K_STAMP(slot || slotId()), null);
+    const out = (raw && raw.week === w.key && raw.days && typeof raw.days === 'object')
+      ? { v: 1, week: w.key, days: raw.days, gave: (raw.gave && typeof raw.gave === 'object') ? raw.gave : {}, updated: raw.updated || '' }
+      : { v: 1, week: w.key, days: {}, gave: {}, updated: '' };
+    return out;
+  }
+  function stampCount(o, w) {
+    let n = 0;
+    w.days.forEach((k) => { if (o.days[k]) n += 1; });
+    return n;
+  }
+
+  const Stamp = {
+    state(slot) {
+      const w = weekInfo();
+      const o = stampRead(slot);
+      return { week: w.key, idx: w.idx, days: w.days, marks: o.days, count: stampCount(o, w), gave: o.gave, today: w.today };
+    },
+    /* 오늘 도장 — 이미 찍혀 있으면 아무 일도 하지 않는다 */
+    mark(quiet) {
+      const slot = slotId();
+      const w = weekInfo();
+      const o = stampRead(slot);
+      const today = w.today;
+      let fresh = false;
+      if (!o.days[today]) {
+        o.days[today] = 1;
+        o.updated = today;
+        fresh = true;
+      }
+      const n = stampCount(o, w);
+      const gifts = [];
+      STAMP_GIFTS.forEach((g) => {
+        if (n < g.at || o.gave[g.at]) return;
+        o.gave[g.at] = 1;
+        gifts.push(g);
+      });
+      if (fresh || gifts.length) lsSet(K_STAMP(slot), o);
+      if (fresh && !quiet) {
+        UI.toast('🗓️ 오늘 출석 도장! 이번 주 ' + n + '/7', 'good', 1700);
+      }
+      gifts.forEach((g) => {
+        try { Balls.add(g.add, true); } catch (e) { warn('stamp gift', e); }
+        UI.toast('🎁 ' + g.at + '일 출석 보상 — ' + g.name, 'good', 2400);
+        try { Sound.fanfare(); } catch (e) { /* */ }
+      });
+      return { count: n, fresh, gifts: gifts.map((g) => g.name) };
+    },
+  };
 
   function init() {
     installHp();
@@ -2990,6 +3295,9 @@
     UI.paintTimerGrid();
     try { Tickets.sync(true); } catch (e) { warn('ticket init', e); }
     try { SpawnHook.attachFlee(); } catch (e) { warn('flee hook', e); }
+    /* 🔁 오답 노트 — 문제 생성 · 배지 · 출전 화면 연결 */
+    try { WeakHook.attach(); } catch (e) { warn('weak hook', e); }
+    try { ReviewTag.remember(); } catch (e) { /* */ }
     TimerHook.attach();
     AnswerHook.attach();
     TimeoutHook.attach();
@@ -3014,6 +3322,7 @@
           UI.timer();
           initRankSeen();
           bossChip();
+          try { WeakServe.reset(); } catch (e) { /* */ }
           try { Tickets.sync(true); } catch (e) { warn('ticket switch', e); }
           try { QuotaLock.check(); } catch (e) { warn('quota switch', e); }
         } catch (e) { warn('applyProfile', e); }
@@ -3022,6 +3331,8 @@
       a.__pb2 = true;
       window.applyProfile = a;
     }
+    /* 출전 화면이 이미 그려져 있으면 복습 개수 한 줄도 맞춘다 */
+    try { WeakBadge.paint(); } catch (e) { /* */ }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
@@ -3070,6 +3381,25 @@
     openMission() { UI.missionModal(); },
     openReview() { Review.open(); },
     reviewState() { return PB.rv; },
+    /* 7탄 검증용 — 🔁 오답 노트 · 🗓️ 주간 스탬프 */
+    weak: {
+      count: () => Weak.count(),
+      list: () => Weak.items.map((it) => ({ subj: it.subj, ans: it.ans, wrong: it.wrong, id: it.id })),
+      plan: () => WeakServe.plan.slice(),
+      asked: () => WeakServe.asked,
+      current: () => (S.q && S.q.__review) || '',
+      tag: () => { const el = q('#qTag') || q('.qhead .tag'); return el ? el.textContent : ''; },
+      add(src) { const it = Weak.add(src); return it ? it.id : ''; },
+      clear() { Weak.clear(); WeakServe.reset(); },
+      /* 검증용 — 지금 판의 다음 복습 차례를 바로 앞당긴다 */
+      forceNext() { WeakServe.asked = REVIEW_AT[0] - 1; return WeakServe.plan.slice(); },
+    },
+    stamp: {
+      state: (slot) => Stamp.state(slot),
+      key: (slot) => K_STAMP(slot || slotId()),
+      mark: () => Stamp.mark(),
+      week: () => weekInfo(),
+    },
     markMission(g) { return Mission.mark(g || GAME); },
     /* 6탄 검증용 — 배경 아트·이펙트 */
     art: () => (q('#pb2Bg') ? q('#pb2Bg').dataset.art || '' : ''),

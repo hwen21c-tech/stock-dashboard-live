@@ -5,7 +5,7 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v11';  /* 2026-11-15 v11: ☁️ 가족 클라우드 자동 동기화(Supabase) — pokemon-sync.js 추가 */
+const VERSION = PREFIX + 'v12';  /* 2026-11-15 v12: 🔁 오답 복습(약점 덱) · 🗓️ 주간 출석 스탬프 — pkm.wrong.v1 · pkm.stamp.v1 동기화 */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',

@@ -203,6 +203,30 @@
     color:#8a8a7a;background:#f0f0e8;border:1.4px solid #dcdcd0;border-radius:999px;padding:1px 0;white-space:nowrap}
   .missionrow .mchip.done{color:#14561a;background:linear-gradient(180deg,#d9f7bd,#a8e86b);border-color:#79c94a}
   .missionrow .mdone{flex:0 0 auto;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#7a4a00}
+
+  /* 🗓️ 이번 주 출석 스탬프 */
+  .stampbox{margin:12px auto 0;background:rgba(255,255,255,.86);border:2px solid #cbe79f;border-radius:18px;
+    padding:11px 12px 10px;box-shadow:0 6px 16px rgba(40,90,20,.14);max-width:720px}
+  .stampbox .dexhead{margin-bottom:5px}
+  .stamprow{padding:6px 9px;border-radius:12px;background:linear-gradient(180deg,#fffdf3,#f4fbe8);
+    border:1.6px solid #e2eecd;margin-top:6px}
+  .stamprow .shead{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+  .stamprow .sname{flex:0 1 auto;min-width:0;font-size:clamp(10.5px,2.8vw,12px);font-weight:900;color:#33501a;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stamprow .swrong{flex:0 0 auto;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#8a5300;
+    background:#fff1cf;border:1.4px solid #f0c979;border-radius:999px;padding:0 6px;line-height:1.6}
+  .stamprow .scnt{margin-left:auto;flex:0 0 auto;font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
+  .stamprow .scnt.full{color:#1d7a2a}
+  .scells{display:flex;gap:4px;min-width:0;justify-content:center}
+  .sc{flex:1 1 0;max-width:64px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px;
+    padding:2px 0 1px;border-radius:9px;background:#f2f6e8;border:1.4px dashed #cfdcc0}
+  .sc em{font-style:normal;font-size:clamp(8px,2.2vw,9.5px);font-weight:900;color:#8a9a6a;line-height:1}
+  .sc s{text-decoration:none;font-size:clamp(13px,3.4vw,19px);line-height:1.15;color:#c3cdb4;font-weight:900}
+  .sc.on{background:linear-gradient(180deg,#fff6d8,#ffe9a8);border:1.4px solid #e8c25a}
+  .sc.on em{color:#a4700f}
+  .sc.today{box-shadow:0 0 0 2px #ffb733 inset}
+  .sc.today em{color:#a15b00}
+  .stiptip{margin:6px 0 0;text-align:center;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b8547}
   @media (max-width:360px){
     .wrap{padding-left:12px;padding-right:12px}
     .game .ico{width:48px;height:48px;flex-basis:48px;font-size:25px}
@@ -508,6 +532,16 @@
     </div>
     <div id="missionRows"></div>
     <p class="tip" style="margin:7px 0 0;text-align:center">보상 🎁 전설 확률 UP (오늘) · 슈퍼볼 ×2 · 하이퍼볼 ×1</p>
+  </section>
+
+  <!-- 🗓️ 이번 주 출석 스탬프 — 하루 한 판이면 오늘 칸에 도장 -->
+  <section class="stampbox" aria-label="이번 주 출석 스탬프">
+    <div class="dexhead">
+      <b>🗓️ 이번 주 출석</b>
+      <span id="stampNote">하루 한 판이면 도장!</span>
+    </div>
+    <div id="stampRows"></div>
+    <p class="stiptip">🎁 3일 슈퍼볼×2 · 5일 하이퍼볼×1 · 7일 마스터볼×1 자동 지급</p>
   </section>
 
   <nav class="games" aria-label="게임 선택">
@@ -1782,6 +1816,164 @@
   };
 })();
 </script>
+
+<!-- 🗓️ 이번 주 출석 스탬프 — 하루 한 판(포획·기절)이면 그날 칸에 도장 · 3·5·7일 보상 -->
+<script>
+(function () {
+  'use strict';
+  var K_STAMP = function (s) { return 'pkm.stamp.v1.' + s; };
+  var K_WRONG = function (s) { return 'pkm.wrong.v1.' + s; };
+  var K_BALLS = function (s) { return 'pkm.balls.v1.' + s; };
+  var K_MISSION = function (s) { return 'pkm.mission.v1.' + s; };
+  var SLOTS = [['p1', 'kidP1', '첫째', '👧'], ['p2', 'kidP2', '둘째', '🧒'], ['guest', 'kidP3', '게스트', '🧪']];
+  var LABEL = ['월', '화', '수', '목', '금', '토', '일'];
+  /* 3·5·7일 보상 — 한 주에 한 번씩 */
+  var GIFTS = [
+    { at: 3, add: { super: 2 }, name: '슈퍼볼 ×2' },
+    { at: 5, add: { hyper: 1 }, name: '하이퍼볼 ×1' },
+    { at: 7, add: { master: 1 }, name: '마스터볼 ×1' }
+  ];
+
+  function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* */ } }
+  function j(k, d) { try { var v = ls(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  /* 기기 시간대와 상관없이 한국시간 날짜로 센다(게임 쪽과 같은 규칙) */
+  function kstDay() {
+    var d = new Date(Date.now() + 9 * 3600 * 1000);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  }
+  function dayKey(t) { return new Date(t).toISOString().slice(0, 10); }
+  /* 그 주 월요일 기준 7칸(월~일) */
+  function weekInfo() {
+    var d = kstDay();
+    var idx = (d.getUTCDay() + 6) % 7;
+    var mon = new Date(d.getTime() - idx * 86400000);
+    var days = [];
+    for (var i = 0; i < 7; i += 1) days.push(dayKey(mon.getTime() + i * 86400000));
+    return { key: days[0], idx: idx, days: days, today: dayKey(d) };
+  }
+  function readStamp(slot) {
+    var wk = weekInfo();
+    var o = j(K_STAMP(slot), null);
+    if (o && o.week === wk.key && o.days && typeof o.days === 'object') {
+      return { v: 1, week: wk.key, days: o.days, gave: (o.gave && typeof o.gave === 'object') ? o.gave : {}, updated: o.updated || '' };
+    }
+    return { v: 1, week: wk.key, days: {}, gave: {}, updated: '' };
+  }
+  function countOf(o, wk) {
+    var n = 0;
+    wk.days.forEach(function (d) { if (o.days[d]) n += 1; });
+    return n;
+  }
+  function addBalls(slot, add) {
+    var b = j(K_BALLS(slot), null);
+    var out = {
+      super: (b && Number.isFinite(Number(b.super))) ? Math.max(0, Number(b.super)) : 2,
+      hyper: (b && Number.isFinite(Number(b.hyper))) ? Math.max(0, Number(b.hyper)) : 0,
+      master: (b && Number.isFinite(Number(b.master))) ? Math.max(0, Number(b.master)) : 0
+    };
+    Object.keys(add).forEach(function (k) { out[k] = Math.max(0, (out[k] || 0) + add[k]); });
+    lsSet(K_BALLS(slot), JSON.stringify(out));
+    return out;
+  }
+  /* 오늘 도장 — 이미 찍혔으면 아무 일도 없다. 3·5·7일을 새로 넘으면 볼을 넣어 준다 */
+  function markSlot(slot) {
+    var wk = weekInfo();
+    var o = readStamp(slot);
+    var fresh = false;
+    if (!o.days[wk.today]) { o.days[wk.today] = 1; o.updated = wk.today; fresh = true; }
+    var n = countOf(o, wk);
+    var gifts = [];
+    GIFTS.forEach(function (g) {
+      if (n < g.at || o.gave[g.at]) return;
+      o.gave[g.at] = 1;
+      gifts.push(g);
+    });
+    if (fresh || gifts.length) lsSet(K_STAMP(slot), JSON.stringify(o));
+    gifts.forEach(function (g) { addBalls(slot, g.add); });
+    return { n: n, fresh: fresh, gifts: gifts.map(function (g) { return g.name; }) };
+  }
+  function missionDone(slot) {
+    var m = j(K_MISSION(slot), null);
+    if (!m || typeof m !== 'object') return false;
+    var d = m.date;
+    var t = new Date();
+    var today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    if (d !== today) return false;
+    var done = m.done || {};
+    return ['math', 'hangul', 'english'].every(function (g) { return !!done[g]; });
+  }
+  function wrongCount(slot) {
+    var o = j(K_WRONG(slot), null);
+    return (o && Array.isArray(o.items)) ? o.items.length : 0;
+  }
+  function nameOf(boxId, fallback) {
+    var box = document.getElementById(boxId);
+    var el = box ? box.querySelector('[data-name]') : null;
+    var n = el ? (el.textContent || '').trim() : '';
+    return n || fallback;
+  }
+  function emojiOf(boxId, fallback) {
+    var box = document.getElementById(boxId);
+    var el = box ? box.querySelector('[data-emoji]') : null;
+    var e = el ? (el.textContent || '').trim() : '';
+    return e || fallback;
+  }
+
+  function paint() {
+    var host = document.getElementById('stampRows');
+    if (!host) return;
+    var wk = weekInfo();
+    var weekTotal = 0;
+    host.innerHTML = SLOTS.map(function (row) {
+      var slot = row[0];
+      /* 오늘의 미션을 끝냈으면 그것도 출석으로 인정 */
+      if (missionDone(slot)) { try { markSlot(slot); } catch (e) { /* */ } }
+      var st = readStamp(slot);
+      var n = countOf(st, wk);
+      weekTotal = Math.max(weekTotal, n);
+      var wrong = wrongCount(slot);
+      var cells = wk.days.map(function (d, i) {
+        var on = !!st.days[d];
+        var cls = 'sc' + (on ? ' on' : '') + (d === wk.today ? ' today' : '');
+        var tip = LABEL[i] + '요일 · ' + (on ? '출석 완료' : '아직') + (d === wk.today ? ' (오늘)' : '');
+        return '<i class="' + cls + '" title="' + tip + '" aria-label="' + tip + '"><em>' + LABEL[i] + '</em><s>' + (on ? '💮' : '·') + '</s></i>';
+      }).join('');
+      return '<div class="stamprow">'
+        + '<div class="shead"><span class="sname">' + emojiOf(row[1], row[3]) + ' ' + esc(nameOf(row[1], row[2])) + '</span>'
+        + (wrong ? '<span class="swrong" title="틀린 문제 ' + wrong + '개 — 다음 판에 다시 나와요">🔁 복습 ' + wrong + '</span>' : '')
+        + '<span class="scnt' + (n >= 7 ? ' full' : '') + '">' + n + '/7' + (n >= 7 ? ' 🎉' : '') + '</span></div>'
+        + '<div class="scells">' + cells + '</div>'
+        + '</div>';
+    }).join('');
+    var note = document.getElementById('stampNote');
+    if (note) note.textContent = weekTotal ? '이번 주 ' + weekTotal + '일 출석!' : '하루 한 판이면 도장!';
+  }
+
+  try { paint(); } catch (e) { /* */ }
+  window.addEventListener('pageshow', function () { try { paint(); } catch (e) { /* */ } });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { paint(); } catch (e) { /* */ } } });
+
+  /* 검증용 */
+  window.PKSTAMP = {
+    paint: paint,
+    week: weekInfo,
+    state: function (slot) {
+      var wk = weekInfo();
+      var o = readStamp(slot || 'p1');
+      return { week: wk.key, today: wk.today, idx: wk.idx, days: wk.days, marks: o.days, gave: o.gave, count: countOf(o, wk) };
+    },
+    wrong: wrongCount,
+    mark: function (slot) { return markSlot(slot || 'p1'); }
+  };
+})();
+</script>
+
 <!-- 포켓몬 배틀 월드 — /pokemon/ 전용 서비스워커 (연오랑 관제탑 PWA와 분리) -->
 <script>
 if ('serviceWorker' in navigator && location.pathname.indexOf('/pokemon/') === 0) {
