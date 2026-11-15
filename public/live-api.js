@@ -2236,6 +2236,8 @@
     var isPre = af.sessionPhase === '프리마켓';
     state.sesWord = isPre ? '프리마켓' : '시간외';
     var sesWord = isPre ? '프리마켓' : '시간외';
+    // 세션 밖이어도 응답의 체결 세션이 PRE_MARKET 이면 "오늘 프리마켓 체결" 이다(전일 마감값이 아님).
+    var todayPre = !af.inSession && af.basisSessionType === 'PRE_MARKET';
     var sesMetric = isPre ? '프리마켓(08:00~08:50 NXT) 체결 대금' : '시간외 체결 대금';
 
     var panel = afterPanelEl();
@@ -2256,7 +2258,9 @@
       (af.inSession
         ? '<strong style="color:#34d399;">' + esc(isPre ? 'NXT 프리마켓 진행 중' : '시간외 세션 진행 중') + '</strong> — ' +
           esc(sesWord) + ' 대금이 계속 늘어납니다 · '
-        : '<strong style="color:#cbd5e1;">직전 ' + esc(af.basisLabel || '—') + ' ' + esc(sesWord) + ' 마감값</strong> · ') +
+        : todayPre
+          ? '<strong style="color:#cbd5e1;">오늘 ' + esc(af.basisLabel || '—') + ' 프리마켓 체결값</strong> · '
+          : '<strong style="color:#cbd5e1;">직전 ' + esc(af.basisLabel || '—') + ' ' + esc(sesWord) + ' 마감값</strong> · ') +
       '감시군 ' + esc(String(af.universe || 0)) + '종목(테마·RN존·종베' +
       ((af.universeGroups && af.universeGroups['NXT동적']) ? '·NXT동적 ' + esc(String(af.universeGroups['NXT동적'])) : '') +
       ') 중 <strong style="color:#34d399;">' + esc(sesWord) + ' 체결 ' +
@@ -2283,8 +2287,10 @@
       '입니다. ' + esc(sesWord) + ' 등락률은 ' + esc(sesWord) + ' 체결가의 전일 종가 대비 등락입니다.<br>';
     note += af.inSession
       ? '※ 지금은 ' + esc(sesWord) + ' 세션 진행 중입니다 — 값이 계속 늘어납니다.'
-      : '※ 지금은 ' + esc(sesWord) + ' 세션이 아닙니다 — 직전 ' + esc(af.basisLabel || '—') + ' 마감값이며, ' +
-        (isPre ? '장마감 후 시간외 체결이 시작되면 자동으로 늘어납니다.' : '다음 프리마켓이 열리면 자동으로 갱신됩니다.');
+      : todayPre
+        ? '※ 지금은 프리마켓이 끝난 시점입니다 — 위 값은 오늘 ' + esc(af.basisLabel || '—') + ' NXT 프리마켓 누적 체결값입니다.'
+        : '※ 지금은 ' + esc(sesWord) + ' 세션이 아닙니다 — 직전 ' + esc(af.basisLabel || '—') + ' 마감값이며, ' +
+          (isPre ? '장마감 후 시간외 체결이 시작되면 자동으로 늘어납니다.' : '다음 프리마켓이 열리면 자동으로 갱신됩니다.');
     html += '<div style="font-size:10px; color:#64748b; margin-top:6px;">' + note + '</div>';
 
     var host = document.getElementById('tabsLiveAfterTop');
