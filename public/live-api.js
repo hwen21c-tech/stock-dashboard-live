@@ -1750,14 +1750,16 @@
     if (!block) return 0;
     var avgEl = block.querySelector('.theme-avg');
     if (avgEl) {
-      // 프리마켓에만 실측 평균(avgPctLive)이 있다 — 종목 절반 이상이 체결된 테마만 값이 내려온다.
-      var useLive = state.sessionPhase === '프리마켓' && isNum(theme.avgPctLive);
-      var avgVal = useLive ? theme.avgPctLive : theme.avgPct;
-      avgEl.style.color = colFor(avgVal);
-      avgEl.innerHTML = esc(pctTxt(avgVal)) +
-        (useLive
+      // 프리마켓에는 정규장 등락률이 0.00%로 오므로 실측 프리마켓 평균(avgPctLive)만 쓴다.
+      //  절반 이상 체결된 테마가 아니면 값을 만들지 않고 '—' 로 둔다(0.00% 표기 금지).
+      var prePhase = state.sessionPhase === '프리마켓';
+      var useLive = prePhase && isNum(theme.avgPctLive);
+      var avgVal = useLive ? theme.avgPctLive : prePhase ? null : theme.avgPct;
+      avgEl.style.color = avgVal === null ? '#94a3b8' : colFor(avgVal);
+      avgEl.innerHTML = (avgVal === null ? '—' : esc(pctTxt(avgVal))) +
+        (prePhase
           ? ' <span style="font-size:9.5px; color:#a7f3d0; font-weight:800; margin-left:3px;">프리마켓 ' +
-            esc(theme.liveCoverage || '') + '</span>'
+            esc(theme.liveCoverage || '0/' + (theme.stockCount || 0)) + '</span>'
           : '') +
         ' <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">(합산 ' +
         esc(theme.sumValueText || '—') + ')</span>';
