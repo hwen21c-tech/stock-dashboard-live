@@ -1067,6 +1067,17 @@
       setTrend('데이터 없음', '#fca5a5');
       return;
     }
+    /* 뉴스 제목처럼 '종목명이 아닌 문장'을 차트 API 로 보내면 404 만 쌓인다 → 요청하지 않고 사실대로 말한다.
+     *  (종목코드가 있거나, 짧은 종목명이면 그대로 조회한다 — 긴 제목만 걸러낸다) */
+    var known = null;
+    try { known = code || (window.stockCodes && window.stockCodes[name]) || null; } catch (e) { known = code || null; }
+    var wordCount = String(query).split(/\s+/).filter(Boolean).length;
+    if (!known && (String(query).length >= 18 || wordCount >= 5)) {
+      showNotice('📰 이 항목은 종목이 아니라 기사·지표 제목입니다 —\n종목 차트를 조회하지 않습니다.', '#94a3b8');
+      setTrend('종목 아님(기사·지표)', '#94a3b8');
+      markLinksFailed(name);
+      return;
+    }
 
     // 가짜 차트가 남아 있으면 지운 뒤 로딩 안내를 띄운다
     window.modalAllCandles = [];
@@ -1562,6 +1573,26 @@
 
   var TABS_URL = '/api/tabs-live';
   var POLL_MS = 30000;
+  var AFTER_MIN_VALUE = 10 * 1e8; // 3번 탭 '거돈대금 10억↑만 보기' 기준(10억 원)
+  var AFTER_FILTER_KEY = 'tabs_after_min10eok';
+
+  /* 3번 탭 필터 기본값 — 명시적으로 끈 적이 없으면 ON */
+  function afterFilterOn() {
+    if (state.afterMinValue !== null) return state.afterMinValue;
+    var saved = null;
+    try { saved = window.localStorage ? window.localStorage.getItem(AFTER_FILTER_KEY) : null; } catch (e) { saved = null; }
+    state.afterMinValue = saved === '0' ? false : true;
+    return state.afterMinValue;
+  }
+
+  function setAfterFilter(on) {
+    state.afterMinValue = Boolean(on);
+    try { if (window.localStorage) window.localStorage.setItem(AFTER_FILTER_KEY, on ? '1' : '0'); } catch (e) { /* 저장소 없음 */ }
+    if (state.lastAf && state.lastAfStamp) renderAftermarket({ aftermarket: state.lastAf }, state.lastAfStamp, true);
+    return state.afterMinValue;
+  }
+
+  function toggleAfterFilter() { return setAfterFilter(!afterFilterOn()); }
 
   var state = {
     polling: false,
@@ -1572,7 +1603,9 @@
     applied: 0,
     mounted: { news: false, after: false, afterTop: false },
     sessionPhase: null,
-    reqId: 0
+    reqId: 0,
+    folds: {},          // 접힘 목록 사용자 상태(기본 접힘)
+    afterMinValue: null // 3번 탭 '시간외 대금 10억↑만 보기' 토글 상태(null=기본 ON)
   };
 
   /* ------------------------------ 포맷 유틸 ------------------------------ */
@@ -2016,19 +2049,37 @@
   function impactStockChips(n) {
     var list = n.beneficiaryStocks || [];
     if (!list.length) return '';
+    var anyPre = list.some(function (s) { return s && s.preRun; });
     var chips = list.map(function (s) {
       var code = cleanArg(s.code);
       var name = cleanArg(s.name);
-      return '<span onclick="event.stopPropagation();tabsLiveOpenStock(\'' + name + '\', \'' + code + '\')"' +
-        ' title="종목코드 ' + esc(code) + ' · 누르면 RN존 실전 차트로 이동"' +
-        ' style="font-size:10px; font-weight:800; color:#6ee7b7; background:rgba(16,185,129,0.13); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">' +
+      var live = s.live || null;
+      var pct = live && isNum(live.changePct) ? live.changePct : null;
+      var pctColor = pct === null ? '#94a3b8' : pct > 0 ? '#f87171' : pct < 0 ? '#38bdf8' : '#cbd5e1';
+      var liveTxt = live
+        ? '<span style="color:' + pctColor + ';font-weight:900;font-variant-numeric:tabular-nums;">' +
+            (pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(2) + '%') + '</span>' +
+          (live.valueText ? ' <span style="color:#94a3b8;font-weight:700;">' + esc(live.valueText) + '</span>' : '')
+        : '<span style="color:#64748b;font-weight:700;">시세 대기</span>';
+      var preBadge = s.preRun
+        ? '<span title="기사가 나온 시점에 이미 +15% 이상 오른 종목 — 뉴스가 가격을 끌어올린 것이 아니라 이미 반영됐거나 뒤늦은 기사일 수 있습니다."' +
+            ' style="font-size:9px;font-weight:900;color:#fca5a5;background:rgba(239,68,68,0.16);border:1px solid rgba(239,68,68,0.45);padding:1px 4px;border-radius:3px;white-space:nowrap;">⚠️ 선반영/후행</span>'
+        : '';
+      var tip = '종목코드 ' + code + ' · 누르면 RN존 실전 차트로 이동' +
+        (live ? ' · ' + (live.valueBasis || '통합') + ' 거래대금 ' + (live.valueText || '—') : ' · 실시간 시세 미수신');
+      return '<span onclick="event.stopPropagation();tabsLiveOpenStock(\'' + name + '\', \'' + code + '\')"' + +
+        ' title="' + esc(tip) + '"' +
+        ' style="font-size:10px; font-weight:800; color:#6ee7b7; background:rgba(16,185,129,0.13); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-wrap:wrap;">' +
         '🎯 ' + esc(s.name) + ' <span style="font-size:9px; opacity:.7; font-weight:700;">' + esc(s.code) + '</span>' +
+        liveTxt + preBadge +
         '<a href="https://m.stock.naver.com/item/' + encodeURIComponent(code) + '" target="_blank" rel="noopener noreferrer"' +
         ' onclick="event.stopPropagation()" title="네이버 증권 호가창 (새 탭)"' +
         ' style="color:#6ee7b7; text-decoration:none; opacity:.75; font-weight:900; padding-left:2px;">↗</a></span>';
     }).join('');
     return '<div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin:2px 0 3px 0;">' +
-      '<span style="font-size:10px; font-weight:800; color:#34d399;">수혜·관련주</span>' + chips + '</div>';
+      '<span style="font-size:10px; font-weight:800; color:#34d399;">수혜·관련주</span>' + chips +
+      (anyPre ? '<span style="font-size:9.5px;color:#fca5a5;font-weight:800;">← ⚠️ 는 이미 +15%↑ 오른 뒤 나온 기사</span>' : '') +
+      '</div>';
   }
 
   function impactNoteLine(n) {
@@ -2209,16 +2260,19 @@
   function afterRowHtml(r) {
     if (!r) return '';
     var pct = isNum(r.overPct) ? r.overPct : null;
+    var div = isNum(r.divergencePct) ? r.divergencePct : null;
     var sesWord = state.sesWord || '시간외';
     var bits = [];
     if (isNum(r.overPrice)) bits.push(sesWord + ' 체결 ' + fmt(r.overPrice) + '원 (' + pctTxt(pct) + ')');
     if (isNum(r.changePct)) bits.push('정규장 ' + pctTxt(r.changePct));
+    if (div !== null) bits.push('정규장 종가 대비 ' + pctTxt(div));
     if (isNum(r.afterSharePct)) bits.push('통합 대금 중 ' + sesWord + ' ' + Number(r.afterSharePct).toFixed(1) + '%');
     if (r.groups && r.groups.length) bits.push('감시군 ' + r.groups.join('·'));
     var metaTxt = bits.join(' | ');
     var reason = sesWord + ' 체결 대금 ' + (r.overValueText || '—') +
       (isNum(r.overPrice) ? ' · ' + sesWord + ' 체결가 ' + fmt(r.overPrice) + '원' : '') +
       (isNum(pct) ? ' (전일 종가 대비 ' + pctTxt(pct) + ')' : '') +
+      (div !== null ? ' · 정규장 종가 ' + fmt(r.regularClose) + '원 대비 ' + pctTxt(div) + ' 괴리' : '') +
       (isNum(r.changePct) ? ' · 정규장 ' + pctTxt(r.changePct) : '') +
       ' · 네이버 ' + (state.sesWord === '프리마켓' ? 'NXT 프리마켓(08:00~08:50)' : '시간외 애프터마켓(NXT·시간외 단일가)') + ' 누적 체결 기준';
     var onclick = buildOnclick(
@@ -2227,9 +2281,12 @@
       metaTxt,
       reason
     );
+    var hidden = afterFilterOn() && isNum(r.overValue) && r.overValue < AFTER_MIN_VALUE;
     return '' +
-      '<div class="reason-item" data-live="1" style="border-left:3px solid ' +
-        (isNum(pct) && pct < 0 ? '#38bdf8' : '#34d399') + ';" onclick="' + esc(onclick) + '">' +
+      '<div class="reason-item" data-live="1" data-af-value="' + (isNum(r.overValue) ? Math.round(r.overValue) : '') + '"' +
+        (hidden ? ' style="display:none;border-left:3px solid ' + (isNum(pct) && pct < 0 ? '#38bdf8' : '#34d399') + ';"'
+                : ' style="border-left:3px solid ' + (isNum(pct) && pct < 0 ? '#38bdf8' : '#34d399') + ';"') +
+        ' onclick="' + esc(onclick) + '">' +
         '<div class="ri-head">' +
           '<span><span style="display:inline-block; min-width:14px; color:#64748b; font-weight:800;">' +
             esc(String(r.rank || '')) + '</span> ' + esc(r.name) +
@@ -2239,12 +2296,22 @@
           '<span style="color:#34d399; font-weight:800;">' + esc(r.overValueText || '—') + '</span>' +
         '</div>' +
         '<div class="ri-meta">' + esc(metaTxt) + '</div>' +
+        (div !== null
+          ? '<div style="display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap;">' +
+              '<span style="font-size:9.5px;font-weight:800;color:#94a3b8;">📏 정규장 종가 ' + esc(fmt(r.regularClose)) + '원 대비</span>' +
+              '<span style="font-size:11px;font-weight:900;color:' + colFor(div) + ';">' + esc(pctTxt(div)) + '</span>' +
+              '<span style="font-size:9.5px;font-weight:800;color:' + (Math.abs(div) >= 3 ? '#fca5a5' : '#94a3b8') + ';">' +
+                (Math.abs(div) >= 3 ? '⚠️ 괴리 큼' : Math.abs(div) >= 1 ? '괴리 주의' : '괴리 작음') + '</span>' +
+            '</div>'
+          : '') +
       '</div>';
   }
 
-  function renderAftermarket(body, stamp) {
+  function renderAftermarket(body, stamp, fromToggle) {
     var af = body.aftermarket;
     if (!af) return 0;
+    state.lastAf = af;
+    state.lastAfStamp = stamp;
     var byValue = af.byValue || [];
     var byTop = af.byPctTop || [];
     var byBottom = af.byPctBottom || [];
@@ -2297,6 +2364,25 @@
       esc(String(af.withAfterCount || 0)) + '종목</strong> 기준 · ' +
       '체결 데이터 없는 ' + esc(String(af.noAfterCount || 0)) + '종목은 순위에서 제외</div>';
 
+    var allRows = byValue.concat(byTop, byBottom);
+    var hiddenN = 0;
+    if (afterFilterOn()) {
+      allRows.forEach(function (r) { if (isNum(r.overValue) && r.overValue < AFTER_MIN_VALUE) hiddenN += 1; });
+    }
+    var on = afterFilterOn();
+    html += '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:2px 0 8px 2px; padding:7px 9px; border:1px solid rgba(56,189,248,0.28); border-radius:7px; background:rgba(56,189,248,0.06);">' +
+      '<button type="button" data-af-filter="' + (on ? 'on' : 'off') + '" onclick="if(window.TabsLive){TabsLive.toggleAfterFilter()}" ' +
+        'title="' + esc('시간외 체결 대금 10억 원 미만 종목을 목록에서 숨깁니다(설정 유지)') + '" ' +
+        'style="display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:800; ' +
+        'background:' + (on ? '#065f46' : 'rgba(148,163,184,0.16)') + '; color:' + (on ? '#6ee7b7' : '#cbd5e1') + '; border:1px solid ' + (on ? '#10b981' : 'rgba(148,163,184,0.35)') + ';">' +
+        '<span>' + (on ? '✅' : '⬜') + '</span><span>거래대금 10억↑만 보기</span>' +
+        '<span style="font-size:9.5px; opacity:.85;">' + (on ? 'ON' : 'OFF') + '</span>' +
+      '</button>' +
+      '<span style="font-size:10px; color:#94a3b8; font-weight:700;">' +
+        (on ? (hiddenN > 0 ? '10억 미만 ' + hiddenN + '종목 숨김 (전체 ' + allRows.length + '종목)' : '10억 미만 없음 · 전체 ' + allRows.length + '종목 표시') : '필터 꿈 · 전체 ' + allRows.length + '종목 표시') +
+      '</span>' +
+      '<span style="font-size:10px; color:#64748b; font-weight:700; margin-left:auto;">📏 정규장 종가 대비 괴리율 같이 표기</span>' +
+    '</div>';
     html += '<div style="font-size:11px; font-weight:800; color:#6ee7b7; margin:6px 0 4px 2px;">' +
       '💰 ' + esc(sesMetric) + ' 상위 ' + byValue.length + '종목</div>';
     html += byValue.map(afterRowHtml).join('');
@@ -2482,14 +2568,108 @@
     return on ? '<span style="color:#34d399;font-weight:900;">✅</span>' : '<span style="color:#64748b;font-weight:900;">✗</span>';
   }
 
-  function slOpen(name, code) {
-    var nm = String(name || '').replace(/'/g, '');
-    return "if(window.tabsLiveOpenStock){tabsLiveOpenStock('" + nm + "','" + esc(code) + "')}";
+  function slOpen(name, code, src, priceText, pctText) {
+    var nm = String(name || '').replace(/'/g, '').replace(/[\r\n]/g, ' ');
+    var pt = String(priceText === null || priceText === undefined ? '' : priceText).replace(/'/g, '');
+    var ct = String(pctText === null || pctText === undefined ? '' : pctText).replace(/'/g, '');
+    return (
+      "if(window.slOpenStockChart){slOpenStockChart('" + nm + "','" + esc(code || '') + "','" +
+      (src || '') + "','" + pt + "','" + ct + "')}"
+    );
   }
 
-  function slRow(inner, name, code) {
+  /* 종목 클릭 → 지금 보고 있는 탭 그대로, 그 종목 차트 팝업만 연다.
+   *  · 비중법사/홍인기 카드에 있는 종목이면 그 탭의 전략 모달(기준봉 4분할 · 5단 타점)
+   *  · 카드에 없으면 공통 차트 팝업(openDetail → /api/stock-chart 실시간 일봉)
+   *  · RN존 탭으로 점프하지 않는다(11/16 수리) */
+  function slModalOpen(id) {
+    var el = document.getElementById(id);
+    if (!el) return false;
+    var cls = ' ' + String(el.className || '') + ' ';
+    return cls.indexOf(' on ') >= 0 || cls.indexOf(' open ') >= 0 || el.style.display === 'flex';
+  }
+
+  function slOpenStockChart(name, code, src, priceText, pctText) {
+    var nm = String(name || '').replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/'/g, '').replace(/\s+/g, ' ').trim();
+    var opened = false;
+    try {
+      if (src === 'hong' && window.HonginkiTab && typeof window.HonginkiTab.openChart === 'function') {
+        window.HonginkiTab.openChart(code);
+        opened = slModalOpen('hiChartModal');
+      } else if (src === 'bij' && window.BijoongTab && typeof window.BijoongTab.openChart === 'function') {
+        window.BijoongTab.openChart(code);
+        opened = slModalOpen('chartModal');
+      }
+    } catch (e) { opened = false; }
+    if (opened) return true;
+    try {
+      if (typeof window.openDetail === 'function') {
+        window.openDetail(
+          nm + ' (' + code + ')',
+          priceText || '실시간 일봉 차트',
+          pctText || '현재 탭 유지',
+          '장중 실시간 판정에서 연 차트입니다 — 탭을 옮기지 않고 이 자리에서 엽니다. ' +
+            '일봉은 /api/stock-chart 실시간(당일 봉 포함)이며, 전략 카드가 있는 종목은 그 탭의 카드 모달이 우선 열립니다.'
+        );
+        return true;
+      }
+    } catch (e2) { /* 아래 대체 경로 */ }
+    try {
+      if (window.StrategyPins && typeof window.StrategyPins.openChart === 'function') {
+        window.StrategyPins.openChart(code, nm);
+        return true;
+      }
+    } catch (e3) { /* noop */ }
+    return false;
+  }
+  window.slOpenStockChart = slOpenStockChart;
+
+  /* 접힘 토글 — 새로고침(폴링 재렌더) 뒤에도 사용자가 연 상태를 유지한다 */
+  function slFoldOpen(key) {
+    return Boolean(state.folds && state.folds[key]);
+  }
+
+  function slFoldButton(key, label, count, accent) {
+    var open = slFoldOpen(key);
+    var txt = label + ' (' + (isNum(count) ? count : 0) + '종목) ' + (open ? '▾' : '▸');
     return (
-      '<div data-live="1" onclick="' + esc(slOpen(name, code)) + '" ' +
+      '<button type="button" data-sl-fold="' + esc(key) + '" onclick="' +
+      esc("if(window.slFoldToggle){slFoldToggle('" + key + "')}") + '" ' +
+      'style="width:100%;display:flex;align-items:center;gap:6px;margin:8px 0 4px;padding:6px 9px;' +
+      'background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.35);border-radius:6px;' +
+      'font-size:11px;font-weight:800;color:' + (accent || '#fbbf24') + ';cursor:pointer;text-align:left;">' +
+      '<span>' + esc(txt) + '</span>' +
+      '<span style="margin-left:auto;font-size:9.5px;font-weight:700;color:#94a3b8;">기본 접힘 · 눌러서 펼치기</span>' +
+      '</button>'
+    );
+  }
+
+  function slFoldBody(key, innerHtml) {
+    var open = slFoldOpen(key);
+    return (
+      '<div data-sl-fold-body="' + esc(key) + '" style="display:' + (open ? 'block' : 'none') + ';">' + innerHtml + '</div>'
+    );
+  }
+
+  function slFoldToggle(key) {
+    if (!state.folds) state.folds = {};
+    var open = !state.folds[key];
+    state.folds[key] = open;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sl-fold-body="' + key + '"]'), function (el) {
+      el.style.display = open ? 'block' : 'none';
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sl-fold="' + key + '"]'), function (btn) {
+      var span = btn.querySelector('span');
+      if (span) span.textContent = (span.textContent || '').replace(/[▾▸]\s*$/, open ? '▾' : '▸');
+    });
+    return open;
+  }
+  window.slFoldToggle = slFoldToggle;
+
+  function slRow(inner, name, code, src, price, pct) {
+    return (
+      '<div data-live="1" onclick="' + esc(slOpen(name, code, src, isNum(price) ? fmt(price) + '원' : '', isNum(pct) ? slPct(pct) : '')) + '" ' +
+      'title="누르면 이 종목 차트 팝업(탭 이동 없음)" ' +
       'style="cursor:pointer;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(15,23,42,0.72);border:1px solid rgba(148,163,184,0.16);">' +
       inner +
       '</div>'
@@ -2552,15 +2732,15 @@
             (r.valueRank ? ' · 대금 순위 ' + r.valueRank + '위' : ''),
             true
           ),
-          r.name, r.code
+          r.name, r.code, 'bij', r.price, r.pct
         );
       }).join('');
     } else {
       out += '<div style="font-size:10.5px;color:#94a3b8;padding:4px 2px;">지금 조건(몸통 +10%↑ · 대금 300억↑ · 60일 전고점 돌파)을 모두 채운 종목은 없습니다 — 새로 생기면 이 자리에 자동으로 올라옵니다.</div>';
     }
     if (near && near.length) {
-      out += '<div style="font-size:10.5px;font-weight:800;color:#fbbf24;margin:8px 0 3px;">⚖️ 아깝게 탈락한 장중 후보</div>';
-      out += near.map(function (r) {
+      out += slFoldButton('bij-near', '⚖️ 아깝게 탈락한 후보', near.length, '#fbbf24');
+      out += slFoldBody('bij-near', near.map(function (r) {
         return slRow(
           '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
             '<span style="font-size:11px;font-weight:700;color:#cbd5e1;">' + esc(r.name) +
@@ -2570,9 +2750,9 @@
           '<div style="font-size:9.8px;color:#94a3b8;line-height:1.45;margin-top:2px;">' +
             esc((r.bij.reasons || []).join(' · ') || '—') +
           '</div>',
-          r.name, r.code
+          r.name, r.code, 'bij', r.price, r.pct
         );
-      }).join('');
+      }).join(''));
     }
     return out;
   }
@@ -2586,7 +2766,7 @@
       if (c.missing || !c.live) {
         return slRow(
           '<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>',
-          c.name, c.code
+          c.name, c.code, 'bij'
         );
       }
       var L = c.live;
@@ -2604,7 +2784,7 @@
         '<br>4분할선 ' + esc(lineTxt) + ' → <b style="color:#c7d2fe;">' + esc(L.split4.zone) + '</b>' +
         ' · 손절선 ' + slWon(L.stopLine) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
       ;
-      return slRow(slHeadRow(c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code);
+      return slRow(slHeadRow(c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code, 'bij', L.price, L.vsBasePct);
     }).join('');
   }
 
@@ -2627,15 +2807,15 @@
             (r.firstBreak120 ? ' · <b style="color:#6ee7b7;">첫 장대양봉</b>' : ' · <span style="color:#fbbf24;">재돌파 ' + (r.priorBreakCount || 0) + '회</span>'),
             true
           ),
-          r.name, r.code
+          r.name, r.code, 'hong', r.price, r.pct
         );
       }).join('');
     } else {
       out += '<div style="font-size:10.5px;color:#94a3b8;padding:4px 2px;">지금 조건(등락률 +10%↑ · 120일 전고점 돌파 · 대금 상위)을 모두 채운 종목은 없습니다 — 새로 생기면 이 자리에 자동으로 올라옵니다.</div>';
     }
     if (near && near.length) {
-      out += '<div style="font-size:10.5px;font-weight:800;color:#fbbf24;margin:8px 0 3px;">⚖️ 전고점은 넘었지만 첫 돌파가 아닌 후보</div>';
-      out += near.map(function (r) {
+      out += slFoldButton('hong-near', '⚖️ 아깝게 탈락한 후보(전고점 넘었지만 첫 돌파 아님)', near.length, '#fbbf24');
+      out += slFoldBody('hong-near', near.map(function (r) {
         return slRow(
           '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
             '<span style="font-size:11px;font-weight:700;color:#cbd5e1;">' + esc(r.name) +
@@ -2643,9 +2823,9 @@
             '<span style="font-size:10.5px;font-weight:800;color:' + colFor(r.pct) + ';">' + esc(slWon(r.price)) + ' ' + esc(slPct(r.pct)) + '</span>' +
           '</div>' +
           '<div style="font-size:9.8px;color:#94a3b8;line-height:1.45;margin-top:2px;">' + esc((r.hong.reasons || []).join(' · ') || '—') + '</div>',
-          r.name, r.code
+          r.name, r.code, 'hong', r.price, r.pct
         );
-      }).join('');
+      }).join(''));
     }
     return out;
   }
@@ -2656,7 +2836,7 @@
     }
     return cards.map(function (c) {
       if (c.missing || !c.live) {
-        return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>', c.name, c.code);
+        return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>', c.name, c.code, 'hong');
       }
       var L = c.live;
       var stateColor = L.stateKey === 'tp10' ? '#34d399' : L.stateKey === 'tp5' ? '#6ee7b7' : L.stateKey === 'above' ? '#e2e8f0' : L.stateKey === 'dip' ? '#7dd3fc' : '#fca5a5';
@@ -2674,7 +2854,7 @@
         (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
       ;
       var dayTag = c.dayLabel ? '[기준봉 → 오늘 ' + c.dayLabel + '] ' : c.kind ? '[' + c.kind + '] ' : '';
-      return slRow(slHeadRow(dayTag + c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code);
+      return slRow(slHeadRow(dayTag + c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code, 'hong', L.price, L.vsBasePct);
     }).join('');
   }
 
@@ -3022,7 +3202,12 @@
     _renderUpperLimit: renderUpperLimit,
     _renderNews: renderNews,
     _renderStrategyLive: renderStrategyLive,
-    _renderDynamicThemes: renderDynamicThemes
+    _renderDynamicThemes: renderDynamicThemes,
+    toggleAfterFilter: toggleAfterFilter,
+    setAfterFilter: setAfterFilter,
+    afterFilterOn: afterFilterOn,
+    _folds: function () { return state.folds; },
+    _renderAftermarket: renderAftermarket
   };
 
   function boot() {

@@ -414,6 +414,151 @@
     return true;
   }
 
+  /* ------------------------------ 만쥬·종베 고점수 칩 ------------------------------
+   *  1번 탭 신호등 아래 '한 줄'로 전략 탭 픽을 올린다.
+   *   · 만쥬 : 화면에 있는 자동 채점 스크리너의 실제 점수(0~100) 중 80점 이상만.
+   *   · 종베 : 100점 채점 데이터가 없다 → 점수를 만들지 않고 각 트랙(신정재·강창권) 1픽만 올린다.
+   *  클릭하면 해당 전략 탭으로 이동하며 차트를 함께 연다.
+   * ---------------------------------------------------------------------------------- */
+
+  function parseManjuPicks() {
+    if (!HAS_DOM) return [];
+    var tab = document.getElementById('tabManju');
+    if (!tab) return [];
+    var out = [];
+    var seen = {};
+    Array.prototype.forEach.call(tab.querySelectorAll('span'), function (el) {
+      if (el.children && el.children.length) return;
+      var t = (el.textContent || '').trim();
+      var m = t.match(/^(\d)\s*순위\s*·\s*([A-Z+]+)\s*\((\d+)점\)$/);
+      if (!m) return;
+      var card = el.parentElement;
+      var nameCard = null;
+      var statCard = null;
+      var code = null;
+      var name = null;
+      for (var i = 0; i < 6 && card; i += 1) {
+        var txt = card.textContent || '';
+        if (!nameCard) {
+          var nm = txt.match(/([^\s()]+(?:\s?[^\s()]+)?)\s*\((\d{6})\)/);
+          if (nm) { name = nm[1].trim(); code = nm[2]; nameCard = card; }
+        }
+        if (code && /통합대금/.test(txt)) { statCard = card; break; }
+        card = card.parentElement;
+      }
+      if (!code || seen[code]) return;
+      var text = statCard ? statCard.textContent || '' : (nameCard ? nameCard.parentElement ? nameCard.parentElement.textContent || '' : '' : '');
+      var px = text.match(/([\d,]+)원\s*\(([+\-]?[\d.]+%)/);
+      var val = text.match(/통합대금:\s*([\d,.]+억)/);
+      seen[code] = true;
+      out.push({
+        rank: Number(m[1]), grade: m[2], score: Number(m[3]), name: name, code: code,
+        price: px ? px[1] + '원' : null, pct: px ? px[2] : null, value: val ? val[1] : null
+      });
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out;
+  }
+
+  function parseJongbePicks() {
+    if (!HAS_DOM) return [];
+    var out = [];
+    try {
+      if (root.Jongbe && typeof root.Jongbe.getStocks === 'function') {
+        var list = root.Jongbe.getStocks() || [];
+        var usedTrack = {};
+        list.forEach(function (s, idx) {
+          if (!s || !s.code) return;
+          var track = s.track || 'shin';
+          if (usedTrack[track]) return;
+          usedTrack[track] = true;
+          out.push({
+            idx: idx, name: s.name, code: s.code,
+            track: track === 'kang' ? '강창권' : '신정재',
+            pct: num(s.changeRatio) === null ? null : (s.changeRatio > 0 ? '+' : '') + Number(s.changeRatio).toFixed(2) + '%',
+            value: s.valueText || null
+          });
+        });
+      }
+    } catch (e) { /* 데이터 없으면 빈 줄 */ }
+    return out;
+  }
+
+  function strategyChipHtml(c) {
+    var tagColor = c.kind === 'manju' ? '#10b981' : '#f59e0b';
+    var bg = c.kind === 'manju' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)';
+    var border = c.kind === 'manju' ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)';
+    return '<div class="signal-chip" data-live="1" data-strategy-chip="' + esc(c.code) + '"' +
+      ' style="background:' + bg + '; border-color:' + border + ';"' +
+      ' title="' + esc(c.detail || '') + '"' +
+      ' onclick="' + esc(c.onclick) + '">' +
+      '<span style="color:' + tagColor + ';">' + esc(c.tag) + '</span>' +
+      '<strong>' + esc(c.name) + ':</strong>' +
+      '<span>' + esc(c.body) + '</span>' +
+      '</div>';
+  }
+
+  function renderStrategyChips() {
+    if (!HAS_DOM) return 0;
+    var anchor = document.getElementById('signalChipsScroll');
+    if (!anchor || !anchor.parentNode) return 0;
+    var host = document.getElementById('strategyChipsScroll');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'strategyChipsScroll';
+      host.className = 'signal-chips-scroll';
+      host.setAttribute('data-live', '0');
+      anchor.parentNode.insertBefore(host, anchor.nextSibling);
+    }
+    var chips = [];
+    parseManjuPicks().filter(function (p) { return p.score >= 80; }).slice(0, 3).forEach(function (p) {
+      chips.push({
+        kind: 'manju', code: p.code, name: p.name,
+        tag: '🎯 만쥬 ' + p.score + '점 ' + p.grade,
+        body: (p.price ? p.price + ' ' : '') + (p.pct || '') + (p.value ? ' · 대금 ' + p.value : '') + ' → 눌러서 만쥬 탭 차트',
+        detail: '만쥬 4대 기준 자동 채점 ' + p.score + '점(' + p.grade + ') · ' + p.rank + '순위 — 80점 이상만 올립니다. 누르면 만쥬 탭으로 이동해 차트를 엽니다.',
+        onclick: "if(window.LiveExtra){LiveExtra._openStrategy('manju','" + p.code + "','" + String(p.name).replace(/'/g, '') + "',null)}"
+      });
+    });
+    parseJongbePicks().slice(0, 2).forEach(function (p) {
+      chips.push({
+        kind: 'jongbe', code: p.code, name: p.name,
+        tag: '🏆 종베 ' + p.track + ' 픽',
+        body: (p.pct || '—') + (p.value ? ' · 대금 ' + p.value : '') + ' → 눌러서 종베 탭 차트',
+        detail: '종베는 100점 채점 데이터가 없어 점수를 만들지 않고 ' + p.track + ' 트랙 1픽만 올립니다. 누르면 종베 탭으로 이동해 차트를 엽니다.',
+        onclick: "if(window.LiveExtra){LiveExtra._openStrategy('jongbe','" + p.code + "','" + String(p.name).replace(/'/g, '') + "'," + p.idx + ")}"
+      });
+    });
+    if (!chips.length) {
+      // 근거 데이터가 없으면 정적 마크업을 지우지 않는다
+      if (!host.getAttribute('data-sig')) setText(host, '만쥬 자동 채점·종베 픽 데이터 대기 중', '#94a3b8');
+      return 0;
+    }
+    var sig = chips.map(function (c) { return c.code + '|' + c.tag + '|' + c.body; }).join('~');
+    if (sig !== host.getAttribute('data-sig')) {
+      host.innerHTML = chips.map(strategyChipHtml).join('');
+      host.setAttribute('data-sig', sig);
+    }
+    host.setAttribute('data-live', '1');
+    return chips.length;
+  }
+
+  function openStrategy(view, code, name, jongbeIdx) {
+    try {
+      if (view === 'jongbe' && typeof jongbeIdx === 'number' && root.navigateToSignalStock) {
+        root.navigateToSignalStock('jongbe', jongbeIdx);
+      } else {
+        if (typeof root.switchView === 'function') root.switchView(view, null);
+        if (view === 'manju' && typeof root.openDetail === 'function') {
+          setTimeout(function () {
+            try { root.openDetail(name + ' (' + code + ')', '만쥬 종가베팅 픽', '실시간 일봉 차트', '만쥬 4대 기준 자동 채점 80점 이상 종목입니다 — 차트는 /api/stock-chart 실시간 일봉(당일 봉 포함)입니다.'); } catch (e) { /* noop */ }
+          }, 120);
+        }
+      }
+    } catch (e) { /* noop */ }
+    return true;
+  }
+
   /* 1) 신호등 칩 렌더 */
   function renderChips() {
     if (!HAS_DOM) return 0;
@@ -429,6 +574,8 @@
     var built = buildSignalChips(rnStocks, tabsBody, { maxChips: 6 });
     var chips = built.chips;
     var stampEl = document.getElementById('signalChipsStamp');
+    // 만쥬 80점↑ · 종베 1픽 — 별도 한 줄
+    try { renderStrategyChips(); } catch (e) { /* 전략 픽 없으면 그대로 */ }
 
     if (!chips.length) {
       // 실측 근거가 없으면 기존(내장) 칩을 지우지 않고 그대로 둔다
@@ -789,6 +936,87 @@
       ' × ' + (num(row.close) === null ? '—' : fmtInt(row.close) + '원') + ' = ' + trendBadgeText(kind, row);
   }
 
+  /* --------- 연속 순매수 일수 · 시총 대비 비중 (11/16 추가) ---------
+   *  금액만 보면 "7,449억" 이 큰지 작은지 감이 없다 → 시총 대비 비중(%)과
+   *  며칠 연속 샀는지를 같이 적는다. 값은 전부 KRX 확정 일별 수급(/api/stock-trend)이다. */
+
+  function ratioText(v) {
+    var n = num(v);
+    if (n === null) return '—';
+    var a = Math.abs(n);
+    if (a === 0) return '0%';
+    if (a < 0.001) return '≈0%'; // 시총이 큰 종목의 작은 순매수 — 0으로 보이는 게 맞다
+    var digits = a < 0.01 ? 4 : a < 0.1 ? 3 : 2;
+    return (n > 0 ? '+' : '') + n.toFixed(digits) + '%';
+  }
+
+  function streakChip(label, kind, st) {
+    var s = st && st.streaks ? st.streaks[kind] : null;
+    if (!s || !s.days) return '';
+    var color = kind === 'foreign' ? '#93c5fd' : '#c4b5fd';
+    var bg = kind === 'foreign' ? 'rgba(37,99,235,0.18)' : 'rgba(124,58,237,0.18)';
+    var border = kind === 'foreign' ? 'rgba(56,189,248,0.45)' : 'rgba(168,85,247,0.45)';
+    return '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:' + bg + ';color:' + color + ';border:1px solid ' + border + ';white-space:nowrap;"' +
+      ' title="' + esc(label + ' ' + s.days + '거래일 연속 순매수 · 누적 ' + (s.sumEok || 0).toLocaleString('ko-KR') + '억 (최근일 ' + (s.since || '') + '부터)') + '">' +
+      (kind === 'foreign' ? '🌏 외인 ' : '🏢 기관 ') + s.days + '일 연속</span>';
+  }
+
+  function applySupplyStreak(card, st) {
+    if (!card || !st) return 0;
+    var latest = st.latest || null;
+    var capEok = st.marketCap && num(st.marketCap.eok) !== null ? st.marketCap.eok : null;
+    var fRatio = st.ratioPct ? st.ratioPct.foreign : null;
+    var oRatio = st.ratioPct ? st.ratioPct.organ : null;
+    var fStreak = st.streaks ? st.streaks.foreign : null;
+    var oStreak = st.streaks ? st.streaks.organ : null;
+    var hasAny = (fStreak && fStreak.days) || (oStreak && oStreak.days) || capEok !== null;
+    var host = card.querySelector('[data-supply-extra="1"]');
+    if (!hasAny) {
+      if (host) host.remove();
+      return 0;
+    }
+    if (!host) {
+      host = document.createElement('div');
+      host.setAttribute('data-supply-extra', '1');
+      host.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:5px 0 2px;';
+      var badges = card.querySelector('.ssc-badges');
+      if (badges && badges.parentNode) badges.parentNode.insertBefore(host, badges.nextSibling);
+      else card.appendChild(host);
+    }
+    var chips = streakChip('외인', 'foreign', st) + streakChip('기관', 'organ', st);
+    // 카드에 박혀 있던 옛 시총 뱃지(예: '시총 1,202조')는 조회 시점 시총과 어긍난다 → 살아있는 값으로 맞춘다
+    if (st.marketCap && st.marketCap.text) {
+      Array.prototype.forEach.call(card.querySelectorAll('.s-badge'), function (b) {
+        var bt = (b.textContent || '').trim();
+        if (/^시총\s/.test(bt)) {
+          var next = '시총 ' + st.marketCap.text;
+          if (bt !== next) {
+            b.textContent = next;
+            b.setAttribute('data-live', '1');
+            b.setAttribute('title', '네이버 증권 조회 시점 시가총액');
+          }
+        }
+      });
+    }
+    var capTxt = capEok === null
+      ? ''
+      : '<span style="font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(148,163,184,0.14);color:#cbd5e1;border:1px solid rgba(148,163,184,0.35);white-space:nowrap;"' +
+        ' title="시가총액 ' + esc(st.marketCap.text || capEok.toLocaleString('ko-KR') + '억') + ' · 순매수 금액 ÷ 시총 (조회 시점 시총 기준)">' +
+        '📊 시총 대비 ' + (fRatio !== null || oRatio !== null
+          ? '외인 ' + ratioText(fRatio) + (oRatio !== null ? ' · 기관 ' + ratioText(oRatio) : '')
+          : '—') + '</span>';
+    var extraNote = latest
+      ? '<span style="font-size:9.5px;color:#64748b;font-weight:700;">' + esc(latest.label || '') + ' 확정</span>'
+      : '';
+    var html = chips + capTxt + extraNote;
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+      host.setAttribute('data-live', '1');
+    }
+    return 1;
+  }
+
   // 카드 배지의 외인/기관 금액을 확정치로 맞춘다
   function applyTrendToCard(card, row) {
     var badges = Array.prototype.slice.call(card.querySelectorAll('.s-badge'));
@@ -887,6 +1115,7 @@
       var st = code ? rowsByCode[code] : null;
       if (!st) return;
       applied += applyTrendToCard(card, st.latest);
+      applied += applySupplyStreak(card, st);
       var box = card.querySelector('.supply-tracker-box');
       if (box) {
         var kind = /기관/.test((box.textContent || '')) && !/외인/.test((card.querySelector('.s-badge') || {}).textContent || '') ? 'organ' : 'foreign';
@@ -947,8 +1176,9 @@
 
     var stampEl = document.getElementById('supplyLiveStamp');
     if (stampEl) {
-      var txt = '⚡ 현재가·등락률 실시간(/api/stock-live) · 외인·기관·개인 수급은 거래소 확정치(' +
-        (basisLabel || '—') + ') 자동 반영 · ' + (body.amountBasis || '순매수 주수 × 종가');
+      var txt = '⚡ 현재가·등락률 실시간(/api/stock-live) · 외인·기관 순매수는 거래소 확정치(' +
+        (basisLabel || '—') + ') 자동 반영 · 연속 순매수 일수와 시총 대비 비중은 확정 일별 수급(/api/stock-trend) 기준 · ' +
+        (body.amountBasis || '순매수 주수 × 종가');
       if (stampEl.textContent !== txt) stampEl.textContent = txt;
       stampEl.setAttribute('data-live', '1');
       applied += 1;
@@ -1095,6 +1325,12 @@
     TREND_URL: TREND_URL,
     state: state,
     _open: openChip,
+    _openStrategy: openStrategy,
+    renderStrategyChips: renderStrategyChips,
+    parseManjuPicks: parseManjuPicks,
+    parseJongbePicks: parseJongbePicks,
+    applySupplyStreak: applySupplyStreak,
+    ratioText: ratioText,
     codes: codes
   };
 

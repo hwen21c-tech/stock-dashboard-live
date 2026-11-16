@@ -76,6 +76,64 @@ async function fetchTrend(code) {
   return { code, rows };
 }
 
+/** 최신일부터 연속 순매수(주수 > 0) 일수 — 0·순매도가 나오면 끊는다 */
+function streakOf(rows, key) {
+  const list = rows || [];
+  let days = 0;
+  let sumEok = 0;
+  let lastDate = null;
+  for (const r of list) {
+    const q = key === 'organ' ? r.organQty : r.foreignQty;
+    if (typeof q !== 'number' || q <= 0) break;
+    days += 1;
+    const amt = key === 'organ' ? r.organAmount : r.foreignAmount;
+    if (typeof amt === 'number') sumEok += amt;
+    if (!lastDate) lastDate = r.label || r.iso || null;
+  }
+  return { days, sumEok: Math.round(sumEok), since: lastDate };
+}
+
+/** '1,158조 1,478억' · '8,500억' → 억원 숫자 */
+function marketCapEok(text) {
+  const t = String(text || '').replace(/\s+/g, '');
+  if (!t) return null;
+  const jo = t.match(/(-?[\d,]+(?:\.\d+)?)조/);
+  const eok = t.match(/(-?[\d,]+(?:\.\d+)?)억/);
+  let n = 0;
+  let hit = false;
+  if (jo) {
+    n += parseFloat(jo[1].replace(/,/g, '')) * 10000;
+    hit = true;
+  }
+  if (eok) {
+    n += parseFloat(eok[1].replace(/,/g, ''));
+    hit = true;
+  }
+  if (!hit) {
+    const raw = parseFloat(t.replace(/[^\d.-]/g, ''));
+    if (!Number.isFinite(raw)) return null;
+    n = raw;
+  }
+  return Math.round(n);
+}
+
+/** 종목 통합 정보 → 시가총액(억원) · 외인소진율 */
+async function fetchCap(code) {
+  const url = `https://m.stock.naver.com/api/stock/${code}/integration`;
+  const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: TIMEOUT });
+  const infos = (data && data.totalInfos) || [];
+  const find = (k) => {
+    const hit = infos.find((i) => i && (i.code === k || i.key === k));
+    return hit ? hit.value : null;
+  };
+  const capText = find('marketValue') || null;
+  return {
+    capEok: marketCapEok(capText),
+    capText,
+    foreignRateText: find('foreignRate') || null,
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -100,6 +158,7 @@ module.exports = async function handler(req, res) {
   }
 
   const settled = await Promise.allSettled(codes.map((c) => fetchTrend(c)));
+  const caps = await Promise.allSettled(codes.map((c) => fetchCap(c)));
   const stocks = [];
   const errors = [];
   const sources = [];
@@ -110,17 +169,35 @@ module.exports = async function handler(req, res) {
       sources.push({ name: 'naver-trend', code, ok: true });
       const rows = s.value.rows;
       const latest = rows[0] || null;
+      const capR = caps[i];
+      const cap = capR && capR.status === 'fulfilled' ? capR.value : { capEok: null, capText: null, foreignRateText: null };
+      if (capR && capR.status !== 'fulfilled') {
+        sources.push({ name: 'naver-integration', code, ok: false, error: String((capR.reason && capR.reason.message) || capR.reason) });
+      }
+      const fStreak = streakOf(rows, 'foreign');
+      const oStreak = streakOf(rows, 'organ');
+      // 시총 대비 순매수 비중(%) — 금액 착시 방지용(최신 확정일 금액 ÷ 시총)
+      const ratioOf = (amountEok) =>
+        typeof amountEok === 'number' && typeof cap.capEok === 'number' && cap.capEok > 0
+          ? Number(((amountEok / cap.capEok) * 100).toFixed(3))
+          : null;
       stocks.push({
         code,
         ok: Boolean(latest),
         latest,
         rows,
+        streaks: { foreign: fStreak, organ: oStreak },
+        marketCap: { eok: cap.capEok, text: cap.capText, foreignRate: cap.foreignRateText },
+        ratioPct: {
+          foreign: latest ? ratioOf(latest.foreignAmount) : null,
+          organ: latest ? ratioOf(latest.organAmount) : null,
+        },
       });
     } else {
       const msg = String((s.reason && s.reason.message) || s.reason);
       sources.push({ name: 'naver-trend', code, ok: false, error: msg });
       errors.push(`${code}: ${msg}`);
-      stocks.push({ code, ok: false, latest: null, rows: [], error: msg });
+      stocks.push({ code, ok: false, latest: null, rows: [], streaks: null, marketCap: null, ratioPct: null, error: msg });
     }
   });
 
@@ -144,6 +221,8 @@ module.exports = async function handler(req, res) {
     basisNote:
       '거래소 확정 수급은 정규장 마감·정산 후 확정됩니다. 장중에는 직전 거래일 확정치가 최신이며, 당일 값은 확정 후 반영됩니다.',
     amountBasis: '순매수 주수 × 그날 종가 ÷ 1억 = 억원',
+    streakNote: '연속 순매수 일수 = 최신 확정일부터 거슬러 세어 순매수(주수 > 0)가 이어진 날 수. 0·순매도가 나오면 끊습니다.',
+    ratioNote: '시총 대비 비중(%) = 최신 확정일 순매수 금액 ÷ 시가총액 × 100 (시총은 네이버 증권 조회 시점 값)',
     stocks,
     sources,
     errors,

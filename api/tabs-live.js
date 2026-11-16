@@ -264,7 +264,7 @@ function buildWatchUniverse() {
 
 const WATCH = buildWatchUniverse();
 const WATCH_CODES = WATCH.map((w) => w.code);
-const AFTER_TOP = 6; // 시간외 대금 상위
+const AFTER_TOP = 6; // 시간외 대금 상위 (기존 6건 유지 — 10억↑ 필터는 이 안에서 걸러낸다)
 const AFTER_PCT_TOP = 5; // 시간외 등락 상위
 const AFTER_PCT_BOTTOM = 3; // 시간외 등락 하위
 
@@ -1132,6 +1132,12 @@ function buildAftermarket(map, overSession, universe) {
       return;
     }
     const integ = typeof q.value === 'number' ? q.value : null;
+    // 정규장 종가(장중이면 현재가, 장마감 후면 그날 정규장 종가) — 시간외 체결가와 '따로' 비교하기 위한 기준
+    const regularClose = typeof q.price === 'number' && q.price > 0 ? q.price : null;
+    const divergencePct =
+      regularClose !== null && typeof q.overPrice === 'number' && q.overPrice > 0
+        ? Number((((q.overPrice - regularClose) / regularClose) * 100).toFixed(2))
+        : null;
     rows.push({
       code: w.code,
       name: q.name || w.name,
@@ -1139,8 +1145,10 @@ function buildAftermarket(map, overSession, universe) {
       groups: w.groups,
       price: q.price,
       changePct: q.changePct,
+      regularClose,
       overPrice: q.overPrice,
       overPct: q.overPct,
+      divergencePct,
       overValue: q.overValue,
       overValueText: q.valueAfterText,
       overVolume: q.overVolume,
@@ -1218,6 +1226,7 @@ function buildAftermarket(map, overSession, universe) {
       metric:
         '체결 대금 = 네이버 overMarketPriceInfo 누적 체결 대금(프리마켓 08:00~08:50 · NXT 애프터마켓·시간외 단일가 15:30~20:00)',
       pct: '체결 등락률 = 세션 체결가 기준 전일 종가 대비',
+      divergence: '정규장 대비 괴리율 = (세션 체결가 ÷ 정규장 종가 − 1) × 100',
       missing: '해당 세션 체결 데이터가 없는 종목은 0으로 채우지 않고 순위에서 제외',
       dynamic: 'NXT 랭킹(상승률·거래대금)에서 찾은 종목만 추가 — 없는 종목은 만들지 않음',
     },
@@ -1859,6 +1868,50 @@ module.exports = async function handler(req, res) {
     news = newsR.value.items;
     newsVia = newsR.value.via;
     if (newsR.value.errors.length) errors.push(...newsR.value.errors);
+  }
+
+  /* ---- 뉴스 수혜주 실시간 등락률·거래대금 부착 (선반영/후행 판정 근거) ----
+   *  키워드로 매칭된 수혜주만 polling 으로 실제 시세를 붙인다(없으면 live:null — 값을 만들지 않는다).
+   *  +15% 이상 이미 오른 뒤 나온 기사는 preRun=true 로 표시해 '선반영/후행' 경고를 띄운다. */
+  const newsCodes = [];
+  news.forEach((n) => {
+    (n.beneficiaryStocks || []).forEach((bs) => {
+      if (bs && /^\d{6}$/.test(String(bs.code || '')) && newsCodes.indexOf(bs.code) < 0) newsCodes.push(bs.code);
+    });
+  });
+  let newsLiveMap = {};
+  if (newsCodes.length) {
+    const need = newsCodes.filter((c) => !knownMap[c] || typeof knownMap[c].value !== 'number');
+    try {
+      if (need.length) newsLiveMap = await pollQuotes(need);
+      sources.push({ name: 'naver-polling-news-beneficiaries', ok: true, detail: `${newsCodes.length}종목 (추가 조회 ${need.length})` });
+    } catch (e) {
+      sources.push({ name: 'naver-polling-news-beneficiaries', ok: false, error: String((e && e.message) || e) });
+      errors.push('뉴스 수혜주 시세: ' + String((e && e.message) || e));
+    }
+    news.forEach((n) => {
+      (n.beneficiaryStocks || []).forEach((bs) => {
+        if (!bs || !bs.code) return;
+        const q = knownMap[bs.code] || newsLiveMap[bs.code] || null;
+        if (!q || typeof q.price !== 'number') {
+          bs.live = null;
+          bs.preRun = false;
+          return;
+        }
+        const pct = typeof q.changePct === 'number' ? q.changePct : null;
+        bs.live = {
+          price: q.price,
+          changePct: pct,
+          value: typeof q.value === 'number' ? q.value : null,
+          valueText: q.valueText || null,
+          valueBasis: q.valueBasis || null,
+          upperLimit: Boolean(q.upperLimit),
+          tradedAt: q.overTradedAt || q.tradedAt || null,
+          asOf: 'polling',
+        };
+        bs.preRun = pct !== null && pct >= 15;
+      });
+    });
   }
 
   /* ---- 목록 항목의 통합 거래대금·시고저를 polling 으로 보강 ---- */
