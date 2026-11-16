@@ -14,12 +14,12 @@
     {
       "label": "[한글 400] 지안 차례로 문제를 맞혀 포획까지 진행",
       "ok": true,
-      "detail": "wild=827 modal=true"
+      "detail": "wild=636 modal=true"
     },
     {
       "label": "[한글 400] 포획분이 지안(p2) 도감에만 저장",
       "ok": true,
-      "detail": "p2.ids=[827]"
+      "detail": "p2.ids=[636]"
     },
     {
       "label": "[한글 400] 아린(p1) 도감은 그대로(2마리)",
@@ -74,7 +74,7 @@
     {
       "label": "[런처 400] caughtAt·오늘 날짜 기록",
       "ok": true,
-      "detail": "{\"caughtAt\":1794828942359,\"date\":\"2026-11-16\"}"
+      "detail": "{\"caughtAt\":1794829077556,\"date\":\"2026-11-16\"}"
     },
     {
       "label": "[런처 400] 도감 화면 숫자 즉시 갱신",
@@ -84,7 +84,17 @@
     {
       "label": "[런처 400] 🗑 아빠 삭제 — 목록에서 사라지고 removed 기록",
       "ok": true,
-      "detail": "ids=[1] removed={\"268\":1794828945156}"
+      "detail": "ids=[1] removed={\"268\":1794829080351}"
+    },
+    {
+      "label": "[런처 400] ➕ 다시 추가 — removed 기록이 지워지고 도감에 되살아남",
+      "ok": true,
+      "detail": "ids=[1,268] removed={}"
+    },
+    {
+      "label": "[런처 400] 추가하면 가족 클라우드로 바로 올린다(PkmSync.push)",
+      "ok": true,
+      "detail": "쓰기 12 → 14"
     },
     {
       "label": "[산수 400] 가족 PIN 통과 상태",
@@ -139,12 +149,12 @@
     {
       "label": "[한글 884] 지안 차례로 문제를 맞혀 포획까지 진행",
       "ok": true,
-      "detail": "wild=175 modal=true"
+      "detail": "wild=551 modal=true"
     },
     {
       "label": "[한글 884] 포획분이 지안(p2) 도감에만 저장",
       "ok": true,
-      "detail": "p2.ids=[175]"
+      "detail": "p2.ids=[551]"
     },
     {
       "label": "[한글 884] 아린(p1) 도감은 그대로(2마리)",
@@ -199,7 +209,7 @@
     {
       "label": "[런처 884] caughtAt·오늘 날짜 기록",
       "ok": true,
-      "detail": "{\"caughtAt\":1794828985861,\"date\":\"2026-11-16\"}"
+      "detail": "{\"caughtAt\":1794829131951,\"date\":\"2026-11-16\"}"
     },
     {
       "label": "[런처 884] 도감 화면 숫자 즉시 갱신",
@@ -209,7 +219,17 @@
     {
       "label": "[런처 884] 🗑 아빠 삭제 — 목록에서 사라지고 removed 기록",
       "ok": true,
-      "detail": "ids=[1] removed={\"268\":1794828988704}"
+      "detail": "ids=[1] removed={\"268\":1794829134798}"
+    },
+    {
+      "label": "[런처 884] ➕ 다시 추가 — removed 기록이 지워지고 도감에 되살아남",
+      "ok": true,
+      "detail": "ids=[1,268] removed={}"
+    },
+    {
+      "label": "[런처 884] 추가하면 가족 클라우드로 바로 올린다(PkmSync.push)",
+      "ok": true,
+      "detail": "쓰기 35 → 37"
     },
     {
       "label": "[산수 884] 가족 PIN 통과 상태",

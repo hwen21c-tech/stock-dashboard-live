@@ -106,6 +106,7 @@ try {
 
 /* ---------------- 페이지 도우미 ---------------- */
 const consoleErrors = [];
+let cloudWrites = 0;      /* 가짜 클라우드로 올라온 쓰기(POST/PATCH) 횟수 — '즉시 업로드' 검증용 */
 function watch(page, tag) {
   page.on('console', (m) => {
     if (m.type() === 'error') consoleErrors.push({ tag, text: String(m.text()).slice(0, 300) });
@@ -126,6 +127,7 @@ async function newPage(browser, w, h) {
         'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS'
       };
       if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: cors, body: '' });
+      if (req.method() !== 'GET') cloudWrites += 1;
       if (req.method() === 'GET') return req.respond({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: '[]' });
       return req.respond({ status: 201, headers: { ...cors, 'content-type': 'application/json' }, body: '{}' });
     }
@@ -301,6 +303,26 @@ async function testBattleLauncher(browser, w, h) {
   const removedOk = !(p2b.ids || []).map(Number).includes(268) && !!(p2b.removed && p2b.removed['268']);
   check(`[런처 ${w}] 🗑 아빠 삭제 — 목록에서 사라지고 removed 기록`, removedOk,
     `ids=${JSON.stringify(p2b.ids)} removed=${JSON.stringify(p2b.removed || {})}`);
+
+  /* ➕ 다시 추가 — removed 기록이 지워지고 목록에 되살아나는지 (＋ 클라우드 즉시 업로드) */
+  const before = cloudWrites;
+  await page.evaluate(() => document.getElementById('dexAddBtn').click());
+  await sleep(700);
+  await page.waitForFunction(() => !!document.querySelector('#pkdaHits .pkda-hit'), { timeout: 8000 }).catch(() => {});
+  await page.evaluate(() => { const q = document.getElementById('pkdaQ'); q.value = '268'; q.dispatchEvent(new Event('input', { bubbles: true })); });
+  await sleep(700);
+  await page.waitForFunction(() => !!document.querySelector('#pkdaHits .pkda-hit'), { timeout: 8000 }).catch(() => {});
+  await page.evaluate(() => document.querySelector('#pkdaHits .pkda-hit').click());
+  await sleep(300);
+  await page.evaluate(() => document.querySelector('.pkda-slot[data-slot="p2"]').click());
+  await page.evaluate(() => document.getElementById('pkdaGo').click());
+  await sleep(1200);
+  const p2c = await dex(page, 'p2');
+  check(`[런처 ${w}] ➕ 다시 추가 — removed 기록이 지워지고 도감에 되살아남`,
+    (p2c.ids || []).map(Number).includes(268) && !(p2c.removed && p2c.removed['268']),
+    `ids=${JSON.stringify(p2c.ids)} removed=${JSON.stringify(p2c.removed || {})}`);
+  check(`[런처 ${w}] 추가하면 가족 클라우드로 바로 올린다(PkmSync.push)`, cloudWrites > before, `쓰기 ${before} → ${cloudWrites}`);
+  await page.evaluate(() => document.querySelector('.pkda-x').click());
 
   await page.screenshot({ path: SHOT(`battle_dex_after_del_${w}`) });
   await page.close();
