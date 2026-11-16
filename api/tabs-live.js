@@ -34,12 +34,30 @@
 const {
   NAVER_HEADERS,
   fetchJson,
+  fetchBuffer,
+  decodeEucKr,
   parseNum,
   formatKoreanMoney,
   sendJson,
   getQuery,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
+
+/* 전략 실시간 판정(비중법사 · 홍인기)이 보는 종목은 재스캔 결과 파일과 같은 기준을 쓴다.
+ *  public/data/*.json 은 배포 산출물에 그대로 포함되므로 require 로 읽어 기준봉 종가를 가져온다.
+ *  (파일이 없거나 읽지 못하면 null → 0일차 신규 포착만 계산하고 기존 카드 판정은 생략) */
+let BIJ_DATA = null;
+let HONG_DATA = null;
+try {
+  BIJ_DATA = require('../public/data/bijoong-latest.json');
+} catch (e) {
+  BIJ_DATA = null;
+}
+try {
+  HONG_DATA = require('../public/data/honginki-latest.json');
+} catch (e) {
+  HONG_DATA = null;
+}
 
 const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
 const REFRESH_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=10';
@@ -78,6 +96,33 @@ const UPPER_LIMIT_MAX = 6;
 const NEAR_LIMIT_MAX = 6;
 const WATCH_MAX = 6;
 const POLL_MAX_CODES = 60;
+
+/* ---------------- 네이버 실시간 테마 랭킹 (동적 주도 테마) ---------------- */
+const THEME_RANK_URL = 'https://m.stock.naver.com/api/stocks/theme';
+const THEME_DETAIL_URL = 'https://m.stock.naver.com/api/stocks/theme/';
+const THEME_RANK_PAGE = 60; // 랭킹 후보로 받아 오는 테마 수(이 중 상위 8개를 화면에 쓴다)
+const THEME_TOP = 8; // 화면에 그릴 테마 수
+const THEME_STOCK_TOP = 4; // 테마당 그릴 종목 수
+const THEME_STOCK_PAGE = 30; // 테마 구성종목 조회 수(상위 4개를 뽑는다)
+const THEME_TIMEOUT = 4500;
+// 테마 이름에 이런 말이 들어가면 주도 테마 랭킹에서 뺀다(스팩·우선주·ETF 계열)
+const THEME_EXCLUDE_RE = /(스팩|SPAC|우선주|ETF|ETN|리츠|인버스|레버리지)/i;
+const SPAC_RE = /(스팩|SPAC)/i;
+
+/* ------------- 장중 실시간 후보 (비중법사 기준봉 · 홍인기 D+0) ------------- */
+const KRX_RANK_URL = 'https://stock.naver.com/api/domestic/market/stock/default';
+const KRX_RANK_TIMEOUT = 4500;
+const KRX_PCT_TOP = 60; // 등락률 상위
+const KRX_VALUE_TOP = 40; // 거래대금 상위
+const FCHART_URL = 'https://fchart.stock.naver.com/sise.nhn?symbol=';
+const FCHART_TIMEOUT = 3200;
+const CANDLE_COUNT = 125; // 120일 전고점 + 60일 전고점 + 20일 평균거래량
+const CANDLE_TTL_MS = 10 * 60 * 1000; // 일봉(과거 봉)은 장중에 변하지 않는다 — 10분 캐시
+const STRAT_MAX_CANDLES = 36; // 일봉을 실제로 조회할 최대 후보 수(10초 함수 예산)
+const BIJ_LIVE = { bodyRate: 10, valueEok: 300, breakDays: 60, upperMax: 12, chg: 5 };
+const HONG_LIVE = { pct: 10, breakDays: 120, valueEok: 300 };
+// ETF·ETN·스팩류(지수 추종 상품)는 전략 후보에서 뺀다
+const FUND_NAME_RE = /(KODEX|TIGER|ARIRANG|KBSTAR|HANARO|TIMEFOLIO|히어로즈|ETN|레버리지|인버스|스팩|SPAC|리츠)/i;
 
 /* --------------------------- 8대 테마 32종목 --------------------------- */
 const THEMES = [
@@ -455,13 +500,9 @@ async function pollQuotes(codes) {
   return map;
 }
 
-async function fetchThemeQuotes(extraCodes, premarket) {
-  // 테마 32종목 + 시간외 순위용 감시군(RN존·종베 추가분) + NXT 랭킹 동적 종목을 한 번에 조회한다
-  const extra = Array.isArray(extraCodes) ? extraCodes : [];
-  const map = await pollQuotes(ALL_CODES.concat(WATCH_CODES).concat(extra));
-  if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
-
-  const themes = THEMES.map((t) => {
+/* ---- 고정 THEMES → 화면용 테마(동적 테마 API 가 실패했을 때만 쓰는 폴백) ---- */
+function mapStaticThemes(map, premarket) {
+  return THEMES.map((t) => {
     const stocks = t.stocks.map((s) => {
       const q = map[s.code] || {};
       // 프리마켓(08:00~08:50)에는 정규장 등락률이 0.00%로 내려온다.
@@ -510,9 +551,220 @@ async function fetchThemeQuotes(extraCodes, premarket) {
       stocks,
     };
   });
+}
+
+/* ---------------- 네이버 테마 랭킹 · 구성종목 (동적 주도 테마) ---------------- */
+
+/** 테마 구성종목 1건 → 표준 시세 (open/high/low 는 이 API 에 없어 polling 으로 보강) */
+function normalizeThemeStock(d) {
+  if (!d) return null;
+  const sign = (d.compareToPreviousPrice && d.compareToPreviousPrice.name) || null;
+  const negative = sign === 'FALLING' || sign === 'LOWER_LIMIT';
+  const price = parseNum(d.closePriceRaw) ?? parseNum(d.closePrice);
+  const value = parseNum(d.accumulatedTradingValueRaw);
+  return {
+    code: d.itemCode || null,
+    name: d.stockName || null,
+    kind: d.stockEndType || null,
+    market: d.sosok === '1' ? 'KOSDAQ' : d.sosok === '0' ? 'KOSPI' : null,
+    price,
+    change: signedValue(d.compareToPreviousClosePriceRaw ?? d.compareToPreviousClosePrice, negative),
+    changePct: signedValue(d.fluctuationsRatio, negative),
+    volume: parseNum(d.accumulatedTradingVolumeRaw),
+    open: null,
+    high: null,
+    low: null,
+    value,
+    valueText: formatKoreanMoney(value),
+    valueBasis: '정규장',
+    upperLimit: sign === 'UPPER_LIMIT',
+    tradedAt: d.localTradedAt || null,
+  };
+}
+
+/** 테마 번호 → 구성종목(주식만 · 우선주·스팩 제외) */
+async function fetchThemeStocks(no) {
+  const url = THEME_DETAIL_URL + String(no) + '?page=1&pageSize=' + String(THEME_STOCK_PAGE);
+  const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: THEME_TIMEOUT });
+  const rows = (data && data.stocks) || [];
+  if (!rows.length) throw new Error('구성종목이 비었습니다');
+  return rows
+    .map(normalizeThemeStock)
+    .filter((s) => s && s.code && s.kind === 'stock' && !isPreferredStock(s))
+    .filter((s) => !SPAC_RE.test(String(s.name || '')));
+}
+
+/**
+ * 테마 안에서 카드에 올릴 4종목 — 상승률 대장 · 실질 거래대금 대장을 먼저 세우고
+ * 남은 자리는 상승률·대금 순으로 채운다(같은 종목은 한 번만).
+ */
+function pickThemeStocks(stocks) {
+  const list = Array.isArray(stocks) ? stocks.filter((s) => s && s.code) : [];
+  const byPct = list
+    .slice()
+    .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999) || (b.value ?? 0) - (a.value ?? 0));
+  const byValue = list.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  const out = [];
+  const push = (s, role) => {
+    if (!s || out.length >= THEME_STOCK_TOP) return;
+    if (out.some((x) => x.code === s.code)) return;
+    out.push({ ...s, role, tileName: s.name });
+  };
+  push(byPct[0], '상승률 대장');
+  push(byValue[0], '실질 거래대금 대장');
+  byPct.forEach((s) => push(s, '동반 상승'));
+  byValue.forEach((s) => push(s, '거래대금 상위'));
+  return out;
+}
+
+/**
+ * 오늘 장중 실제 강세 테마 Top 8 (네이버 테마 랭킹 실측).
+ *  · 랭킹: /api/stocks/theme?page=1&pageSize=60 → no · name · changeRate · riseCount · fallCount · totalCount
+ *  · 구성종목: /api/stocks/theme/{no}?page=1&pageSize=30
+ *  · 스팩·우선주·ETF 계열 테마는 제외하고, 등락률 내림차순(동률이면 상승종목 비율)으로 자른다.
+ *  · 값을 만들지 않는다 — 실패한 테마는 목록에서 빼고 errors 에 남긴다.
+ */
+async function buildDynamicThemes() {
+  const errors = [];
+  let groups = [];
+  let marketStatus = null;
+  try {
+    const data = await fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
+      headers: NAVER_HEADERS,
+      timeout: THEME_TIMEOUT,
+    });
+    groups = (data && data.groups) || [];
+    marketStatus = (data && data.marketStatus) || null;
+    if (!groups.length) throw new Error('테마 랭킹 목록이 비었습니다');
+  } catch (e) {
+    return {
+      ok: false,
+      themes: [],
+      codes: [],
+      errors: ['테마 랭킹: ' + String((e && e.message) || e)],
+      total: 0,
+      marketStatus: null,
+    };
+  }
+
+  const rows = groups
+    .map((g) => {
+      const total = parseNum(g.totalCount) || 0;
+      const rise = parseNum(g.riseCount) || 0;
+      return {
+        no: parseNum(g.no),
+        name: String(g.name || '').replace(/\s+/g, ' ').trim(),
+        changeRate: parseNum(g.changeRate),
+        riseCount: rise,
+        fallCount: parseNum(g.fallCount) || 0,
+        steadyCount: parseNum(g.steadyCount) || 0,
+        totalCount: total,
+        riseRatio: total ? Number(((rise / total) * 100).toFixed(1)) : null,
+      };
+    })
+    .filter((g) => g.no && g.name && !THEME_EXCLUDE_RE.test(g.name))
+    .filter((g) => typeof g.changeRate === 'number' && g.totalCount >= 3)
+    .sort(
+      (a, b) =>
+        b.changeRate - a.changeRate || (b.riseRatio || 0) - (a.riseRatio || 0) || b.totalCount - a.totalCount,
+    );
+
+  const top = rows.slice(0, THEME_TOP);
+  const settled = await Promise.allSettled(top.map((g) => fetchThemeStocks(g.no)));
+  const themes = [];
+  const codes = [];
+  top.forEach((g, i) => {
+    const r = settled[i];
+    if (r.status !== 'fulfilled' || !r.value.length) {
+      errors.push(
+        '테마 ' + g.name + ': ' + String((r.reason && r.reason.message) || (r.reason || '구성종목 없음')),
+      );
+      return;
+    }
+    const picked = pickThemeStocks(r.value);
+    if (!picked.length) return;
+    picked.forEach((s) => {
+      if (!codes.includes(s.code)) codes.push(s.code);
+    });
+    themes.push({
+      rank: themes.length + 1,
+      name: g.name,
+      keyword: g.name,
+      themeNo: g.no,
+      avgPct: g.changeRate,
+      avgPctLive: null,
+      riseCount: g.riseCount,
+      fallCount: g.fallCount,
+      steadyCount: g.steadyCount,
+      riseRatio: g.riseRatio,
+      stockCount: g.totalCount,
+      membersShown: picked.length,
+      stocks: picked,
+    });
+  });
+  themes.forEach((t, i) => {
+    t.rank = i + 1;
+  });
+  return { ok: themes.length > 0, themes, codes, errors, total: rows.length, marketStatus };
+}
+
+/** 테마 카드 종목에 polling 시세(시·고·저·통합 거래대금)를 덮는다 */
+function mergeThemeQuotes(themes, map, premarket) {
+  return (themes || []).map((t) => {
+    const stocks = (t.stocks || []).map((s) => {
+      const q = map[s.code] || null;
+      if (!q) return { ...s, tileName: s.name, missing: true };
+      const hasOver = typeof q.overPct === 'number' && q.overPct !== null;
+      const livePct = premarket && hasOver ? q.overPct : null;
+      const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
+      return {
+        ...s,
+        ...q,
+        tileName: s.name,
+        role: s.role || null,
+        livePct,
+        livePrice,
+        livePhase: livePct === null ? null : '프리마켓',
+        missing: false,
+      };
+    });
+    const priced = stocks.filter((s) => !s.missing && s.price !== null);
+    const pcts = priced.map((s) => s.changePct).filter((v) => typeof v === 'number');
+    const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
+    return {
+      ...t,
+      stocks,
+      pricedCount: priced.length,
+      avgPctCalc: pcts.length
+        ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2))
+        : null,
+      sumValue,
+      sumValueText: formatKoreanMoney(sumValue),
+    };
+  });
+}
+
+async function fetchThemeQuotes(extraCodes, premarket) {
+  // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
+  const dyn = await buildDynamicThemes();
+  // 2) 고정 테마 32 + 감시군(RN존·종베) + NXT 랭킹 동적 + 신규 동적 테마 종목을 한 번에 polling
+  const extra = Array.isArray(extraCodes) ? extraCodes : [];
+  const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes);
+  const map = await pollQuotes(pollCodes);
+  if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
+
+  // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
+  const themes = dyn.ok ? mergeThemeQuotes(dyn.themes, map, premarket) : mapStaticThemes(map, premarket);
 
   const first = Object.values(map)[0];
-  return { themes, map, marketStatus: (first && first.marketStatus) || null };
+  return {
+    themes,
+    map,
+    marketStatus: (first && first.marketStatus) || dyn.marketStatus || null,
+    themeSource: dyn.ok ? 'naver-theme' : 'static-fallback',
+    themeRankTotal: dyn.total || 0,
+    themeErrors: dyn.errors || [],
+  };
 }
 
 async function fetchList(kind, market) {
@@ -586,29 +838,42 @@ function nxtSigned(v, upDownGb) {
   return gb === '4' || gb === '5' ? -Math.abs(n) : n;
 }
 
-function normalizeNxtRankItem(d) {
+/**
+ * 네이버 랭킹(stock.naver.com market/stock/default) 1건 → 표준 시세.
+ *  tradeType=NXT(프리마켓·애프터마켓) · tradeType=KRX(정규장) 둘 다 같은 필드를 준다.
+ */
+function normalizeRankItem(d, basisText) {
   if (!d || !d.itemcode) return null;
   const value = parseNum(d.tradeAmount);
+  const price = parseNum(d.nowPrice);
+  const change = nxtSigned(d.prevChangePrice, d.upDownGb);
   return {
     code: d.itemcode,
     name: d.itemname || null,
     market: d.sosok === '1' ? 'KOSDAQ' : d.sosok === '0' ? 'KOSPI' : null,
     kind: d.type || null,
-    price: parseNum(d.nowPrice),
-    change: nxtSigned(d.prevChangePrice, d.upDownGb),
+    price,
+    change,
     changePct: nxtSigned(d.prevChangeRate, d.upDownGb),
+    prevClose: price !== null && change !== null ? price - change : null,
     open: parseNum(d.openPrice),
     high: parseNum(d.highPrice),
     low: parseNum(d.lowPrice),
     volume: parseNum(d.tradeVolume),
     value,
     valueText: formatKoreanMoney(value),
-    valueBasis: 'NXT 체결',
+    valueBasis: basisText || 'NXT 체결',
     upperLimit: String(d.upDownGb) === '1',
+    halted: String(d.tradeStopYn || '').toUpperCase() === 'Y',
+    manageStatusGb: d.manageStatusGb || null,
     sessionType: d.tradingSessionType || null,
     marketStatus: d.marketStatus || null,
-    source: 'naver-nxt-rank',
+    source: 'naver-rank',
   };
+}
+
+function normalizeNxtRankItem(d) {
+  return normalizeRankItem(d, 'NXT 체결');
 }
 
 async function fetchNxtRank(orderType, pageSize) {
@@ -952,6 +1217,543 @@ function buildAftermarket(map, overSession, universe) {
   };
 }
 
+/* ============================================================================
+ * 전략 장중 실시간 판정 — 비중법사(기준봉·1일차·4분할) · 홍인기(D+0·D+1·D+2)
+ * ----------------------------------------------------------------------------
+ *  1) 신규 0일차 포착 : 네이버 KRX 실시간 랭킹(거래대금 40 · 등락률 60) → 일봉(fchart 125) 실측
+ *     · 비중법사 : 몸통 상승률 +10%↑ & 당일 거래대금 300억↑ & 60일 전고점 돌파
+ *     · 홍인기   : 등락률 +10%↑ & 120일 전고점 돌파(첫 돌파 여부) & 대금 상위
+ *  2) 기존 카드 실시간 판정 : 재스캔 JSON(bijoong/honginki-latest)의 기준봉 + 현재가
+ *     · 비중법사 : 1일차 패턴(뜬봉/중봉/음봉눌림) · 4분할선 도달/터치 · 기준봉 종가 손절선
+ *     · 홍인기   : 기준선(전일 종가) 대비 위치 · 5단 타점 · −3% 손절선
+ *  · 일봉 과거 봉은 장중에 변하지 않는다 → CANDLE_TTL_MS 캐시. 당일 봉은 랭킹/polling 실시간 값을 쓴다.
+ *  · 확인되지 않은 값은 만들지 않는다(종목 누락은 missing 으로 남긴다).
+ * ========================================================================== */
+
+const candleCache = new Map();
+
+/** KST 오늘 날짜 YYYYMMDD */
+function kstTodayYmd() {
+  const p = kstParts(new Date());
+  return `${p.y}${pad2(p.m)}${pad2(p.d)}`;
+}
+
+/** 영업일(주말 제외) 경과일 — 기준일 다음 평일부터 오늘까지 */
+function tradingDaysAfter(fromYmd, toYmd) {
+  if (!/^\d{8}$/.test(String(fromYmd || '')) || !/^\d{8}$/.test(String(toYmd || ''))) return null;
+  const a = Date.UTC(Number(fromYmd.slice(0, 4)), Number(fromYmd.slice(4, 6)) - 1, Number(fromYmd.slice(6, 8)));
+  const b = Date.UTC(Number(toYmd.slice(0, 4)), Number(toYmd.slice(4, 6)) - 1, Number(toYmd.slice(6, 8)));
+  if (b < a) return null;
+  let n = 0;
+  for (let t = a + 86400000; t <= b; t += 86400000) {
+    const wd = new Date(t).getUTCDay();
+    if (wd !== 0 && wd !== 6) n += 1;
+  }
+  return n;
+}
+
+/** 네이버 일봉(fchart XML) — ["20261113|시|고|저|종|거래량", ...] */
+async function fetchDailyBars(code) {
+  const hit = candleCache.get(code);
+  if (hit && Date.now() - hit.at < CANDLE_TTL_MS) return hit.bars;
+  const url =
+    FCHART_URL + encodeURIComponent(code) + '&timeframe=day&count=' + String(CANDLE_COUNT) + '&requestType=0';
+  const buf = await fetchBuffer(url, { headers: NAVER_HEADERS, timeout: FCHART_TIMEOUT });
+  const text = decodeEucKr(buf);
+  const bars = [];
+  const re = /<item\s+data="([^"]+)"\s*\/>/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const parts = m[1].split('|');
+    if (parts.length < 6 || !/^\d{8}$/.test(parts[0])) continue;
+    const o = parseNum(parts[1]);
+    const h = parseNum(parts[2]);
+    const l = parseNum(parts[3]);
+    const c = parseNum(parts[4]);
+    const v = parseNum(parts[5]);
+    if (o === null || h === null || l === null || c === null) continue;
+    bars.push({ d: parts[0], o, h, l, c, v: v === null ? 0 : v });
+  }
+  if (!bars.length) throw new Error('일봉 응답에 봉이 없습니다');
+  bars.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+  candleCache.set(code, { at: Date.now(), bars });
+  return bars;
+}
+
+/** KRX 정규장 실시간 랭킹(상승률 · 거래대금) — 스팩·우선주·ETF 제외 */
+async function fetchKrxRank(orderType, pageSize) {
+  const url =
+    KRX_RANK_URL +
+    '?tradeType=KRX&marketType=ALL&orderType=' +
+    encodeURIComponent(orderType) +
+    '&startIdx=0&pageSize=' +
+    String(pageSize);
+  const data = await fetchJson(url, { headers: NXT_RANK_HEADERS, timeout: KRX_RANK_TIMEOUT });
+  if (!Array.isArray(data) || !data.length) throw new Error(`KRX ${orderType} 목록이 비었습니다`);
+  return data
+    .map((d) => normalizeRankItem(d, '정규장'))
+    .filter((x) => x && x.kind === 'ST' && x.price !== null)
+    .filter((x) => !x.halted && !isPreferredStock(x))
+    .filter((x) => !FUND_NAME_RE.test(String(x.name || '')));
+}
+
+/** 오늘 봉 기준 60일·120일 전고점과 첫 돌파 여부 계산 */
+function judgeMover(q, bars, valueRank) {
+  if (!q || !bars || bars.length < 25) return null;
+  const today = kstTodayYmd();
+  // 당일 봉은 아직 진행 중이라 전고점 계산에서 뺀다(장중에 고가가 늘어나는 봉을 넣으면 전고점이 함께 올라간다)
+  const hist = bars.filter((b) => b.d < today);
+  if (hist.length < 25) return null;
+  const tail = (n) => hist.slice(-n);
+  const hiOf = (n) => {
+    const arr = tail(n);
+    const top = arr.reduce((a, b) => (b.h > a.h ? b : a), arr[0]);
+    return { hi: top.h, d: top.d };
+  };
+  const h60 = hiOf(BIJ_LIVE.breakDays);
+  const h120 = hiOf(HONG_LIVE.breakDays);
+  const v20arr = tail(20);
+  const vol20 = v20arr.length ? v20arr.reduce((a, b) => a + b.v, 0) / v20arr.length : null;
+
+  const price = q.price;
+  const open = q.open;
+  const high = q.high;
+  const pct = q.changePct;
+  const bodyRate = open ? (price / open - 1) * 100 : null;
+  const upper = price && high ? ((high - price) / price) * 100 : null;
+  const valueEok = typeof q.value === 'number' ? q.value / 1e8 : null;
+  const volX = vol20 ? (q.volume || 0) / vol20 : null;
+  const break60 = price > h60.hi;
+  const break120 = price >= h120.hi;
+
+  // 첫 돌파 : 최근 120봉 각각이 그 이전 120봉 전고점을 종가로 넘은 적이 있는지
+  let priorBreakCount = 0;
+  const startIdx = Math.max(120, hist.length - 120);
+  for (let i = startIdx; i < hist.length; i += 1) {
+    const win = hist.slice(Math.max(0, i - 120), i);
+    if (!win.length) continue;
+    let hi = -Infinity;
+    for (let k = 0; k < win.length; k += 1) if (win[k].h > hi) hi = win[k].h;
+    if (hist[i].c >= hi) priorBreakCount += 1;
+  }
+  const firstBreak120 = break120 && priorBreakCount === 0;
+
+  const bijChecks = {
+    body: typeof bodyRate === 'number' && bodyRate >= BIJ_LIVE.bodyRate,
+    value: valueEok !== null && valueEok >= BIJ_LIVE.valueEok,
+    break60,
+    chg: typeof pct === 'number' && pct >= BIJ_LIVE.chg,
+    upper: typeof upper === 'number' && upper <= BIJ_LIVE.upperMax,
+  };
+  const bijReasons = [];
+  if (!bijChecks.body) {
+    bijReasons.push(`몸통 ${bodyRate === null ? '—' : bodyRate.toFixed(2) + '%'} — +${BIJ_LIVE.bodyRate}% 미달`);
+  }
+  if (!bijChecks.value) {
+    bijReasons.push(`대금 ${valueEok === null ? '—' : valueEok.toFixed(1) + '억'} — ${BIJ_LIVE.valueEok}억 미달`);
+  }
+  if (!bijChecks.break60) {
+    bijReasons.push(
+      `60일 전고점 ${h60.hi.toLocaleString('ko-KR')}원(${h60.d.slice(4, 6)}/${h60.d.slice(6, 8)}) — 현재가가 전고점 ${((price / h60.hi - 1) * 100).toFixed(2)}%`,
+    );
+  }
+  if (!bijChecks.upper) bijReasons.push(`위꼬리 ${upper === null ? '—' : upper.toFixed(1) + '%'} — ${BIJ_LIVE.upperMax}% 초과`);
+
+  const hongChecks = {
+    pct: typeof pct === 'number' && pct >= HONG_LIVE.pct,
+    break120,
+    firstBreak: firstBreak120,
+    valueTop: valueRank !== null && valueRank !== undefined,
+  };
+  const hongReasons = [];
+  if (!hongChecks.pct) {
+    hongReasons.push(`등락률 ${typeof pct === 'number' ? pct.toFixed(2) + '%' : '—'} — +${HONG_LIVE.pct}% 미달`);
+  }
+  if (!hongChecks.break120) hongReasons.push(`120일 전고점 ${h120.hi.toLocaleString('ko-KR')}원 미달`);
+  if (hongChecks.break120 && !firstBreak120) {
+    hongReasons.push(`최근 120봉 안에 이미 돌파한 적 있음(재돌파 ${priorBreakCount}회) — 첫 장대양봉 아님`);
+  }
+  if (!hongChecks.valueTop) hongReasons.push('거래대금 상위(40) 밖');
+
+  return {
+    code: q.code,
+    name: q.name,
+    market: q.market,
+    price,
+    pct,
+    open,
+    high,
+    low: q.low,
+    prevClose: q.prevClose,
+    bodyRate,
+    upper,
+    volX,
+    valueEok,
+    valueText: q.valueText || null,
+    valueBasis: q.valueBasis || null,
+    valueRank: valueRank || null,
+    hi60: h60.hi,
+    hi60Date: h60.d,
+    hi120: h120.hi,
+    hi120Date: h120.d,
+    break60,
+    break120,
+    firstBreak120,
+    priorBreakCount,
+    tradedAt: q.tradedAt || null,
+    bij: {
+      checks: bijChecks,
+      passCount: Object.values(bijChecks).filter(Boolean).length,
+      isBase0: bijChecks.body && bijChecks.value && bijChecks.break60,
+      reasons: bijReasons,
+    },
+    hong: {
+      checks: hongChecks,
+      isD0: hongChecks.pct && hongChecks.break120,
+      reasons: hongReasons,
+    },
+  };
+}
+
+/** 비중법사 1일차(기준봉 다음 거래일) 실시간 판정 — 패턴 · 4분할선 · 손절선 */
+function judgeBijDay1(card, q) {
+  const base = card && card.c;
+  if (!base || !q || q.price === null || q.price === undefined) return null;
+  const price = q.price;
+  const open = q.open;
+  const high = q.high;
+  const low = q.low;
+  const vsBasePct = (price / base - 1) * 100;
+  const gapPct = open ? (open / base - 1) * 100 : null;
+  const bodyPct = open ? (price / open - 1) * 100 : null;
+  let patternKey;
+  let patternLabel;
+  let stopLine;
+  if (typeof bodyPct === 'number' && bodyPct > 0 && typeof gapPct === 'number' && gapPct > 0) {
+    patternKey = 'ddeun';
+    patternLabel = '양봉 뜬봉(상승 출발)';
+    stopLine = base;
+  } else if (typeof bodyPct === 'number' && bodyPct > 0) {
+    patternKey = 'jungbong';
+    patternLabel = '양봉 중봉(기준봉 종가 부근 출발)';
+    stopLine = typeof low === 'number' ? low : base;
+  } else if (price >= base * 0.97) {
+    patternKey = 'eumbbong';
+    patternLabel = '음봉 눌림(기준봉 종가 지지)';
+    stopLine = base;
+  } else {
+    patternKey = 'breakdown';
+    patternLabel = '음봉 이탈(−3% 이상)';
+    stopLine = base;
+  }
+  // 1일차 고가가 확정되기 전에는 장중 고가로 4분할선을 잡는다(고가가 늘면 선도 같이 올라간다)
+  const H = Math.max(typeof high === 'number' ? high : 0, base);
+  const lines = [0.25, 0.5, 0.75, 1].map((r) => Math.round(base + (H - base) * r));
+  const zoneIdx = price <= lines[0] ? 0 : price <= lines[1] ? 1 : price <= lines[2] ? 2 : 3;
+  const zoneLabel = ['하단 1/4 매수존', '2/4 구간', '3/4 구간', '상단 1/4(추격 금지)'][zoneIdx];
+  return {
+    base,
+    price,
+    open,
+    high,
+    low,
+    vsBasePct: Number(vsBasePct.toFixed(2)),
+    gapPct: gapPct === null ? null : Number(gapPct.toFixed(2)),
+    bodyPct: bodyPct === null ? null : Number(bodyPct.toFixed(2)),
+    patternKey,
+    patternLabel,
+    stopLine,
+    stopBreach: price < stopLine,
+    split4: {
+      high: H,
+      lines,
+      inBuyZone: price <= lines[0],
+      zone: zoneLabel,
+      quarter: `1일차 고가 ${H.toLocaleString('ko-KR')} · 기준봉 종가 ${base.toLocaleString('ko-KR')}`,
+      touched: lines.map((v) => typeof low === 'number' && low <= v),
+    },
+  };
+}
+
+/** 홍인기 D+1·D+2 실시간 판정 — 기준선(전일 종가) 대비 위치 · 5단 타점 · −3% 손절선 */
+function judgeHongCard(card, q) {
+  const base = (card && card.plan && card.plan.base) || (card && card.close);
+  if (!base || !q || q.price === null || q.price === undefined) return null;
+  const price = q.price;
+  const open = q.open;
+  const low = q.low;
+  const vsBasePct = (price / base - 1) * 100;
+  const gapPct = open ? (open / base - 1) * 100 : null;
+  let stateKey;
+  let stateLabel;
+  if (price >= base * 1.1) {
+    stateKey = 'tp10';
+    stateLabel = '+10% 익절권';
+  } else if (price >= base * 1.05) {
+    stateKey = 'tp5';
+    stateLabel = '+5% 익절권';
+  } else if (price >= base) {
+    stateKey = 'above';
+    stateLabel = '기준선 위';
+  } else if (price > base * 0.97) {
+    stateKey = 'dip';
+    stateLabel = '눌림 매수 구간';
+  } else {
+    stateKey = 'stop';
+    stateLabel = '−3% 손절선 이탈';
+  }
+  const touchedBase = typeof low === 'number' && low <= base;
+  const ladder = [
+    {
+      step: '1차',
+      label: '시초가 대응',
+      price: open === null || open === undefined ? null : open,
+      note:
+        gapPct === null
+          ? '시초가 미확인'
+          : gapPct > 0.05
+            ? `갭상 +${gapPct.toFixed(2)}%`
+            : gapPct < -0.05
+              ? `갭하 ${gapPct.toFixed(2)}%`
+              : '보합 출발',
+      hit: null,
+    },
+    {
+      step: '2차',
+      label: '전일 종가 눌림(기본 자리)',
+      price: base,
+      note: touchedBase ? '오늘 저가가 기준선 터치' : '아직 기준선 미터치',
+      hit: touchedBase,
+    },
+    {
+      step: '3차',
+      label: '전일 종가 이하 매수',
+      price: base,
+      note: price < base ? '지금 기준선 아래에서 거래 중' : '기준선 위 — 3차 자리 아님',
+      hit: price < base,
+    },
+    {
+      step: '4~5차',
+      label: '지지선 매수·매도 반복',
+      price: card && card.m5 ? card.m5 : null,
+      note:
+        card && card.m20
+          ? `5일선 ${Number(card.m5).toLocaleString('ko-KR')} · 20일선 ${Number(card.m20).toLocaleString('ko-KR')}`
+          : '지지선 미제공',
+      hit: card && card.m5 ? price <= card.m5 : null,
+    },
+  ];
+  return {
+    base,
+    price,
+    open,
+    high: q.high,
+    low,
+    vsBasePct: Number(vsBasePct.toFixed(2)),
+    gapPct: gapPct === null ? null : Number(gapPct.toFixed(2)),
+    stateKey,
+    stateLabel,
+    stopLine: Number((base * 0.97).toFixed(0)),
+    stopBreach: price < base * 0.97,
+    tp5: Number((base * 1.05).toFixed(0)),
+    tp10: Number((base * 1.1).toFixed(0)),
+    ladder,
+  };
+}
+
+/** 재스캔 JSON 의 기존 카드 코드(감시군 polling 에 함께 넣어 장중 시세를 받는다) */
+function strategyCardCodes() {
+  const out = [];
+  const push = (c) => {
+    if (c && /^[0-9A-Z]{6}$/.test(String(c)) && !out.includes(c)) out.push(c);
+  };
+  ((BIJ_DATA && BIJ_DATA.cards) || []).forEach((c) => push(c.code));
+  ((HONG_DATA && HONG_DATA.cards) || []).forEach((c) => push(c.code));
+  return out;
+}
+
+const STRAT_CARD_CODES = strategyCardCodes();
+
+/** 장중 실시간 전략 판정을 통으로 만든다. */
+async function buildStrategyLive(map) {
+  const errors = [];
+  const [upR, valR] = await Promise.allSettled([
+    fetchKrxRank('up', KRX_PCT_TOP),
+    fetchKrxRank('quantTop', KRX_VALUE_TOP),
+  ]);
+  const byPct = upR.status === 'fulfilled' ? upR.value : [];
+  const byVal = valR.status === 'fulfilled' ? valR.value : [];
+  if (upR.status !== 'fulfilled') errors.push('등락률 상위: ' + String((upR.reason && upR.reason.message) || upR.reason));
+  if (valR.status !== 'fulfilled') errors.push('거래대금 상위: ' + String((valR.reason && valR.reason.message) || valR.reason));
+
+  const valueRank = {};
+  byVal.forEach((it, i) => {
+    valueRank[it.code] = i + 1;
+  });
+
+  const pool = [];
+  const seen = new Set();
+  byVal.concat(byPct).forEach((it) => {
+    if (it && it.code && !seen.has(it.code)) {
+      seen.add(it.code);
+      pool.push(it);
+    }
+  });
+
+  // 일봉 조회 전에 조건으로 후보를 줄인다(함수 시간 예산). 게이트보다 느슨하게 잡아 '아슬아슬한' 후보까지 실측한다.
+  const PRE_MIN_VALUE = 30 * 1e8; // 후보로 올리는 최소 거래대금(정규장 기준) — 실제 판정은 통합 대금으로 다시 한다
+  const cands = [];
+  pool.forEach((it) => {
+    const price = it.price;
+    const open = it.open;
+    const value = typeof it.value === 'number' ? it.value : 0;
+    const bodyRate = open && price ? (price / open - 1) * 100 : null;
+    const pct = it.changePct;
+    const bijLike = typeof bodyRate === 'number' && bodyRate >= 8 && value >= PRE_MIN_VALUE;
+    const hongLike = typeof pct === 'number' && pct >= 8 && value >= PRE_MIN_VALUE;
+    if (bijLike || hongLike) cands.push({ q: it, bijLike, hongLike, bodyRate, pct });
+  });
+  cands.sort(
+    (a, b) =>
+      Math.max(b.pct || -99, b.bodyRate || -99) - Math.max(a.pct || -99, a.bodyRate || -99) ||
+      (b.q.value || 0) - (a.q.value || 0),
+  );
+  const need = cands.slice(0, STRAT_MAX_CANDLES);
+
+  // 후보는 개별 polling 으로 다시 받아 통합(KRX+NXT) 거래대금·시고저를 판정에 쓴다.
+  //  (KRX 랭킹의 tradeAmount 는 정규장 단독이라 300억 문턱에서 과소 계상된다)
+  let candQuotes = {};
+  try {
+    candQuotes = await pollQuotes(need.map((c) => c.q.code));
+  } catch (e) {
+    errors.push('후보 시세 polling: ' + String((e && e.message) || e));
+  }
+
+  const settledBars = await Promise.allSettled(need.map((c) => fetchDailyBars(c.q.code)));
+  const bijFresh = [];
+  const bijNear = [];
+  const hongFresh = [];
+  const hongNear = [];
+  let scanned = 0;
+  need.forEach((c, i) => {
+    const r = settledBars[i];
+    if (r.status !== 'fulfilled') {
+      errors.push(`일봉 ${c.q.name || c.q.code}: ` + String((r.reason && r.reason.message) || r.reason));
+      return;
+    }
+    const pq = candQuotes[c.q.code] || null;
+    const q = pq
+      ? {
+          ...c.q,
+          price: pq.price !== null && pq.price !== undefined ? pq.price : c.q.price,
+          changePct: typeof pq.changePct === 'number' ? pq.changePct : c.q.changePct,
+          open: pq.open !== null && pq.open !== undefined ? pq.open : c.q.open,
+          high: pq.high !== null && pq.high !== undefined ? pq.high : c.q.high,
+          low: pq.low !== null && pq.low !== undefined ? pq.low : c.q.low,
+          volume: pq.volume !== null && pq.volume !== undefined ? pq.volume : c.q.volume,
+          value: typeof pq.value === 'number' ? pq.value : c.q.value,
+          valueText: pq.valueText || c.q.valueText,
+          valueBasis: pq.valueBasis || c.q.valueBasis,
+          prevClose:
+            pq.price !== null && pq.change !== null && pq.price !== undefined && pq.change !== undefined
+              ? pq.price - pq.change
+              : c.q.prevClose,
+          tradedAt: pq.tradedAt || c.q.tradedAt,
+        }
+      : c.q;
+    const j = judgeMover(q, r.value, valueRank[c.q.code] || null);
+    if (!j) return;
+    scanned += 1;
+    if (c.bijLike) {
+      if (j.bij.isBase0) bijFresh.push(j);
+      else if (j.bij.passCount >= 3) bijNear.push(j);
+    }
+    if (c.hongLike) {
+      if (j.hong.isD0) hongFresh.push(j);
+      else if (j.hong.checks.break120) hongNear.push(j);
+    }
+  });
+  bijFresh.sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
+  hongFresh.sort((a, b) => (b.pct || 0) - (a.pct || 0));
+
+  const today = kstTodayYmd();
+  const pack = (data, judgeFn, key) => {
+    const basisDate = (data && data.basisDate) || null;
+    const dayNo = basisDate ? tradingDaysAfter(basisDate, today) : null;
+    const cards = ((data && data.cards) || []).map((c) => {
+      const q = map[c.code] || null;
+      const live = q ? judgeFn(c, q) : null;
+      // D0·D1·D2 는 '기준일 대비로 몇 일째 기준봉인지'다 — 오늘이 그 기준봉의 D+며칠인지로 다시 계산한다.
+      const anchorOffset = key === 'hong' ? (c.kind === 'D1' ? 1 : c.kind === 'D2' ? 2 : 0) : 0;
+      const dayLabel =
+        dayNo === null
+          ? null
+          : key === 'hong'
+            ? 'D+' + (dayNo + anchorOffset)
+            : dayNo === 0
+              ? '0일차(기준봉 당일)'
+              : `${dayNo}일차`;
+      return {
+        code: c.code,
+        name: c.name,
+        market: c.market || null,
+        basisDate,
+        base: key === 'bij' ? c.c : (c.plan && c.plan.base) || c.close,
+        kind: c.kind || null,
+        anchorDateOffset: anchorOffset,
+        dayLabel,
+        missing: !q,
+        live,
+      };
+    });
+    return {
+      basisDate,
+      basisLabel: (data && data.basisLabel) || null,
+      dayNo,
+      // 기준일이 오늘이 아니면 '전일 종가 기준선'이 실제 전일 종가와 다르다 — 화면에 그대로 알린다
+      basisStale: dayNo !== null && dayNo !== 1,
+      dayLabel:
+        dayNo === null
+          ? null
+          : dayNo === 0
+            ? key === 'bij'
+              ? '0일차(기준봉 당일)'
+              : 'D+0'
+            : key === 'bij'
+              ? `${dayNo}일차`
+              : `D+${dayNo}`,
+      cards,
+    };
+  };
+
+  const bij = pack(BIJ_DATA, judgeBijDay1, 'bij');
+  const hong = pack(HONG_DATA, judgeHongCard, 'hong');
+
+  return {
+    ok: byPct.length + byVal.length > 0,
+    today,
+    universe: {
+      pctTop: byPct.length,
+      valueTop: byVal.length,
+      pool: pool.length,
+      candleChecks: need.length,
+      judged: scanned,
+    },
+    thresholds: {
+      bij: {
+        bodyRate: BIJ_LIVE.bodyRate,
+        valueEok: BIJ_LIVE.valueEok,
+        breakDays: BIJ_LIVE.breakDays,
+        upperMax: BIJ_LIVE.upperMax,
+      },
+      hong: { pct: HONG_LIVE.pct, breakDays: HONG_LIVE.breakDays, valueEok: HONG_LIVE.valueEok },
+    },
+    bij: { ...bij, fresh: bijFresh.slice(0, 6), near: bijNear.slice(0, 5) },
+    hong: { ...hong, fresh: hongFresh.slice(0, 6), near: hongNear.slice(0, 5) },
+    errors,
+  };
+}
+
 /** Vercel CDN 캐시 헤더까지 같이 내려준다.
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
@@ -1032,7 +1834,9 @@ module.exports = async function handler(req, res) {
   });
   if (!nxt.ok) errors.push(`NXT 랭킹: ${nxt.errors.join(' / ') || '응답 없음'}`);
 
-  const themeData = okTheme ? themeR.value : { themes: [], map: {}, marketStatus: null };
+  const themeData = okTheme
+    ? themeR.value
+    : { themes: [], map: {}, marketStatus: null, themeSource: null, themeErrors: [], themeRankTotal: 0 };
   const themes = themeData.themes;
   const knownMap = themeData.map || {};
 
@@ -1092,6 +1896,23 @@ module.exports = async function handler(req, res) {
     null;
   const session = sessionOf(p, naverStatus);
 
+  /* ---- 장중 전략 실시간 판정 (비중법사 · 홍인기) ---- */
+  let strategyLive = null;
+  try {
+    strategyLive = await buildStrategyLive(knownMap);
+    sources.push({
+      name: 'strategy-live',
+      ok: Boolean(strategyLive && strategyLive.ok),
+      detail: strategyLive
+        ? `비중법사 0일차 ${strategyLive.bij.fresh.length} · 홍인기 D+0 ${strategyLive.hong.fresh.length} · 일봉 판정 ${strategyLive.universe.judged}/${strategyLive.universe.candleChecks}`
+        : undefined,
+    });
+    if (strategyLive && strategyLive.errors.length) errors.push(...strategyLive.errors);
+  } catch (e) {
+    sources.push({ name: 'strategy-live', ok: false, error: String((e && e.message) || e) });
+    errors.push('strategy-live: ' + String((e && e.message) || e));
+  }
+
   // 3번 탭 — 감시군(고정 41 + NXT 랭킹 동적) 세션 체결 대금·등락 순위
   //  NXT 랭킹에서 찾은 종목은 같은 polling 응답(knownMap)에서 시세·체결 대금을 가져온다.
   const dynamicUniverse = dynCodes.map((code) => {
@@ -1121,6 +1942,7 @@ module.exports = async function handler(req, res) {
     notes.push('주말·휴장일에는 국내 시세가 직전 거래일(금요일) 확정 종가 기준입니다(네이버 금융).');
   }
   notes.push('거래대금은 통합(KRX+NXT·시간외 포함) 기준이며, 통합 체결이 없는 종목은 정규장 값입니다.');
+  notes.push('1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).');
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
   if (premarket) {
     notes.push(
@@ -1147,6 +1969,10 @@ module.exports = async function handler(req, res) {
     sessionLabel: session.label,
     marketStatus: naverStatus,
     themes,
+    themeSource: themeData.themeSource || null,
+    themeRankTotal: themeData.themeRankTotal || 0,
+    themeErrors: themeData.themeErrors || [],
+    strategyLive,
     high52,
     upperLimit,
     aftermarket,

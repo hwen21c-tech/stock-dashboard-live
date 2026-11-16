@@ -2442,6 +2442,384 @@
     });
   }
 
+  /* ==========================================================================
+   * 실시간 전략 판정 패널 — 비중법사(#tabBijoong) · 홍인기(#tabHonginki)
+   *  /api/tabs-live 의 strategyLive 를 그대로 그린다.
+   *  · 0일차 : 오늘 장중 실제로 조건을 채운 종목(일봉 실측 판정)
+   *  · 기존 카드 : 재스캔 기준봉·기준선 대비 장중 현재가 위치 · 패턴 · 분할선/5단 · 손절선
+   *  값이 없으면 만들지 않고 '—' 로 남긴다.
+   * ========================================================================== */
+
+  function slPct(v) {
+    return isNum(v) ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—';
+  }
+
+  function slEok(v) {
+    if (!isNum(v)) return '—';
+    return v >= 1000 ? Math.round(v).toLocaleString('ko-KR') + '억' : v.toFixed(1) + '억';
+  }
+
+  function slWon(v) {
+    return isNum(v) ? fmt(v) + '원' : '—';
+  }
+
+  function slCheck(on) {
+    return on ? '<span style="color:#34d399;font-weight:900;">✅</span>' : '<span style="color:#64748b;font-weight:900;">✗</span>';
+  }
+
+  function slOpen(name, code) {
+    var nm = String(name || '').replace(/'/g, '');
+    return "if(window.tabsLiveOpenStock){tabsLiveOpenStock('" + nm + "','" + esc(code) + "')}";
+  }
+
+  function slRow(inner, name, code) {
+    return (
+      '<div data-live="1" onclick="' + esc(slOpen(name, code)) + '" ' +
+      'style="cursor:pointer;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(15,23,42,0.72);border:1px solid rgba(148,163,184,0.16);">' +
+      inner +
+      '</div>'
+    );
+  }
+
+  function slHeadRow(name, code, price, pct, right, rawName) {
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;flex-wrap:wrap;">' +
+        '<span style="font-size:11.5px;font-weight:800;color:#e2e8f0;">' + (rawName ? name : esc(name)) +
+          ' <span style="font-size:9.5px;color:#64748b;font-weight:700;">' + esc(code || '') + '</span></span>' +
+        '<span style="font-size:11px;font-weight:800;color:' + colFor(pct) + ';white-space:nowrap;">' +
+          esc(slWon(price)) + ' <span style="color:' + colFor(pct) + ';">' + esc(slPct(pct)) + '</span></span>' +
+      '</div>' +
+      (right ? '<div style="font-size:10px;color:#94a3b8;line-height:1.5;margin-top:2px;">' + right + '</div>' : '')
+    );
+  }
+
+  function slBox(title, sub, accent, bodyHtml) {
+    return (
+      '<div class="panel-box" style="background:#0b1220;border:1px solid ' + accent + ';border-radius:10px;padding:10px 11px;margin:12px 0;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:12px;font-weight:800;color:' + accent + ';">' + title + '</span>' +
+          '<span style="font-size:10px;color:#94a3b8;font-weight:700;">' + sub + '</span>' +
+        '</div>' + bodyHtml +
+      '</div>'
+    );
+  }
+
+  function ensureStratHost(tabId, hostId) {
+    var tab = document.getElementById(tabId);
+    if (!tab) return null;
+    var host = document.getElementById(hostId);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = hostId;
+      if (tab.firstChild) tab.insertBefore(host, tab.firstChild);
+      else tab.appendChild(host);
+    } else if (host.parentNode !== tab) {
+      tab.insertBefore(host, tab.firstChild);
+    }
+    return host;
+  }
+
+  function slBijFreshHtml(list, near) {
+    var out = '';
+    if (list && list.length) {
+      out += list.map(function (r) {
+        var checks = r.bij.checks || {};
+        return slRow(
+          slHeadRow(
+            '🔥 ' + esc(r.name) + ' <span style="color:#fca5a5;">기준봉 성립</span>',
+            r.code, r.price, r.pct,
+            '몸통 ' + slCheck(checks.body) + ' ' + slPct(r.bodyRate) +
+            ' · 대금 ' + slCheck(checks.value) + ' ' + slEok(r.valueEok) +
+            ' · 60일 전고점 ' + slCheck(checks.break60) + ' ' + slWon(r.hi60) +
+            ' · 위꼬리 ' + slCheck(checks.upper) + ' ' + (isNum(r.upper) ? r.upper.toFixed(1) + '%' : '—') +
+            '<br>20일평균 대비 ' + (isNum(r.volX) ? r.volX.toFixed(2) + '배' : '—') +
+            ' · 대금 ' + (r.valueText || slEok(r.valueEok)) + ' (' + esc(r.valueBasis || '통합') + ')' +
+            (r.valueRank ? ' · 대금 순위 ' + r.valueRank + '위' : ''),
+            true
+          ),
+          r.name, r.code
+        );
+      }).join('');
+    } else {
+      out += '<div style="font-size:10.5px;color:#94a3b8;padding:4px 2px;">지금 조건(몸통 +10%↑ · 대금 300억↑ · 60일 전고점 돌파)을 모두 채운 종목은 없습니다 — 새로 생기면 이 자리에 자동으로 올라옵니다.</div>';
+    }
+    if (near && near.length) {
+      out += '<div style="font-size:10.5px;font-weight:800;color:#fbbf24;margin:8px 0 3px;">⚖️ 아깝게 탈락한 장중 후보</div>';
+      out += near.map(function (r) {
+        return slRow(
+          '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
+            '<span style="font-size:11px;font-weight:700;color:#cbd5e1;">' + esc(r.name) +
+              ' <span style="font-size:9.5px;color:#64748b;">' + esc(r.code) + '</span></span>' +
+            '<span style="font-size:10.5px;font-weight:800;color:' + colFor(r.pct) + ';">' + esc(slWon(r.price)) + ' ' + esc(slPct(r.pct)) + '</span>' +
+          '</div>' +
+          '<div style="font-size:9.8px;color:#94a3b8;line-height:1.45;margin-top:2px;">' +
+            esc((r.bij.reasons || []).join(' · ') || '—') +
+          '</div>',
+          r.name, r.code
+        );
+      }).join('');
+    }
+    return out;
+  }
+
+  function slBijCardsHtml(cards) {
+    if (!cards || !cards.length) {
+      return '<div style="font-size:10.5px;color:#94a3b8;padding:3px 2px;">기준봉 카드가 없습니다(재스캔 JSON 미포함).</div>';
+    }
+    return cards.map(function (c) {
+      if (c.missing || !c.live) {
+        return slRow(
+          '<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>',
+          c.name, c.code
+        );
+      }
+      var L = c.live;
+      var lines = (L.split4 && L.split4.lines) || [];
+      var touched = (L.split4 && L.split4.touched) || [];
+      var lineTxt = lines.map(function (v, i) {
+        return slWon(v) + (touched[i] ? '✓' : '');
+      }).join(' · ');
+      var patColor = L.patternKey === 'ddeun' ? '#f43f5e' : L.patternKey === 'jungbong' ? '#fbbf24' : L.patternKey === 'eumbbong' ? '#38bdf8' : '#94a3b8';
+      var right =
+        '기준봉 종가 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + esc(slPct(L.vsBasePct)) + '</b>' +
+        ' · 시초 <b style="color:' + colFor(L.gapPct) + ';">' + esc(slPct(L.gapPct)) + '</b>' +
+        '<br>시 ' + slWon(L.open) + ' · 고 ' + slWon(L.high) + ' · 저 ' + slWon(L.low) + ' · 현재 ' + slWon(L.price) +
+        ' · <span style="color:' + patColor + ';font-weight:800;">' + esc(L.patternLabel) + '</span>' +
+        '<br>4분할선 ' + esc(lineTxt) + ' → <b style="color:#c7d2fe;">' + esc(L.split4.zone) + '</b>' +
+        ' · 손절선 ' + slWon(L.stopLine) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
+      ;
+      return slRow(slHeadRow(c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code);
+    }).join('');
+  }
+
+  function slHongFreshHtml(list, near) {
+    var out = '';
+    if (list && list.length) {
+      out += list.map(function (r) {
+        var checks = r.hong.checks || {};
+        return slRow(
+          slHeadRow(
+            '🔥 ' + esc(r.name) + ' <span style="color:#fca5a5;">D+0 성립</span>',
+            r.code, r.price, r.pct,
+            '등락률 ' + slCheck(checks.pct) + ' ' + slPct(r.pct) +
+            ' · 120일 전고점 ' + slCheck(checks.break120) + ' ' + slWon(r.hi120) + '(' + esc(String(r.hi120Date || '').slice(4, 6) + '/' + String(r.hi120Date || '').slice(6, 8)) + ')' +
+            ' · 첫 돌파 ' + slCheck(checks.firstBreak) +
+            ' · 대금 상위 ' + slCheck(checks.valueTop) + ' ' + slEok(r.valueEok) +
+            (r.valueRank ? '(' + r.valueRank + '위)' : '') +
+            '<br>위꼬리 ' + (isNum(r.upper) ? r.upper.toFixed(1) + '%' : '—') +
+            ' · 20일평균 대비 ' + (isNum(r.volX) ? r.volX.toFixed(2) + '배' : '—') +
+            (r.firstBreak120 ? ' · <b style="color:#6ee7b7;">첫 장대양봉</b>' : ' · <span style="color:#fbbf24;">재돌파 ' + (r.priorBreakCount || 0) + '회</span>'),
+            true
+          ),
+          r.name, r.code
+        );
+      }).join('');
+    } else {
+      out += '<div style="font-size:10.5px;color:#94a3b8;padding:4px 2px;">지금 조건(등락률 +10%↑ · 120일 전고점 돌파 · 대금 상위)을 모두 채운 종목은 없습니다 — 새로 생기면 이 자리에 자동으로 올라옵니다.</div>';
+    }
+    if (near && near.length) {
+      out += '<div style="font-size:10.5px;font-weight:800;color:#fbbf24;margin:8px 0 3px;">⚖️ 전고점은 넘었지만 첫 돌파가 아닌 후보</div>';
+      out += near.map(function (r) {
+        return slRow(
+          '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
+            '<span style="font-size:11px;font-weight:700;color:#cbd5e1;">' + esc(r.name) +
+              ' <span style="font-size:9.5px;color:#64748b;">' + esc(r.code) + '</span></span>' +
+            '<span style="font-size:10.5px;font-weight:800;color:' + colFor(r.pct) + ';">' + esc(slWon(r.price)) + ' ' + esc(slPct(r.pct)) + '</span>' +
+          '</div>' +
+          '<div style="font-size:9.8px;color:#94a3b8;line-height:1.45;margin-top:2px;">' + esc((r.hong.reasons || []).join(' · ') || '—') + '</div>',
+          r.name, r.code
+        );
+      }).join('');
+    }
+    return out;
+  }
+
+  function slHongCardsHtml(cards) {
+    if (!cards || !cards.length) {
+      return '<div style="font-size:10.5px;color:#94a3b8;padding:3px 2px;">홍인기 카드가 없습니다(재스캔 JSON 미포함).</div>';
+    }
+    return cards.map(function (c) {
+      if (c.missing || !c.live) {
+        return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>', c.name, c.code);
+      }
+      var L = c.live;
+      var stateColor = L.stateKey === 'tp10' ? '#34d399' : L.stateKey === 'tp5' ? '#6ee7b7' : L.stateKey === 'above' ? '#e2e8f0' : L.stateKey === 'dip' ? '#7dd3fc' : '#fca5a5';
+      var ladder = (L.ladder || []).map(function (l) {
+        return l.step + (l.hit === true ? ' ✅' : '') + ' ' + l.label;
+      }).join(' · ');
+      var right =
+        '<b style="color:' + stateColor + ';">' + esc(L.stateLabel) + '</b>' +
+        ' · 기준선 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + esc(slPct(L.vsBasePct)) + '</b>' +
+        (isNum(L.gapPct) ? ' · 시초 ' + esc(slPct(L.gapPct)) : '') +
+        '<br>시 ' + slWon(L.open) + ' · 고 ' + slWon(L.high) + ' · 저 ' + slWon(L.low) + ' · 현재 ' + slWon(L.price) +
+        '<br>' + esc(ladder) +
+        '<br>익절 +5% ' + slWon(L.tp5) + ' / +10% ' + slWon(L.tp10) +
+        ' · 손절 −3% ' + slWon(L.stopLine) +
+        (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
+      ;
+      var dayTag = c.dayLabel ? '[기준봉 → 오늘 ' + c.dayLabel + '] ' : c.kind ? '[' + c.kind + '] ' : '';
+      return slRow(slHeadRow(dayTag + c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code);
+    }).join('');
+  }
+
+  function renderStrategyLive(body, stamp) {
+    var sl = body.strategyLive;
+    if (!sl) return 0;
+    var applied = 0;
+    var uni = sl.universe || {};
+    var srcLine = '장중 스캔 ' + (uni.pool || 0) + '종목(등락률 상위 ' + (uni.pctTop || 0) + ' · 대금 상위 ' + (uni.valueTop || 0) + ')' +
+      ' → 일봉 실측 ' + (uni.judged || 0) + '/' + (uni.candleChecks || 0) + '종목 · 통합(KRX+NXT) 거래대금 기준';
+
+    var bij = sl.bij || {};
+    var bijHtml = slBox(
+      '⚡ 장중 실시간 기준봉 · 1일차 판정',
+      '⚡ ' + esc(stamp) + ' 갱신 · 네이버 실시간',
+      '#34d399',
+      '<div style="font-size:10px;color:#94a3b8;margin:3px 0 6px;line-height:1.5;">' +
+        '기준 ' + esc(bij.basisLabel || bij.basisDate || '—') + ' · 오늘 <b style="color:#e2e8f0;">' + esc(bij.dayLabel || '—') + '</b>' +
+        ' · ' + esc(srcLine) + '</div>' +
+      '<div style="font-size:11px;font-weight:800;color:#fca5a5;margin:6px 0 4px;">🔥 당일 실시간 기준봉(0일차) — 몸통 +10%↑ · 대금 300억↑ · 60일 전고점 돌파</div>' +
+      slBijFreshHtml(bij.fresh, bij.near) +
+      '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 기준봉 카드 · 오늘 1일차 실시간 판정 · 4분할 타점</div>' +
+      slBijCardsHtml(bij.cards)
+    );
+
+    var hong = sl.hong || {};
+    var hongHtml = slBox(
+      '⚡ 장중 실시간 홍인기 D+0 · 5단 타점 판정',
+      '⚡ ' + esc(stamp) + ' 갱신 · 네이버 실시간',
+      '#c084fc',
+      '<div style="font-size:10px;color:#94a3b8;margin:3px 0 6px;line-height:1.5;">' +
+        '기준 ' + esc(hong.basisLabel || hong.basisDate || '—') + ' · 오늘 <b style="color:#e2e8f0;">' + esc(hong.dayLabel || '—') + '</b>' +
+        ' · ' + esc(srcLine) +
+        (hong.basisStale
+          ? '<br><span style="color:#fbbf24;font-weight:800;">⚠️ 기준일이 오늘의 전일이 아닙니다 — 카드의 기준선(전일 종가)이 실제 전일 종가와 다를 수 있어 재스캔이 필요합니다.</span>'
+          : '') +
+        '</div>' +
+      '<div style="font-size:11px;font-weight:800;color:#fca5a5;margin:6px 0 4px;">🔥 당일 D+0 포착 — 등락률 +10%↑ · 120일 전고점 첫 돌파 · 대금 상위</div>' +
+      slHongFreshHtml(hong.fresh, hong.near) +
+      '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 카드 · 기준선 대비 실시간 위치 · 5단 타점</div>' +
+      slHongCardsHtml(hong.cards) +
+      '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">※ 전고점은 일봉 실측(당일 봉 제외)이고, 5단 타점의 ✅는 1차 시초가 확인 · 2차 전일 종가 터치 · 3차 기준선 아래 · 4~5차 5일선 이탈 여부입니다. 투자 권유가 아닙니다.</div>'
+    );
+
+    var hostB = ensureStratHost('tabBijoong', 'stratLiveBijoongHost');
+    if (hostB) {
+      if (hostB.getAttribute('data-sig') !== bijHtml) {
+        hostB.innerHTML = bijHtml;
+        hostB.setAttribute('data-sig', bijHtml);
+      }
+      hostB.setAttribute('data-live', '1');
+      applied += 1;
+    }
+
+    var hostH = ensureStratHost('tabHonginki', 'stratLiveHongHost');
+    if (hostH) {
+      if (hostH.getAttribute('data-sig') !== hongHtml) {
+        hostH.innerHTML = hongHtml;
+        hostH.setAttribute('data-sig', hongHtml);
+      }
+      hostH.setAttribute('data-live', '1');
+      applied += 1;
+    }
+    return applied;
+  }
+
+  /* ==========================================================================
+   * [1탭] 주도 테마맵 — 네이버 실시간 테마 랭킹(동적 Top 8)으로 통째로 다시 그린다.
+   *  · /api/tabs-live 의 themes 가 themeSource='naver-theme' 일 때만 그린다.
+   *  · 테마 랭킹이 죽으면 고정 8대 테마(정적 HTML)를 그대로 둔다 — 동적 테마를 고정값으로 덮어쓰지 않는다.
+   * ========================================================================== */
+
+  function dynTileHtml(s) {
+    var pct = isNum(s.livePct) ? s.livePct : isNum(s.changePct) ? s.changePct : null;
+    var price = isNum(s.livePrice) ? s.livePrice : s.price;
+    var role = s.role || '';
+    var roleStyle =
+      role === '상승률 대장'
+        ? 'background:#dc2626; color:#fff;'
+        : role === '실질 거래대금 대장'
+          ? 'background:#7c3aed; color:#fff;'
+          : 'background:rgba(148,163,184,0.18); color:#cbd5e1;';
+    var roleTxt =
+      role === '상승률 대장' ? '👑 상승률 대장' : role === '실질 거래대금 대장' ? '💰 실질 거래대금 대장' : role;
+    var click = buildOnclick(
+      s.name + ' (' + s.code + ')',
+      slPct(pct),
+      '대금 ' + (s.valueText || '—') + ' | 현재가 ' + fmt(price) + '원',
+      '네이버 실시간 테마 랭킹 · ' + (s.themeNameRef || '') + (role ? ' · ' + roleTxt : '') +
+        ' (일봉·차트는 /api/stock-chart 실데이터)'
+    );
+    return (
+      '<div class="stock-tile' + (role === '상승률 대장' || role === '실질 거래대금 대장' ? ' leader' : '') + '"' +
+        ' data-live="1" data-code="' + esc(s.code) + '"' +
+        ' onclick="' + esc(click) + '">' +
+        '<div class="st-top">' +
+          '<span class="st-name" style="color:#ffffff; font-weight:800;">' + esc(s.name) + '</span>' +
+          '<span class="st-change" style="color:' + colFor(pct) + '; font-weight:800;">' + esc(slPct(pct)) + '</span>' +
+        '</div>' +
+        '<div class="st-ohlc">' + (isNum(s.livePrice) ? '프' : '현') + ' <strong>' + esc(fmt(price)) + '</strong>' +
+          ' | 시 ' + esc(fmt(s.open)) + ' 고 ' + esc(fmt(s.high)) + ' 저 ' + esc(fmt(s.low)) + '</div>' +
+        '<div class="st-bottom">' +
+          '<span class="st-vol" title="거래대금 ' + esc(s.valueText || '—') + ' (' + esc(s.valueBasis || '통합') + ')">' + esc(s.valueText || '—') + '</span>' +
+          (role ? '<span class="st-role" style="' + roleStyle + ' font-size:9px; white-space:nowrap;">' + esc(roleTxt) + '</span>' : '') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function dynThemeHtml(t) {
+    var avg = isNum(t.avgPct) ? t.avgPct : null;
+    var stocks = t.stocks || [];
+    var rise = isNum(t.riseCount) ? t.riseCount : 0;
+    var fall = isNum(t.fallCount) ? t.fallCount : 0;
+    return (
+      '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
+        '<div class="theme-header">' +
+          '<span class="theme-name">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
+          '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
+            esc(slPct(avg)) +
+            ' <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">' +
+              '(합산 ' + esc(t.sumValueText || '—') + ' · 상승 ' + rise + '/' + (rise + fall) + ')</span>' +
+          '</span>' +
+        '</div>' +
+        '<div class="stock-tiles">' +
+          stocks.map(function (s) { s.themeNameRef = t.name; return dynTileHtml(s); }).join('') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderDynamicThemes(body, stamp) {
+    if (body.themeSource !== 'naver-theme') return 0;
+    var themes = body.themes || [];
+    if (!themes.length) return 0;
+    var grid = document.querySelector('#tabOverview .theme-grid-8');
+    if (!grid) return 0;
+    var html = themes.map(dynThemeHtml).join('');
+    if (grid.getAttribute('data-sig') !== html) {
+      grid.innerHTML = html;
+      grid.setAttribute('data-sig', html);
+    }
+    grid.setAttribute('data-dynamic', '1');
+
+    var head = grid.previousElementSibling;
+    if (head && head.querySelector) {
+      var title = head.querySelector('span');
+      if (title) {
+        var ttxt = '🔥 실시간 주도 테마맵 (오늘 장중 강세 테마 Top ' + themes.length + ')';
+        if (title.textContent !== ttxt) title.textContent = ttxt;
+      }
+      var sub = head.querySelector('.sub');
+      if (sub) {
+        var stxt = '네이버 실시간 테마 랭킹(등락률 상위 ' + themes.length + '테마 · ' + (body.themeRankTotal || 0) + '개 중) · ⚡ ' + stamp + ' 갱신';
+        if (sub.textContent !== stxt) sub.textContent = stxt;
+        sub.setAttribute('data-live', '1');
+      }
+    }
+    return themes.length;
+  }
+
   /* ------------------------------ 적용 총괄 ------------------------------ */
 
   function markThemeHead(stamp) {
@@ -2463,13 +2841,22 @@
     // 1번 탭 — NXT 실시간 주도주 트랙(고정 텍스트 → 실데이터)
     applied += renderNxtTracks(body, stamp);
 
-    // 1번 탭 — 8대 테마
+    // 1번 탭 — 주도 테마맵 : 네이버 실시간 테마 랭킹(동적 Top 8)으로 통째로 다시 그린다.
+    //  랭킹이 살아 있으면 고정 8대 테마(정적 HTML)로 되돌리지 않는다.
+    var dynThemes = renderDynamicThemes(body, stamp);
     var themes = body.themes || [];
-    themes.forEach(function (t, i) {
-      var block = findThemeBlock(t, i);
-      if (block) applied += applyTheme(t, block);
-    });
-    if (themes.length) markThemeHead(stamp);
+    if (dynThemes > 0) {
+      applied += dynThemes;
+    } else {
+      themes.forEach(function (t, i) {
+        var block = findThemeBlock(t, i);
+        if (block) applied += applyTheme(t, block);
+      });
+      if (themes.length) markThemeHead(stamp);
+    }
+
+    // 비중법사·홍인기 탭 — 장중 실시간 기준봉/타점 판정 패널
+    applied += renderStrategyLive(body, stamp);
 
     // 1번 탭 — 52주 신고가 / 100억+ 상한가
     var panels = overviewPanels();
@@ -2594,7 +2981,9 @@
     _applyTheme: applyTheme,
     _renderHigh52: renderHigh52,
     _renderUpperLimit: renderUpperLimit,
-    _renderNews: renderNews
+    _renderNews: renderNews,
+    _renderStrategyLive: renderStrategyLive,
+    _renderDynamicThemes: renderDynamicThemes
   };
 
   function boot() {
