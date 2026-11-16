@@ -392,13 +392,15 @@ async function testVillage(browser, w, h) {
 
 
 /* ---------------- 5) 🧬 진화 해금 — 내 도감에 이전 단계 2마리 ---------------- */
-async function testEvolution(browser, w, h) {
+async function testEvolution(browser, w, h, game) {
+  game = game || 'math';
+  const tag = `${game}-${w}`;
   const page = await newPage(browser, w, h);
-  watch(page, `evo-${w}`);
-  await page.goto(BASE + '/math-pokemon.html', { waitUntil: 'domcontentloaded' });
+  watch(page, `evo-${tag}`);
+  await page.goto(BASE + '/' + game + '-pokemon.html', { waitUntil: 'domcontentloaded' });
   await sleep(2600);
   const ready = await page.evaluate(() => ({ n: POKEMON.length, evo: (byId(268) || {}).evoFrom, base: (byId(265) || {}).evoFrom }));
-  check(`[진화 ${w}] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)`, ready.evo === 265 && !ready.base, JSON.stringify(ready));
+  check(`[진화 ${tag}] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)`, ready.evo === 265 && !ready.base, JSON.stringify(ready));
 
   const pool = (counts, owned) => page.evaluate((c, own) => {
     S.dex = { ids: new Set(own || []), counts: c || {}, dates: {}, subjects: {} };
@@ -407,16 +409,16 @@ async function testEvolution(browser, w, h) {
   }, counts, owned);
 
   const r0 = await pool({}, []);
-  check(`[진화 ${w}] 0마리 — 카스쿤(진화형) 풀에서 제외`, !r0.has268 && r0.has265, JSON.stringify(r0));
+  check(`[진화 ${tag}] 0마리 — 카스쿤(진화형) 풀에서 제외`, !r0.has268 && r0.has265, JSON.stringify(r0));
 
   const r1 = await pool({ '265': 1 }, []);
-  check(`[진화 ${w}] 개무소 1마리 — 아직 카스쿤 제외`, !r1.has268 && r1.has265, JSON.stringify(r1));
+  check(`[진화 ${tag}] 개무소 1마리 — 아직 카스쿤 제외`, !r1.has268 && r1.has265, JSON.stringify(r1));
 
   const r2 = await pool({ '265': 2 }, []);
-  check(`[진화 ${w}] 개무소 2마리 — 카스쿤 풀에 포함`, r2.has268, JSON.stringify(r2));
+  check(`[진화 ${tag}] 개무소 2마리 — 카스쿤 풀에 포함`, r2.has268, JSON.stringify(r2));
 
   const r3 = await pool({ '265': 0 }, [268]);
-  check(`[진화 ${w}] 이미 카스쿤을 갖고 있으면 계속 등장`, r3.has268, JSON.stringify(r3));
+  check(`[진화 ${tag}] 이미 카스쿤을 갖고 있으면 계속 등장`, r3.has268, JSON.stringify(r3));
 
   /* pickWild 로도 확인 — 잠겨 있으면 60번 뽑아도 안 나온다 */
   const draw = await page.evaluate(() => {
@@ -425,7 +427,7 @@ async function testEvolution(browser, w, h) {
     for (let i = 0; i < 60; i += 1) { if (pickWild(-1).id === 268) hit += 1; }
     return hit;
   });
-  check(`[진화 ${w}] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음`, draw === 0, `60회 중 ${draw}회`);
+  check(`[진화 ${tag}] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음`, draw === 0, `60회 중 ${draw}회`);
 
   /* 형제 도감 격리 — 아린(p1)에 2마리, 지안(p2)은 0마리 */
   const iso = await page.evaluate(() => {
@@ -439,7 +441,7 @@ async function testEvolution(browser, w, h) {
     const p1Has = wildPool().some((p) => p.id === 268);
     return { p2Has, p1Has, slotP1: slotFor('math', 'p1'), slotP2: slotFor('math', 'p2') };
   });
-  check(`[진화 ${w}] 형제 격리 — 아린 것은 지안에게 새지 않음`, iso.p2Has === false && iso.p1Has === true, JSON.stringify(iso));
+  check(`[진화 ${tag}] 형제 격리 — 아린 것은 지안에게 새지 않음`, iso.p2Has === false && iso.p1Has === true, JSON.stringify(iso));
 
   /* 아빠 권한 ➕ 추가 2마리로도 자연스럽게 해금 */
   const dad = await page.evaluate(() => {
@@ -448,7 +450,7 @@ async function testEvolution(browser, w, h) {
     S.dex = Profiles.loadDex('p2');
     return { counts: S.dex.counts['265'], has: wildPool().some((p) => p.id === 268) };
   });
-  check(`[진화 ${w}] 아빠 ➕ 추가로 2마리 채우면 진화형 해금`, dad.counts === 2 && dad.has === true, JSON.stringify(dad));
+  check(`[진화 ${tag}] 아빠 ➕ 추가로 2마리 채우면 진화형 해금`, dad.counts === 2 && dad.has === true, JSON.stringify(dad));
 
   await page.close();
 }
@@ -469,8 +471,10 @@ async function testEvolution(browser, w, h) {
     await testBattleLauncher(browser, 884, 960);
     await testMath(browser, 884, 960);
     await testVillage(browser, 884, 960);
-    await testEvolution(browser, 400, 860);
-    await testEvolution(browser, 884, 960);
+    await testEvolution(browser, 400, 860, 'math');
+    await testEvolution(browser, 400, 860, 'hangul');
+    await testEvolution(browser, 400, 860, 'english');
+    await testEvolution(browser, 884, 960, 'math');
   } catch (e) {
     check('테스트 실행', false, String(e && e.stack || e).slice(0, 500));
   } finally {

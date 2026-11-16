@@ -14,12 +14,12 @@
     {
       "label": "[한글 400] 지안 차례로 문제를 맞혀 포획까지 진행",
       "ok": true,
-      "detail": "wild=200 modal=true"
+      "detail": "wild=827 modal=true"
     },
     {
       "label": "[한글 400] 포획분이 지안(p2) 도감에만 저장",
       "ok": true,
-      "detail": "p2.ids=[200]"
+      "detail": "p2.ids=[827]"
     },
     {
       "label": "[한글 400] 아린(p1) 도감은 그대로(2마리)",
@@ -74,7 +74,7 @@
     {
       "label": "[런처 400] caughtAt·오늘 날짜 기록",
       "ok": true,
-      "detail": "{\"caughtAt\":1794828664787,\"date\":\"2026-11-16\"}"
+      "detail": "{\"caughtAt\":1794828942359,\"date\":\"2026-11-16\"}"
     },
     {
       "label": "[런처 400] 도감 화면 숫자 즉시 갱신",
@@ -84,7 +84,7 @@
     {
       "label": "[런처 400] 🗑 아빠 삭제 — 목록에서 사라지고 removed 기록",
       "ok": true,
-      "detail": "ids=[1] removed={\"268\":1794828667567}"
+      "detail": "ids=[1] removed={\"268\":1794828945156}"
     },
     {
       "label": "[산수 400] 가족 PIN 통과 상태",
@@ -139,12 +139,12 @@
     {
       "label": "[한글 884] 지안 차례로 문제를 맞혀 포획까지 진행",
       "ok": true,
-      "detail": "wild=714 modal=true"
+      "detail": "wild=175 modal=true"
     },
     {
       "label": "[한글 884] 포획분이 지안(p2) 도감에만 저장",
       "ok": true,
-      "detail": "p2.ids=[714]"
+      "detail": "p2.ids=[175]"
     },
     {
       "label": "[한글 884] 아린(p1) 도감은 그대로(2마리)",
@@ -199,7 +199,7 @@
     {
       "label": "[런처 884] caughtAt·오늘 날짜 기록",
       "ok": true,
-      "detail": "{\"caughtAt\":1794828708035,\"date\":\"2026-11-16\"}"
+      "detail": "{\"caughtAt\":1794828985861,\"date\":\"2026-11-16\"}"
     },
     {
       "label": "[런처 884] 도감 화면 숫자 즉시 갱신",
@@ -209,7 +209,7 @@
     {
       "label": "[런처 884] 🗑 아빠 삭제 — 목록에서 사라지고 removed 기록",
       "ok": true,
-      "detail": "ids=[1] removed={\"268\":1794828710898}"
+      "detail": "ids=[1] removed={\"268\":1794828988704}"
     },
     {
       "label": "[산수 884] 가족 PIN 통과 상태",
@@ -252,82 +252,162 @@
       "detail": "ids=[366,25]"
     },
     {
-      "label": "[진화 400] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
+      "label": "[진화 math-400] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
       "ok": true,
       "detail": "{\"n\":1215,\"evo\":265,\"base\":0}"
     },
     {
-      "label": "[진화 400] 0마리 — 카스쿤(진화형) 풀에서 제외",
+      "label": "[진화 math-400] 0마리 — 카스쿤(진화형) 풀에서 제외",
       "ok": true,
       "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
     },
     {
-      "label": "[진화 400] 개무소 1마리 — 아직 카스쿤 제외",
+      "label": "[진화 math-400] 개무소 1마리 — 아직 카스쿤 제외",
       "ok": true,
       "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
     },
     {
-      "label": "[진화 400] 개무소 2마리 — 카스쿤 풀에 포함",
+      "label": "[진화 math-400] 개무소 2마리 — 카스쿤 풀에 포함",
       "ok": true,
       "detail": "{\"has268\":true,\"has265\":true,\"n\":549}"
     },
     {
-      "label": "[진화 400] 이미 카스쿤을 갖고 있으면 계속 등장",
+      "label": "[진화 math-400] 이미 카스쿤을 갖고 있으면 계속 등장",
       "ok": true,
       "detail": "{\"has268\":true,\"has265\":true,\"n\":548}"
     },
     {
-      "label": "[진화 400] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
+      "label": "[진화 math-400] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
       "ok": true,
       "detail": "60회 중 0회"
     },
     {
-      "label": "[진화 400] 형제 격리 — 아린 것은 지안에게 새지 않음",
+      "label": "[진화 math-400] 형제 격리 — 아린 것은 지안에게 새지 않음",
       "ok": true,
       "detail": "{\"p2Has\":false,\"p1Has\":true,\"slotP1\":\"p1\",\"slotP2\":\"p2\"}"
     },
     {
-      "label": "[진화 400] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
+      "label": "[진화 math-400] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
       "ok": true,
       "detail": "{\"counts\":2,\"has\":true}"
     },
     {
-      "label": "[진화 884] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
+      "label": "[진화 hangul-400] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
       "ok": true,
       "detail": "{\"n\":1215,\"evo\":265,\"base\":0}"
     },
     {
-      "label": "[진화 884] 0마리 — 카스쿤(진화형) 풀에서 제외",
+      "label": "[진화 hangul-400] 0마리 — 카스쿤(진화형) 풀에서 제외",
       "ok": true,
       "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
     },
     {
-      "label": "[진화 884] 개무소 1마리 — 아직 카스쿤 제외",
+      "label": "[진화 hangul-400] 개무소 1마리 — 아직 카스쿤 제외",
       "ok": true,
       "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
     },
     {
-      "label": "[진화 884] 개무소 2마리 — 카스쿤 풀에 포함",
+      "label": "[진화 hangul-400] 개무소 2마리 — 카스쿤 풀에 포함",
       "ok": true,
       "detail": "{\"has268\":true,\"has265\":true,\"n\":549}"
     },
     {
-      "label": "[진화 884] 이미 카스쿤을 갖고 있으면 계속 등장",
+      "label": "[진화 hangul-400] 이미 카스쿤을 갖고 있으면 계속 등장",
       "ok": true,
       "detail": "{\"has268\":true,\"has265\":true,\"n\":548}"
     },
     {
-      "label": "[진화 884] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
+      "label": "[진화 hangul-400] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
       "ok": true,
       "detail": "60회 중 0회"
     },
     {
-      "label": "[진화 884] 형제 격리 — 아린 것은 지안에게 새지 않음",
+      "label": "[진화 hangul-400] 형제 격리 — 아린 것은 지안에게 새지 않음",
       "ok": true,
       "detail": "{\"p2Has\":false,\"p1Has\":true,\"slotP1\":\"p1\",\"slotP2\":\"p2\"}"
     },
     {
-      "label": "[진화 884] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
+      "label": "[진화 hangul-400] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
+      "ok": true,
+      "detail": "{\"counts\":2,\"has\":true}"
+    },
+    {
+      "label": "[진화 english-400] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
+      "ok": true,
+      "detail": "{\"n\":1215,\"evo\":265,\"base\":0}"
+    },
+    {
+      "label": "[진화 english-400] 0마리 — 카스쿤(진화형) 풀에서 제외",
+      "ok": true,
+      "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
+    },
+    {
+      "label": "[진화 english-400] 개무소 1마리 — 아직 카스쿤 제외",
+      "ok": true,
+      "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
+    },
+    {
+      "label": "[진화 english-400] 개무소 2마리 — 카스쿤 풀에 포함",
+      "ok": true,
+      "detail": "{\"has268\":true,\"has265\":true,\"n\":549}"
+    },
+    {
+      "label": "[진화 english-400] 이미 카스쿤을 갖고 있으면 계속 등장",
+      "ok": true,
+      "detail": "{\"has268\":true,\"has265\":true,\"n\":548}"
+    },
+    {
+      "label": "[진화 english-400] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
+      "ok": true,
+      "detail": "60회 중 0회"
+    },
+    {
+      "label": "[진화 english-400] 형제 격리 — 아린 것은 지안에게 새지 않음",
+      "ok": true,
+      "detail": "{\"p2Has\":false,\"p1Has\":true,\"slotP1\":\"p1\",\"slotP2\":\"p2\"}"
+    },
+    {
+      "label": "[진화 english-400] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
+      "ok": true,
+      "detail": "{\"counts\":2,\"has\":true}"
+    },
+    {
+      "label": "[진화 math-884] 도감에 evoFrom 실림 (268 카스쿤 ← 265 개무소)",
+      "ok": true,
+      "detail": "{\"n\":1215,\"evo\":265,\"base\":0}"
+    },
+    {
+      "label": "[진화 math-884] 0마리 — 카스쿤(진화형) 풀에서 제외",
+      "ok": true,
+      "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
+    },
+    {
+      "label": "[진화 math-884] 개무소 1마리 — 아직 카스쿤 제외",
+      "ok": true,
+      "detail": "{\"has268\":false,\"has265\":true,\"n\":547}"
+    },
+    {
+      "label": "[진화 math-884] 개무소 2마리 — 카스쿤 풀에 포함",
+      "ok": true,
+      "detail": "{\"has268\":true,\"has265\":true,\"n\":549}"
+    },
+    {
+      "label": "[진화 math-884] 이미 카스쿤을 갖고 있으면 계속 등장",
+      "ok": true,
+      "detail": "{\"has268\":true,\"has265\":true,\"n\":548}"
+    },
+    {
+      "label": "[진화 math-884] 잠긴 동안 pickWild 가 카스쿤을 뽑지 않음",
+      "ok": true,
+      "detail": "60회 중 0회"
+    },
+    {
+      "label": "[진화 math-884] 형제 격리 — 아린 것은 지안에게 새지 않음",
+      "ok": true,
+      "detail": "{\"p2Has\":false,\"p1Has\":true,\"slotP1\":\"p1\",\"slotP2\":\"p2\"}"
+    },
+    {
+      "label": "[진화 math-884] 아빠 ➕ 추가로 2마리 채우면 진화형 해금",
       "ok": true,
       "detail": "{\"counts\":2,\"has\":true}"
     },
