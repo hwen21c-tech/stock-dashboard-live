@@ -38,6 +38,8 @@ INDEX_CACHE = os.path.join(CACHE_DIR, "index-days.json")
 STATE_PATH = os.path.join(CACHE_DIR, "state.json")
 HTML = os.path.join(PUB, "index.html")
 LATEST = os.path.join(DATA_DIR, "strategies-latest.json")
+# 정적 미러(GitHub Pages) — 5개 전략 탭 목록을 같은 값으로 맞춘다
+STATIC_HTML = os.path.join(os.path.dirname(ROOT), "deploy_repo", "index.html")
 
 UA = {"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"}
 WD = "월화수목금토일"
@@ -356,6 +358,112 @@ def refresh_candles(cache, codes, basis, workers=8, budget=420.0, recent=90):
     left = [c for c in codes if not (cache.get(c) and len(cache.get(c)) > 130)]
     log(f"  일봉 확보 {len(cache)}종목 · 실패 {incomplete} · 데이터 부족 {len(left)} ({time.time() - t0:.0f}s)")
     return len(left) <= max(60, len(codes) // 40)
+
+
+# ------------------------------------------------------------------ 4b) KRX 오픈API 확정치 교차검증
+#   네이버 일봉(fchart)은 수정주가·가집계라 장마감 직후 값이 KRX 공식 확정치와 몇 틱~수 % 어긋난다.
+#   /workspace/.krx_api_key 가 있으면 KRX 일별매매정보(코스피 stk_bydd_trd · 코스닥 ksq_bydd_trd)로
+#   당일 종가·등락률·거래대금을 교차검증해 보정한다. 실패하면 조용히 네이버 값으로 폴백한다.
+KRX_KEY_PATH = os.path.join(os.path.dirname(ROOT), ".krx_api_key")
+KRX_ENDPOINTS = ("stk_bydd_trd", "ksq_bydd_trd")
+
+
+def load_krx_key():
+    try:
+        key = open(KRX_KEY_PATH, encoding="utf-8").read().strip()
+        return key or None
+    except Exception:                     # noqa: BLE001
+        return None
+
+
+def fetch_krx_daily(bas_dd, key):
+    """{종목코드: {name, close, pct, open, high, low, vol, valueEok}} — 실패한 시장은 건너뛴다."""
+    out, errors = {}, []
+    for ep in KRX_ENDPOINTS:
+        url = f"https://data-dbg.krx.co.kr/svc/apis/sto/{ep}?basDd={bas_dd}"
+        try:
+            req = urllib.request.Request(url, headers={"AUTH_KEY": key, "User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                data = json.loads(r.read().decode("utf-8", "ignore"))
+        except Exception as e:            # noqa: BLE001
+            errors.append(f"{ep}: {e}")
+            continue
+        rows = data.get("OutBlock_1") or []
+        for x in rows:
+            code = str(x.get("ISU_CD") or "").strip()
+            if not re.match(r"^\d{6}$", code):
+                continue
+            try:
+                out[code] = {
+                    "name": x.get("ISU_NM"),
+                    "close": float(x.get("TDD_CLSPRC") or 0),
+                    "pct": float(x.get("FLUC_RT") or 0),
+                    "open": float(x.get("TDD_OPNPRC") or 0),
+                    "high": float(x.get("TDD_HGPRC") or 0),
+                    "low": float(x.get("TDD_LWPRC") or 0),
+                    "vol": float(x.get("ACC_TRDVOL") or 0),
+                    "valueEok": round(float(x.get("ACC_TRDVAL") or 0) / 1e8, 1),
+                }
+            except (TypeError, ValueError):
+                continue
+        log(f"    KRX {ep}: {len(rows)}행")
+    return out, errors
+
+
+ADJ_RATIOS = (2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 0.5, 1 / 3, 0.25, 0.2, 0.1, 0.05)
+
+
+def _is_adjust_ratio(r):
+    """액면분할·병합 같은 '정수배' 가격 차이인지 — 2배·5배·1/5 처럼 딱 떨어지는 비율만."""
+    if abs(r - 1) <= 0.03:
+        return False
+    return any(abs(r - x) / x <= 0.02 for x in ADJ_RATIOS)
+
+
+def krx_adjust(per, cache, basis, krx):
+    """당일 레코드를 KRX 확정치로 맞춘다.
+       · 액면분할·병합 같은 정수배 차이 = 수정주가 조정 → 가격은 네이버 조정주가 유지, 거래대금만 KRX 확정
+       · 그 밖의 차이(가집계·시간외 반영 등) = KRX 확정 종가·등락률·거래대금으로 교체(캐시 봉도 함께)"""
+    stat = {"checked": 0, "fixed": 0, "valueOnly": 0, "missing": 0}
+    for code, recs in (per or {}).items():
+        rec = recs.get(basis)
+        k = krx.get(code)
+        if not rec:
+            continue
+        if not k or not k.get("close"):
+            stat["missing"] += 1
+            continue
+        stat["checked"] += 1
+        ratio = rec["c"] / k["close"] if k["close"] else 1.0
+        if _is_adjust_ratio(ratio):
+            rec["valueEok"] = k["valueEok"]
+            rec["valueBasisKrX"] = True
+            stat["valueOnly"] += 1
+            continue
+        if abs(rec["c"] - k["close"]) > 0.001 * k["close"] or abs(rec.get("valueEok", 0) - k["valueEok"]) > 0.5:
+            stat["fixed"] += 1
+        rec["c"] = k["close"]
+        rec["pct"] = k["pct"]
+        rec["valueEok"] = k["valueEok"]
+        rec["valueBasisKrX"] = True
+        for fld, kf in (("o", "open"), ("h", "high"), ("l", "low")):
+            if k.get(kf):
+                rec[fld] = k[kf]
+        cs = (cache or {}).get(code)
+        if cs:
+            for bar in reversed(cs):
+                if bar.get("date") == basis:
+                    bar["c"] = k["close"]
+                    if k.get("open"):
+                        bar["o"] = k["open"]
+                    if k.get("high"):
+                        bar["h"] = k["high"]
+                    if k.get("low"):
+                        bar["l"] = k["low"]
+                    if k.get("vol"):
+                        bar["v"] = k["vol"]
+                    break
+    return stat
 
 
 # ------------------------------------------------------------------ 5) 지표 계산
@@ -845,6 +953,285 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=40):
 CANDLES_REF = {}
 
 
+# ------------------------------------------------------------------ 7b) RN존 · 종가베팅 매일 자동 선정
+#   예전에는 RN존 11종목·종가베팅 10종목이 RAW_STOCKS/STOCKS 배열에 고정값으로 박혀 있어
+#   장이 아무리 바뀌어도 같은 종목만 남았다. 이제는 장마감 확정 일봉으로 매일 새로 뽑는다.
+#   · RN존  — 거래대금 상위 주도주(300억↑) 중 라운드 넘버 밴드 안에서 위치를 다시 계산
+#   · 종베  — 신정재(윗꼬리 없는 양봉·고가 밀착) / 강창권(장대양봉 후 5·20일선 눌림) 두 트랙
+RN_MIN_VALUE = 300.0       # RN존 후보 최소 거래대금(억)
+RN_MIN_PCT = 0.0
+RN_PICK = 12
+JB_MIN_VALUE = 300.0
+JB_PICK_PER_TRACK = 5
+
+
+def rn_step(price):
+    p = abs(float(price or 0))
+    if p >= 500000:
+        return 100000
+    if p >= 100000:
+        return 50000
+    if p >= 50000:
+        return 10000
+    if p >= 10000:
+        return 5000
+    if p >= 1000:
+        return 1000
+    return 100
+
+
+def kr_tick(price):
+    p = abs(float(price or 0))
+    if p < 2000:
+        return 1
+    if p < 5000:
+        return 5
+    if p < 20000:
+        return 10
+    if p < 50000:
+        return 50
+    if p < 200000:
+        return 100
+    if p < 500000:
+        return 500
+    return 1000
+
+
+def to_tick(v):
+    t = kr_tick(v)
+    return int(round(float(v) / t) * t)
+
+
+def rn_category(price, lower, upper):
+    if not upper or not lower or upper <= lower:
+        return 'upper'
+    r = (float(price) - lower) / float(upper - lower)
+    if r <= 1 / 3.0:
+        return 'touch_lower'
+    if r <= 2 / 3.0:
+        return 'near_lower'
+    return 'upper'
+
+
+def rn_lines(price):
+    step = rn_step(price)
+    lower = int(price // step) * step
+    upper = lower + step
+    buy1 = to_tick(lower * 1.04)
+    return {
+        'upperRN': int(upper), 'lowerRN': int(lower),
+        'buy1': buy1, 'buy2': to_tick(buy1 * 0.8),
+        'targetMin': to_tick(buy1 * 1.07), 'targetMax': to_tick(buy1 * 1.2),
+        'category': rn_category(price, lower, upper),
+    }
+
+
+def rn_candles(cs, n=60):
+    """RAW_STOCKS 카드가 그리는 일봉 형식(date/open/high/low/close/vol/ratio)으로 바꾼다."""
+    out, prev = [], None
+    for x in (cs or [])[-n:]:
+        ratio = round((x['c'] - prev) / prev * 100, 2) if prev else 0.0
+        d = x['date']
+        if len(d) == 8:
+            d = f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+        out.append({'date': d, 'open': int(x['o']), 'high': int(x['h']), 'low': int(x['l']),
+                    'close': int(x['c']), 'vol': int(x['v']), 'ratio': ratio})
+        prev = x['c']
+    return out
+
+
+def build_rnzone(uni, per, cache, days):
+    """거래대금 상위 주도주 + 당일 급등 대금주 → RN 밴드·타점을 현재가 기준으로 계산."""
+    basis = days[2]
+    names = {u['code']: u for u in uni}
+    rows = []
+    for u in uni:
+        code = u['code']
+        rec = (per.get(code) or {}).get(basis)
+        cs = cache.get(code)
+        if not rec or not cs or len(cs) < 30:
+            continue
+        price = rec['c']
+        if price < 1000 or rec['valueEok'] < RN_MIN_VALUE:
+            continue
+        rows.append({
+            'code': code, 'name': u['name'], 'market': u.get('market') or '',
+            'price': int(price), 'chg': rec['pct'], 'valueEok': rec['valueEok'],
+            'volX': round(rec['v'] / (sum(x['v'] for x in cs[-21:-1]) / 20 or 1), 2),
+        })
+    if not rows:
+        return [], {'all': 0, 'touch_lower': 0, 'near_lower': 0, 'upper': 0}, basis
+
+    by_value = sorted(rows, key=lambda r: -r['valueEok'])[:8]
+    by_gain = sorted([r for r in rows if r['chg'] >= RN_MIN_PCT], key=lambda r: -r['chg'])[:6]
+    picked, seen = [], set()
+    for r in by_value + by_gain:
+        if r['code'] in seen:
+            continue
+        seen.add(r['code'])
+        picked.append(r)
+        if len(picked) >= RN_PICK:
+            break
+
+    out = []
+    for r in picked:
+        cs = cache.get(r['code']) or []
+        lines = rn_lines(r['price'])
+        out.append({
+            'name': r['name'], 'code': r['code'],
+            'category': lines['category'],
+            'price': r['price'], 'changeRatio': r['chg'],
+            'upperRN': lines['upperRN'], 'lowerRN': lines['lowerRN'],
+            'buy1': lines['buy1'], 'buy2': lines['buy2'],
+            'targetMin': lines['targetMin'], 'targetMax': lines['targetMax'],
+            'valueText': f"{r['valueEok']:,.0f}억",
+            'candles': rn_candles(cs, 60),
+        })
+    counts = {'all': len(out), 'touch_lower': 0, 'near_lower': 0, 'upper': 0}
+    for s in out:
+        counts[s['category']] += 1
+    log(f"  RN존 자동선정 {len(out)}종목 ("
+        f"상단터치 {counts['upper']} · 하단근접 {counts['near_lower']} · 하단터치 {counts['touch_lower']})")
+    return out, counts, basis
+
+
+def build_jongbe(uni, per, cache, days):
+    """대가별 종가베팅 조건으로 매일 자동 선정.
+       · shin(신정재): 윗꼬리 없는 양봉(고가 밀착) + 대금 — 15:18~15:20 매수·익일 09:05 전 청산 트랙
+       · kang(강창권): 최근 장대양봉(+10%↑) 뒤 5·20일선 위 눌림 — 4음1양 5일선 지지 트랙"""
+    basis = days[2]
+    shin, kang = [], []
+    for u in uni:
+        code = u['code']
+        rec = (per.get(code) or {}).get(basis)
+        cs = cache.get(code)
+        if not rec or not cs or len(cs) < 25:
+            continue
+        if rec['valueEok'] < JB_MIN_VALUE or rec['c'] < 1000:
+            continue
+        c, o, h = rec['c'], rec['o'], rec['h']
+        body = (c - o) / o * 100 if o else 0.0
+        upper = (h - c) / c * 100 if c else 99.0
+        s5, s20 = rec.get('sma5'), rec.get('sma20')
+
+        # 신정재 — 윗꼬리 없는 양봉(고가 밀착) · 당일 상승
+        if rec['pct'] >= 3.0 and body > 0 and upper <= 1.2:
+            shin.append({
+                'name': u['name'], 'code': code, 'track': 'shin',
+                'price': int(c), 'changeRatio': rec['pct'],
+                'valueText': f"{rec['valueEok']:,.0f}억",
+                'badge': f"⚡ 신정재 픽: 대금 {rec['valueEok']:,.0f}억 · 고가 밀착 양봉",
+                'entry': f"당일 종가 {int(c):,}원 ±0.5% (15:18~15:20 분할)",
+                'target': f"{to_tick(c * 1.03):,}원 (+3%) / {to_tick(c * 1.05):,}원 (+5%) · 익일 09:05 전 청산",
+                'stop': f"{to_tick(c * 0.992):,}원 (-0.8%) 이탈 시 즉시",
+
+                'reason': (f"윗꼬리 없는 양봉(고가 대비 {upper:+.2f}%) · 몸통 {body:+.2f}% · {rec['pct']:+.2f}% 마감. "
+                           f"신정재 규칙은 15:18~15:20 진입·익일 09:05 전 전량 청산입니다. "
+                           f"당일 고가 {int(h):,}원 / 종가 {int(c):,}원."),
+                'candles': rn_candles(cs, 45), '_score': rec['valueEok'] * (1 + rec['pct'] / 100),
+            })
+        # 강창권 — 장대양봉(+10%↑) 뒤 5·20일선 위 눌림
+        big = None
+        for k in range(1, 6):
+            if len(cs) <= k:
+                break
+            b = cs[-k]
+            if b['o'] and (b['c'] - b['o']) / b['o'] * 100 >= 10.0:
+                big = b
+                break
+        if big and s5 and s20 and c >= s20 and c >= s5 * 0.985 and rec['pct'] <= 4.0:
+            kang.append({
+                'name': u['name'], 'code': code, 'track': 'kang',
+                'price': int(c), 'changeRatio': rec['pct'],
+                'valueText': f"{rec['valueEok']:,.0f}억",
+                'badge': f"🏆 강창권 픽: 장대양봉 후 눌림 · 5일선 {int(s5):,}원",
+                'entry': f"5일선 {int(s5):,}원 지지 확인 후 종가 매수",
+                'target': f"{to_tick(c * 1.15):,}원 (+15%)",
+                'stop': f"20일선 {int(s20):,}원 이탈 시 매도",
+
+                'reason': (f"{big['date'][4:6]}/{big['date'][6:8]} 장대양봉(+{(big['c'] - big['o']) / big['o'] * 100:.2f}%) 이후 "
+                           f"눌림 구간(오늘 {rec['pct']:+.2f}%). 5일선 {int(s5):,}원 · 20일선 {int(s20):,}원 위에서 지지. "
+                           f"강창권 규칙은 5일선 지지 종가 매수·20일선 이탈 매도입니다."),
+                'candles': rn_candles(cs, 45), '_score': rec['valueEok'],
+            })
+
+    shin.sort(key=lambda x: -x['_score'])
+    kang.sort(key=lambda x: -x['_score'])
+    picks = shin[:JB_PICK_PER_TRACK] + kang[:JB_PICK_PER_TRACK]
+    for p in picks:
+        p.pop('_score', None)
+    log(f"  종가베팅 자동선정 {len(picks)}종목 (신정재 {len(shin[:JB_PICK_PER_TRACK])} · 강창권 {len(kang[:JB_PICK_PER_TRACK])})")
+    return picks, basis
+
+
+def rn_chip_html(stocks):
+    """1번 탭 '실전 타점 신호등'의 RN존 칩을 오늘 자동선정 종목으로 다시 만든다.
+       (예전에는 피에스케이홀딩스·하나마이크론이 박혀 있어 목록에서 빠지면 눌러도 열리지 않았다)"""
+    greens = [s for s in stocks if s['category'] in ('touch_lower', 'near_lower')]
+    reds = [s for s in stocks if s['category'] == 'upper']
+    out = []
+    for s in greens[:2]:
+        zone = '하단안착' if s['category'] == 'touch_lower' else '하단근접'
+        out.append(
+            f'<div class="signal-chip green" onclick="navigateToSignalStock(\'rnzone\', \'{s["code"]}\')">\n'
+            f'        <span>🟢 [RN존 {zone}]</span>\n'
+            f'        <strong>{s["name"]}:</strong>\n'
+            f'        <span>{s["buy1"]:,}원 이하 체결존 안착 (현재 {s["price"]:,}원 🎯)</span>\n'
+            f'      </div>'
+        )
+    for s in reds[:1]:
+        out.append(
+            f'<div class="signal-chip red" onclick="navigateToSignalStock(\'rnzone\', \'{s["code"]}\')">\n'
+            f'        <span>🔥 [RN존 상단 터치]</span>\n'
+            f'        <strong>{s["name"]}:</strong>\n'
+            f'        <span>상단 RN {s["upperRN"]:,}원 터치 (현재 {s["price"]:,}원 🎯)</span>\n'
+            f'      </div>'
+        )
+    return out
+
+
+def patch_rn_chips(html, stocks):
+    chips = rn_chip_html(stocks)
+    pat = re.compile(r'<div class="signal-chip[^"]*"[^>]*onclick="navigateToSignalStock\(\'rnzone\', \'\d{6}\'\)"[\s\S]*?</div>')
+    i = [0]
+
+    def repl(m):
+        k = i[0]
+        i[0] += 1
+        return chips[k] if k < len(chips) else ""
+
+    html = pat.sub(repl, html)
+    return html, len(chips)
+
+
+def patch_rn_live(html, rn_stocks, counts):
+    """RAW_STOCKS 배열 + 카테고리 탭 개수 라벨을 새 자동선정 목록으로 바꾼다."""
+    m = re.search(r'(const RAW_STOCKS = )(\[.*?\])(;)', html, re.DOTALL)
+    if not m:
+        return html, False
+    payload = json.dumps(rn_stocks, ensure_ascii=False, separators=(',', ':'))
+    html = html[:m.start(2)] + payload + html[m.end(2):]
+    labs = [('all', '전체 ({})'.format(counts['all'])),
+            ('touch_lower', '🟢 하단 터치 1차 타점 ({})'.format(counts['touch_lower'])),
+            ('near_lower', '🟡 하단 근접 ({})'.format(counts['near_lower'])),
+            ('upper', '🔥 상단 터치 ({})'.format(counts['upper']))]
+    for key, txt in labs:
+        pat = r"(onclick=\"RnZone\.filterCategory\('" + key + r"', this\)\">)[^<]*(</button>)"
+        html = re.subn(pat, lambda mm, t=txt: mm.group(1) + t + mm.group(2), html)[0]
+    # 1번 탭 '실전 타점 신호등' RN존 칩도 오늘 목록으로 교체
+    html, _nchips = patch_rn_chips(html, rn_stocks)
+    return html, True
+
+
+def patch_jongbe_live(html, jb_stocks):
+    """Jongbe 엔진 안의 `const STOCKS = [...]` 를 새 자동선정 목록으로 바꾼다."""
+    m = re.search(r'(window\.Jongbe\s*=\s*\(function\(\)\s*\{[\s\S]*?const STOCKS = )(\[.*?\])(;)', html)
+    if not m:
+        return html, False
+    payload = json.dumps(jb_stocks, ensure_ascii=False, separators=(',', ':'))
+    return html[:m.start(2)] + payload + html[m.end(2):], True
+
+
 # ------------------------------------------------------------------ 8) HTML 갱신
 HONG_MARK = "<!-- 🎯 홍인기 탭 엔진 (HonginkiTab"
 BIJ_MARK = "<!-- 📊 비중법사 탭 엔진 (BijoongTab"
@@ -1038,10 +1425,32 @@ def main():
             per[u["code"]] = r
     log(f"  3거래일 지표 {len(per)}종목")
 
+    # ---- KRX 오픈API 확정치 교차검증 (장마감 후·확정일 스캔에서만)
+    krx_stat, krx_errors = None, []
+    krx_key = load_krx_key()
+    settled = (basis != now_kst().strftime("%Y%m%d")) or (now_kst().hour * 60 + now_kst().minute >= 15 * 60 + 40)
+    if krx_key and settled:
+        log("[4b] KRX 오픈API 확정치 교차검증")
+        krx_rows, krx_errors = fetch_krx_daily(basis, krx_key)
+        if krx_rows:
+            krx_stat = krx_adjust(per, cache, basis, krx_rows)
+            log(f"  KRX 교차검증 — 확인 {krx_stat['checked']} · 보정 {krx_stat['fixed']}종목 · "
+                f"대금만 보정 {krx_stat['valueOnly']} · 미포함 {krx_stat['missing']}")
+            save_cache(cache)
+        else:
+            log(f"  ! KRX 응답 없음 — 네이버 값으로 진행 {krx_errors[:2]}")
+    elif not krx_key:
+        log("  KRX 키 없음(/workspace/.krx_api_key) — 네이버 값 그대로 사용")
+    else:
+        log("  장중 기준일 스캔 — KRX 확정치 대기(네이버 값 사용)")
+
     hong = build_hong(uni, per, themes, days, totals)
     bij = build_bij(uni, per, days, base_count=len(cache))
     log(f"  홍인기 카드 {len(hong['cards'])} · 탈락 {len(hong['reject'])}")
     log(f"  비중법사 기준봉 {bij['baseCount']} · 카드 {len(bij['cards'])} · 탈락 {len(bij['rejects'])}")
+    # 5개 전략 탭 통일 — RN존·종가베팅도 같은 장마감 일봉으로 매일 새로 선정한다.
+    rn_stocks, rn_counts, rn_basis = build_rnzone(uni, per, cache, days)
+    jb_stocks, jb_basis = build_jongbe(uni, per, cache, days)
 
     payload = {
         "generatedAt": hong["generatedAt"], "basisDate": basis, "days": days,
@@ -1050,6 +1459,9 @@ def main():
         "nextLongLabel": dlong_short(next_trading_day(basis)),
         "universe": len(uni), "scanned": len(per),
         "honginki": hong, "bijoong": bij,
+        "rnzone": {"count": len(rn_stocks), "counts": rn_counts, "basisDate": rn_basis},
+        "jongbe": {"count": len(jb_stocks), "basisDate": jb_basis},
+        "krx": {"basisDate": basis, "stat": krx_stat, "errors": krx_errors[:3]},
     }
     wd = payload["nextLongLabel"].split("(")[-1].rstrip(")")
     payload["nextLabelKo"] = f"{payload['nextLabel']} {wd}"
@@ -1064,6 +1476,13 @@ def main():
                       (os.path.join(DATA_DIR, "bijoong-latest.json"), bij)):
         open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
     open(LATEST, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    for path, obj in ((os.path.join(DATA_DIR, "rnzone-latest.json"),
+                       {"generatedAt": payload["generatedAt"], "basisDate": rn_basis,
+                        "counts": rn_counts, "stocks": rn_stocks}),
+                      (os.path.join(DATA_DIR, "jongbe-latest.json"),
+                       {"generatedAt": payload["generatedAt"], "basisDate": jb_basis,
+                        "stocks": jb_stocks})):
+        open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
 
     # ---- HTML 반영
     patched = {"hong": 0, "bij": 0}
@@ -1074,9 +1493,27 @@ def main():
             log(f"! DATA 블록을 정확히 찾지 못했습니다 {patched} — index.html을 쓰지 않습니다")
             return 1
         html, nlab = patch_labels(html, hong, bij)
+        html, rn_ok = patch_rn_live(html, rn_stocks, rn_counts)
+        html, jb_ok = patch_jongbe_live(html, jb_stocks)
+        if not rn_ok or not jb_ok:
+            log(f"! RN존·종베 목록 블록을 찾지 못했습니다 (rn={rn_ok} jb={jb_ok}) — index.html을 쓰지 않습니다")
+            return 1
         open(HTML, "w", encoding="utf-8").write(html)
         rep = validate_html()
-        log(f"  HTML 반영 — DATA {patched} · 라벨 {nlab}곳 · 구문오류 {len(rep['syntax_errors'])} · div차이 {rep['div_delta']}")
+        log(f"  HTML 반영 — DATA {patched} · 라벨 {nlab}곳 · RN {len(rn_stocks)} · 종베 {len(jb_stocks)} · 구문오류 {len(rep['syntax_errors'])} · div차이 {rep['div_delta']}")
+        # 정적 미러(deploy_repo/index.html)도 같은 자동선정 목록으로 맞춘다
+        if os.path.exists(STATIC_HTML):
+            try:
+                st = open(STATIC_HTML, encoding="utf-8").read()
+                st2, a1 = patch_rn_live(st, rn_stocks, rn_counts)
+                st2, b1 = patch_jongbe_live(st2, jb_stocks)
+                if a1 and b1 and st2 != st:
+                    open(STATIC_HTML, "w", encoding="utf-8").write(st2)
+                    log("  정적 미러(deploy_repo/index.html) RN존·종베 목록 동기화")
+                elif not (a1 and b1):
+                    log(f"  ! 정적 미러 블록 미발견(rn={a1} jb={b1}) — 그대로 둠")
+            except Exception as e:      # noqa: BLE001
+                log(f"  ! 정적 미러 동기화 실패: {e}")
         if not rep["ok"]:
             log(json.dumps(rep, ensure_ascii=False)[:1200])
             return 1

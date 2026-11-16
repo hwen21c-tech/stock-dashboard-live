@@ -2789,14 +2789,22 @@
     var stocks = t.stocks || [];
     var rise = isNum(t.riseCount) ? t.riseCount : 0;
     var fall = isNum(t.fallCount) ? t.fallCount : 0;
+    var steady = isNum(t.steadyCount) ? t.steadyCount : 0;
+    var totalN = isNum(t.stockCount) ? t.stockCount : (rise + fall + steady);
+    var riseRatio = isNum(t.riseRatio) ? t.riseRatio : (totalN ? Math.round((rise / totalN) * 1000) / 10 : null);
+    /* 상승 확산도 — 단독 1종목 급등인지 섹터 전체가 오르는지 한눈에 보이게 한다 */
+    var spread = totalN
+      ? ' · 상승 ' + rise + '/' + totalN + (riseRatio != null ? ' (' + riseRatio + '%)' : '')
+      : '';
+    var spreadColor = riseRatio == null ? '#94a3b8' : (riseRatio >= 60 ? '#f87171' : (riseRatio >= 40 ? '#fbbf24' : '#94a3b8'));
     return (
       '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
         '<div class="theme-header">' +
           '<span class="theme-name">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
-            ' <span style="font-size:10px; color:#94a3b8; font-weight:600; margin-left:4px; letter-spacing:-0.2px;">' +
-              '(합산 ' + esc(t.sumValueText || '—') + ' · 상승 ' + rise + '/' + (rise + fall) + ')</span>' +
+            ' <span style="font-size:10px; color:' + spreadColor + '; font-weight:700; margin-left:4px; letter-spacing:-0.2px;" title="테마 구성종목 중 당일 상승 종목 비율(확산도)">' +
+              '(합산 ' + esc(t.sumValueText || '—') + spread + ')</span>' +
           '</span>' +
         '</div>' +
         '<div class="stock-tiles">' +

@@ -600,20 +600,27 @@ async function fetchThemeStocks(no) {
  */
 function pickThemeStocks(stocks) {
   const list = Array.isArray(stocks) ? stocks.filter((s) => s && s.code) : [];
-  const byPct = list
+  /* 📌 대장은 '당일 상승 중인 종목'에서만 뽑는다.
+     거래대금만 큰 하락 종목(예: 인텔리빅스 -2%)이 (실질 거래대금 대장)으로 올라가면
+     테마가 강한 것처럼 보이는 착시가 생긴다 — 하락 종목은 (하락 대금 상위)로만 분류한다. */
+  const rising = list.filter((s) => typeof s.changePct === 'number' && s.changePct > 0);
+  const falling = list.filter((s) => !(typeof s.changePct === 'number' && s.changePct > 0));
+  const byPctRise = rising
     .slice()
     .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999) || (b.value ?? 0) - (a.value ?? 0));
-  const byValue = list.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  const byValueRise = rising.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  const byValueFall = falling.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const out = [];
   const push = (s, role) => {
     if (!s || out.length >= THEME_STOCK_TOP) return;
     if (out.some((x) => x.code === s.code)) return;
     out.push({ ...s, role, tileName: s.name });
   };
-  push(byPct[0], '상승률 대장');
-  push(byValue[0], '실질 거래대금 대장');
-  byPct.forEach((s) => push(s, '동반 상승'));
-  byValue.forEach((s) => push(s, '거래대금 상위'));
+  push(byPctRise[0], '상승률 대장');
+  push(byValueRise[0], '실질 거래대금 대장');
+  byPctRise.forEach((s) => push(s, '동반 상승'));
+  byValueRise.forEach((s) => push(s, '거래대금 상위'));
+  byValueFall.forEach((s) => push(s, '하락 대금 상위'));
   return out;
 }
 

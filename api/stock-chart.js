@@ -200,6 +200,9 @@ async function fetchLivePrice(code) {
     name: d.stockName,
     market: (d.stockExchangeType && d.stockExchangeType.name) || null,
     price: parseNum(d.closePriceRaw) ?? parseNum(d.closePrice),
+    open: parseNum(d.openPriceRaw) ?? parseNum(d.openPrice),
+    high: parseNum(d.highPriceRaw) ?? parseNum(d.highPrice),
+    low: parseNum(d.lowPriceRaw) ?? parseNum(d.lowPrice),
     change: sign === 'FALLING' ? -Math.abs(change) : change,
     changePct: sign === 'FALLING' ? -Math.abs(pct) : pct,
     volume: parseNum(d.accumulatedTradingVolumeRaw),
@@ -361,6 +364,24 @@ module.exports = async function handler(req, res) {
   const prev = candles.length > 1 ? candles[candles.length - 2] : null;
   const currentPrice = live && live.price ? live.price : last.c;
 
+  /* ── 오늘 봉 = 실시간 봉 ──────────────────────────────────────────────
+     fchart 일봉은 장중에 몇 분씩 늦게 갱신된다. 마지막 봉이 오늘(KST)이면
+     네이버 실시간 체결(시·고·저·현재가·누적거래량)로 덮어써서, 5개 전략 탭의
+     카드 차트·팝업 차트에 '지금 이 순간의 봉'이 그려지게 한다. */
+  const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+  const todayKst = kstNow.toISOString().slice(0, 10).replace(/-/g, '');
+  let liveBar = false;
+  if (live && live.price && last && String(last.date) === todayKst) {
+    const o = live.open && live.open > 0 ? live.open : last.o;
+    last.o = o;
+    last.h = Math.max(last.h || 0, live.high || 0, live.price);
+    last.l = Math.min(last.l || live.price, live.low || live.price, live.price);
+    last.c = live.price;
+    last.v = Math.max(last.v || 0, live.volume || 0);
+    last.live = true;
+    liveBar = true;
+  }
+
   // 등락률 기준이 두 가지다.
   //  · headline(change/changePct): 네이버 증권 화면과 동일한 표기(전일 종가 = 정규장+시간외 최종 종가 기준)
   //  · closeChange: 일봉 정규장 종가끼리의 비교(차트 마지막 두 봉). 값이 다를 수 있어 함께 내려준다.
@@ -386,6 +407,7 @@ module.exports = async function handler(req, res) {
       change: headlineChange,
       changePct: headlinePct,
       changeBasis: live ? 'naver-polling(전일 종가·시간외 반영)' : 'daily-close',
+      liveBar,
       marketStatus: live ? live.marketStatus : null,
       tradedAt: live ? live.tradedAt : null,
       tradedAtKst: live ? live.tradedAtKst : null,
@@ -400,6 +422,7 @@ module.exports = async function handler(req, res) {
     },
     candles,
     candleCount: candles.length,
+    liveBar,                       /* 마지막 봉에 실시간 체결을 반영했는지 */
     range: {
       from: candles[0].date,
       to: last.date,
