@@ -756,8 +756,23 @@
     el.style.color = kind === 'err' ? '#fca5a5' : kind === 'ok' ? '#34d399' : kind === 'warn' ? '#fbbf24' : '#94a3b8';
   }
 
-  function toRnStock(json) {
-    var raw = json.candles || [];
+  /** KRX 호가 단위로 반올림 — RN존 타점·목표가가 종이 위 숫자가 되지 않게 한다 */
+  function krTick(p) {
+    var v = Math.abs(p);
+    if (v < 2000) return 1;
+    if (v < 5000) return 5;
+    if (v < 20000) return 10;
+    if (v < 50000) return 50;
+    if (v < 200000) return 100;
+    if (v < 500000) return 500;
+    return 1000;
+  }
+  function tickRound(v) {
+    var t = krTick(v);
+    return Math.round(Number(v) / t) * t;
+  }
+
+  function toRnStock(json) {    var raw = json.candles || [];
     var candles = raw.map(function (c, i) {
       var prev = i > 0 ? raw[i - 1].c : c.o;
       var ratio = prev ? ((c.c - prev) / prev) * 100 : 0;
@@ -781,8 +796,8 @@
     var upper = rn.nearestResistance && num(rn.nearestResistance.level) !== null ? rn.nearestResistance.level : Math.ceil(price * 1.1);
     if (!(lower > 0)) lower = Math.floor(price / 10) * 10;
     if (!(upper > lower)) upper = Math.ceil(price * 1.1);
-    var buy1 = Math.round(lower * 1.04);
-    var buy2 = Math.round(buy1 * 0.8);
+    var buy1 = tickRound(lower * 1.04);
+    var buy2 = tickRound(buy1 * 0.8);
     var changePct = json.current && num(json.current.changePct) !== null ? Number(json.current.changePct.toFixed(2)) : Number(candles[candles.length - 1].ratio);
 
     return {
@@ -796,8 +811,8 @@
       rnBand: rnBand,
       buy1: buy1,
       buy2: buy2,
-      targetMin: Math.round(buy1 * 1.07),
-      targetMax: Math.round(buy1 * 1.2),
+      targetMin: tickRound(buy1 * 1.07),
+      targetMax: tickRound(buy1 * 1.2),
       candles: candles
     };
   }
