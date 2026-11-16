@@ -14,7 +14,7 @@
   'use strict';
   if (window.PkmSync && window.PkmSync.version) return;
 
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
 
   /* ---------- 접속 정보 (기본값 · 고급 설정에서 기기별로 바꿀 수 있다) ---------- */
   var DEF = {
@@ -329,6 +329,138 @@
     return fetch(url, { method: 'DELETE', headers: headers({ 'Prefer': 'return=minimal' }) }).then(function (res) {
       if (!res.ok) return res.text().then(function (t) { throw new Error('HTTP ' + res.status + ' ' + String(t).slice(0, 140)); });
       return true;
+    });
+  }
+
+  /* ============================================================
+     ⏪ 이전 백업 불러오기 (3슬롯)
+     ─ 스케줄 액션(scheduled-actions/포켓몬-클라우드-3슬롯-자동백업)이 매일
+       아침 10:02 · 오후 16:02 · 밤 23:55 에 현재 코드의 내용을 슬롯 행
+       `{code}_am` · `{code}_pm` · `{code}_night` 에 그대로 복사해 둔다.
+     ─ 복원 = 그 슬롯의 data.keys 를 이 기기에 쓰고, 지금 코드({code}) 행도 같은 값으로 덮는다.
+       (push() 는 '합치기'라 되돌리기가 되지 않으므로 서버 행을 직접 쓴다)
+     ============================================================ */
+  var SLOTS = [
+    { s: 'am', suffix: '_am', name: '🌅 아침 10시', at: '10:02' },
+    { s: 'pm', suffix: '_pm', name: '🌇 오후 4시', at: '16:02' },
+    { s: 'night', suffix: '_night', name: '🌙 밤 12시', at: '23:55' }
+  ];
+  var slotMeta = { am: null, pm: null, night: null };
+  var slotReady = false;
+
+  function slotCodes() {
+    var c = cfg();
+    return SLOTS.map(function (s) { return c.code + s.suffix; });
+  }
+  /* 모달을 열 때 3슬롯의 '언제 저장됐는지'만 가볍게 읽는다(내용은 복원할 때 읽는다) */
+  function loadSlots() {
+    var codes = slotCodes();
+    slotReady = false;
+    var list = codes.map(encodeURIComponent).join(',');
+    function read(sel) {
+      return fetch(api('?code=in.(' + list + ')&select=' + sel), { headers: headers(), cache: 'no-store' })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .catch(function () { return null; });
+    }
+    return read('code,updated_at,backedUpAt:data->>backedUpAt').then(function (arr) {
+      /* `->>` 추출을 못 쓰는 서버면 updated_at 만으로 다시 읽는다 */
+      if (!Array.isArray(arr)) return read('code,updated_at');
+      return arr;
+    }).then(function (arr) {
+      var byCode = {};
+      (Array.isArray(arr) ? arr : []).forEach(function (row) { if (row && row.code) byCode[row.code] = row; });
+      slotMeta = {};
+      SLOTS.forEach(function (s, i) {
+        var row = byCode[codes[i]];
+        slotMeta[s.s] = row ? { at: row.backedUpAt || row.updated_at || null } : null;
+      });
+      slotReady = true;
+      return slotMeta;
+    });
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  /* 11/16 16:02 (KST) */
+  function fmtSlotAt(t) {
+    if (!t) return '저장 없음';
+    var d = new Date(t);
+    if (!isFinite(d.getTime())) return '저장 없음';
+    var k = new Date(d.getTime() + 9 * 3600 * 1000);
+    return (k.getUTCMonth() + 1) + '/' + k.getUTCDate() + ' ' + pad2(k.getUTCHours()) + ':' + pad2(k.getUTCMinutes());
+  }
+
+  /* 되돌릴 때 '그 시점엔 없던 포켓몬'이 사라지도록 resetAt 을 찍는다.
+     (다른 기기가 낡은 목록을 들고 push 해도 지운 것으로 처리된다 — mergeDex 규칙 그대로) */
+  function markDexRestore(backupRaw, currentRaw, at) {
+    var b = jp(backupRaw, null);
+    if (!b || !Array.isArray(b.ids)) return backupRaw;
+    var cur = jp(currentRaw, null);
+    var curIds = (cur && Array.isArray(cur.ids)) ? cur.ids.map(String) : [];
+    var set = {};
+    b.ids.forEach(function (id) { set[String(id)] = 1; });
+    var lost = curIds.some(function (id) { return !set[id]; });
+    var already = Number(b.resetAt) || 0;
+    if (!lost || already >= at) return backupRaw;
+    b.resetAt = at;
+    return JSON.stringify(b);
+  }
+
+  var lastRestoreErr = '';
+  /* slotSuffix: '_am' | '_pm' | '_night'  → 'restored' | 'same' | 'empty' | 'error' */
+  function restoreSlot(suffix) {
+    var c = cfg();
+    if (!c.code) return Promise.resolve('nocode');
+    var fromCode = c.code + suffix;
+    lastRestoreErr = '';
+    setState('syncing', '되돌리는 중…');
+    var url = api('?code=eq.' + encodeURIComponent(fromCode) + '&select=code,data,updated_at');
+    return fetch(url, { headers: headers(), cache: 'no-store' }).then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error('HTTP ' + res.status + ' ' + String(t).slice(0, 140)); });
+      return res.json();
+    }).then(function (arr) {
+      var row = (Array.isArray(arr) && arr.length) ? arr[0] : null;
+      var srcKeys = (row && row.data && row.data.keys) || null;
+      if (!srcKeys || !Object.keys(srcKeys).length) return 'empty';
+
+      var now = Date.now();
+      var keys = {}, n = 0, k;
+      for (k in srcKeys) {
+        if (!isSyncKey(k) || typeof srcKeys[k] !== 'string') continue;
+        keys[k] = startsWith(k, 'pkm.shared.dex.v1.')
+          ? markDexRestore(srcKeys[k], lsGet(k), now)
+          : srcKeys[k];
+      }
+      applying = true;
+      try {
+        for (k in keys) {
+          if (lsGet(k) === keys[k]) continue;
+          lsSet(k, keys[k]);
+          n++;
+        }
+      } finally { applying = false; dirty = {}; }
+
+      var nowIso = new Date(now).toISOString();
+      var payload = {
+        code: c.code,
+        data: { v: 1, keys: keys, pushedAt: nowIso, device: deviceTag(), restoredFrom: fromCode, restoredAt: nowIso },
+        updated_at: nowIso
+      };
+      return putRow(payload).then(function () {
+        var m = metaLoad(c.code);
+        m.remoteAt = nowIso;
+        m.hash = hashOf(keys);
+        m.lastPushAt = now;
+        m.lastSyncAt = now;
+        syncSeen(m, keys);
+        metaSave(m);
+        S.lastAt = now;
+        setState('ok', '되돌렸어요 (' + n + '개)');
+        try { if (bc) bc.postMessage({ t: 'pushed', code: c.code }); } catch (e) { /* */ }
+        return n ? 'restored' : 'same';
+      });
+    }).catch(function (e) {
+      lastRestoreErr = errMsg(e);
+      setState('error', lastRestoreErr);
+      return 'error';
     });
   }
 
@@ -847,7 +979,23 @@
     '.pkms-adv{margin-top:12px;border-top:2px solid #eef6dd;padding-top:6px}',
     '.pkms-adv summary{cursor:pointer;color:#6b8547;font-weight:900;font-size:clamp(11px,3vw,12.5px);padding:6px 0}',
     '.pkms-msg{margin:8px 0 0;min-height:14px;font-size:clamp(10.5px,2.9vw,12px);font-weight:900;color:#5c7a34}',
-    '.pkms-msg.bad{color:#c0392b}'
+    '.pkms-msg.bad{color:#c0392b}',
+    /* ⏪ 이전 백업 불러오기 */
+    '.pkms-backups{margin-top:12px;border-top:2px solid #eef6dd;padding-top:8px}',
+    '.pkms-backups .pkms-lb{margin:2px 2px 4px}',
+    '.pkms-slot{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px dashed #e6f0d2;flex-wrap:wrap}',
+    '.pkms-slot:last-of-type{border-bottom:0}',
+    '.pkms-slot .nm{font-weight:900;color:#22400f;flex:1 1 auto;min-width:88px;font-size:clamp(11.5px,3.2vw,13px)}',
+    '.pkms-slot .at{font-weight:900;color:#5c7a34;font-size:clamp(10.5px,2.9vw,12px);flex:0 0 auto}',
+    '.pkms-slot .at[data-empty="1"]{color:#b6bfa4}',
+    '.pkms-slot .pkms-btn.mini{flex:0 0 auto}',
+    '.pkms-toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,14px);z-index:2147482500;',
+    'padding:11px 16px;border-radius:14px;background:rgba(34,64,15,.94);color:#fff;font-weight:900;',
+    'font-size:clamp(12px,3.2vw,13.5px);max-width:min(340px,88vw);text-align:center;line-height:1.45;',
+    'opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;',
+    'font-family:"Apple SD Gothic Neo","Noto Sans KR",system-ui,-apple-system,sans-serif;letter-spacing:-.02em}',
+    '.pkms-toast[data-on="1"]{opacity:1;transform:translate(-50%,0)}',
+    '.pkms-toast.bad{background:rgba(150,32,20,.95)}'
   ].join('');
 
   function injectCSS() {
@@ -955,6 +1103,9 @@
       '<div class="pkms-btns">' +
       '<button class="pkms-btn" type="button" data-a="push">☁️ 지금 클라우드로 올리기</button>' +
       '<button class="pkms-btn ghost" type="button" data-a="pull">⬇️ 지금 클라우드에서 받기</button>' +
+      '</div>' +
+      slotSectionHTML() +
+      '<div class="pkms-btns">' +
       '<button class="pkms-btn mini ghost" type="button" data-a="code">🔑 가족 코드 바꾸기</button>' +
       '</div>' +
       '<p class="pkms-note">같은 코드를 쓰는 기기끼리 도감·이름·마을·아이템·판수가 자동으로 맞춰져요.<br>' +
@@ -965,6 +1116,106 @@
       '<div class="pkms-btns"><button class="pkms-btn mini ghost" type="button" data-a="savecfg">저장</button></div>' +
       '</details>';
     wiring();
+    loadSlots().then(paintSlotTimes);
+  }
+
+  /* ---------- ⏪ 이전 백업 불러오기 ---------- */
+  function slotSectionHTML() {
+    var rows = SLOTS.map(function (s) {
+      return '<div class="pkms-slot">' +
+        '<span class="nm">' + s.name + '</span>' +
+        '<span class="at" data-slot-at="' + s.s + '" data-empty="2">확인 중…</span>' +
+        '<button class="pkms-btn mini ghost" type="button" data-slot-btn="' + s.s + '">불러오기</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="pkms-backups">' +
+      '<div class="pkms-lb">⏪ 이전 백업 불러오기</div>' + rows +
+      '<p class="pkms-note" style="margin-top:6px">매일 아침 10시 · 오후 4시 · 밤 12시에 자동으로 저장해 둬요.<br>' +
+      '불러오면 그 시점의 도감·마을 기록으로 가족 모두 되돌려요.</p>' +
+      '</div>';
+  }
+  function paintSlotTimes() {
+    if (!bodyEl) return;
+    SLOTS.forEach(function (s) {
+      var el = bodyEl.querySelector('[data-slot-at="' + s.s + '"]');
+      if (!el) return;
+      var m = slotMeta[s.s];
+      var at = m && m.at;
+      el.textContent = at ? fmtSlotAt(at) : '저장 없음';
+      el.setAttribute('data-empty', at ? '0' : '1');
+    });
+  }
+  function toast(t, bad) {
+    try {
+      var el = document.getElementById('pkmsToast');
+      if (!el) {
+        el = h('div', 'pkms-toast');
+        el.id = 'pkmsToast';
+        el.setAttribute('role', 'status');
+        document.body.appendChild(el);
+      }
+      el.textContent = t;
+      el.className = 'pkms-toast' + (bad ? ' bad' : '');
+      el.setAttribute('data-on', '1');
+      if (toast.__t) clearTimeout(toast.__t);
+      toast.__t = setTimeout(function () { el.setAttribute('data-on', '0'); }, 2600);
+    } catch (e) { /* */ }
+  }
+  function slotByKey(s) {
+    for (var i = 0; i < SLOTS.length; i++) if (SLOTS[i].s === s) return SLOTS[i];
+    return null;
+  }
+  function openRestore(s) {
+    var slot = slotByKey(s);
+    if (!slot) return;
+    if (!slotReady) {
+      toast('백업 목록을 불러오는 중…');
+      loadSlots().then(paintSlotTimes);
+      return;
+    }
+    if (slotMeta[s] === null) { toast('이 슬롯에는 아직 백업이 없어요', true); return; }
+    renderRestore(slot);
+  }
+  function renderRestore(slot) {
+    var at = slotMeta[slot.s] && slotMeta[slot.s].at;
+    bodyEl.innerHTML =
+      '<div class="pkms-lb" style="margin-top:0">⏪ ' + slot.name + ' 백업</div>' +
+      '<div class="pkms-row"><span class="lb">저장 시각</span><span class="vl" data-slot-at="' + slot.s + '">' + esc(fmtSlotAt(at)) + '</span></div>' +
+      '<p class="pkms-note" style="margin-top:8px;color:#8a4b00">이 시점의 도감·마을 기록으로 되돌릴까요?<br>' +
+      '이 기기와 가족 클라우드가 함께 그 시점으로 맞춰져요.</p>' +
+      '<div class="pkms-lb">아빠 PIN (4자리)</div>' +
+      '<input class="pkms-in" id="pkmsRestorePin" inputmode="numeric" maxlength="4" type="password" placeholder="••••">' +
+      '<div class="pkms-msg"></div>' +
+      '<div class="pkms-btns">' +
+      '<button class="pkms-btn" type="button" data-a="dorestore">⏪ 이 시점으로 되돌리기</button>' +
+      '<button class="pkms-btn ghost" type="button" data-a="back">← 돌아가기</button></div>' +
+      '<p class="pkms-note">되돌리면 지금 도감에 있는 포켓몬 중 그 시점에 없던 것은 사라져요.<br>' +
+      '다음 백업은 다음 아침 10시 · 오후 4시 · 밤 12시에 자동 저장돼요.</p>';
+    bodyEl.querySelector('[data-a="back"]').addEventListener('click', renderMain);
+    var pinEl = bodyEl.querySelector('#pkmsRestorePin');
+    if (pinEl) pinEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') bodyEl.querySelector('[data-a="dorestore"]').click(); });
+    bodyEl.querySelector('[data-a="dorestore"]').addEventListener('click', function () {
+      var btn = this;
+      var pin = ((pinEl && pinEl.value) || '').replace(/\D/g, '');
+      var realPin = (lsGet(K_PIN) || '').replace(/\D/g, '');
+      if (pin.length !== 4) { msg('PIN 4자리를 넣어 주세요', true); return; }
+      if (pin !== (realPin || '0623')) { msg('아빠 PIN이 맞지 않아요', true); return; }
+      btn.disabled = true;
+      msg('되돌리는 중…');
+      restoreSlot(slot.suffix).then(function (r) {
+        btn.disabled = false;
+        if (r === 'restored' || r === 'same') {
+          toast('⏪ ' + slot.name + ' 시점으로 되돌렸어요');
+          msg('되돌렸어요 · 화면을 새로 고칩니다');
+          setTimeout(function () { notifyApplied(1); }, 520);
+        } else if (r === 'empty') {
+          toast('이 슬롯에는 아직 백업이 없어요', true);
+          loadSlots().then(function () { renderMain(); });
+        } else {
+          msg(lastRestoreErr || '되돌리지 못했어요', true);
+        }
+      });
+    });
   }
   function wiring() {
     var p = bodyEl.querySelector('[data-a="push"]');
@@ -1002,6 +1253,12 @@
       msg('저장했어요 · 다시 연결합니다');
       setTimeout(function () { pull(); }, 200);
     });
+    var sbs = bodyEl.querySelectorAll('[data-slot-btn]');
+    for (var i = 0; i < sbs.length; i++) {
+      (function (el) {
+        el.addEventListener('click', function () { openRestore(el.getAttribute('data-slot-btn')); });
+      })(sbs[i]);
+    }
   }
   function renderCode() {
     bodyEl.innerHTML =
@@ -1064,6 +1321,9 @@
     isSyncKey: isSyncKey,
     collectLocal: collectLocal,
     mergeDex: mergeDex,          /* 검증용 — 지운 기록·다시 잡은 기록 합치기 규칙 */
+    restoreSlot: restoreSlot,    /* ⏪ 이전 백업 복원 — '_am' | '_pm' | '_night' */
+    loadSlots: loadSlots,        /* 3슬롯 최근 저장 시각 읽기 */
+    slots: function () { return { meta: slotMeta, ready: slotReady, list: SLOTS }; },
     setCode: function (c) { lsSet(K_CODE, String(c)); lsDel(K_META); S.code = String(c); paintBadge(); },
     open: openModal,
     deleteCode: delRow,
