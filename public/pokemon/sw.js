@@ -5,8 +5,8 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v17';  /* 2026-11-16 v17: ☁️ 가족 클라우드 모달에 「⏪ 이전 백업 불러오기」(아침 10시·오후 4시·밤 12시 3슬롯 복원)
-                                    (v16: 홈 6번째 메뉴 「🏡 3D 포켓몬 아지트」 연결 / v15: 🛡️ 아빠 PIN 도감 삭제 영구 방어) */
+const VERSION = PREFIX + 'v18';  /* 2026-11-16 v18: 🐛 지안 도감 분리(이름 지안 인식·한글 자리표 정정) + ➕ 아빠 권한 포켓몬 추가(pokemon-dexadd.js)
+                                    (v17: ☁️ 가족 클라우드 「⏪ 이전 백업 불러오기」 / v16: 🏡 3D 포켓몬 아지트 / v15: 🛡️ 아빠 PIN 도감 삭제 영구 방어) */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -23,6 +23,7 @@ const SHELL = [
   '/pokemon-props.js',
   '/pokemon-lock.js',
   '/pokemon-sync.js',
+  '/pokemon-dexadd.js',
   '/pokemon-db.json',
   '/hangul-bank.json',
   '/english-bank.json',

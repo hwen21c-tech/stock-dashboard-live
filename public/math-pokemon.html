@@ -740,12 +740,19 @@
   .diffgrid button.on span{color:#8a5f12}
   .setnote{margin:13px 0 0;font-size:10px;color:#93a17c;text-align:center;font-weight:700}
 
-  .sheet-foot{padding:9px 12px calc(10px + env(safe-area-inset-bottom));border-top:2px solid #e6f1cc;background:#f4ffdf;display:flex;justify-content:center;flex:0 0 auto}
+  .sheet-foot{padding:9px 12px calc(10px + env(safe-area-inset-bottom));border-top:2px solid #e6f1cc;background:#f4ffdf;display:flex;gap:8px;justify-content:center;flex:0 0 auto}
   .dangerbtn{
     padding:8px 14px;border-radius:10px;font-weight:900;font-size:clamp(11px,3vw,12.5px);
     background:#fff3f1;border:2px solid #f3b6ae;color:#c0392b;box-shadow:0 2px 0 #f0d0cb
   }
   .dangerbtn:active{transform:translateY(2px);box-shadow:none}
+  /* ➕ 아빠 권한 — 아빠 PIN 이 풀려 있을 때만 보인다(도감에 포켓몬을 생기게 한다) */
+  .addbtn{
+    padding:8px 14px;border-radius:10px;font-weight:900;font-size:clamp(11px,3vw,12.5px);
+    background:linear-gradient(180deg,#eaffcc,#d3f6a9);border:2px solid #9fd46f;color:#2f5c14;box-shadow:0 2px 0 #c2e59a
+  }
+  .addbtn:active{transform:translateY(2px);box-shadow:none}
+  .addbtn[hidden]{display:none}
   .btnrow button.danger{background:linear-gradient(180deg,#ff8a80,#e5493a);border-color:#c0342a;color:#fff;box-shadow:0 3px 0 #a02a20}
   #resetModal{z-index:70}
 
@@ -902,6 +909,7 @@
 </style>
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-sync.js"></script>
+<script src="/pokemon-dexadd.js"></script>
 </head>
 <body>
 
@@ -1090,9 +1098,10 @@
       </div>
       <div class="dextabs tytabs" id="dexTypeTabs"></div>
       <div class="dexgrid" id="dexGrid"></div>
-      <p class="note" id="dexNote" style="font-size:10.5px;color:#8b9673;text-align:center;margin:10px 0 0">몬스터를 잡으면 여기에 컬러로 기록됩니다. (친구별로 이 기기에 자동 저장)</p>
+      <p class="note" id="dexNote" style="font-size:10.5px;color:#8b9673;text-align:center;margin:10px 0 0">몬스터를 잡으면 여기에 컬러로 기록됩니다. (친구별로 이 기기에 자동 저장) · 🧬 진화형은 이전 단계를 2마리 잡으면 야생에 나타나요</p>
     </div>
     <div class="sheet-foot">
+      <button class="addbtn" id="dexAddBtn" hidden>➕ 포켓몬 추가</button>
       <button class="dangerbtn" id="dexResetBtn">🗑️ 도감 초기화</button>
     </div>
   </div>
@@ -2035,7 +2044,7 @@ const GAME = 'math';
 const SHARED_PREFIX = 'pkm.shared.dex.v1.';
 const SUBJECT_LABEL = { math: '⚡ 산수', hangul: '📖 한글', english: '🔤 영어' };
 const PROFILE_KEYS = { math: 'mpb.profiles.v1', hangul: 'hpb.profiles.v1', english: 'epb.profiles.v1' };
-const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2', p3: 'guest' }, hangul: { p1: 'p2', p2: 'p1', p3: 'guest' }, english: { p1: 'p1', p2: 'p2', p3: 'guest' } };
+const SLOT_BY_DEFAULT = { math: { p1: 'p1', p2: 'p2', p3: 'guest' }, hangul: { p1: 'p1', p2: 'p2', p3: 'guest' }, english: { p1: 'p1', p2: 'p2', p3: 'guest' } };
 const LEGACY_DEX_KEYS = [
   { key: 'mpb.dex.v2.p1', game: 'math', id: 'p1' },
   { key: 'mpb.dex.v2.p2', game: 'math', id: 'p2' },
@@ -2054,7 +2063,7 @@ function slotFromName(name) {
   const n = String(name || '');
   if (/게스트|guest|테스트/i.test(n)) return 'guest';
   if (/첫째|아린/.test(n)) return 'p1';
-  if (/둘째/.test(n)) return 'p2';
+  if (/둘째|지안/.test(n)) return 'p2';
   return '';
 }
 function slotFor(game, profId) {
@@ -2243,6 +2252,7 @@ async function loadFullDex() {
       desc: e.desc || '',
       leg: !!e.legend,
       myth: !!e.mythical,
+      evoFrom: Number(e.evoFrom) || 0,     /* 🧬 이전 진화 단계 id — 진화 해금 판정에 쓴다 */
       art: e.art !== 0,
       spr: e.spr !== 0,
     }));
@@ -2501,13 +2511,30 @@ function fitFoeTop() {
   if (measure() > 0) card.classList.add('wrap');
 }
 
+/* ---------- 🧬 진화 해금 — '내 도감'에 이전 단계를 2마리 이상 잡아야 진화형이 야생에 나온다 ----------
+   · 기준은 지금 놀고 있는 아이의 도감(S.dex)뿐. 다른 아이(형제)가 잡은 것은 세지 않는다.
+   · 진화 전 단계가 없는 기본형·단일 포켓몬, 전설·환상은 처음부터 나온다.
+   · 아빠 권한으로 도감에 2마리를 넣어 준 경우에도 그대로 열린다(counts 를 보기 때문). */
+const EVO_READY_MIN = 2;
+function evoFromOf(p) {
+  const from = Number(p && p.evoFrom);
+  return Number.isFinite(from) && from > 0 ? from : 0;
+}
+function evoUnlocked(p) {
+  const from = evoFromOf(p);
+  if (!from) return true;                                   /* 기본형·단일 포켓몬 */
+  if (p.leg || p.myth) return true;                         /* 전설·환상은 처음부터 */
+  const dex = S.dex || {};
+  if (dex.ids && dex.ids.has && dex.ids.has(Number(p.id))) return true;   /* 이미 갖고 있으면 그대로 유지 */
+  return (Number(dex.counts && dex.counts[from]) || 0) >= EVO_READY_MIN;
+}
 function wildPool() {
-  const base = POKEMON.filter((p) => !p.form);
+  const base = POKEMON.filter((p) => !p.form && evoUnlocked(p));
   if (S.range === 'gen1') {
     const g1 = base.filter((p) => p.gen === 1);
     return g1.length ? g1 : base;
   }
-  return base.length ? base : POKEMON;
+  return base.length ? base : POKEMON.filter((p) => !p.form);
 }
 /* 최근 등장 기억 — 바로 전/최근 몬스터가 또 나오지 않게 */
 const recentWild = [];
@@ -3841,6 +3868,27 @@ function boot() {
   if (sp) setTimeout(() => { sp.classList.add('gone'); }, 1900);
 }
 boot();
+</script>
+<script>
+/* ➕ 아빠 권한 — 아빠 PIN(가족 잠금)이 풀려 있는 동안만 도감 화면에 '➕ 포켓몬 추가'가 보인다.
+   누르면 이름·도감번호로 찾아 그 아이 도감(pkm.shared.dex.v1.<slot>)에 바로 생기게 한다. */
+(function () {
+  var btn = document.getElementById('dexAddBtn');
+  if (!btn || !window.PkmDexAdd) return;
+  PkmDexAdd.bind({
+    button: btn,
+    isUnlocked: function () { return !!(window.PKMLock && PKMLock.isUnlocked()); },
+    getSlot: function () { try { return slotFor(GAME, Profiles.data.active); } catch (e) { return 'p1'; } },
+    onDone: function (slot) {
+      try {
+        if (slot !== slotFor(GAME, Profiles.data.active)) return;
+        S.dex = Profiles.loadDex(Profiles.data.active);
+        renderDex(false);
+        renderDexBadge();
+      } catch (e) { /* */ }
+    }
+  });
+})();
 </script>
 <script src="/pokemon-3rd.js"></script>
 <script src="/pokemon-art.js"></script>

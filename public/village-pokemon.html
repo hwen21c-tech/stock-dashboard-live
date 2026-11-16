@@ -438,6 +438,8 @@
 
   /* ============ 📖 도감 보기 (마을 꾸미기 옆) ============ */
   .modal.dex{padding:9px;z-index:64}
+  /* 아빠 PIN 창은 도감(z 64)·상세(z 72)보다 위에 — 도감을 열어 둔 채로도 PIN 을 누를 수 있게 */
+  #delItemModal{z-index:76}
   .modal.dexdetail{padding:9px;z-index:72}
   .dxsheet{width:min(760px,100%);height:min(92dvh,100%);display:flex;flex-direction:column;overflow:hidden;
     background:linear-gradient(180deg,#fffdf3,#f4ffe8);border:3px solid var(--line);border-radius:20px;
@@ -464,6 +466,12 @@
     font-size:clamp(9px,2.5vw,11px);background:#fff;border:1.8px solid #e2eecd;color:#5c7a34}
   .dxtypes button.on{background:linear-gradient(180deg,#ffe9a8,#ffcf4d);border-color:#d9a01a;color:#5a3200}
   .dxbody{flex:1 1 auto;min-height:0;overflow:auto;padding:9px 12px 14px;-webkit-overflow-scrolling:touch}
+  /* ➕ 아빠 권한 — 아빠 PIN 이 풀려 있을 때만 보인다(도감에 포켓몬을 생기게 한다) */
+  .dxfoot{flex:0 0 auto;display:flex;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom));border-top:2px solid #eef6dd;background:#f7ffea}
+  .dxfoot button{flex:1 1 0;min-width:0;padding:9px 6px;border-radius:12px;font-weight:900;font-size:clamp(11px,2.9vw,13px);
+    background:linear-gradient(180deg,#eaffcc,#cdf3a2);border:2px solid #9fd46f;color:#2f5c14;box-shadow:0 2px 0 #c2e59a}
+  .dxfoot button:active{transform:translateY(2px);box-shadow:none}
+  .dxfoot button[hidden]{display:none !important}
   .dxtip{margin:0 0 7px;font-size:clamp(9px,2.5vw,10.5px);font-weight:900;color:#6b8547}
   .dxgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;align-items:start}
   .dcell{position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;
@@ -569,6 +577,7 @@
   }
 </style>
 <script src="/pokemon-sync.js"></script>
+<script src="/pokemon-dexadd.js"></script>
 </head>
 <body>
 
@@ -696,6 +705,9 @@
       <div class="dxgrid" id="dexGrid"></div>
       <p class="dxempty" id="dexEmpty" hidden></p>
       <div class="dxmore" id="dexMoreWrap" hidden><button type="button" id="dexMore">더 보기</button></div>
+    </div>
+    <div class="dxfoot">
+      <button type="button" id="dexAddBtn" hidden>➕ 포켓몬 추가</button>
     </div>
   </div>
 </div>
@@ -3379,6 +3391,17 @@
     bindDex();
     bindDexPress();
     bindItemPress();
+    /* ➕ 포켓몬 추가 — 아빠 관리자(PIN)가 풀려 있는 동안만 도감 하단에 나타난다 */
+    (function () {
+      const ab = document.getElementById('dexAddBtn');
+      if (!ab || !window.PkmDexAdd) return;
+      PkmDexAdd.bind({
+        button: ab,
+        isUnlocked: function () { try { return !!Adm.state().unlocked; } catch (e) { return false; } },
+        getSlot: function () { return SLOT; },
+        onDone: function () { try { renderDex(); paintVillage(); } catch (e) { /* */ } }
+      });
+    })();
     loadTheme();
     revokeFreeProps();
     paintThemeBar();
