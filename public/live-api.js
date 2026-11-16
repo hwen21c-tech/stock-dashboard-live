@@ -2236,19 +2236,32 @@
     if (!byValue.length && !byTop.length) return 0;
 
     var isPre = af.sessionPhase === '프리마켓';
-    state.sesWord = isPre ? '프리마켓' : '시간외';
-    var sesWord = isPre ? '프리마켓' : '시간외';
+    // 장중(09:00~15:30)에는 NXT도 자체 정규장을 돌린다 — overMarketPriceInfo 가 NXT 정규장 체결로 계속 는다.
+    var isNxtReg = !af.inSession && /^REGULAR/.test(String(af.basisSessionType || ''));
+    state.sesWord = isPre ? '프리마켓' : isNxtReg ? 'NXT 정규장' : '시간외';
+    var sesWord = state.sesWord;
+    var sesMetric = isPre
+      ? '프리마켓(08:00~08:50 NXT) 체결 대금'
+      : isNxtReg
+        ? 'NXT 정규장 체결 대금'
+        : '시간외 체결 대금';
+    var grows = af.inSession || isNxtReg;
     // 세션 밖이어도 응답의 체결 세션이 PRE_MARKET 이면 "오늘 프리마켓 체결" 이다(전일 마감값이 아님).
-    var todayPre = !af.inSession && af.basisSessionType === 'PRE_MARKET';
-    var sesMetric = isPre ? '프리마켓(08:00~08:50 NXT) 체결 대금' : '시간외 체결 대금';
+    var todayPre = !af.inSession && !isNxtReg && af.basisSessionType === 'PRE_MARKET';
 
     var panel = afterPanelEl();
     if (!panel) return 0;
 
     var head = panel.querySelector('.sec-head');
     var sub = head ? head.querySelector('.sub') : null;
-    var basisTxt = (af.inSession ? (isPre ? 'NXT 프리마켓 진행 중' : '시간외 세션 진행 중') : '시간외 세션 아님') +
-      (af.basisSessionType === 'PRE_MARKET' && !isPre ? ' · 기준 프리마켓' : '') +
+    var basisTxt = (grows
+      ? isPre
+        ? 'NXT 프리마켓 진행 중'
+        : isNxtReg
+          ? 'NXT 정규장 체결 중'
+          : '시간외 세션 진행 중'
+      : '시간외 세션 아님') +
+      (isNxtReg ? ' · 기준 NXT 정규장' : af.basisSessionType === 'PRE_MARKET' && !isPre ? ' · 기준 프리마켓' : '') +
       ' · ⚡ ' + stamp + ' 갱신';
     if (sub) {
       sub.textContent = basisTxt;
@@ -2257,9 +2270,9 @@
 
     var html = '';
     html += '<div style="font-size:10.5px; color:#94a3b8; margin:0 0 6px 2px; line-height:1.5;">' +
-      (af.inSession
-        ? '<strong style="color:#34d399;">' + esc(isPre ? 'NXT 프리마켓 진행 중' : '시간외 세션 진행 중') + '</strong> — ' +
-          esc(sesWord) + ' 대금이 계속 늘어납니다 · '
+      (grows
+        ? '<strong style="color:#34d399;">' + esc(isPre ? 'NXT 프리마켓 진행 중' : isNxtReg ? 'NXT 정규장 체결 중' : '시간외 세션 진행 중') + '</strong> — ' +
+          esc(sesWord) + ' 체결 대금이 계속 늘어납니다 · '
         : todayPre
           ? '<strong style="color:#cbd5e1;">오늘 ' + esc(af.basisLabel || '—') + ' 프리마켓 체결값</strong> · '
           : '<strong style="color:#cbd5e1;">직전 ' + esc(af.basisLabel || '—') + ' ' + esc(sesWord) + ' 마감값</strong> · ') +
@@ -2285,9 +2298,13 @@
     }
 
     var note = '※ ' + esc(sesMetric) + ' = 네이버 ' +
-      (isPre ? 'NXT 프리마켓(08:00~08:50) 누적 체결 대금' : '시간외 애프터마켓(NXT·시간외 단일가) 누적 체결 대금') +
+      (isPre
+        ? 'NXT 프리마켓(08:00~08:50) 누적 체결 대금'
+        : isNxtReg
+          ? 'NXT 정규장 실시간 체결 대금(대체거래소 자체 정규 세션)'
+          : '시간외 애프터마켓(NXT·시간외 단일가) 누적 체결 대금') +
       '입니다. ' + esc(sesWord) + ' 등락률은 ' + esc(sesWord) + ' 체결가의 전일 종가 대비 등락입니다.<br>';
-    note += af.inSession
+    note += grows
       ? '※ 지금은 ' + esc(sesWord) + ' 세션 진행 중입니다 — 값이 계속 늘어납니다.'
       : todayPre
         ? '※ 지금은 프리마켓이 끝난 시점입니다 — 위 값은 오늘 ' + esc(af.basisLabel || '—') + ' NXT 프리마켓 누적 체결값입니다.'

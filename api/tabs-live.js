@@ -63,7 +63,13 @@ const NXT_RANK_HEADERS = {
 const NXT_RANK_TIMEOUT = 3500;
 const NXT_LEAD_TOP = 6; // 카드에 그리는 상위 종목 수
 const NXT_DYNAMIC_MAX = 30; // 감시군에 동적으로 합칠 최대 종목 수
-const NXT_SESSION_KO = { PRE_MARKET: '프리마켓', AFTER_MARKET: '애프터마켓', REGULAR: '정규장', CLOSE: '장마감' };
+const NXT_SESSION_KO = {
+  PRE_MARKET: '프리마켓',
+  AFTER_MARKET: '애프터마켓',
+  REGULAR: '정규장',
+  REGULAR_MARKET: '정규장',
+  CLOSE: '장마감',
+};
 const PCT_MIN = 25; // +25%
 const WATCH_PCT_MIN = 18; // 관찰 후보 시작 상승률
 const NEWS_COUNT = 12;
