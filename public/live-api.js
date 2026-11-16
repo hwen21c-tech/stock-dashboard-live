@@ -2791,10 +2791,25 @@
   }
 
   function renderDynamicThemes(body, stamp) {
-    if (body.themeSource !== 'naver-theme') return 0;
+    var gridEl = document.querySelector('#tabOverview .theme-grid-8');
+    if (body.themeSource !== 'naver-theme') {
+      // 랭킹이 죽으면 고정 8대 테마(과거 기준)가 그대로 남는다 — 오늘 값으로 오해하지 않게 머리말에 못박는다.
+      if (gridEl && gridEl.previousElementSibling) {
+        var h0 = gridEl.previousElementSibling;
+        var s0 = h0.querySelector ? h0.querySelector('.sub') : null;
+        if (s0) {
+          var w0 = '⚠️ 실시간 테마 랭킹 응답 없음 — 고정 8대 테마(과거 기준) 표시 · ⚡ ' + stamp;
+          if (s0.textContent !== w0) {
+            s0.textContent = w0;
+            s0.style.color = '#fbbf24';
+          }
+        }
+      }
+      return 0;
+    }
     var themes = body.themes || [];
     if (!themes.length) return 0;
-    var grid = document.querySelector('#tabOverview .theme-grid-8');
+    var grid = gridEl;
     if (!grid) return 0;
     var html = themes.map(dynThemeHtml).join('');
     if (grid.getAttribute('data-sig') !== html) {
