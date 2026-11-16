@@ -1572,6 +1572,7 @@
   'use strict';
 
   var TABS_URL = '/api/tabs-live';
+  var CHART_API_URL = '/api/stock-chart';
   var POLL_MS = 30000;
   var AFTER_MIN_VALUE = 10 * 1e8; // 3번 탭 '거돈대금 10억↑만 보기' 기준(10억 원)
   var AFTER_FILTER_KEY = 'tabs_after_min10eok';
@@ -2046,7 +2047,8 @@
       }).join('') + '</div>';
   }
 
-  function impactStockChips(n) {
+  /* 수혜주 칩 · inPlace=true 면 RN존 이동 대신 이 자리에서 차트 팝업(3번 탭 전용) */
+  function impactStockChips(n, inPlace) {
     var list = n.beneficiaryStocks || [];
     if (!list.length) return '';
     var anyPre = list.some(function (s) { return s && s.preRun; });
@@ -2065,9 +2067,15 @@
         ? '<span title="기사가 나온 시점에 이미 +15% 이상 오른 종목 — 뉴스가 가격을 끌어올린 것이 아니라 이미 반영됐거나 뒤늦은 기사일 수 있습니다."' +
             ' style="font-size:9px;font-weight:900;color:#fca5a5;background:rgba(239,68,68,0.16);border:1px solid rgba(239,68,68,0.45);padding:1px 4px;border-radius:3px;white-space:nowrap;">⚠️ 선반영/후행</span>'
         : '';
-      var tip = '종목코드 ' + code + ' · 누르면 RN존 실전 차트로 이동' +
+      var tip = '종목코드 ' + code + ' · ' +
+        (inPlace ? '누르면 이 자리에서 실시간 차트 팝업(탭 이동 없음)' : '누르면 RN존 실전 차트로 이동') +
         (live ? ' · ' + (live.valueBasis || '통합') + ' 거래대금 ' + (live.valueText || '—') : ' · 실시간 시세 미수신');
-      return '<span onclick="event.stopPropagation();tabsLiveOpenStock(\'' + name + '\', \'' + code + '\')"' + +
+      var openJs = inPlace
+        ? 'event.stopPropagation();' + inPlaceOpenJs(s.name, code,
+            live && isNum(live.price) ? fmt(live.price) + '원' : '',
+            pct === null ? '' : (pct > 0 ? '+' : '') + pct.toFixed(2) + '%')
+        : "event.stopPropagation();tabsLiveOpenStock('" + name + "', '" + code + "')";
+      return '<span onclick="' + esc(openJs) + '"' +
         ' title="' + esc(tip) + '"' +
         ' style="font-size:10px; font-weight:800; color:#6ee7b7; background:rgba(16,185,129,0.13); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-wrap:wrap;">' +
         '🎯 ' + esc(s.name) + ' <span style="font-size:9px; opacity:.7; font-weight:700;">' + esc(s.code) + '</span>' +
@@ -2104,6 +2112,116 @@
     } catch (e) { fallback(); }
   }
   window.tabsLiveOpenStock = openStockFromNews;
+
+  /* ============================================================================
+   * 종목 클릭 → 지금 보고 있는 탭 그대로, 이 자리에서 실시간 일봉 차트 팝업
+   * ----------------------------------------------------------------------------
+   *  · 3번(프리·애프터마켓) 탭의 NXT 랭킹 행 · 속보 수혜주 칩은 예전에 tabsLiveOpenStock
+   *    (= RN존 탭 강제 이동 + RN 검색)에 연결돼 있어, 종목을 누를 때마다 탭이 RN존으로 튀었다.
+   *  · RN선 차트는 RN 탭에서만 본다. 이 자리에서는 공통 차트 팝업(openDetail)만 열고 탭은 그대로 둔다.
+   *  · 팝업 캔들은 /api/stock-chart 실측 일봉(당일 실시간 봉 포함)으로 다시 그린다.
+   *    조회가 실패하면 내장 일봉을 그대로 두고 제목에 출처를 솔직히 적는다(가짜 차트 금지).
+   * ========================================================================== */
+
+  var chartPopupReq = 0;
+
+  function todayKstYmd() {
+    var d = new Date(Date.now() + 9 * 3600 * 1000);
+    return d.toISOString().slice(0, 10).replace(/-/g, '');
+  }
+
+  function modalVisible() {
+    var ov = document.getElementById('modalOverlay');
+    return Boolean(ov) && getComputedStyle(ov).display !== 'none';
+  }
+
+  /* 내장 500일 DB(직전 거래일까지)로 그려진 팝업을 실시간 일봉으로 다시 그린다.
+   *  · DB에 없는 종목은 openDetail 패치(live-api.js 종목 상세 모달 블록)가 이미 API로 그리고 있으므로
+   *    캔들이 비어 있으면 아무 것도 하지 않는다(중복 요청·덮어쓰기 방지). */
+  function refreshPopupChart(code) {
+    if (!code) return;
+    var arr0 = window.modalAllCandles || [];
+    var lastDate = arr0.length ? String(arr0[arr0.length - 1].date || '') : '';
+    if (!arr0.length || lastDate === todayKstYmd()) return;
+    chartPopupReq += 1;
+    var req = chartPopupReq;
+    fetch(CHART_API_URL + '?code=' + encodeURIComponent(code) + '&count=250', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (req !== chartPopupReq) return;                        // 더 최근 클릭이 있으면 이 응답은 버린다
+        if (!modalVisible()) return;
+        var tEl = document.getElementById('modalTitle');
+        if (!tEl || String(tEl.innerText || '').indexOf(code) < 0) return; // 다른 종목 팝업으로 바뀌었으면 버린다
+        if (!d || d.ok !== true || !d.candles || !d.candles.length) throw new Error('no candles');
+        var arr = d.candles.map(function (c) {
+          return { date: String(c.date || ''), open: c.o, high: c.h, low: c.l, close: c.c, vol: isNum(c.v) ? c.v : 0 };
+        }).filter(function (c) {
+          return isNum(c.close) && isNum(c.high) && isNum(c.low);
+        });
+        if (!arr.length) throw new Error('no usable candles');
+        window.modalAllCandles = arr;
+        window.modalViewCount = Math.min(60, arr.length);
+        window.modalViewOffset = 0;
+        if (typeof window.setModalValueUnit === 'function') window.setModalValueUnit('원', 0);
+        if (typeof window.modalClearNotice === 'function') window.modalClearNotice();
+        var noticeEl = document.getElementById('modalChartNotice');
+        if (noticeEl) noticeEl.style.display = 'none';
+        try { if (typeof window.drawModalCandles === 'function') window.drawModalCandles(); } catch (e) { /* noop */ }
+        var head = document.getElementById('modalChartTitleTxt');
+        if (head) head.textContent = '📊 실시간 일봉 캔들 & 추세선 (' + arr.length + '봉 · 당일 봉 포함)';
+        var last = arr[arr.length - 1];
+        var trend = document.getElementById('modalChartTrend');
+        if (trend) trend.textContent = '실시간 일봉 · ' + last.date + ' 종가 ' + fmt(last.close) + '원';
+        var cur = d.current || {};
+        var v1 = document.getElementById('modalVal1');
+        var v2 = document.getElementById('modalVal2');
+        if (v1 && isNum(cur.price)) v1.innerText = fmt(cur.price) + '원';
+        if (v2 && isNum(cur.changePct)) v2.innerText = (cur.changePct > 0 ? '+' : '') + cur.changePct.toFixed(2) + '%';
+      })
+      .catch(function () {
+        if (req !== chartPopupReq) return;
+        var head = document.getElementById('modalChartTitleTxt');
+        if (head) head.textContent = '📊 내장 실측 일봉 캔들 (직전 거래일까지 · 실시간 일봉 미응답)';
+      });
+  }
+
+  /* 종목 클릭 → 제자리 차트 팝업. RN존 탭으로 이동하지 않는다(11/16). */
+  function openChartHere(name, code, priceText, pctText) {
+    var nm = String(name || '').replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/'/g, '').replace(/\s+/g, ' ').trim();
+    var cd = String(code || '').replace(/[^0-9A-Za-z]/g, '');
+    if (!nm && !cd) return false;
+    var opened = false;
+    try {
+      if (typeof window.slOpenStockChart === 'function') {
+        opened = window.slOpenStockChart(nm, cd, '', priceText || '', pctText || '') !== false;
+      }
+    } catch (e) { opened = false; }
+    if (!opened) {
+      try {
+        if (typeof window.openDetail === 'function') {
+          window.openDetail(
+            nm + (cd ? ' (' + cd + ')' : ''),
+            priceText || '실시간 일봉 차트',
+            pctText || '현재 탭 유지',
+            '이 자리에서 연 차트입니다 — 탭을 옮기지 않습니다. 일봉은 /api/stock-chart 실시간(당일 봉 포함)이며, ' +
+              '응답이 없으면 페이지 내장 실측 일봉으로 그립니다.'
+          );
+          opened = true;
+        }
+      } catch (e2) { opened = false; }
+    }
+    if (opened) setTimeout(function () { refreshPopupChart(cd); }, 200);
+    return opened;
+  }
+  window.tabsLiveOpenChartHere = openChartHere;
+
+  /* onclick 속성에 넣을 안전한 호출문 (따옴표·줄바꿈 제거) */
+  function inPlaceOpenJs(name, code, priceText, pctText) {
+    var nm = String(name || '').replace(/'/g, '').replace(/[\r\n]/g, ' ').trim();
+    var pt = String(priceText === null || priceText === undefined ? '' : priceText).replace(/'/g, '');
+    var ct = String(pctText === null || pctText === undefined ? '' : pctText).replace(/'/g, '');
+    return "if(window.tabsLiveOpenChartHere){tabsLiveOpenChartHere('" + nm + "','" + esc(code || '') + "','" + pt + "','" + ct + "')}";
+  }
 
   function impactCounts(list) {
     var c = { '상': 0, '중': 0, '참고': 0 };
@@ -2161,7 +2279,7 @@
         '<div class="af-title">' + esc(n.title) + '</div>' +
         (n.summary ? '<div class="af-move">' + esc(n.summary) + '</div>' : '') +
         impactThemeChips(n) +
-        impactStockChips(n) +
+        impactStockChips(n, true) + /* 3번(프리·애프터) 탭 — RN존 이동 없이 이 자리 팝업 */
         impactNoteLine(n) +
         '<div class="af-history">🕒 ' + esc(newsMeta(n)) + ' · 네이버 증권 실시간 뉴스</div>' +
       '</div>';
@@ -2436,10 +2554,14 @@
 
   function nxRowHtml(it) {
     var pct = isNum(it.changePct) ? it.changePct : null;
-    var nm = String(it.name || '').replace(/'/g, '');
-    var onclick = "if(window.tabsLiveOpenStock){tabsLiveOpenStock('" + nm + "','" + esc(it.code) + "')}";
+    /* NXT 랭킹 행도 RN존 탭으로 튀지 않고 이 자리에서 차트 팝업을 연다(11/16)
+     *  · 행을 감싼 레이더 카드에도 onclick(openPremarketDetail)이 있어, 그대로 두면
+     *    카드 핸들러까지 올라가 팝업이 테마 상세 모달로 덮인다 → 버블링을 끊는다. */
+    var onclick = 'event.stopPropagation();' + inPlaceOpenJs(it.name, it.code,
+      isNum(it.price) ? fmt(it.price) + '원' : '',
+      pct === null ? '' : pctTxt(pct));
     return '<div data-nxt-live="1" style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5; cursor:pointer;" ' +
-      'title="NXT 체결 기준 · 눌러서 RN존 차트" onclick="' + esc(onclick) + '">' +
+      'title="NXT 체결 기준 · 눌러서 이 자리에서 실시간 차트 팝업(탭 이동 없음)" onclick="' + esc(onclick) + '">' +
       '• <strong style="color:#fff;">' + esc(it.name) + '</strong> ' +
       '<span style="color:' + colFor(pct) + '; font-weight:800;">' + esc(fmt(it.price)) + '원 ' + esc(pctTxt(pct)) + '</span>' +
       ' <span style="color:#94a3b8;">· ' + esc(it.valueText || '—') + '</span>' +
@@ -3207,7 +3329,8 @@
     setAfterFilter: setAfterFilter,
     afterFilterOn: afterFilterOn,
     _folds: function () { return state.folds; },
-    _renderAftermarket: renderAftermarket
+    _renderAftermarket: renderAftermarket,
+    openChartHere: openChartHere
   };
 
   /* ----------------------------------------------------------------
