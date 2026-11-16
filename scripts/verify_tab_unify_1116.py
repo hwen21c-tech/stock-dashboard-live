@@ -54,6 +54,31 @@ CARD_SEL = {
 }
 
 
+def clean_lock(page):
+    """PIN 잠금 오버레이가 스크린샷에 찍히지 않게 지운다(핫스왑으로 다시 생길 수 있어 매번 호출)."""
+    try:
+        page.evaluate(
+            """() => {
+              document.documentElement.classList.remove('pin-locked');
+              document.querySelectorAll('#pinLockOverlay, [id^="pinLockOverlay"]').forEach((e) => e.remove());
+            }"""
+        )
+    except Exception:
+        pass
+
+
+def shoot_tab(page, view, path, max_h=2200):
+    """탭 상단으로 스크롤한 뒤 뷰포트를 캡처한다(문서 전체·긴 요소 캡처는 브라우저가 죽는다)."""
+    sel = {"bijoong": "#tabBijoong", "honginki": "#tabHonginki", "manju": "#tabManju",
+           "jongbe": "#tabJongbe", "rnzone": "#tabRnzone"}[view]
+    try:
+        page.evaluate("(s) => { const e = document.querySelector(s); if (e) e.scrollIntoView({ block: 'start' }); }", sel)
+        page.wait_for_timeout(350)
+        page.screenshot(path=path)
+    except Exception:
+        pass
+
+
 def switch(page, view):
     page.evaluate(
         """(v) => { const b = document.querySelector('.tab-btn[data-view="' + v + '"]'); if (b) b.click(); }""",
@@ -88,6 +113,15 @@ def main():
             )
             page.reload(wait_until="domcontentloaded")
             page.wait_for_timeout(2500)
+            # 스크린샷에 잠금 오버레이가 찍히지 않도록 화면 가림만 확실히 해제한다(제품 동작은 그대로)
+            page.evaluate(
+                """() => {
+                  document.documentElement.classList.remove('pin-locked');
+                  const o = document.getElementById('pinLockOverlay');
+                  if (o) o.remove();   /* display:none 만으로는 헤드리스 합성 레이어가 남아 스크린샷에 찍힌다 */
+                }"""
+            )
+            res_pin_locked = page.evaluate("() => document.documentElement.classList.contains('pin-locked')")
             page.evaluate("() => { ['bij','hong','manju','jongbe','rn'].forEach(t => { try { StrategyPins.clear(t); } catch(e){} }); }")
             res = {"viewport": f"{w}x{h}", "tabs": {}, "errors": [], "overflow": [], "ok": True}
             for view, label in TABS:
@@ -108,7 +142,8 @@ def main():
                 res["tabs"][view] = info
                 if info.get("ok") and info["scrollW"] > info["innerW"] + 2:
                     res["overflow"].append(f"{view}:{info['scrollW']}>{info['innerW']}")
-                page.screenshot(path=os.path.join(OUT, f"{w}x{h}_{view}.png"), full_page=False)
+                clean_lock(page)
+                shoot_tab(page, view, os.path.join(OUT, f"{w}x{h}_{view}.png"))
             # 핀 토글·유지 (RN존에서)
             switch(page, "rnzone")
             pin = {"ok": False}
@@ -139,7 +174,8 @@ def main():
                   };
                 }"""
             )
-            page.screenshot(path=os.path.join(OUT, f"{w}x{h}_rnzone_pinned.png"))
+            clean_lock(page)
+            shoot_tab(page, "rnzone", os.path.join(OUT, f"{w}x{h}_rnzone_pinned.png"))
 
             # 오늘 목록에 없는 고정핀 → 📌 고정됨 카드 + 실시간
             page.evaluate(
@@ -147,7 +183,7 @@ def main():
                   const raw = JSON.parse(localStorage.getItem('stock.pins.v1') || '{"v":1,"tabs":{},"at":0}');
                   raw.tabs = raw.tabs || {};
                   raw.tabs.rn = raw.tabs.rn || {};
-                  raw.tabs.rn['035720'] = {code:'035720', name:'카카오', at: Date.now()+1000, price: 0};
+                  raw.tabs.rn['035720'] = {code:'035720', name:'카카오', at: Date.now(), price: 0};
                   localStorage.setItem('stock.pins.v1', JSON.stringify(raw));
                 }"""
             )
@@ -163,7 +199,8 @@ def main():
                           live: StrategyPins.state().live};
                 }"""
             )
-            page.screenshot(path=os.path.join(OUT, f"{w}x{h}_rnzone_extra.png"))
+            clean_lock(page)
+            shoot_tab(page, "rnzone", os.path.join(OUT, f"{w}x{h}_rnzone_extra.png"))
 
             # 당일 실시간 봉 · 종베 캔들
             chart = page.evaluate(
@@ -182,6 +219,7 @@ def main():
                   return {n: st.length, lastDate: last && last.date, hasUpdate: typeof (window.Jongbe||{}).updateCandles === 'function'};
                 }"""
             )
+            res["pinLocked"] = res_pin_locked
             res["pin"] = {"pinned": after.get("pinned"), "badge": after.get("badge"), "first": after.get("firstCode"), "state": after.get("state")}
             res["extra"] = extra
             res["chart"] = {"liveBar": chart.get("liveBar"), "lastDate": (chart.get("last") or {}).get("date")}
