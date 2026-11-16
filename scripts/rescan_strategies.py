@@ -179,6 +179,17 @@ def build_universe(pages=30):
         for r in up + dn:
             r["_market"] = label
             rows.append(r)
+        # 전 종목 명단(시가총액순) — 상승·하락 랭킹은 '오늘 움직인 종목'만 주므로
+        #  장중에 돌리면 기준일(예: 직전 거래일) 후보가 통째로 빠진다. 명단으로 메꾼다.
+        try:
+            mv, t3 = fetch_rank("marketValue", market, pages)
+            for r in mv:
+                r["_market"] = label
+                r["_list_only"] = True
+                rows.append(r)
+            log(f"  {label}: 전 종목 명단 {len(mv)}건(총 {t3})")
+        except Exception as e:         # noqa: BLE001
+            log(f"  ! {label} 전 종목 명단 실패: {e}")
     seen, uni = set(), []
     for r in rows:
         code, name = r.get("itemCode"), r.get("stockName") or ""
@@ -187,7 +198,11 @@ def build_universe(pages=30):
         if ETF_PAT.search(name) or PREF_PAT.search(name):
             continue
         p, val = num(r.get("fluctuationsRatio")), num(r.get("accumulatedTradingValue"))
-        if p is None or val is None:
+        if r.get("_list_only"):
+            # 명단(시총순) 행은 당일 등락률·대금이 비어 있을 수 있다 - 후보 판정은 일봉(per)으로 하므로 0으로 둔다.
+            p = 0.0 if p is None else p
+            val = 0.0 if val is None else val
+        elif p is None or val is None:
             continue
         seen.add(code)
         uni.append({"code": code, "name": name, "market": r["_market"], "pct": p,
@@ -977,6 +992,17 @@ def main():
         #  이때 그대로 진행하면 index.html 의 카드·KPI 를 0건으로 덮어써 직전 확정치를 잃는다.
         log("유니버스 0종목 — 장전·휴장·랭킹 API 이상으로 판단해 index.html 을 쓰지 않고 종료합니다(기존 스캔 유지).")
         return 2
+    # 직전 스캔 유니버스 대비 너무 적으면(개장 직후 랭킹 미충전·부분 응답) 쓰지 않는다.
+    #  얇은 유니버스로 index.html 을 덮으면 카드가 1~2건으로 줄어 직전 확정 스캔을 잃는다.
+    if not args.limit and os.path.exists(LATEST):
+        try:
+            prev = json.load(open(LATEST))
+            prev_n = int(prev.get("universe") or 0)
+            if prev_n >= 500 and len(uni) < prev_n * 0.6:
+                log(f"유니버스 {len(uni)}종목 < 직전 {prev_n}종목의 60% — 랭킹 미충전으로 보고 index.html 을 쓰지 않고 종료합니다.")
+                return 2
+        except Exception:              # noqa: BLE001
+            pass
     if args.limit:
         uni = uni[:args.limit]
     codes = [u["code"] for u in uni]
