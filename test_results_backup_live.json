@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "label": "라이브 pokemon-sync 버전 1.2.0",
+      "ok": true,
+      "detail": "1.2.0"
+    },
+    {
+      "label": "라이브 3슬롯 상태 표시",
+      "ok": true,
+      "detail": "{\"am\":\"저장 없음\",\"pm\":\"11/16 18:10\",\"night\":\"저장 없음\"}"
+    },
+    {
+      "label": "라이브 빈 슬롯(am) → 토스트",
+      "ok": true,
+      "detail": "이 슬롯에는 아직 백업이 없어요"
+    },
+    {
+      "label": "라이브 가로 넘침 0",
+      "ok": true,
+      "detail": "scrollWidth=400 innerWidth=400"
+    },
+    {
+      "label": "라이브 콘솔·페이지 에러 0",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "label": "실제 0623 행 쓰기 0 (POST/DELETE 차단)",
+      "ok": true,
+      "detail": "none"
+    }
+  ]
+}

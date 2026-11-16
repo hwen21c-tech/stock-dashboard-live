@@ -1,0 +1,240 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "label": "dev_server 기동",
+      "ok": true,
+      "detail": "http://127.0.0.1:8794"
+    },
+    {
+      "label": "[400x860] 복원 전 홈 도감 표시 = 5마리",
+      "ok": true,
+      "detail": "잡은 5마리"
+    },
+    {
+      "label": "[400x860] 모달에 「⏪ 이전 백업 불러오기」 섹션 + 슬롯 3개",
+      "ok": true,
+      "detail": "{\"am\":\"11/16 10:02\",\"pm\":\"11/16 16:02\",\"night\":\"저장 없음\",\"section\":true}"
+    },
+    {
+      "label": "[400x860] 아침 슬롯 저장 시각 형식 (11/16 10:02)",
+      "ok": true,
+      "detail": "11/16 10:02"
+    },
+    {
+      "label": "[400x860] 오후 슬롯 저장 시각 형식 (11/16 16:02)",
+      "ok": true,
+      "detail": "11/16 16:02"
+    },
+    {
+      "label": "[400x860] 밤 슬롯은 '저장 없음'",
+      "ok": true,
+      "detail": "저장 없음"
+    },
+    {
+      "label": "[400x860] 빈 밤 슬롯 클릭 → 토스트 '아직 백업이 없어요' (모달 유지)",
+      "ok": true,
+      "detail": "이 슬롯에는 아직 백업이 없어요"
+    },
+    {
+      "label": "[400x860] 확인 문구 '이 시점의 도감·마을 기록으로 되돌릴까요?'",
+      "ok": true,
+      "detail": "⏪ 🌅 아침 10시 백업저장 시각11/16 10:02이 시점의 도감·마을 기록으로 되돌릴까요?이 기기와 가족 클라우드가 함께 그 시점으로 맞춰"
+    },
+    {
+      "label": "[400x860] 아빠 PIN 입력칸",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "label": "[400x860] 틀린 PIN 차단 ('아빠 PIN이 맞지 않아요')",
+      "ok": true,
+      "detail": "아빠 PIN이 맞지 않아요"
+    },
+    {
+      "label": "[400x860] 틀린 PIN 으로는 로컬이 바뀌지 않음",
+      "ok": true,
+      "detail": "p1 ids=1,2,3,4,5"
+    },
+    {
+      "label": "[400x860] 틀린 PIN 으로는 클라우드에 쓰지 않음",
+      "ok": true,
+      "detail": "posts=0"
+    },
+    {
+      "label": "[400x860] 복원 후 로컬 도감 p1 = 백업 시점(3마리)",
+      "ok": true,
+      "detail": "ids=1,2,3"
+    },
+    {
+      "label": "[400x860] 복원 후 마을 테마도 백업 시점(night)",
+      "ok": true,
+      "detail": "night"
+    },
+    {
+      "label": "[400x860] 복원 완료 토스트",
+      "ok": true,
+      "detail": "⏪ 🌅 아침 10시 시점으로 되돌렸어요"
+    },
+    {
+      "label": "[400x860] 클라우드(0623) 행에 복원값 UPSERT",
+      "ok": true,
+      "detail": "on_conflict=code · Prefer=resolution=merge-duplicates,return=minimal"
+    },
+    {
+      "label": "[400x860] 올린 data.keys 도 백업 시점(3마리)",
+      "ok": true,
+      "detail": "ids=1,2,3"
+    },
+    {
+      "label": "[400x860] 3마리로 줄었으므로 resetAt 기록(다른 기기 되살림 방지)",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "label": "[400x860] 복원 이력(restoredFrom) 기록",
+      "ok": true,
+      "detail": "0623_am"
+    },
+    {
+      "label": "[400x860] 실제 0623 행 삭제·타 코드 행 쓰기 없음",
+      "ok": true,
+      "detail": "deletes=0 posted=0623"
+    },
+    {
+      "label": "[400x860] 새로고침 후에도 3마리 유지(클라우드 pull 이 덮지 않음)",
+      "ok": true,
+      "detail": "ids=3"
+    },
+    {
+      "label": "[400x860] 복원·새로고침 후 홈 도감 표시 = 3마리",
+      "ok": true,
+      "detail": "잡은 3마리"
+    },
+    {
+      "label": "[400x860] 가로 넘침 0",
+      "ok": true,
+      "detail": "scrollWidth=400 innerWidth=400 (모달 내부 0)"
+    },
+    {
+      "label": "[400x860] 콘솔·페이지 에러 0",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "label": "[884x960] 복원 전 홈 도감 표시 = 5마리",
+      "ok": true,
+      "detail": "잡은 5마리"
+    },
+    {
+      "label": "[884x960] 모달에 「⏪ 이전 백업 불러오기」 섹션 + 슬롯 3개",
+      "ok": true,
+      "detail": "{\"am\":\"11/16 10:02\",\"pm\":\"11/16 16:02\",\"night\":\"저장 없음\",\"section\":true}"
+    },
+    {
+      "label": "[884x960] 아침 슬롯 저장 시각 형식 (11/16 10:02)",
+      "ok": true,
+      "detail": "11/16 10:02"
+    },
+    {
+      "label": "[884x960] 오후 슬롯 저장 시각 형식 (11/16 16:02)",
+      "ok": true,
+      "detail": "11/16 16:02"
+    },
+    {
+      "label": "[884x960] 밤 슬롯은 '저장 없음'",
+      "ok": true,
+      "detail": "저장 없음"
+    },
+    {
+      "label": "[884x960] 빈 밤 슬롯 클릭 → 토스트 '아직 백업이 없어요' (모달 유지)",
+      "ok": true,
+      "detail": "이 슬롯에는 아직 백업이 없어요"
+    },
+    {
+      "label": "[884x960] 확인 문구 '이 시점의 도감·마을 기록으로 되돌릴까요?'",
+      "ok": true,
+      "detail": "⏪ 🌅 아침 10시 백업저장 시각11/16 10:02이 시점의 도감·마을 기록으로 되돌릴까요?이 기기와 가족 클라우드가 함께 그 시점으로 맞춰"
+    },
+    {
+      "label": "[884x960] 아빠 PIN 입력칸",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "label": "[884x960] 틀린 PIN 차단 ('아빠 PIN이 맞지 않아요')",
+      "ok": true,
+      "detail": "아빠 PIN이 맞지 않아요"
+    },
+    {
+      "label": "[884x960] 틀린 PIN 으로는 로컬이 바뀌지 않음",
+      "ok": true,
+      "detail": "p1 ids=1,2,3,4,5"
+    },
+    {
+      "label": "[884x960] 틀린 PIN 으로는 클라우드에 쓰지 않음",
+      "ok": true,
+      "detail": "posts=0"
+    },
+    {
+      "label": "[884x960] 복원 후 로컬 도감 p1 = 백업 시점(3마리)",
+      "ok": true,
+      "detail": "ids=1,2,3"
+    },
+    {
+      "label": "[884x960] 복원 후 마을 테마도 백업 시점(night)",
+      "ok": true,
+      "detail": "night"
+    },
+    {
+      "label": "[884x960] 복원 완료 토스트",
+      "ok": true,
+      "detail": "⏪ 🌅 아침 10시 시점으로 되돌렸어요"
+    },
+    {
+      "label": "[884x960] 클라우드(0623) 행에 복원값 UPSERT",
+      "ok": true,
+      "detail": "on_conflict=code · Prefer=resolution=merge-duplicates,return=minimal"
+    },
+    {
+      "label": "[884x960] 올린 data.keys 도 백업 시점(3마리)",
+      "ok": true,
+      "detail": "ids=1,2,3"
+    },
+    {
+      "label": "[884x960] 3마리로 줄었으므로 resetAt 기록(다른 기기 되살림 방지)",
+      "ok": true,
+      "detail": null
+    },
+    {
+      "label": "[884x960] 복원 이력(restoredFrom) 기록",
+      "ok": true,
+      "detail": "0623_am"
+    },
+    {
+      "label": "[884x960] 실제 0623 행 삭제·타 코드 행 쓰기 없음",
+      "ok": true,
+      "detail": "deletes=0 posted=0623"
+    },
+    {
+      "label": "[884x960] 새로고침 후에도 3마리 유지(클라우드 pull 이 덮지 않음)",
+      "ok": true,
+      "detail": "ids=3"
+    },
+    {
+      "label": "[884x960] 복원·새로고침 후 홈 도감 표시 = 3마리",
+      "ok": true,
+      "detail": "잡은 3마리"
+    },
+    {
+      "label": "[884x960] 가로 넘침 0",
+      "ok": true,
+      "detail": "scrollWidth=884 innerWidth=884 (모달 내부 0)"
+    },
+    {
+      "label": "[884x960] 콘솔·페이지 에러 0",
+      "ok": true,
+      "detail": "none"
+    }
+  ]
+}
