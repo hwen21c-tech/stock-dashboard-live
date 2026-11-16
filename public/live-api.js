@@ -3210,6 +3210,46 @@
     _renderAftermarket: renderAftermarket
   };
 
+  /* ----------------------------------------------------------------
+   * 정적 뉴스 카드의 onclick 자가 복구
+   *  · 자동 동기화 스크립트가 기사 제목을 onclick="openNewsDetail('...')" 에 넣을 때
+   *    제목 속 따옴표가 새면 문자열이 끊겨 카드가 '눌러도 반응 없음'이 된다(11/16 적발).
+   *  · 배포된 HTML 을 고쳐도 과거에 박힌 카드는 남으므로, 읽는 쪽에서도 한 번 더 고친다.
+   *  · 화면에 보이는 제목·시간·원문 링크로 핸들러를 다시 만든다(없는 값은 빈 문자열).
+   * ------------------------------------------------------------------ */
+  function jsStr(v) {
+    return "'" + String(v === null || v === undefined ? '' : v)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\r?\n/g, ' ')
+      .replace(/</g, '&lt;') + "'";
+  }
+
+  function repairInlineHandlers() {
+    var fixed = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('.news-timeline-card[onclick]'), function (el) {
+      var code = el.getAttribute('onclick') || '';
+      if (!code) return;
+      var bad = false;
+      try { new Function(code); } catch (e) { bad = true; }
+      if (!bad) return;
+      var titleEl = el.querySelector('.nt-title');
+      var timeEl = el.querySelector('.nt-time');
+      var linkEl = el.querySelector('a[href]');
+      var title = titleEl ? String(titleEl.textContent || '').trim() : '';
+      if (!title) return;
+      var time = timeEl ? String(timeEl.textContent || '').trim().split(/\s+/)[0] : '';
+      var url = linkEl ? linkEl.getAttribute('href') || '' : '';
+      var args = [title, time ? time + ' 속보' : '실시간 속보', url, title,
+        '키워드 자동 분석으로 매칭된 기사입니다. 원문 링크로 확인하십시오.', '']; 
+      el.setAttribute('onclick', 'openNewsDetail(' + args.map(jsStr).join(', ') + ')');
+      el.setAttribute('data-handler-repaired', '1');
+      fixed += 1;
+    });
+    return fixed;
+  }
+  window.repairInlineHandlers = repairInlineHandlers;
+
   function boot() {
     if (!patchForceRefresh()) {
       var tries = 0;
@@ -3218,6 +3258,8 @@
         if (patchForceRefresh() || tries > 20) clearInterval(t);
       }, 250);
     }
+    try { repairInlineHandlers(); } catch (e) { /* noop */ }
+    setInterval(function () { if (!document.hidden) { try { repairInlineHandlers(); } catch (e) { /* noop */ } } }, 45000);
     start();
   }
 
