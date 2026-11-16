@@ -12,7 +12,23 @@
 <link rel="manifest" href="/pokemon/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="stylesheet" href="./pokemon-battle2.css">
+<link rel="stylesheet" href="./pokemon-battle2.css"><style id="poke5-live">
+  /* ==========================================================
+     sd_live 2인 대전 문제 표시 영역을 크게·선명하게 (2026-11-16 이식)
+     (4지선다 .choice 크기는 그대로)
+     ========================================================== */
+  .qpanel .qbody{
+    background:#fff;border:3px solid #9dd977;border-radius:16px;
+    margin:3px 0 6px;padding:6px 10px;min-height:52px;
+    box-shadow:0 3px 0 rgba(70,120,30,.16),inset 0 1px 0 #fff;
+  }
+  .qpanel .qbody .qtext{
+    font-size:clamp(17px,4.6vw,28px);line-height:1.28;letter-spacing:-.01em;
+    white-space:normal;overflow:visible;text-overflow:clip;
+    word-break:keep-all;overflow-wrap:anywhere;
+  }
+  .qpanel .qbody .qemoji{font-size:clamp(20px,5.6vw,30px)}
+</style>
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-3rd.js"></script>
 <script src="/pokemon-art.js"></script>

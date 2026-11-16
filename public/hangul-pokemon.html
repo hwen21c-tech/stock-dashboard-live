@@ -875,7 +875,67 @@
   .hintbox .hb-cut{opacity:.3;text-decoration:line-through;margin-left:4px}
   @keyframes hintpop{from{transform:translateY(-5px);opacity:0}to{transform:none;opacity:1}}
 </style>
-<link rel="stylesheet" href="/pokemon-battle2.css">
+<link rel="stylesheet" href="/pokemon-battle2.css"><style id="poke5-live">
+  /* ==========================================================
+     sd_live 4대 게임 공통 레이아웃 (2026-11-16, preview-pokemon 검증본 이식)
+     ① 아레나 왼쪽 세로 도구 버튼 5개 → 타이머 바 바로 아래 가로 1줄
+     ========================================================== */
+  .timerstrip{display:flex;flex-direction:column;gap:4px;padding:0 9px 5px}
+  .timerstrip .menu{
+    position:static;left:auto;top:auto;transform:none;
+    display:flex;flex-direction:row;align-items:stretch;justify-content:center;
+    width:auto;max-width:100%;min-width:0;gap:4px;margin:0;z-index:6;
+  }
+  .timerstrip .menu .mbtn{
+    flex:1 1 0;min-width:0;max-width:190px;
+    display:flex;align-items:center;justify-content:center;gap:3px;
+    padding:3px 4px;border-radius:9px;text-align:center;
+    font-size:clamp(10px,2.5vw,12.5px);line-height:1.2;letter-spacing:-.03em;
+    white-space:nowrap;overflow:visible;text-overflow:clip;
+    box-shadow:0 2px 0 rgba(122,72,10,.5),inset 0 1px 0 #fff;
+  }
+  .timerstrip .menu .mbtn .ico{display:none;flex:0 0 auto;font-size:clamp(10px,2.5vw,13px)}
+  .timerstrip .menu .mbtn .txt{
+    flex:0 1 auto;min-width:0;overflow:visible;text-overflow:clip;white-space:nowrap;
+  }
+  .timerstrip .menu .mbtn .badge{
+    position:static;right:auto;top:auto;flex:0 0 auto;
+    font-size:clamp(8px,2vw,10px);padding:0 4px;line-height:1.45;
+  }
+  .timerstrip .menu .mbtn::before{display:none}
+  @media (max-width:430px){
+    .timerstrip .menu{gap:3px}
+    .timerstrip .menu .mbtn{padding:3px 2px;gap:2px;font-size:10.5px;letter-spacing:-.04em}
+    .timerstrip .menu .mbtn .badge{font-size:8px;padding:0 3px}
+  }
+  @media (min-width:560px){
+    .timerstrip .menu .mbtn .ico{display:inline-block}
+    .timerstrip .menu .mbtn{gap:4px;padding:4px 6px;font-size:12.5px}
+  }
+
+  /* ==========================================================
+     ② 문제 카드만 확대 — 4지선다 .choice 크기는 손대지 않는다
+     ========================================================== */
+  #app .controls .qhead{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px;min-width:0}
+  #app .controls .qhead .tag{order:1}
+  #app .controls .qhead .qcount{order:2;margin-left:auto}
+  #app .controls .qhead .qtext{
+    order:3;flex:1 1 100%;width:100%;min-width:0;margin:0;
+    padding:7px 12px;
+    background:#fff;border:3px solid #9dd977;border-radius:16px;
+    box-shadow:0 3px 0 rgba(70,120,30,.18),inset 0 1px 0 #fff;
+    text-align:center;color:#26430f;
+    font-size:clamp(23px,6.2vw,40px);line-height:1.18;
+    white-space:normal;overflow:visible;text-overflow:clip;
+    word-break:keep-all;overflow-wrap:anywhere;
+  }
+  #app .controls .qhead .qtext.sm{font-size:clamp(17px,4.6vw,25px);line-height:1.3}
+  #app .controls .qhead .qtext.sent{
+    max-height:none;overflow:visible;white-space:normal;
+    font-size:clamp(18px,5vw,28px);line-height:1.32;letter-spacing:0;
+  }
+  #app .controls .qhead .qtext .qko{font-size:.6em}
+</style>
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-sync.js"></script>
 </head>
@@ -939,6 +999,11 @@
 
   <div class="timerstrip">
     <div class="timerbar" id="timerBar"><i id="timerFill"></i><span id="timerNum">30초</span></div>
+  <nav class="menu" id="menu">
+  <button class="mbtn" id="dexBtn"><span class="ico">📕</span><span class="txt">도감</span><span class="badge" id="dexBadge">0</span></button>
+  <button class="mbtn" id="hintBtn"><span class="ico">💡</span><span class="txt">힌트</span><span class="badge" id="hintBadge">3</span></button>
+  <button class="mbtn" id="fleeBtn"><span class="ico">🏃</span><span class="txt">도망간다</span><span class="badge" id="fleeBadge">3</span></button>
+  </nav>
   </div>
 
   <main class="stage" id="stage">
@@ -977,11 +1042,6 @@
       <b id="legendText">✨ 전설의 포켓몬 출현!!</b>
     </div>
 
-    <nav class="menu" id="menu">
-      <button class="mbtn" id="dexBtn"><span class="ico">📕</span><span class="txt">도감</span><span class="badge" id="dexBadge">0</span></button>
-      <button class="mbtn" id="hintBtn"><span class="ico">💡</span><span class="txt">힌트</span><span class="badge" id="hintBadge">3</span></button>
-      <button class="mbtn" id="fleeBtn"><span class="ico">🏃</span><span class="txt">도망간다</span><span class="badge" id="fleeBadge">3</span></button>
-    </nav>
 
     <div class="wildzone">
       <div class="halo" id="wildHalo" aria-hidden="true"></div>
