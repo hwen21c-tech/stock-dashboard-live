@@ -102,6 +102,9 @@ const THEME_RANK_URL = 'https://m.stock.naver.com/api/stocks/theme';
 const THEME_DETAIL_URL = 'https://m.stock.naver.com/api/stocks/theme/';
 const THEME_RANK_PAGE = 60; // 랭킹 후보로 받아 오는 테마 수(이 중 상위 8개를 화면에 쓴다)
 const THEME_TOP = 8; // 화면에 그릴 테마 수
+// 테마 순위는 '노출 상위 4종목' 기준으로 매긴다 → 전체 평균으로 줄 세우면 4종목짜리 테마가
+//  14종목 중 대장 4개가 폭등한 테마보다 위로 올라오는 착시가 생긴다. 후보를 넉넉히 받아 상세를 본다.
+const THEME_CANDIDATES = 20;
 const THEME_STOCK_TOP = 4; // 테마당 그릴 종목 수
 const THEME_STOCK_PAGE = 30; // 테마 구성종목 조회 수(상위 4개를 뽑는다)
 const THEME_TIMEOUT = 4500;
@@ -676,7 +679,7 @@ async function buildDynamicThemes() {
         b.changeRate - a.changeRate || (b.riseRatio || 0) - (a.riseRatio || 0) || b.totalCount - a.totalCount,
     );
 
-  const top = rows.slice(0, THEME_TOP);
+  const top = rows.slice(0, THEME_CANDIDATES);
   const settled = await Promise.allSettled(top.map((g) => fetchThemeStocks(g.no)));
   const themes = [];
   const codes = [];
@@ -693,13 +696,22 @@ async function buildDynamicThemes() {
     picked.forEach((s) => {
       if (!codes.includes(s.code)) codes.push(s.code);
     });
+    /* 노출 상위 4종목 기준 — 테마 강도를 '화면에 보이는 종목'으로 판단한다 */
+    const shown = picked.slice(0, THEME_STOCK_TOP);
+    const shownPcts = shown.map((x) => x.changePct).filter((v) => typeof v === 'number');
+    const top4Avg = shownPcts.length
+      ? Number((shownPcts.reduce((a, b) => a + b, 0) / shownPcts.length).toFixed(2))
+      : null;
+    const top4Sum = shown.reduce((acc, x) => acc + (typeof x.value === 'number' ? x.value : 0), 0);
     themes.push({
       rank: themes.length + 1,
       name: g.name,
       keyword: g.name,
       themeNo: g.no,
-      avgPct: g.changeRate,
+      avgPct: g.changeRate,       // 네이버 공식 테마 평균(전체 종목) — 참고용
       avgPctLive: null,
+      top4Avg,                    // 화면 노출 상위 4종목 평균 등락률 — 순위·표시 기준
+      top4Sum,
       riseCount: g.riseCount,
       fallCount: g.fallCount,
       steadyCount: g.steadyCount,
@@ -709,10 +721,16 @@ async function buildDynamicThemes() {
       stocks: picked,
     });
   });
-  themes.forEach((t, i) => {
+  /* 순위 = 노출 Top4 평균 등락률 우선, 동률이면 Top4 합산 대금 */
+  themes.sort(
+    (a, b) =>
+      (b.top4Avg ?? -999) - (a.top4Avg ?? -999) || (b.top4Sum ?? 0) - (a.top4Sum ?? 0),
+  );
+  const limited = themes.slice(0, THEME_TOP);
+  limited.forEach((t, i) => {
     t.rank = i + 1;
   });
-  return { ok: themes.length > 0, themes, codes, errors, total: rows.length, marketStatus };
+  return { ok: limited.length > 0, themes: limited, codes, errors, total: rows.length, marketStatus };
 }
 
 /** 테마 카드 종목에 polling 시세(시·고·저·통합 거래대금)를 덮는다 */
@@ -761,7 +779,20 @@ async function fetchThemeQuotes(extraCodes, premarket) {
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
-  const themes = dyn.ok ? mergeThemeQuotes(dyn.themes, map, premarket) : mapStaticThemes(map, premarket);
+  let themes = dyn.ok ? mergeThemeQuotes(dyn.themes, map, premarket) : mapStaticThemes(map, premarket);
+  if (dyn.ok) {
+    /* 시세가 붙은 뒤 한 번 더 — 화면에 보이는 Top4 기준으로 순위를 확정한다 */
+    themes = themes
+      .slice()
+      .sort(
+        (a, b) =>
+          (b.avgPctCalc ?? b.top4Avg ?? -999) - (a.avgPctCalc ?? a.top4Avg ?? -999) ||
+          (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
+      );
+    themes.forEach((t, i) => {
+      t.rank = i + 1;
+    });
+  }
 
   const first = Object.values(map)[0];
   return {

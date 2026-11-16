@@ -2583,52 +2583,196 @@
     return head + items.map(nxRowHtml).join('');
   }
 
+  /* ---------------- [1탭] 실시간 주도 테마 · 오늘의 주도주 · 검색 카드 ----------------
+   *  · 카드1 = 네이버 실시간 테마 랭킹 상위 6 (themeSource='naver-theme' 일 때만)
+   *  · 카드2 = 오늘 실제 급등주 + 거래대금 상위 (NXT 체결 랭킹 실측)
+   *  · 카드3 = NXT 검색 상위
+   *  · 그린 내용을 window.PM_LIVE 로 넘겨, 카드를 눌러 연 모달도 같은 실측값을 보여준다.
+   */
+
+  /* 원 단위 거래대금 → '1,604억' / '4.61조' */
+  function pmEok(won) {
+    if (!isNum(won) || won <= 0) return '';
+    if (won >= 1e12) return (won / 1e12).toFixed(2) + '조';
+    return Math.round(won / 1e8).toLocaleString('ko-KR') + '억';
+  }
+
+  function pmSpanStyle(bg, fg) {
+    return 'font-size:10px; background:' + bg + '; color:' + fg + '; padding:1px 4px; border-radius:3px; white-space:nowrap;';
+  }
+
+  function pmHeadHtml(title, color, badge, bg, fg) {
+    return '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px; flex-wrap:wrap;">' +
+      '<span style="font-size:11.5px; font-weight:800; color:' + color + ';">' + esc(title) + '</span>' +
+      '<span style="' + pmSpanStyle(bg, fg) + '">' + esc(badge) + '</span></div>';
+  }
+
+  function pmQuoteHtml(it, showValue) {
+    var pct = isNum(it.changePct) ? it.changePct : null;
+    var onclick = 'event.stopPropagation();' + inPlaceOpenJs(it.name, it.code,
+      isNum(it.price) ? fmt(it.price) + '원' : '', pct === null ? '' : pctTxt(pct));
+    var txt = String(it.name || '') + (isNum(it.price) ? ' ' + fmt(it.price) + '원' : '') +
+      (pct === null ? '' : ' (' + pctTxt(pct) + ')') +
+      (showValue && it.valueText ? ' · ' + it.valueText + (it.valueBasis ? ' (' + it.valueBasis + ')' : '') : '');
+    return '<span class="pm-q" data-pm-code="' + esc(it.code || '') + '" data-pm-name="' + esc(it.name || '') + '"' +
+      (showValue ? ' data-pm-show="value"' : '') +
+      ' style="color:' + colFor(pct) + '; font-weight:800; cursor:pointer;"' +
+      ' title="눌러서 이 자리에서 실시간 차트 팝업" onclick="' + esc(onclick) + '">' + esc(txt) + '</span>';
+  }
+
+  function pmThemeRowHtml(t) {
+    /* 등락률·합산 대금은 '노출 상위 4종목' 기준(테마 전체 평균은 순위를 왜곡한다).
+     *  상승 X/Y (Z%) 는 테마 전체 확산도 — 분위기 비교용으로 그대로 남긴다. */
+    var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : (isNum(t.avgPct) ? t.avgPct : null));
+    var sumTxt = t.sumValueText || (isNum(t.top4Sum) ? pmEok(t.top4Sum) : '');
+    var stocks = (t.stocks || []).slice(0, 2);
+    var rise = isNum(t.riseCount) ? t.riseCount : 0;
+    var total = isNum(t.stockCount) ? t.stockCount : (rise + (t.fallCount || 0) + (t.steadyCount || 0));
+    var stxt = stocks.length
+      ? stocks.map(function (s) { return pmQuoteHtml(s, true); }).join(' · ')
+      : '<span style="color:#64748b;">구성종목 응답 없음</span>';
+    return '<div style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5;">' +
+      '• <strong style="color:#fff;" title="노출 상위 4종목 평균 등락률 · 합산 거래대금">' + esc(t.rank) + '위 ' +
+      esc(t.name) + ' ' + esc(pctTxt(avg)) + (sumTxt ? ' · ' + esc(sumTxt) : '') + '</strong>' +
+      (total ? ' <span style="color:#94a3b8;">(상승 ' + rise + '/' + total + ')</span>' : '') +
+      ': ' + stxt + '</div>';
+  }
+
+  function pmLeadRole(ratio) {
+    if (ratio === null) return { txt: '주도주', color: '#fca5a5' };
+    if (ratio >= 29.5) return { txt: '👑 상한가', color: '#fca5a5' };
+    if (ratio >= 25.0) return { txt: '🚨 상한가 임박', color: '#fca5a5' };
+    if (ratio >= 10.0) return { txt: '🚀 급등', color: '#fca5a5' };
+    return { txt: '📈 상승 상위', color: '#fca5a5' };
+  }
+
+  function pmLeadRowHtml(it, roleTxt) {
+    var pct = isNum(it.changePct) ? it.changePct : null;
+    var role = roleTxt || pmLeadRole(pct).txt;
+    return '<div style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5;">' +
+      '• <strong style="color:#fca5a5;">' + esc(role) + '</strong> ' + pmQuoteHtml(it, true) + '</div>';
+  }
+
+  /* 카드를 그린 뒤 — 모달(window.PM_LIVE)도 같은 HTML 로 채운다 */
+  function publishPmLive(body, stamp) {
+    var cards = $$('#premarketRadarBox div[onclick*="openPremarketDetail"]');
+    if (cards.length < 3) return;
+    function wrap(title, v1, v2, card) {
+      return {
+        title: title,
+        v1: v1,
+        v2: v2,
+        html: '<div style="font-size:12px; color:#e2e8f0; line-height:1.6;">' +
+          '<div style="margin-bottom:10px; padding:8px 10px; background:rgba(16,185,129,0.1); ' +
+          'border:1px solid rgba(16,185,129,0.3); border-radius:6px;">' +
+          '<strong style="color:#6ee7b7;">📌 ' + esc(v2) + '</strong></div>' +
+          '<div style="background:#131d2e; border:1px solid #1e293b; padding:10px; border-radius:6px;">' +
+          (card ? card.innerHTML : '') + '</div></div>'
+      };
+    }
+    var themes = (body.themes || []).filter(function (t) { return t && t.name; });
+    var leaders = pmLeaderPick(body);
+    var nx = body.nxtLeaders || {};
+    var payload = {};
+    if (themes.length && body.themeSource === 'naver-theme') {
+      payload.nxt = wrap('⚡ 실시간 6대 주도 테마 (네이버 실측)',
+        themes[0].rank + '위 ' + themes[0].name + ' ' + pctTxt(isNum(themes[0].avgPct) ? themes[0].avgPct : themes[0].avgPctCalc),
+        '네이버 테마 랭킹 ' + (body.themeRankTotal || 0) + '개 중 상위 ' + themes.slice(0, 6).length + ' · ' + stamp + ' 갱신',
+        cards[0]);
+    }
+    if (leaders.length) {
+      payload.krx = wrap('🎯 오늘의 핵심 주도주 분석 (네이버 실측)',
+        pmLeadRole(isNum(leaders[0].changePct) ? leaders[0].changePct : null).txt + ' ' + (leaders[0].name || ''),
+        'NXT 체결 랭킹 실측(상승률·거래대금 상위) · ' + stamp + ' 갱신', cards[1]);
+    }
+    if ((nx.searchTop || []).length) {
+      payload.search = wrap('🔍 실시간 검색 상위 (NXT 실측)', '1위 ' + nx.searchTop[0].name,
+        '네이버 NXT 검색 랭킹 · ' + stamp + ' 갱신', cards[2]);
+    }
+    if (Object.keys(payload).length) window.PM_LIVE = payload;
+  }
+
+  /* 카드2에 쓸 주도주 — 상승률 상위 2 + 거래대금 상위 2 (중복 제거) */
+  function pmLeaderPick(body) {
+    var nx = body.nxtLeaders || {};
+    var out = [];
+    var seen = {};
+    (nx.byPct || []).forEach(function (it) {
+      if (out.length >= 2 || !it || !it.name || seen[it.code]) return;
+      var pct = isNum(it.changePct) ? it.changePct : 0;
+      if (pct <= 0) return;
+      seen[it.code] = 1;
+      out.push(it);
+    });
+    (nx.byValue || []).forEach(function (it) {
+      if (out.length >= 4 || !it || !it.name || seen[it.code]) return;
+      seen[it.code] = 1;
+      out.push(it);
+    });
+    return out;
+  }
+
   function renderNxtTracks(body, stamp) {
     var box = document.getElementById('premarketRadarBox');
     if (!box) return 0;
-    var nx = body.nxtLeaders;
     var cards = $$('#premarketRadarBox div[onclick*="openPremarketDetail"]');
     if (!cards.length) return 0;
-
-    var phase = (body.aftermarket && body.aftermarket.sessionPhase) || null;
-    var ses = phase === '프리마켓' ? '프리마켓' : phase === '애프터마켓' ? '애프터마켓' : '장중';
     var applied = 0;
 
-    if (!nx || !nx.ok) {
-      var fail = nxTrackHtml('⚡ NXT ' + ses + ' 실시간 랭킹', '#94a3b8', [], '실패');
-      cards.forEach(function (card) {
-        if (card.getAttribute('data-sig') === 'fail') return;
-        card.innerHTML = fail;
-        card.setAttribute('data-sig', 'fail');
-        applied += 1;
-      });
-      var bg = document.getElementById('pmSessionBadge');
-      if (bg) { bg.textContent = '⚠️ NXT 랭킹 실패'; bg.style.background = '#7f1d1d'; bg.style.color = '#fecaca'; }
-      return applied;
-    }
-
-    var badge = '⚡ ' + stamp;
-    var tracks = [
-      { title: '⚡ NXT ' + ses + ' 상승 주도주', color: '#6ee7b7', items: nx.byPct },
-      { title: '💰 NXT ' + ses + ' 거래대금 상위', color: '#c7d2fe', items: nx.byValue },
-      { title: '🔍 NXT 검색 상위', color: '#7dd3fc', items: nx.searchTop },
-    ];
-    tracks.forEach(function (t, i) {
-      var card = cards[i];
-      if (!card) return;
-      var html = nxTrackHtml(t.title, t.color, t.items, badge);
-      if (card.getAttribute('data-sig') !== html) {
-        card.innerHTML = html;
-        card.setAttribute('data-sig', html);
+    /* --- 카드1: 네이버 실시간 테마 랭킹 상위 6 --- */
+    var themes = (body.themes || []).filter(function (t) { return t && t.name; });
+    var themeOk = body.themeSource === 'naver-theme' && themes.length > 0;
+    if (themeOk) {
+      var html = pmHeadHtml('⚡ 실시간 6대 주도 테마 (네이버 실측)', '#6ee7b7', stamp + ' 갱신',
+        'rgba(16,185,129,0.2)', '#a7f3d0') +
+        themes.slice(0, 6).map(pmThemeRowHtml).join('');
+      if (cards[0].getAttribute('data-sig') !== html) {
+        cards[0].innerHTML = html;
+        cards[0].setAttribute('data-sig', html);
         applied += 1;
       }
-      card.setAttribute('data-nxt-live', '1');
-    });
+      cards[0].setAttribute('data-nxt-live', '1');
+    }
+
+    /* --- 카드2: 오늘의 주도주 --- */
+    var leaders = pmLeaderPick(body);
+    if (leaders.length) {
+      var lhtml = pmHeadHtml('🎯 오늘의 핵심 주도주 분석 (네이버 실측)', '#c7d2fe', stamp + ' 갱신',
+        'rgba(99,102,241,0.2)', '#c7d2fe') +
+        leaders.map(function (it, i) { return pmLeadRowHtml(it, i >= 2 ? '💰 대금 상위' : null); }).join('');
+      if (cards[1].getAttribute('data-sig') !== lhtml) {
+        cards[1].innerHTML = lhtml;
+        cards[1].setAttribute('data-sig', lhtml);
+        applied += 1;
+      }
+      cards[1].setAttribute('data-nxt-live', '1');
+    }
+
+    /* --- 카드3: NXT 검색 상위 --- */
+    var nx = body.nxtLeaders || {};
+    var search = (nx.searchTop || []).slice(0, 5);
+    if (search.length) {
+      var shtml = pmHeadHtml('🔍 실시간 검색 상위 (NXT 실측)', '#7dd3fc', stamp + ' 갱신',
+        'rgba(56,189,248,0.2)', '#7dd3fc') +
+        search.map(function (it, i) {
+          return '<div style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5;">• ' +
+            (i + 1) + '위 ' + pmQuoteHtml(it, true) + '</div>';
+        }).join('');
+      if (cards[2].getAttribute('data-sig') !== shtml) {
+        cards[2].innerHTML = shtml;
+        cards[2].setAttribute('data-sig', shtml);
+        applied += 1;
+      }
+      cards[2].setAttribute('data-nxt-live', '1');
+    }
+
     box.setAttribute('data-nxt-live', '1');
+    publishPmLive(body, stamp);
 
     var sessBadge = document.getElementById('pmSessionBadge');
     if (sessBadge) {
-      var btxt = '⚡ NXT ' + (nx.sessionLabel || ses) + ' LIVE ' + stamp;
+      var phase = (body.aftermarket && body.aftermarket.sessionPhase) || body.sessionPhase || '';
+      var btxt = '⚡ ' + (phase ? phase + ' · ' : '') + stamp + ' 실시간';
       if (sessBadge.textContent !== btxt) sessBadge.textContent = btxt;
       sessBadge.style.background = '#064e3b';
       sessBadge.style.color = '#6ee7b7';
@@ -2636,9 +2780,8 @@
     }
     var noteEl = document.getElementById('pmNote');
     if (noteEl) {
-      var ntxt = '※ NXT(넥스트레이드) 실시간 랭킹 ' + stamp + ' 조회 — ' + ses +
-        ' 체결가·거래대금 기준입니다(전일 종가 대비). 감시군에 NXT 랭킹 종목 ' +
-        (nx.dynamicCount || 0) + '개를 더해 3번 탭 순위에 함께 넣었습니다.';
+      var ntxt = '※ 네이버 테마 랭킹·NXT 체결 랭킹을 ' + stamp + '에 조회한 실측값입니다. ' +
+        '표시 종목을 누르면 이 자리에서 실시간 차트가 열립니다(외인·기관 순매수 확정치는 실시간이 아닙니다).';
       if (noteEl.textContent !== ntxt) noteEl.textContent = ntxt;
       noteEl.setAttribute('data-live', '1');
     }
@@ -3087,7 +3230,9 @@
   }
 
   function dynThemeHtml(t) {
-    var avg = isNum(t.avgPct) ? t.avgPct : null;
+    /* 헤더 등락률은 '화면에 노출된 상위 4종목' 평균(avg) — 전체 종목 평균(avgPct)은 참고값으로만 둔다.
+     *  테마 순위도 같은 기준으로 /api/tabs-live 가 매겨서 내려준다. */
+    var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : (isNum(t.avgPct) ? t.avgPct : null));
     var stocks = t.stocks || [];
     var rise = isNum(t.riseCount) ? t.riseCount : 0;
     var fall = isNum(t.fallCount) ? t.fallCount : 0;
@@ -3102,7 +3247,7 @@
     return (
       '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
         '<div class="theme-header">' +
-          '<span class="theme-name">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
+          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
             ' <span style="font-size:10px; color:' + spreadColor + '; font-weight:700; margin-left:4px; letter-spacing:-0.2px;" title="테마 구성종목 중 당일 상승 종목 비율(확산도)">' +
@@ -3153,7 +3298,8 @@
       }
       var sub = head.querySelector('.sub');
       if (sub) {
-        var stxt = '네이버 실시간 테마 랭킹(등락률 상위 ' + themes.length + '테마 · ' + (body.themeRankTotal || 0) + '개 중) · ⚡ ' + stamp + ' 갱신';
+        var stxt = '네이버 실시간 테마 랭킹(노출 상위 4종목 평균 등락률·합산 대금 기준 ' + themes.length +
+          '테마 · 후보 ' + (body.themeRankTotal || 0) + '개) · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== stxt) sub.textContent = stxt;
         sub.setAttribute('data-live', '1');
       }

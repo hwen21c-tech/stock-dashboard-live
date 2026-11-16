@@ -823,6 +823,11 @@
       var q = byCode[code];
       if (!q) return;
       var txt = pmQuoteText(name, q);
+      // 대금까지 함께 보여주는 칸(data-pm-show="value")은 통합(KRX+NXT) 대금을 붙인다
+      if (el.getAttribute('data-pm-show') === 'value') {
+        var vtxt = q.valueIntegText || q.valueText || null;
+        if (vtxt) txt += ' · ' + vtxt;
+      }
       if (el.textContent !== txt) el.textContent = txt;
       var color = colorOf(num(q.changePct));
       el.style.color = color;
