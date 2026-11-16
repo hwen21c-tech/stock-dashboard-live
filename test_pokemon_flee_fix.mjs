@@ -378,11 +378,14 @@ const main = async () => {
     executablePath: process.env.CHROME_PATH || undefined
   });
 
+  const VW = Number(process.env.VW || 400);
+  const VH = Number(process.env.VH || 860);
+  const HIRES_SKIP = process.env.NOHIRES === '1';
   for (const game of GAMES) {
-    await testGame(browser, game, 400, 860);
+    await testGame(browser, game, VW, VH);
   }
   /* 폴드8 내부 가로 화면에서도 한 게임 더 */
-  if (GAMES.includes(ALL_GAMES[0])) await testGame(browser, ALL_GAMES[0], 884, 960);
+  if (!HIRES_SKIP && VW === 400 && GAMES.includes(ALL_GAMES[0])) await testGame(browser, ALL_GAMES[0], 884, 960);
 
   await browser.close();
   if (srv) srv.kill();
