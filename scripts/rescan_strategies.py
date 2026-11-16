@@ -16,6 +16,7 @@
 """
 import argparse
 import gzip
+import html as html_lib
 import json
 import math
 import os
@@ -621,9 +622,27 @@ def build_hong(uni, per, themes, days, totals, cap=12):
 
     # ---- 후보 선정 (기준일 D+0 / 전일 기준봉 D+1 / 전전일 기준봉 D+2)
     d0_codes = sorted([c for c in per if anchor_on(c, D2_)], key=lambda c: -per[c][D2_]["valueEok"])[:cap]
-    d1_all = [c for c in per if big_on(c, D1_) and rec(c, D1_)["valueEok"] >= 200
-              and rec(c, D2_) and rec(c, D2_)["l"] < rec(c, D1_)["c"]]
+    # D+1 판정 — 기준봉(직전 거래일)의 **중심선 = (시가 + 종가) / 2** 을 당일 종가가 이탈한 종목은 제외한다.
+    #   중심선 아래로 종가가 빠지면 '눌림'이 아니라 '기준봉 무효(실패 패턴)'다 (예: 오킨스전자 -28.33%).
+    d1_all, d1_center_out = [], []
+    for c in per:
+        r1, r2 = rec(c, D1_), rec(c, D2_)
+        if not (r1 and r2):
+            continue
+        if not (big_on(c, D1_) and r1["valueEok"] >= 200 and r2["l"] < r1["c"]):
+            continue
+        mid = (r1["o"] + r1["c"]) / 2.0
+        if r2["c"] < mid:
+            d1_center_out.append({
+                "code": c, "name": names[c]["name"], "market": names[c]["market"],
+                "baseOpen": r1["o"], "baseClose": r1["c"], "baseMid": round(mid),
+                "close": r2["c"], "pct": r2["pct"], "valueEok": r2["valueEok"],
+                "gapMid": round(pct(r2["c"], mid), 2), "gapClose": round(pct(r2["c"], r1["c"]), 2),
+            })
+            continue
+        d1_all.append(c)
     d1_all.sort(key=lambda c: -rec(c, D2_)["valueEok"])
+    d1_center_out.sort(key=lambda x: -x["valueEok"])
     d1_codes = [c for c in d1_all if c not in d0_codes][:4]
     d2_all = [c for c in per if anchor_on(c, D0_) and c not in d0_codes + d1_codes
               and rec(c, D1_) and rec(c, D1_)["c"] and pct(rec(c, D1_)["c"], rec(c, D0_)["c"]) >= CAFE_MIN]
@@ -708,6 +727,10 @@ def build_hong(uni, per, themes, days, totals, cap=12):
             low_txt = ("<b>눌림 없음</b>(저가 = 전일 종가)" if g["low"] >= 0 else f"저가 {nf(r['l'])}원(<b>눌림 {g['low']:+.2f}%</b>)")
             reasons.append(f"{L2} <b>D+1</b> 기준선(전일 종가) {nf(g['base'])}원 → 시가 {nf(r['o'])}원({ps(g['gap'])} 갭) · "
                            f"{low_txt} · 고가 {nf(r['h'])}원(반등 {g['high']:+.2f}%) · 종가 {ps(g['close'])}")
+            mid1 = (p0["o"] + p0["c"]) / 2.0
+            reasons.append(f"기준봉 중심선 (시가 {nf(p0['o'])} + 종가 {nf(p0['c'])}) / 2 = <b>{nf(mid1)}원</b> → "
+                           f"{L2} 종가 {nf(r['c'])}원(<b>{pct(r['c'], mid1):+.2f}%</b>) "
+                           + ("<b>중심선 유지</b> ✓" if r["c"] >= mid1 else "<b>중심선 이탈</b> — D+1 후보 제외 대상"))
             if th:
                 reasons.append(f"④⑤ 테마 <b>{th['name']}</b> — 5%↑ 동반 {th['companionCount']}종목 · {L2} 대금 {nf(r['valueEok'])}억 {rank}위")
             else:
@@ -765,6 +788,8 @@ def build_hong(uni, per, themes, days, totals, cap=12):
             "plan": pl, "reasons": reasons, "flags": flags,
             "levels": {"open": r["o"], "high": r["h"], "low": r["l"], "close": r["c"],
                        "prevClose": r["prevClose"], "hi120": r["hi120"], "hi120Date": r["hi120Date"],
+                       "baseMid": (round(((rec(code, D1_) or r)["o"] + (rec(code, D1_) or r)["c"]) / 2.0)
+                                   if rec(code, D1_) else None),
                        "m5": dv["m5"], "m20": dv["m20"], "m120": dv["m120"]},
             "spark15": dv["spark15"], "candles": dv["candles"],
         }
@@ -803,6 +828,7 @@ def build_hong(uni, per, themes, days, totals, cap=12):
         "bigbar": len([x for x in funnel if all(x["st"][k] for k in ("d30", "up5", "theme3", "break", "bigbar"))]),
         "d0": len([x for x in funnel if all(x["st"][k] for k, _ in HONG_STEPS)]),
         "d0chart": len(d0_all), "near": len(near_codes), "d1": len(d1_codes), "d2": len(d2_codes),
+        "d1CenterOut": len(d1_center_out),
     }
 
     # ---- 탈락 사유 (기준일 · 모달)
@@ -835,6 +861,13 @@ def build_hong(uni, per, themes, days, totals, cap=12):
                     "rank": rank_of(c, D2_), "chart_ok": True,
                     "why": [{"k": "② 거래대금 상위 30·500억", "v": f"{rank_of(c, D2_)}위 · {nf(r['valueEok'])}억"},
                             {"k": "④⑤ 같은 테마 5%↑ 3종목", "v": (f"{th['name']} · 동반 {th['companionCount']}종목" if th else "테마 미확인(개별 재료)")}]})
+    # 기준봉 중심선을 종가로 이탈한 D+1 후보 — 자동 제외하고 사유를 남긴다
+    for x in d1_center_out:
+        rej.append({"name": x["name"], "code": x["code"], "pct": x["pct"], "valueEok": x["valueEok"],
+                    "rank": rank_of(x["code"], D2_), "centerOut": True,
+                    "why": [{"k": "기준봉 중심선 이탈",
+                             "v": (f"{L1} 기준봉 중심선 {x['baseMid']:,}원((시가 {x['baseOpen']:,.0f} + 종가 {x['baseClose']:,.0f})/2) "
+                                   f"→ {L2} 종가 {x['close']:,.0f}원({x['gapMid']:+.2f}%) — D+1 누림 후보 자동 제외")}]})
     rej.sort(key=lambda x: -x["valueEok"])
 
     return {
@@ -845,7 +878,9 @@ def build_hong(uni, per, themes, days, totals, cap=12):
         "universe": len(uni), "apiTotals": totals, "scanned": len(per), "days": days, "pipe": pipe,
         "kpi": {"d0": pipe["d0"], "d0chart": len(d0_all), "d1cand": len(d0_codes), "d1real": len(d1_codes),
                 "d1events": len(d1_events), "d2cand": d2_next, "d2real": len(d2_codes),
-                "near": len(near_codes), "n1616": n1616},
+                "near": len(near_codes), "n1616": n1616, "d1CenterOut": len(d1_center_out)},
+        "centerOut": [{"code": x["code"], "name": x["name"], "baseMid": x["baseMid"],
+                        "close": x["close"], "gapMid": x["gapMid"], "pct": x["pct"]} for x in d1_center_out[:12]],
         "cards": cards, "reject": rej,
     }
 
@@ -880,6 +915,23 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=40):
             "candles": [{"d": x["date"], "o": x["o"], "h": x["h"], "l": x["l"], "c": x["c"], "v": x["v"]} for x in cs[-200:]],
             "spark15": [[x["date"], x["c"], x["v"]] for x in cs[-15:]],
         })
+
+    # ── 거래대금 순위(rank) — 어느 시장·어느 기준인지 함께 명시한다.
+    #    · 기준: 정규장(KRX) 종가 × 정규장 거래량. NXT 시간외 체결 대금은 포함하지 않았다.
+    #    · 순위: 코스피+코스닥 전 종목 통합(rank) / 같은 시장 안에서(rankMarket)
+    #    예전에는 카드에 valueEok 만 있고 rank 가 없거나, 홍인기 카드의 '전 종목 N위'와
+    #    다른 기준이 섞여 있어 '어느 시장·어느 기준 순위'인지 알 수 없었다.
+    for i, x in enumerate(sorted(rows, key=lambda r: -r["valueEok"]), 1):
+        x["rank"] = i
+    for mkt in ("코스피", "코스닥"):
+        for i, x in enumerate(sorted([r for r in rows if r["market"] == mkt], key=lambda r: -r["valueEok"]), 1):
+            x["rankMarket"] = i
+    for x in rows:
+        x.setdefault("rankMarket", None)
+        x["valueBasis"] = "정규장"
+        x["rankBasis"] = "코스피+코스닥 통합 정규장 거래대금 순위"
+        x["rankText"] = (f"정규장 대금 {x['valueEok']:,.1f}억 · 통합 {x['rank']}위"
+                          + (f" / {x['market']} {x['rankMarket']}위" if x.get("rankMarket") else ""))
 
     for r in rows:
         ck = {
@@ -947,10 +999,13 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=40):
         "baseCount": len(base),
         "up5Count": sum(1 for r in rows if r["chg"] >= 5),
         "thresholds": BIJ_TH,
+        "valueBasis": "정규장(KRX) 종가 × 정규장 거래량",
+        "rankBasis": "코스피+코스닥 통합 정규장 거래대금 순위 (통합 KRX+NXT 아님)",
         "cards": cards,
         "rejects": rejects,
         "baseAll": [{k: r[k] for k in ("code", "name", "market", "chg", "volX", "valueEok", "bodyRate",
-                                       "upper", "break60", "break120", "grade")} for r in base],
+                                       "upper", "break60", "break120", "grade", "rank", "rankMarket",
+                                       "valueBasis", "rankBasis", "rankText")} for r in base],
     }
 
 
@@ -962,14 +1017,34 @@ CANDLES_REF = {}
 #   장이 아무리 바뀌어도 같은 종목만 남았다. 이제는 장마감 확정 일봉으로 매일 새로 뽑는다.
 #   · RN존  — 거래대금 상위 주도주(300억↑) 중 라운드 넘버 밴드 안에서 위치를 다시 계산
 #   · 종베  — 신정재(윗꼬리 없는 양봉·고가 밀착) / 강창권(장대양봉 후 5·20일선 눌림) 두 트랙
-RN_MIN_VALUE = 300.0       # RN존 후보 최소 거래대금(억)
+RN_MIN_VALUE = 1500.0      # RN존 후보 최소 거래대금(억) — 차트박사 검색식: 일 거래대금 1,500억 이상
+RN_BIG_CAP = 100000.0      # 시총 10조 이상 우량주은 대금 조건 면제 (RN존 1번 원칙: '시총 10조+ 우량주 or 3천억~10조 중 일 대금 1,500억+')
+RN_BIG_MIN_VALUE = 300.0   # 단, 시총 10조라도 하루 대금 300억 미만이면 호가가 얇아 실전 대상에서 뺍다
 RN_MIN_PCT = 0.0
 RN_PICK = 12
 JB_MIN_VALUE = 300.0
 JB_PICK_PER_TRACK = 5
 
+# ── 차트박사 공식 21개 라운드넘버(RN)선 ────────────────────────────────────
+#   붉은색(핵심 8): 500 · 1,000 · 5,000 · 10,000 · 50,000 · 100,000 · 500,000 · 1,000,000
+#   파란색(중간 3): 2,000 · 20,000 · 200,000
+#   옥색(보조 10): 1,500 · 3,000 · 7,500 · 15,000 · 30,000 · 75,000 · 150,000 · 300,000 · 750,000 · 1,500,000
+#   예전에는 가격대별 임의 라운딩(rn_step)으로 선을 만들었는데, 공식 배열과 달라
+#   (예: 779,000원 → 700,000/800,000) 매매 기준선이 틀리게 표시됐다.
+RN_LINES = (
+    (500, 'red'), (1000, 'red'), (1500, 'teal'), (2000, 'blue'), (3000, 'teal'),
+    (5000, 'red'), (7500, 'teal'), (10000, 'red'), (15000, 'teal'), (20000, 'blue'),
+    (30000, 'teal'), (50000, 'red'), (75000, 'teal'), (100000, 'red'), (150000, 'teal'),
+    (200000, 'blue'), (300000, 'teal'), (500000, 'red'), (750000, 'teal'),
+    (1000000, 'red'), (1500000, 'teal'),
+)
+RN_COLOR = {'red': '#ef4444', 'blue': '#3b82f6', 'teal': '#14b8a6'}
+RN_COLOR_KO = {'red': '붉은색', 'blue': '파란색', 'teal': '옥색'}
+RN_COLOR_RANK = {'red': '핵심', 'blue': '중간', 'teal': '보조'}
+
 
 def rn_step(price):
+    """현재가가 속한 RN 구간의 폭(참고용). 선 자체는 RN_LINES 공식 배열을 쓴다."""
     p = abs(float(price or 0))
     if p >= 500000:
         return 100000
@@ -1007,26 +1082,55 @@ def to_tick(v):
 
 
 def rn_category(price, lower, upper):
-    if not upper or not lower or upper <= lower:
+    """현재가가 공식 RN선 사이 어디에 있는지 — 하단 근접/터치 · 상단 근접/터치 4분류.
+       · 하단 RN 1% 이내 = 하단 터치(touch_lower) / 상단 RN 0.5% 이내 = 상단 터치(touch_upper)
+       · 그 외에는 더 가까운 선 쪽으로 (near_lower = 하단 근접, upper = 상단 근접)"""
+    p = float(price or 0)
+    if not lower:
         return 'upper'
-    r = (float(price) - lower) / float(upper - lower)
-    if r <= 1 / 3.0:
+    if not upper or upper <= lower:
+        return 'touch_upper' if p >= lower else 'upper'
+    d_low = (p / float(lower) - 1) * 100.0
+    d_up = (float(upper) / p - 1) * 100.0
+    if d_up <= 0.5:
+        return 'touch_upper'
+    if d_low <= 1.0:
         return 'touch_lower'
-    if r <= 2 / 3.0:
-        return 'near_lower'
-    return 'upper'
+    return 'near_lower' if d_low <= d_up else 'upper'
 
 
 def rn_lines(price):
-    step = rn_step(price)
-    lower = int(price // step) * step
-    upper = lower + step
-    buy1 = to_tick(lower * 1.04)
+    """현재가 기준 바로 아래 공식 RN선 = lowerRN, 바로 위 공식 RN선 = upperRN."""
+    p = float(price or 0)
+    lower, upper = None, None
+    for v, c in RN_LINES:
+        if v <= p:
+            lower = (v, c)
+        if v >= p and upper is None:
+            upper = (v, c)
+    lv, lc = lower if lower else RN_LINES[0]
+    if upper is None:                      # 공식 최상단(1,500,000원) 위 — 위쪽 선이 없다
+        uv, uc = lv, lc
+    else:
+        uv, uc = upper
+    buy1 = to_tick(lv * 1.04)
+    if uv > lv:
+        span = (uv - lv)
+        zone_text = (f"하단 {lv:,}원({RN_COLOR_KO[lc]}) {(p / lv - 1) * 100:+.2f}% · "
+                     f"상단 {uv:,}원({RN_COLOR_KO[uc]}) {(uv / p - 1) * 100:+.2f}% · "
+                     f"구간폭 {span:,}원")
+    else:
+        zone_text = f"하단 {lv:,}원({RN_COLOR_KO[lc]}) {(p / lv - 1) * 100:+.2f}% · 위쪽 공식 RN선 없음(최상단)"
     return {
-        'upperRN': int(upper), 'lowerRN': int(lower),
+        'upperRN': int(uv), 'lowerRN': int(lv),
+        'lowerColor': lc, 'upperColor': uc,
+        'lowerColorHex': RN_COLOR[lc], 'upperColorHex': RN_COLOR[uc],
+        'lowerColorKo': RN_COLOR_KO[lc], 'upperColorKo': RN_COLOR_KO[uc],
+        'lowerKind': RN_COLOR_RANK[lc], 'upperKind': RN_COLOR_RANK[uc],
+        'zoneText': zone_text,
         'buy1': buy1, 'buy2': to_tick(buy1 * 0.8),
         'targetMin': to_tick(buy1 * 1.07), 'targetMax': to_tick(buy1 * 1.2),
-        'category': rn_category(price, lower, upper),
+        'category': rn_category(p, lv, uv),
     }
 
 
@@ -1056,15 +1160,22 @@ def build_rnzone(uni, per, cache, days):
         if not rec or not cs or len(cs) < 30:
             continue
         price = rec['c']
-        if price < 1000 or rec['valueEok'] < RN_MIN_VALUE:
+        cap = float(u.get('cap') or 0)
+        big_cap = cap >= RN_BIG_CAP
+        if price < 1000:
             continue
+        if rec['valueEok'] < RN_MIN_VALUE:
+            if not (big_cap and rec['valueEok'] >= RN_BIG_MIN_VALUE):
+                continue
         rows.append({
             'code': code, 'name': u['name'], 'market': u.get('market') or '',
             'price': int(price), 'chg': rec['pct'], 'valueEok': rec['valueEok'],
+            'capEok': cap, 'bigCap': big_cap,
+            'pickReason': ('대금 1,500억↑' if rec['valueEok'] >= RN_MIN_VALUE else '시총 10조↑ 우량주(대금 조건 면제)'),
             'volX': round(rec['v'] / (sum(x['v'] for x in cs[-21:-1]) / 20 or 1), 2),
         })
     if not rows:
-        return [], {'all': 0, 'touch_lower': 0, 'near_lower': 0, 'upper': 0}, basis
+        return [], {'all': 0, 'touch_lower': 0, 'near_lower': 0, 'upper': 0, 'touch_upper': 0}, basis
 
     by_value = sorted(rows, key=lambda r: -r['valueEok'])[:8]
     by_gain = sorted([r for r in rows if r['chg'] >= RN_MIN_PCT], key=lambda r: -r['chg'])[:6]
@@ -1086,16 +1197,28 @@ def build_rnzone(uni, per, cache, days):
             'category': lines['category'],
             'price': r['price'], 'changeRatio': r['chg'],
             'upperRN': lines['upperRN'], 'lowerRN': lines['lowerRN'],
+            'lowerColor': lines['lowerColor'], 'upperColor': lines['upperColor'],
+            'lowerColorHex': lines['lowerColorHex'], 'upperColorHex': lines['upperColorHex'],
+            'lowerColorKo': lines['lowerColorKo'], 'upperColorKo': lines['upperColorKo'],
+            'lowerKind': lines['lowerKind'], 'upperKind': lines['upperKind'],
+            'zoneText': lines['zoneText'],
             'buy1': lines['buy1'], 'buy2': lines['buy2'],
             'targetMin': lines['targetMin'], 'targetMax': lines['targetMax'],
+            'valueEok': r['valueEok'],
             'valueText': f"{r['valueEok']:,.0f}억",
+            'valueBasis': '정규장',
+            'pickReason': r['pickReason'],
+            'bigCap': r['bigCap'],
+            'capText': (f"{r['capEok'] / 10000:,.1f}조" if r['capEok'] >= 10000 else (f"{r['capEok']:,.0f}억" if r['capEok'] else '')),
             'candles': rn_candles(cs, 60),
         })
-    counts = {'all': len(out), 'touch_lower': 0, 'near_lower': 0, 'upper': 0}
+    ORDER = {'touch_lower': 0, 'near_lower': 1, 'upper': 2, 'touch_upper': 3}
+    out.sort(key=lambda s: (ORDER.get(s['category'], 9), -s['valueEok']))
+    counts = {'all': len(out), 'touch_lower': 0, 'near_lower': 0, 'upper': 0, 'touch_upper': 0}
     for s in out:
-        counts[s['category']] += 1
+        counts[s['category']] = counts.get(s['category'], 0) + 1
     log(f"  RN존 자동선정 {len(out)}종목 ("
-        f"상단터치 {counts['upper']} · 하단근접 {counts['near_lower']} · 하단터치 {counts['touch_lower']})")
+        f"하단터치 {counts['touch_lower']} · 하단근접 {counts['near_lower']} · 상단근접 {counts['upper']} · 상단터치 {counts['touch_upper']})")
     return out, counts, basis
 
 
@@ -1196,6 +1319,122 @@ def _highest(win):
         if best is None or c["h"] > best["h"]:
             best = c
     return best
+
+
+# ── 인더스트리 액션: 종목별 뉴스·재료 요약 ────────────────────────────────
+#   깡토·수급 카드에 "왜 오늘 움직였는지"(재료·실적·업종 이슈)를 붙이기 위해
+#   네이버 증권 종목 뉴스(m.stock.naver.com/api/news/stock/{code})를 읽어
+#   헤드라인·언론사·날짜와 재료 키워드 태그를 뽑는다. 요약 문장은 만들지 않고
+#   '원문 제목 그대로'만 보여 준다(추론을 사실처럼 쓰지 않기 위해).
+NEWS_CACHE = os.path.join(CACHE_DIR, "news-cache.json")
+NEWS_TTL_H = 3.0
+MATERIAL_PATS = (
+    ("수주·계약", re.compile(r"수주|공급계약|계약 체결|납품|MOU|공급 확대|단독")),
+    ("실적", re.compile(r"영업이익|실적|어닝|흥자|적자 축소|분기 최대|매출")),
+    ("M&A·지분", re.compile(r"인수|합병|지분 인수|최대주주|경영권|분할")),
+    ("정책·규제", re.compile(r"정부|규제|허가|승인|법안|관세|보조금|지원사업")),
+    ("기술·신제품", re.compile(r"개발|출시|양산|특허|기술|HBM|AI|로봇|전고체|LFP")),
+    ("증설·투자", re.compile(r"증설|투자|공장|캐파|생산능력|설비")),
+)
+KK_NEWS_MAX = 3
+
+
+def _news_cache_load():
+    try:
+        d = json.load(open(NEWS_CACHE, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:              # noqa: BLE001
+        return {}
+
+
+def _news_cache_save(d):
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        json.dump(d, open(NEWS_CACHE, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception:              # noqa: BLE001
+        pass
+
+
+def fetch_stock_news(code, name=None):
+    """종목 뉴스 → {headlines, newsNote, materialTags, materialScore, materialLevel}
+       · 네이버 '종목 뉴스' 피드에는 시장 전체 기사(코스피 마감·환율 등)도 섮여 있어,
+         종목명이 들어간 기사를 우선 쓰고 시장 기사만 있으면 재료 강도를 낮게 표기한다."""
+    try:
+        raw = get(f"https://m.stock.naver.com/api/news/stock/{code}?pageSize=10&page=1", timeout=12)
+        groups = json.loads(raw.decode("utf-8", "ignore"))
+    except Exception:              # noqa: BLE001
+        return None
+    rows = []
+    for g in (groups or []):
+        for it in (g.get("items") or []):
+            title = re.sub(r"\s+", " ", html_lib.unescape(str(it.get("title") or ""))).strip()
+            if not title:
+                continue
+            dt = str(it.get("datetime") or "")
+            rows.append({"title": title, "press": it.get("officeName") or "",
+                         "dt": dt, "date": (f"{dt[4:6]}/{dt[6:8]}" if len(dt) >= 8 else "")})
+    # 중복 제목 제거 + 최신순
+    seen, uniq = set(), []
+    for r in rows:
+        k = r["title"][:40]
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(r)
+    uniq.sort(key=lambda r: r["dt"], reverse=True)
+    nm = (name or "").strip()
+    named = [r for r in uniq if nm and nm in r["title"]]
+    base_rows = named if named else uniq
+    heads = base_rows[:KK_NEWS_MAX]
+    tags = []
+    for tag_name, pat in MATERIAL_PATS:
+        if any(pat.search(r["title"]) for r in base_rows[:6]):
+            tags.append(tag_name)
+    # 재료 점수: 기사 수(0~40) + 태그 다양성(0~30) + 최신성(0~30)
+    today = now_kst().strftime("%Y%m%d")
+    fresh = sum(1 for r in base_rows if r["dt"][:8] >= today) if base_rows else 0
+    score = min(40, len(base_rows) * 8) + min(30, len(tags) * 10)
+    score += 30 if fresh >= 2 else (20 if fresh == 1 else 0)
+    if not named:                    # 종목명이 들어간 기사가 없으면 시장 기사뿐 → 강하다고 보지 않는다
+        score = min(score, 30)
+    level = "강" if score >= 70 else ("중" if score >= 45 else "약")
+    note = ""
+    if heads:
+        h = heads[0]
+        note = f"{h['title']}" + (f" ({h['press']}, {h['date']})" if h["press"] else "")
+    return {"headlines": heads, "newsNote": note, "materialTags": tags,
+            "materialScore": score, "materialLevel": level, "newsCount": len(base_rows),
+            "nameMatched": bool(named)}
+
+
+def fetch_news_many(codes, names=None):
+    """여러 종목 뉴스를 병렬로(캐시 3시간). 실패한 종목은 결과에서 빠진다."""
+    names = names or {}
+    cache = _news_cache_load()
+    now = time.time()
+    out, todo = {}, []
+    for code in codes:
+        hit = cache.get(code)
+        if hit and now - float(hit.get("at") or 0) < NEWS_TTL_H * 3600 and hit.get("nameMatched") is not None:
+            out[code] = {k: v for k, v in hit.items() if k != "at"}
+        else:
+            todo.append(code)
+    if todo:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for code, res in zip(todo, ex.map(lambda c: fetch_stock_news(c, names.get(c)), todo)):
+                if res:
+                    out[code] = res
+                    cache[code] = dict(res, at=now)
+        _news_cache_save(cache)
+    return out
+
+
+def _material_strength(card):
+    """재료·업종 동반 강세 점수 — 카드 상단 우선배치 기준(0~100)"""
+    ms = float(card.get("materialScore") or 0)
+    ratio = card.get("industryRatio")
+    ir = float(ratio) if ratio is not None else 0.0
+    return round(ms * 0.6 + ir * 0.4, 1)
 
 
 def _cap_text(cap_eok):
@@ -1345,13 +1584,47 @@ def build_kkangto(uni, per, cache, days, themes=None):
     near.sort(key=lambda x: (x["dist"], -x["valueEok"]))
     brk.sort(key=lambda x: (x["breakDaysAgo"], -x["valueEok"]))
     cards = near[:KK_NEAR_PICK] + brk[:KK_BREAK_PICK]
+
+    # ── 인더스트리 액션: 선정 종목마다 네이버 종목 뉴스(재료·실적) + 테마/업종 동반 수치를 붙인다
+    try:
+        news_map = fetch_news_many([c["code"] for c in cards],
+                                    {c["code"]: c["name"] for c in cards})
+    except Exception as e:        # noqa: BLE001
+        news_map = {}
+        log(f"  ! 종목 뉴스 조회 실패({e}) — 재료 없이 진행")
+    for c in cards:
+        n = news_map.get(c["code"]) or {}
+        c["newsHeadlines"] = n.get("headlines") or []
+        c["newsNote"] = n.get("newsNote") or ""
+        c["materialTags"] = n.get("materialTags") or []
+        c["materialScore"] = n.get("materialScore") or 0
+        c["materialLevel"] = n.get("materialLevel") or ""
+        c["newsCount"] = n.get("newsCount") or 0
+        c["nameMatched"] = bool(n.get("nameMatched"))
+        c["industryNote"] = (f"{c['theme']} 테마 {c['themeRate']:+.2f}% · {c['industryUp']}/{c['industryTotal']}종목 상승({c['industryRatio']}%)"
+                             if c.get("theme") and c.get("industryTotal") else "업종 분류 없음(개별 재료)")
+        c["materialStrength"] = _material_strength(c)
+        if c["newsNote"]:
+            tags = (" · 재료 " + "/".join(c["materialTags"])) if c["materialTags"] else ""
+            nm = "" if c.get("nameMatched") else "/종목명 미포함(시장 기사)"
+            c["reasons"].append(f"📌 재료·이슈 — {c['newsNote']}{tags}{nm} (관련 보도 {c['newsCount']}건 · 재료 강도 {c['materialLevel']})")
+        else:
+            c["reasons"].append("📌 재료·이슈 — 오늘 종목 뉴스 없음(재료 미확인, 차트·수급만으로 판단)")
+    # 재료·업종 동반 강세(강도 50↑) 종목을 각 섹션 상단으로 — 나머지는 종전 순서(전고점 거리·돌파시점) 유지
+    cards.sort(key=lambda c: (0 if c["section"] == "near" else 1,
+                              -(1 if c["materialStrength"] >= 50 else 0),
+                              (c["dist"] if c["section"] == "near" else (c["breakDaysAgo"] or 0)),
+                              -c["valueEok"]))
     nxt = next_trading_day(basis)
     payload = {
         "generatedAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"),
         "basisDate": basis, "basisLabel": dlong(basis),
         "nextLabel": dlong_short(nxt), "days": days,
         "universe": len(uni), "scanned": scanned,
-        "kpi": {"near": len(near), "breakout": len(brk), "aboveMa60": above},
+        "kpi": {"near": len(near), "breakout": len(brk), "aboveMa60": above,
+                "withNews": len([c for c in cards if c.get("newsNote")]),
+                "strongMaterial": len([c for c in cards if (c.get("materialScore") or 0) >= 70])},
+        "materialBasis": "재료·이슈 = 네이버 증권 종목 뉴스 헤드라인 원문(요약 생성 없음) · 업종 = 네이버 테마 분류 동반 상승 비율",
         "counts": {"near": len(near), "breakout": len(brk)},
         "rule": {"stop": -8.0, "tp": 24.0, "seedRisk": 2.0, "units": 5, "marketUnits": [2, 1], "stockUnits": [1, 2, 3]},
         "cards": cards,
@@ -1515,7 +1788,7 @@ def rn_chip_html(stocks):
     """1번 탭 '실전 타점 신호등'의 RN존 칩을 오늘 자동선정 종목으로 다시 만든다.
        (예전에는 피에스케이홀딩스·하나마이크론이 박혀 있어 목록에서 빠지면 눌러도 열리지 않았다)"""
     greens = [s for s in stocks if s['category'] in ('touch_lower', 'near_lower')]
-    reds = [s for s in stocks if s['category'] == 'upper']
+    reds = [s for s in stocks if s['category'] in ('upper', 'touch_upper')]
     out = []
     for s in greens[:2]:
         zone = '하단안착' if s['category'] == 'touch_lower' else '하단근접'
@@ -1527,11 +1800,12 @@ def rn_chip_html(stocks):
             f'      </div>'
         )
     for s in reds[:1]:
+        zone = '상단돌파' if s['category'] == 'touch_upper' else '상단근접'
         out.append(
             f'<div class="signal-chip red" onclick="navigateToSignalStock(\'rnzone\', \'{s["code"]}\')">\n'
-            f'        <span>🔥 [RN존 상단 터치]</span>\n'
+            f'        <span>🔥 [RN존 {zone}]</span>\n'
             f'        <strong>{s["name"]}:</strong>\n'
-            f'        <span>상단 RN {s["upperRN"]:,}원 터치 (현재 {s["price"]:,}원 🎯)</span>\n'
+            f'        <span>상단 RN {s["upperRN"]:,}원({s["upperColorKo"]}) 근처 (현재 {s["price"]:,}원 🎯)</span>\n'
             f'      </div>'
         )
     return out
@@ -1559,9 +1833,10 @@ def patch_rn_live(html, rn_stocks, counts):
     payload = json.dumps(rn_stocks, ensure_ascii=False, separators=(',', ':'))
     html = html[:m.start(2)] + payload + html[m.end(2):]
     labs = [('all', '전체 ({})'.format(counts['all'])),
-            ('touch_lower', '🟢 하단 터치 1차 타점 ({})'.format(counts['touch_lower'])),
-            ('near_lower', '🟡 하단 근접 ({})'.format(counts['near_lower'])),
-            ('upper', '🔥 상단 터치 ({})'.format(counts['upper']))]
+            ('touch_lower', '🟢 하단 터치 ({})'.format(counts.get('touch_lower', 0))),
+            ('near_lower', '🟡 하단 근접 ({})'.format(counts.get('near_lower', 0))),
+            ('upper', '🔥 상단 근접 ({})'.format(counts.get('upper', 0))),
+            ('touch_upper', '🚀 상단 돌파 ({})'.format(counts.get('touch_upper', 0)))]
     for key, txt in labs:
         pat = r"(onclick=\"RnZone\.filterCategory\('" + key + r"', this\)\">)[^<]*(</button>)"
         html = re.subn(pat, lambda mm, t=txt: mm.group(1) + t + mm.group(2), html)[0]

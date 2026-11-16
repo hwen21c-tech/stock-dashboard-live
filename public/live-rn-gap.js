@@ -9,7 +9,16 @@
 'use strict';
 if (window.RnGap) return;
 
-/* scripts/rescan_strategies.py 의 rn_step() · kr_tick() 과 같은 셈법 */
+/* 차트박사 공식 21개 RN선 — scripts/rescan_strategies.py RN_LINES 와 같은 배열 */
+var RN_LINES = [
+  [500, 'red'], [1000, 'red'], [1500, 'teal'], [2000, 'blue'], [3000, 'teal'],
+  [5000, 'red'], [7500, 'teal'], [10000, 'red'], [15000, 'teal'], [20000, 'blue'],
+  [30000, 'teal'], [50000, 'red'], [75000, 'teal'], [100000, 'red'], [150000, 'teal'],
+  [200000, 'blue'], [300000, 'teal'], [500000, 'red'], [750000, 'teal'],
+  [1000000, 'red'], [1500000, 'teal']
+];
+var RN_HEX = { red: '#ef4444', blue: '#3b82f6', teal: '#14b8a6' };
+var RN_KO = { red: '붉은색', blue: '파란색', teal: '옥색' };
 function stepOf(price) {
   var p = Math.abs(Number(price) || 0);
   if (p >= 500000) return 100000;
@@ -28,13 +37,20 @@ function pct(v) { return (v > 0 ? '+' : '') + v.toFixed(2) + '%'; }
 function bandOf(price) {
   var p = Number(price);
   if (!isFinite(p) || p <= 0) return null;
-  var step = stepOf(p);
-  var lower = Math.floor(p / step) * step;
-  var upper = lower + step;
+  var lower = null, upper = null;
+  for (var i = 0; i < RN_LINES.length; i++) {
+    var v = RN_LINES[i][0];
+    if (v <= p) lower = RN_LINES[i];
+    if (v >= p && !upper) upper = RN_LINES[i];
+  }
+  if (!lower) lower = RN_LINES[0];
+  if (!upper) upper = lower;
   return {
-    lower: lower, upper: upper, step: step,
-    toLower: (lower - p) / p * 100,
-    toUpper: (upper - p) / p * 100
+    lower: lower[0], upper: upper[0], step: stepOf(p),
+    lowerColor: RN_HEX[lower[1]], upperColor: RN_HEX[upper[1]],
+    lowerKo: RN_KO[lower[1]], upperKo: RN_KO[upper[1]],
+    toLower: (p - lower[0]) / p * 100,
+    toUpper: (upper[0] - p) / p * 100
   };
 }
 
@@ -77,10 +93,10 @@ function decorate(card) {
     else card.appendChild(el);
   }
   el.innerHTML =
-    '<span class="g-s">지지 ' + nf(b.lower) + ' (' + pct(b.toLower) + ')</span>' +
+    '<span class="g-s" style="color:' + b.lowerColor + '">하단 RN ' + nf(b.lower) + ' (' + b.lowerKo + ') ' + pct(b.toLower) + '</span>' +
     '<span class="g-m">·</span>' +
-    '<span class="g-r">저항 ' + nf(b.upper) + ' (' + pct(b.toUpper) + ')</span>' +
-    '<span class="g-m" style="margin-left:auto">RN ' + nf(b.step) + '단위</span>';
+    '<span class="g-r" style="color:' + b.upperColor + '">상단 RN ' + nf(b.upper) + ' (' + b.upperKo + ') ' + pct(b.toUpper) + '</span>' +
+    '<span class="g-m" style="margin-left:auto">공식 21선</span>';
   el.setAttribute('data-price', String(price));
 }
 

@@ -213,9 +213,26 @@ async function fetchLivePrice(code) {
 }
 
 /* --------------------------- 4) RN 존 계산 --------------------------- */
+/*
+ * 차트박사 공식 21개 라운드넘버(RN)선 — scripts/rescan_strategies.py 의 RN_LINES 와 같은 배열.
+ *   붉은색(핵심): 500 · 1,000 · 5,000 · 10,000 · 50,000 · 100,000 · 500,000 · 1,000,000
+ *   파란색(중간): 2,000 · 20,000 · 200,000
+ *   옥색(보조)  : 1,500 · 3,000 · 7,500 · 15,000 · 30,000 · 75,000 · 150,000 · 300,000 · 750,000 · 1,500,000
+ *  예전에는 가격대별 임의 라운딩(rn_step)으로 선을 만들어 공식선과 달랐다
+ *  (예: 779,000원 → 700,000/800,000 으로 계산되어 실제 75만/100만선이 아니었다).
+ */
+const RN_LINES = [
+  [500, 'red'], [1000, 'red'], [1500, 'teal'], [2000, 'blue'], [3000, 'teal'],
+  [5000, 'red'], [7500, 'teal'], [10000, 'red'], [15000, 'teal'], [20000, 'blue'],
+  [30000, 'teal'], [50000, 'red'], [75000, 'teal'], [100000, 'red'], [150000, 'teal'],
+  [200000, 'blue'], [300000, 'teal'], [500000, 'red'], [750000, 'teal'],
+  [1000000, 'red'], [1500000, 'teal'],
+];
+const RN_COLOR = { red: '#ef4444', blue: '#3b82f6', teal: '#14b8a6' };
+const RN_COLOR_KO = { red: '붉은색', blue: '파란색', teal: '옥색' };
+
 function rnStep(price) {
-  // 가격대별 라운드 넘버 간격 — scripts/auto_update_all_tabs.py 의 rn_step 과 같은 기준
-  //  (100만↑ 10만 · 10~50만 5만 · 5~10만 1만 · 1~5만 5천 …)
+  // 참고용 구간 폭(밴드 계산에만 사용). 선 자체는 RN_LINES 공식 배열을 쓴다.
   const p = Math.abs(price);
   if (p >= 500000) return 100000;
   if (p >= 100000) return 50000;
@@ -235,48 +252,60 @@ function touchCount(candles, low, high) {
 
 function buildRnZones(price, candles, depth = 5) {
   const step = rnStep(price);
-  const band = step * 0.2; // RN존 폭 (±)
-  const base = Math.floor(price / step) * step;
-
-  const supports = [];
-  const resistances = [];
-
-  for (let k = 0; k <= depth; k += 1) {
-    const level = base - k * step;
-    if (level <= 0) break;
-    if (level > price) continue;
-    const low = level - band;
-    const high = level + band;
-    supports.push({
-      level,
-      zoneLow: low,
-      zoneHigh: high,
-      distancePct: Number((((level - price) / price) * 100).toFixed(2)),
-      touches: touchCount(candles, low, high),
-    });
+  const band = step * 0.1; // RN선 접촉 판정 폭(±10% of step) — 선 자체는 공식 배열
+  const p = Number(price);
+  let lowerIdx = 0;
+  let upperIdx = RN_LINES.length - 1;
+  for (let i = 0; i < RN_LINES.length; i += 1) {
+    if (RN_LINES[i][0] <= p) lowerIdx = i;
+    if (RN_LINES[i][0] >= p) { upperIdx = i; break; }
   }
-  for (let k = 1; k <= depth; k += 1) {
-    const level = base + k * step;
-    const low = level - band;
-    const high = level + band;
-    resistances.push({
+  const pack = (i) => {
+    const [level, col] = RN_LINES[i];
+    return {
       level,
-      zoneLow: low,
-      zoneHigh: high,
-      distancePct: Number((((level - price) / price) * 100).toFixed(2)),
-      touches: touchCount(candles, low, high),
-    });
+      color: RN_COLOR[col],
+      colorKo: RN_COLOR_KO[col],
+      zoneLow: level - band,
+      zoneHigh: level + band,
+      distancePct: Number((((level - p) / p) * 100).toFixed(2)),
+      touches: touchCount(candles, level - band, level + band),
+    };
+  };
+  // 아래로 depth개(현재가 이하), 위로 depth개(현재가 초과) 공식선
+  const supports = [];
+  for (let i = lowerIdx; i >= 0 && supports.length <= depth; i -= 1) supports.push(pack(i));
+  const resistances = [];
+  for (let i = (RN_LINES[upperIdx][0] > p ? upperIdx : upperIdx + 1); i < RN_LINES.length && resistances.length < depth; i += 1) {
+    resistances.push(pack(i));
+  }
+  const nS = supports[0] || null;
+  const nR = resistances[0] || null;
+  const dLow = nS ? Math.abs(p - nS.level) / p * 100 : null;
+  const dUp = nR ? Math.abs(nR.level - p) / p * 100 : null;
+  let category = 'upper';
+  if (nS && nR) {
+    if (dUp !== null && dUp <= 0.5) category = 'touch_upper';
+    else if (dLow !== null && dLow <= 1.0) category = 'touch_lower';
+    else category = (dLow <= dUp) ? 'near_lower' : 'upper';
   }
 
   return {
-    method: 'round-number',
+    method: 'official-21-lines',
     step,
     band,
-    pivot: base,
+    pivot: nS ? nS.level : null,
+    lowerRN: nS ? nS.level : null,
+    upperRN: nR ? nR.level : null,
+    lowerColor: nS ? nS.color : null,
+    upperColor: nR ? nR.color : null,
+    lowerColorKo: nS ? nS.colorKo : null,
+    upperColorKo: nR ? nR.colorKo : null,
+    category,
     supports,
     resistances,
-    nearestSupport: supports[0] || null,
-    nearestResistance: resistances[0] || null,
+    nearestSupport: nS,
+    nearestResistance: nR,
   };
 }
 
