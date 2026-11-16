@@ -160,6 +160,17 @@ def main():
                     for seg in ("①", "오늘 상승 이유", "②", "캔들 상태", "③", "외인", "④", "시장분위기", "⑤", "20일"):
                         check(bool(modal_txt) and seg in modal_txt, f"팝업 항목 포함: {seg}", (modal_txt or "")[:60])
                 page.evaluate("() => { if (window.ManjuDetail) ManjuDetail.close(); }")
+                # 최종 후보 카드(한진칼)도 같은 상세 팝업으로 열리는지
+                f_clicked = page.evaluate("""() => {
+                  const c = document.querySelector('#tabManju .manju-item[data-manju-code="180640"]');
+                  if (!c) return null; c.click(); return c.getAttribute('data-manju-code');
+                }""")
+                page.wait_for_timeout(1200)
+                f_title = page.evaluate("() => { const t=document.getElementById('mjdTitle'); return t? t.innerText : ''; }")
+                page.screenshot(path=os.path.join(OUT, f"manju_final_modal_{tag}.png"))
+                if tag == "400":
+                    check(f_clicked == "180640" and "한진칼" in (f_title or ""), "만쥬 최종 후보(한진칼) 클릭 → 상세 팝업", f_title)
+                page.evaluate("() => { if (window.ManjuDetail) ManjuDetail.close(); }")
                 ctx.close()
             b.close()
     finally:
