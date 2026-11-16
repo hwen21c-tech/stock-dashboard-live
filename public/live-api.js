@@ -930,14 +930,18 @@
 
   function $(id) { return document.getElementById(id); }
 
-  /** 모당 제목 → 종목명 (코드·이모지·등락률·금액 알맹이 제거) */
+  /** 모달 제목 → 종목명 (코드·이모지·등락률·금액·[수급 3위] 같은 꼬리표 제거) */
   function cleanName(title) {
     return String(title || '')
       .replace(/\((\d{6})\)/g, ' ')
+      /* 카드 제목 뒤에 붙는 대괄호 꼬리표([수급 3위]·[외인 순매도 1위] 등)는 종목명이 아니다 */
+      .replace(/\[[^\]]{0,30}\]/g, ' ')
       .replace(/[★☆👑🎯🏆⚡☣🔥🔎📊📈📉]/g, ' ')
       .replace(/상한가|상한가임박|대장주|대장|수혜주|수혜|원탑|경보|돌파|안착|임박|신고가/g, ' ')
+      .replace(/(외국인|외인|기관|개인)?\s*(순매수|순매도|수급)/g, ' ')
       .replace(/\d{1,3}(,\d{3})*(\.\d+)?\s*원/g, ' ')
       .replace(/[+\-]?\d+(\.\d+)?\s*%/g, ' ')
+      .replace(/(^|\s)\d{1,3}\s*위(?=\s|$)/g, ' ')
       .replace(/[\s,·|]+/g, ' ')
       .trim();
   }
@@ -1064,6 +1068,29 @@
     if (color) el.style.color = color;
   }
 
+  /** 모달 차트 캔버스를 비운다 — 조회 실패 때 '앞 종목 차트'가 남아 사실처럼 보이는 것을 막는다 */
+  function clearModalChart() {
+    window.modalAllCandles = [];
+    var canvas = $('modalChartCanvas');
+    if (canvas) {
+      try {
+        var ctx = canvas.getContext('2d');
+        var dpr = window.devicePixelRatio || 1;
+        var rect = canvas.getBoundingClientRect();
+        var w = Math.max(160, Math.round(rect.width || (canvas.parentElement && canvas.parentElement.clientWidth) || 340));
+        var h = Math.max(120, Math.round(rect.height || 210));
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#070c14';
+        ctx.fillRect(0, 0, w, h);
+      } catch (e) { /* noop */ }
+    }
+    if ($('modalChartHigh')) $('modalChartHigh').textContent = '—';
+    if ($('modalChartLow')) $('modalChartLow').textContent = '—';
+    if ($('modalChartTitleTxt')) $('modalChartTitleTxt').textContent = '📊 실시간 캔들 & 추세선 차트';
+  }
+
   /** DB에 없는 종목 → 실시간 일봉으로 모달 차트를 다시 그린다 */
   function loadLiveChart(title, code) {
     state.reqId += 1;
@@ -1081,17 +1108,17 @@
     try { known = code || (window.stockCodes && window.stockCodes[name]) || null; } catch (e) { known = code || null; }
     var wordCount = String(query).split(/\s+/).filter(Boolean).length;
     if (!known && (String(query).length >= 18 || wordCount >= 5)) {
+      clearModalChart();
       showNotice('📰 이 항목은 종목이 아니라 기사·지표 제목입니다 —\n종목 차트를 조회하지 않습니다.', '#94a3b8');
       setTrend('종목 아님(기사·지표)', '#94a3b8');
       markLinksFailed(name);
       return;
     }
 
-    // 가짜 차트가 남아 있으면 지운 뒤 로딩 안내를 띄운다
-    window.modalAllCandles = [];
+    // 가짜·이전 종목 차트가 남아 있으면 지운 뒤 로딩 안내를 띄운다
+    clearModalChart();
     window.modalViewCount = 60;
     window.modalViewOffset = 0;
-    try { if (typeof window.drawModalCandles === 'function') window.drawModalCandles(); } catch (e) { /* noop */ }
     showNotice('⏳ ' + (name || code) + ' 실시간 일봉 불러오는 중…', '#7dd3fc');
     setTrend('실시간 조회 중…', '#7dd3fc');
     markLinksPending();
@@ -1116,6 +1143,7 @@
         var body = out.body;
         if (!body || body.ok !== true) {
           var msg = body && body.message ? body.message : ('차트 데이터를 받지 못했습니다 (HTTP ' + out.status + ')');
+          clearModalChart();
           showNotice('⚠️ ' + msg + '\n가짜 차트를 대신 그리지 않습니다. 잠시 후 다시 눌러 주세요.', '#fca5a5');
           setTrend('실시간 데이터 없음', '#fca5a5');
           markLinksFailed(name);
@@ -1125,6 +1153,7 @@
           return { date: c.date, open: c.o, high: c.h, low: c.l, close: c.c, vol: c.v };
         });
         if (!candles.length) {
+          clearModalChart();
           showNotice('⚠️ ' + (body.name || name) + ' 일봉 데이터가 비어 있습니다.', '#fca5a5');
           setTrend('데이터 없음', '#fca5a5');
           return;
@@ -1160,7 +1189,8 @@
         if (timer) clearTimeout(timer);
         if (reqId !== state.reqId) return;
         var reason = err && err.name === 'AbortError' ? '응답 시간 초과(14초)' : (err && err.message ? err.message : String(err));
-        showNotice('⚠️ 실시간 일봉 조회 살패: ' + reason, '#fca5a5');
+        clearModalChart();
+        showNotice('⚠️ 실시간 일봉 조회 실패: ' + reason, '#fca5a5');
         setTrend('실시간 데이터 없음', '#fca5a5');
         markLinksFailed(name);
       });
