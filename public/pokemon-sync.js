@@ -14,7 +14,7 @@
   'use strict';
   if (window.PkmSync && window.PkmSync.version) return;
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   /* ---------- 접속 정보 (기본값 · 고급 설정에서 기기별로 바꿀 수 있다) ---------- */
   var DEF = {
@@ -51,6 +51,7 @@
     'pkm.wrong.v1.',           /* 🔁 오답 노트(약점 덱) — 문제·정답·틀린 횟수 */
     'pkm.stamp.v1.',           /* 🗓️ 주간 출석 스탬프(월~일) */
     'pkm.ticket.v1.',          /* 응원권 */
+    'pkm.agit.healBonus',      /* 🎁 아빠 선물 — 3D 아지트 회복 3회권(슬롯별 잔여) */
     'pkm.versus.cfg.v1.',      /* 대전 설정 */
     'pkm.versus.mode.v1'/*(정확히 일치)*/
   ];
@@ -397,6 +398,38 @@
     for (var k in add) out[k] = Math.max(out[k] || 0, add[k]);
     return out;
   }
+  /* 🎁 아빠 선물 회복권 — 슬롯별로 '마지막으로 바뀐 시각(at)'이 더 최근인 쪽을 쓴다.
+     선물(+3)도 회복 사용(-1)도 at 을 갱신하므로, 낡은 기기가 예전 장수를 올려도
+     방금 선물한 3장을 지우지 않고, 이미 쓴 회복권이 되살아나지도 않는다. */
+  var GIFT_KEY = 'pkm.agit.healBonus.v1';
+  var GIFT_SLOTS = ['p1', 'p2', 'guest'];
+  function giftNum(v) {
+    var n = Number(v);
+    return isFinite(n) && n > 0 ? Math.round(n) : 0;
+  }
+  function mergeGift(remoteRaw, localRaw) {
+    var r = jp(remoteRaw, null) || {}, l = jp(localRaw, null) || {};
+    var ra = (r && r.at && typeof r.at === 'object') ? r.at : {};
+    var la = (l && l.at && typeof l.at === 'object') ? l.at : {};
+    var rs = (r && r.seen && typeof r.seen === 'object') ? r.seen : {};
+    var ls = (l && l.seen && typeof l.seen === 'object') ? l.seen : {};
+    var out = { v: 1, p1: 0, p2: 0, guest: 0, at: {}, seen: {} };
+    for (var i = 0; i < GIFT_SLOTS.length; i++) {
+      var s = GIFT_SLOTS[i];
+      var rv = giftNum(r[s]), lv = giftNum(l[s]);
+      var rt = giftNum(ra[s]), lt = giftNum(la[s]);
+      var useLocal = lt > rt || (lt === rt && lv >= rv);
+      out[s] = useLocal ? lv : rv;
+      var at = Math.max(rt, lt);
+      if (at > 0) out.at[s] = at;
+      var seen = Math.max(giftNum(rs[s]), giftNum(ls[s]));
+      if (seen > 0) out.seen[s] = Math.min(seen, at || seen);
+    }
+    /* 남은 장수가 0이고 바뀐 적도 없으면 키를 굳이 남기지 않는다 */
+    var any = out.p1 || out.p2 || out.guest;
+    for (var kk in out.at) { any = 1; break; }
+    return any ? JSON.stringify(out) : '';
+  }
   function mergeDex(remoteRaw, localRaw, prevIds) {
     var r = jp(remoteRaw, {}) || {}, l = jp(localRaw, {}) || {};
     var rIds = Array.isArray(r.ids) ? r.ids : [];
@@ -517,6 +550,9 @@
         if (remoteKeys[k] != null && isBlankish(k, local[k])) continue;   /* 빈 값으로 덮지 않는다 */
         if (startsWith(k, 'pkm.shared.dex.v1.') && remoteKeys[k] != null) {
           keys[k] = mergeDex(remoteKeys[k], local[k], seen[k]);
+        } else if (k === GIFT_KEY && remoteKeys[k] != null) {
+          var mg = mergeGift(remoteKeys[k], local[k]);
+          keys[k] = mg || local[k];
         } else {
           keys[k] = local[k];
         }
@@ -565,7 +601,7 @@
     applying = true;
     try {
       for (var k in keys) {
-        if (!startsWith(k, 'pkm.shared.dex.v1.')) continue;
+        if (!startsWith(k, 'pkm.shared.dex.v1.') && k !== GIFT_KEY) continue;
         if (typeof keys[k] !== 'string') continue;
         if (lsGet(k) !== keys[k]) lsSet(k, keys[k]);
       }

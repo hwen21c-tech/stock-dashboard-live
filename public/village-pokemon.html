@@ -762,6 +762,7 @@
         </div>
         <button class="gbtn" id="gSend" disabled>🎁 선물 보내기</button>
         <p class="gnote">선물은 바로 그 친구의 마을 가방/볼 주머니에 들어가요</p>
+        <p class="gnote" id="gHealNote">🎁 3D 아지트 회복권 — 아린 <b>0회</b> · 지안 <b>0회</b> 남음</p>
       </div>
     </div>
   </div>
@@ -1003,6 +1004,39 @@
   const K_BALLS = (s) => 'pkm.balls.v1.' + s;
   const K_PIN = 'pkm.family.pin.v1';
   const DEFAULT_PIN = '0623';
+
+  /* ---------- 🎁 3D 아지트 회복 3회권 ----------
+     아빠가 선물한 회복권은 슬롯(p1·p2·guest)별 장수로 저장하고,
+     pokemon-sync.js 가 클라우드로 함께 올려 아이들 태블릿의 3D 아지트(pokemon-3d.html)가 바로 받아 쓴다.
+     at(마지막으로 바뀐 시각)으로 낡은 기기의 예전 장수가 새 선물을 지우지 않게 한다. */
+  const K_HEAL_GIFT = 'pkm.agit.healBonus.v1';
+  function healGiftAll() {
+    const o = lsGet(K_HEAL_GIFT, null);
+    const out = { v: 1, p1: 0, p2: 0, guest: 0, at: {}, seen: {} };
+    if (!o || typeof o !== 'object') return out;
+    ['p1', 'p2', 'guest'].forEach((s) => {
+      const n = Number(o[s]);
+      out[s] = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+    });
+    ['at', 'seen'].forEach((f) => {
+      const src = o[f];
+      if (!src || typeof src !== 'object') return;
+      Object.keys(src).forEach((k) => {
+        const t = Number(src[k]);
+        if (Number.isFinite(t) && t > 0) out[f][k] = t;
+      });
+    });
+    return out;
+  }
+  function healGiftOf(slot) { return healGiftAll()[slot] || 0; }
+  function addHealGift(slot, n) {
+    const k = slot === 'p2' ? 'p2' : slot === 'guest' ? 'guest' : 'p1';
+    const st = healGiftAll();
+    st[k] = Math.max(0, (st[k] || 0) + (Number(n) || 0));
+    st.at[k] = Date.now();
+    lsSet(K_HEAL_GIFT, st);
+    return st[k];
+  }
 
   /* ---------- 마을 테마 ----------
      도감 10마리마다 새 마을이 하나씩 열린다(need). 이 배열에 한 줄만 더하면
@@ -2101,6 +2135,14 @@
         + (this.pick === it.k ? 'border-color:#d9a01a;background:linear-gradient(180deg,#fff8e0,#ffe9a8)' : '') + '">'
         + '<span class="e">' + it.emoji + '</span><span>' + it.name + '</span></button>'
       ).join('');
+      /* 💖 아빠 선물 회복 3회권은 목록 맨 앞에 크게 — 바로 보이게 */
+      const healCell =
+        '<button class="icell heal3" data-gitem="@heal3" style="grid-column:1/-1;flex-direction:row;gap:7px;'
+        + 'background:' + (this.pick === '@heal3' ? 'linear-gradient(180deg,#ffe9a8,#ffcf4d)' : 'linear-gradient(180deg,#fff0f6,#ffe1ef)') + ';'
+        + 'border-color:' + (this.pick === '@heal3' ? '#d9a01a' : '#f6b8d2') + ';box-shadow:0 2px 0 rgba(200,80,130,.16)">'
+        + '<span class="e" style="font-size:clamp(17px,4.4vw,21px)">💖</span>'
+        + '<span style="text-align:left;line-height:1.25;font-size:clamp(9.5px,2.7vw,11.5px)">3D 아지트 회복 3회권<br>'
+        + '<em style="font-style:normal;color:#c2306a;font-size:clamp(8.5px,2.4vw,10px)">센터에서 +3회 · 클라우드로 바로</em></span></button>';
       const extras =
         '<button class="icell' + (this.pick === '@random' ? ' on' : '') + '" data-gitem="@random"' + (this.pick === '@random' ? ' style="border-color:#d9a01a;background:linear-gradient(180deg,#fff8e0,#ffe9a8)"' : '') + '>'
         + '<span class="e">🎲</span><span>랜덤 아이템</span></button>'
@@ -2110,7 +2152,13 @@
         + '<span class="e">🟡</span><span>하이퍼볼 1개</span></button>'
         + '<button class="icell' + (this.pick === '@master' ? ' on' : '') + '" data-gitem="@master"' + (this.pick === '@master' ? ' style="border-color:#d9a01a;background:linear-gradient(180deg,#fff8e0,#ffe9a8)"' : '') + '>'
         + '<span class="e">🟣</span><span>마스터볼 1개</span></button>';
-      $('#gItems').innerHTML = cells + extras;
+      $('#gItems').innerHTML = healCell + cells + extras;
+      const hn = $('#gHealNote');
+      if (hn) {
+        hn.innerHTML = '🎁 3D 아지트 회복권 — '
+          + SLOTS.filter((s) => s.k !== 'guest').map((s) => slotName(s.k) + ' <b>' + healGiftOf(s.k) + '회</b>').join(' · ')
+          + ' 남음';
+      }
       const btn = $('#gSend');
       btn.disabled = !this.pick;
       btn.textContent = this.pick
@@ -2119,6 +2167,7 @@
     },
     pickName() {
       if (this.pick === '@random') return '랜덤 아이템';
+      if (this.pick === '@heal3') return '3D 아지트 회복 3회권';
       if (this.pick === '@super') return '슈퍼볼';
       if (this.pick === '@hyper') return '하이퍼볼';
       if (this.pick === '@master') return '마스터볼';
@@ -2129,7 +2178,10 @@
       if (!this.pick) return;
       const t = this.target;
       let what = '';
-      if (this.pick === '@super' || this.pick === '@hyper' || this.pick === '@master') {
+      if (this.pick === '@heal3') {
+        const n = addHealGift(t, 3);
+        what = '💖 3D 아지트 회복 3회권 3회 (총 ' + n + '회)';
+      } else if (this.pick === '@super' || this.pick === '@hyper' || this.pick === '@master') {
         const b = lsGet(K_BALLS(t), null) || { super: 2, hyper: 0, master: 0 };
         const key = this.pick.slice(1);
         b[key] = (Number(b[key]) || 0) + 1;
@@ -2149,6 +2201,7 @@
       }
       close('giftModal');
       party(slotName(t), what);
+      if (this.pick === '@heal3') toast('🎁 ' + slotName(t) + '에게 3D 아지트 회복 3회권이 도착했어요!');
       if (t === SLOT) { paintVillage(); paintItemModal(); }
       Sfx.fanfare();
     },
