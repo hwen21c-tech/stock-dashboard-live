@@ -861,11 +861,119 @@
 
   /* ============================ 3번 탭 강세주 실시간 카드 ============================ */
 
+  /* ★강세주 카드 클릭 → 지금 보고 있는 3번 탭 그대로, 이 종목 차트 팝업만 연다.
+   *  · 예전에는 tabsLiveOpenStock(→RN존 탭 이동)이라 카드를 누를 때마다 탭이 3번에서 RN존으로 튀었다 (11/16 수리).
+   *  · 비중법사·홍인기 카드와 같은 slOpenStockChart 를 써서 공통 차트 팝업(openDetail)을 연다.
+   *  · 어떤 이유로 못 열리면 openDetail 로 직접, 그마저 없으면 RN존 이동 없이 그냥 둔다. */
+
+  function afFindCard(code) {
+    var all = (AF_CARDS.strong || []).concat(AF_CARDS.leader || []);
+    for (var i = 0; i < all.length; i += 1) {
+      if (all[i] && all[i].code === code) return all[i];
+    }
+    return null;
+  }
+
+  function afModalOpen() {
+    if (!HAS_DOM) return false;
+    var ov = document.getElementById('modalOverlay');
+    return Boolean(ov) && getComputedStyle(ov).display !== 'none';
+  }
+
+  /* 팝업 캔들을 페이지 내장 일봉 대신 /api/stock-chart 실측 일봉(당일 실시간 봉 포함)으로 다시 그린다.
+   *  · 실패하면 내장 일봉을 그대로 두고 제목에 출처를 솔직하게 적는다 (가짜 차트 금지). */
+  function afRefreshModalChart(code) {
+    if (!HAS_DOM || !code) return;
+    if (!state.afChart) state.afChart = { req: 0, code: null };
+    state.afChart.req += 1;
+    state.afChart.code = code;
+    var req = state.afChart.req;
+    var titleEl = function () { return document.getElementById('modalChartTitleTxt'); };
+    fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=250', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (req !== state.afChart.req) return; // 다른 카드를 더 누르면 이 응답은 버린다
+        var tEl = document.getElementById('modalTitle');
+        if (!afModalOpen() || !tEl || String(tEl.innerText || '').indexOf(code) < 0) return;
+        if (!d || !d.ok || !d.candles || !d.candles.length) throw new Error((d && (d.message || d.reason)) || 'no candles');
+        var arr = d.candles.map(function (c) {
+          return {
+            date: String(c.date || ''),
+            open: num(c.o), high: num(c.h), low: num(c.l), close: num(c.c),
+            vol: num(c.v) === null ? 0 : num(c.v)
+          };
+        }).filter(function (c) {
+          return c.close !== null && c.high !== null && c.low !== null;
+        });
+        if (!arr.length) throw new Error('no usable candles');
+        root.modalAllCandles = arr;
+        if (typeof root.modalViewOffset === 'number') root.modalViewOffset = 0;
+        root.modalViewCount = Math.min(60, arr.length);
+        if (typeof root.drawModalCandles === 'function') root.drawModalCandles();
+        var h = titleEl();
+        if (h) h.textContent = '📊 실시간 일봉 캔들 & 추세선 (' + arr.length + '봉 · 당일 봉 포함)';
+        var trendEl = document.getElementById('modalChartTrend');
+        if (trendEl) {
+          trendEl.innerText = arr[arr.length - 1].close >= arr[0].close ? '장기 우상향 🎯' : '중기 눌림목 조정';
+        }
+      })
+      .catch(function () {
+        if (req !== state.afChart.req) return;
+        var h = titleEl();
+        if (h) h.textContent = '📊 내장 실측 일봉 캔들 (직전 거래일까지 · 실시간 일봉 미응답)';
+      });
+  }
+
+  function afOpenCard(code) {
+    code = String(code || '').replace(/[^0-9]/g, '');
+    var def = afFindCard(code);
+    if (!def) return false;
+    var q = (state.afQuotes && state.afQuotes[code]) || null;
+    var price = q ? num(q.price) : null;
+    var pct = q ? num(q.changePct) : null;
+    var priceTxt = price === null ? '' : fmtInt(price) + '원';
+    var pctTxt = pct === null ? '' : (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+    var opened = false;
+    try {
+      if (typeof root.slOpenStockChart === 'function') {
+        root.slOpenStockChart(def.name, code, '', priceTxt, pctTxt);
+        opened = afModalOpen();
+      }
+    } catch (e) { opened = false; }
+    if (!opened) {
+      try {
+        if (typeof root.openDetail === 'function') {
+          root.openDetail(
+            def.name + ' (' + code + ')',
+            priceTxt || '실시간 일봉 차트',
+            pctTxt || '현재 탭 유지',
+            '실시간 시세 카드에서 연 차트입니다 — 탭을 옮기지 않고 이 자리에서 엽니다. ' +
+              '일봉은 /api/stock-chart 실시간(당일 봉 포함)이며, 응답이 없으면 페이지 내장 실측 일봉으로 그립니다.'
+          );
+          opened = afModalOpen();
+        }
+      } catch (e2) { opened = false; }
+    }
+    if (opened) afRefreshModalChart(code);
+    return opened;
+  }
+
+  /* onclick 문자열 — LiveExtra 가 없으면 slOpenStockChart/openDetail 로 직접. RN존으로는 절대 보내지 않는다. */
+  function afCardOpenJs(def) {
+    var nm = String(def.name || '').replace(/'/g, '').replace(/[\r\n]/g, ' ');
+    var code = String(def.code || '').replace(/[^0-9]/g, '');
+    return "if(window.LiveExtra&&LiveExtra._openAfCard){LiveExtra._openAfCard('" + code + "')}" +
+      "else if(window.slOpenStockChart){slOpenStockChart('" + nm + "','" + code + "','','','')}" +
+      "else if(window.openDetail){openDetail('" + nm + " (" + code + ")','실시간 일봉 차트','현재 탭 유지'," +
+      "'실시간 시세 카드에서 연 차트입니다 — 탭을 옮기지 않고 이 자리에서 엽니다.')}";
+  }
+
   function afCardHtml(def, q) {
     var price = q ? num(q.price) : null;
     if (price === null) {
-      return ('<div class="af-card" style="opacity:0.55;">' +
-        '<div style="display:flex; justify-content:space-between;"><span style="font-weight:800; color:#fff;">' + esc(def.name) + '</span>' +
+      return ('<div class="af-card" data-live-code="' + esc(def.code) + '" style="opacity:0.55; cursor:pointer;" ' +
+        'onclick="' + afCardOpenJs(def) + '" title="실시간 시세 대기 · 눌러서 이 탭에서 차트 팝업">' +
+        '<div style="display:flex; justify-content:space-between;"><span style="font-weight:800; color:#fff;">★ ' + esc(def.name) + '</span>' +
         '<span style="font-weight:700; color:#94a3b8;">시세 대기</span></div>' +
         '<div style="font-size:10.5px; color:#94a3b8; margin:2px 0;">' + esc(def.tag) + ' · 실시간 시세를 받지 못했습니다</div></div>');
     }
@@ -876,9 +984,11 @@
     var limit = pct !== null && pct >= 29.5;
     var stateTag = limit ? '<span style="font-size:9.5px; font-weight:800; background:#7f1d1d; color:#fecaca; padding:1px 5px; border-radius:3px;">상한가</span>' : '';
     var nameClean = esc(def.name);
+    var priceTxt = fmtInt(price) + '원';
+    var pctTxt = pct === null ? '' : (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
     return ('<div class="af-card" data-live="1" data-live-code="' + esc(def.code) + '" style="cursor:pointer;" ' +
-      'onclick="if(window.tabsLiveOpenStock){tabsLiveOpenStock(\'' + def.name.replace(/'/g, '') + '\', \'' + def.code + '\')}" ' +
-      'title="실시간 시세 · 눌러서 RN존 실전 차트">' +
+      'onclick="' + afCardOpenJs(def) + '" ' +
+      'title="실시간 시세 · 눌러서 이 탭에서 바로 차트 팝업(탭 이동 없음)">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">' +
       '<span style="font-weight:800; color:#fff;">★ ' + nameClean + ' ' + stateTag + '</span>' +
       '<span style="font-weight:800; color:' + (cell ? cell.color : color) + ';">' + (cell ? cell.text : fmtInt(price) + '원') + '</span>' +
@@ -890,6 +1000,7 @@
 
   function renderAfCards(byCode) {
     if (!HAS_DOM) return 0;
+    state.afQuotes = byCode || {};
     var applied = 0;
     [['afStrongLive', AF_CARDS.strong], ['afLeaderLive', AF_CARDS.leader]].forEach(function (pair) {
       var host = document.getElementById(pair[0]);
@@ -1325,6 +1436,9 @@
     TREND_URL: TREND_URL,
     state: state,
     _open: openChip,
+    _openAfCard: afOpenCard,
+    openAfCard: afOpenCard,
+    refreshAfModalChart: afRefreshModalChart,
     _openStrategy: openStrategy,
     renderStrategyChips: renderStrategyChips,
     parseManjuPicks: parseManjuPicks,
