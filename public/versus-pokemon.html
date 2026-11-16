@@ -28,6 +28,13 @@
     word-break:keep-all;overflow-wrap:anywhere;
   }
   .qpanel .qbody .qemoji{font-size:clamp(20px,5.6vw,30px)}
+
+  /* 가로 회전(높이 560px 이하) — 양쪽 문제 카드가 아레나를 잡아먹지 않게 */
+  @media (orientation:landscape) and (max-height:560px){
+    .qpanel .qbody{padding:2px 8px;min-height:0;margin:2px 0 4px;border-width:2px;border-radius:11px}
+    .qpanel .qbody .qtext{font-size:clamp(14px,2.1vw,20px);line-height:1.2}
+    .qpanel .qbody .qemoji{font-size:clamp(15px,2.3vw,22px)}
+  }
 </style>
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-3rd.js"></script>
