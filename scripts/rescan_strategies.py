@@ -739,7 +739,7 @@ def build_hong(uni, per, themes, days, totals, cap=12):
 
 
 # ------------------------------------------------------------------ 7) 비중법사
-def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=12):
+def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=40):
     names = {u["code"]: u for u in uni}
     BASIS = days[2]
     L2 = dshort(BASIS)
@@ -780,7 +780,9 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=12):
         }
         r["checks"] = ck
         r["passCount"] = sum(1 for x in ck.values() if x)
-        r["isBase"] = ck["chg"] and ck["break"] and ck["body"] and ck["tail"]
+        # 기준봉은 5조건을 모두 만족해야 한다 — 거래대금 300억(ck["value"])을 빼면
+        #  아리바이오랩·진양화학·진양폴리 같은 얇은 종목이 기준봉으로 잘못 통과한다.
+        r["isBase"] = ck["chg"] and ck["break"] and ck["body"] and ck["tail"] and ck["value"]
         if r["isBase"]:
             if r["break120"] and r["chg"] >= 10 and r["valueEok"] >= 100 and r["volX"] >= 1.5:
                 r["grade"] = "A"
@@ -810,7 +812,12 @@ def build_bij(uni, per, days, base_count=2403, card_n=6, reject_n=12):
     base = sorted([r for r in rows if r["isBase"]], key=lambda r: (GO[r["grade"]], -r["score"]))
     rejects = sorted([r for r in rows if not r["isBase"] and r["chg"] >= BIJ_TH["chg"]],
                      key=lambda r: (-r["passCount"], -r["chg"]))
-    rejects = [r for r in rejects if r["passCount"] >= 4][:reject_n]
+    rejects = [r for r in rejects if r["passCount"] >= 4][:reject_n]   # 6조건 중 4개 이상 = '아깝게 탈락'(잘리지 않게 빠듯하게 자른다)
+    # 탈락 후보는 사유·수치만 보여 준다(모달도 reasons 만 쓴다) — 200일 봉·15일 봉을 같이 실으면
+    #  후보 40종목에서 페이지가 600KB 넘게 불어난다.
+    for r in rejects:
+        r.pop("candles", None)
+        r.pop("spark15", None)
     cards = base[:card_n]
     for r in cards:
         r["plan"] = {"stop": r["c"], "gapZone": [r["c"], None], "papaLow": r["c"],

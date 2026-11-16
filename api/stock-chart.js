@@ -211,14 +211,15 @@ async function fetchLivePrice(code) {
 
 /* --------------------------- 4) RN 존 계산 --------------------------- */
 function rnStep(price) {
+  // 가격대별 라운드 넘버 간격 — scripts/auto_update_all_tabs.py 의 rn_step 과 같은 기준
+  //  (100만↑ 10만 · 10~50만 5만 · 5~10만 1만 · 1~5만 5천 …)
   const p = Math.abs(price);
-  if (p < 1000) return 10;
-  if (p < 5000) return 50;
-  if (p < 10000) return 100;
-  if (p < 50000) return 500;
-  if (p < 100000) return 1000;
-  if (p < 500000) return 5000;
-  return 10000;
+  if (p >= 500000) return 100000;
+  if (p >= 100000) return 50000;
+  if (p >= 50000) return 10000;
+  if (p >= 10000) return 5000;
+  if (p >= 1000) return 1000;
+  return 100;
 }
 
 function touchCount(candles, low, high) {
@@ -240,7 +241,7 @@ function buildRnZones(price, candles, depth = 5) {
   for (let k = 0; k <= depth; k += 1) {
     const level = base - k * step;
     if (level <= 0) break;
-    if (level >= price) continue;
+    if (level > price) continue;
     const low = level - band;
     const high = level + band;
     supports.push({

@@ -2562,9 +2562,10 @@
     return out;
   }
 
-  function slBijCardsHtml(cards) {
+  function slBijCardsHtml(cards, bij) {
     if (!cards || !cards.length) {
-      return '<div style="font-size:10.5px;color:#94a3b8;padding:3px 2px;">기준봉 카드가 없습니다(재스캔 JSON 미포함).</div>';
+      var basis = (bij && (bij.basisLabel || bij.basisDate)) || '최근 기준일';
+      return '<div style="font-size:10.5px;color:#94a3b8;padding:3px 2px;line-height:1.55;">최근 기준일(' + esc(basis) + ') 기준봉 0종목 — 몸통 +10%↑ · 거래대금 300억↑ · 60일 전고점 종가 돌파를 모두 채운 종목이 없습니다. 새로 기준봉이 생기면 이 자리에 자동으로 올라옵니다.</div>';
     }
     return cards.map(function (c) {
       if (c.missing || !c.live) {
@@ -2681,7 +2682,7 @@
       '<div style="font-size:11px;font-weight:800;color:#fca5a5;margin:6px 0 4px;">🔥 당일 실시간 기준봉(0일차) — 몸통 +10%↑ · 대금 300억↑ · 60일 전고점 돌파</div>' +
       slBijFreshHtml(bij.fresh, bij.near) +
       '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 기준봉 카드 · 오늘 1일차 실시간 판정 · 4분할 타점</div>' +
-      slBijCardsHtml(bij.cards)
+      slBijCardsHtml(bij.cards, bij)
     );
 
     var hong = sl.hong || {};
