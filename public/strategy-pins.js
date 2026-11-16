@@ -25,9 +25,11 @@
   var TABS = {
     bij: { label: '비중법사', root: '#tabBijoong' },
     hong: { label: '홍인기', root: '#tabHonginki' },
+    kk: { label: '깡토', root: '#tabKkangto' },
     manju: { label: '만쥬', root: '#tabManju' },
     jongbe: { label: '종가베팅', root: '#tabJongbe' },
-    rn: { label: 'RN존', root: '#tabRnzone' }
+    rn: { label: 'RN존', root: '#tabRnzone' },
+    sup: { label: '수급주도주', root: '#tabSupply' }
   };
   var TAB_KEYS = Object.keys(TABS);
 
@@ -287,6 +289,8 @@
     if (!root) return [];
     if (tab === 'bij') return Array.prototype.slice.call(root.querySelectorAll('article.card'));
     if (tab === 'hong') return Array.prototype.slice.call(root.querySelectorAll('.hi-stock-card'));
+    if (tab === 'kk') return Array.prototype.slice.call(root.querySelectorAll('#kkNearGrid .kk-card, #kkBreakGrid .kk-card'));
+    if (tab === 'sup') return Array.prototype.slice.call(root.querySelectorAll('.supply-stock-card[data-code]'));
     if (tab === 'rn') return Array.prototype.slice.call(root.querySelectorAll('#stockListGrid .stock-card'));
     if (tab === 'jongbe') return Array.prototype.slice.call(root.querySelectorAll('#stockListContainer .stock-card'));
     if (tab === 'manju') return manjuCards(root);
@@ -309,6 +313,25 @@
         if (j) {
           snap.price = j.price; snap.pct = j.changeRatio; snap.track = j.track; snap.badge = j.badge;
           if (j.candles && j.candles.length) snap.candles = j.candles.slice(-60);
+        }
+      } else if (tab === 'kk' && window.KkangtoTab && window.KkangtoTab.getStocks) {
+        var kk = (window.KkangtoTab.getStocks() || []).filter(function (s) { return s && s.code === code; })[0];
+        if (kk) {
+          snap.price = kk.price; snap.pct = kk.changeRatio; snap.value = kk.valueText || '';
+          snap.kk = { basis: kk.basis, stop: kk.stop, tp: kk.tp, ma60: kk.ma60 };
+          if (kk.candles && kk.candles.length) snap.candles = kk.candles.slice(-60);
+        }
+      } else if (tab === 'sup' && window.SupplyTab && window.SupplyTab.data) {
+        var d = window.SupplyTab.data() || {};
+        var groups = d.groups || {};
+        var found = null;
+        Object.keys(groups).forEach(function (g) {
+          (groups[g] || []).forEach(function (it) { if (!found && it && it.code === code) found = it; });
+        });
+        if (found) {
+          snap.price = found.price; snap.pct = found.pct;
+          snap.value = found.valueText || '';
+          snap.sup = { foreign: found.foreignEok, organ: found.organEok, basis: d.basisLabel || '' };
         }
       }
     } catch (e) { /* 스냅샷은 없어도 핀은 유지된다 */ }
@@ -434,6 +457,17 @@
         '<span>1차 타점 <b>' + nf(item.rn.buy1) + '</b></span>' +
         '<span>2차 타점 <b>' + nf(item.rn.buy2) + '</b></span>' +
         '</div>') : '') +
+      (item.kk ? ('<div class="spx-row">' +
+        '<span>전고점(타점) <b>' + nf(item.kk.basis) + '</b></span>' +
+        '<span>−8% <b>' + nf(item.kk.stop) + '</b></span>' +
+        '<span>+24% <b>' + nf(item.kk.tp) + '</b></span>' +
+        '<span>60일선 <b>' + nf(item.kk.ma60) + '</b></span>' +
+        '</div>') : '') +
+      (item.sup ? ('<div class="spx-row">' +
+        '<span>외인 <b>' + (item.sup.foreign > 0 ? '+' : '') + nf(item.sup.foreign) + '억</b></span>' +
+        '<span>기관 <b>' + (item.sup.organ > 0 ? '+' : '') + nf(item.sup.organ) + '억</b></span>' +
+        '<span>' + esc(item.sup.basis || '') + ' 확정</span>' +
+        '</div>') : '') +
       '<canvas data-spx="cv"></canvas>';
     el.querySelector('[data-spx="unpin"]').addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
@@ -449,7 +483,9 @@
 
   function renderExtras(tab, root, cards) {
     if (!root) return;
-    var grid = cards.length ? cards[0].parentNode : root.querySelector('#stockListGrid, #stockListContainer, #hiStockGrid, #cards');
+    var grid = (tab === 'sup') ? root.querySelector('#supPinnedWrap')
+      : (cards.length ? cards[0].parentNode
+        : root.querySelector(tab === 'kk' ? '#kkNearGrid' : '#stockListGrid, #stockListContainer, #hiStockGrid, #cards'));
     if (!grid) return;
     var present = {};
     cards.forEach(function (el) {
@@ -712,6 +748,8 @@
         window.BijoongTab.reloadCharts();
       } else if (v === 'honginki' && window.HonginkiTab && typeof window.HonginkiTab.reloadCharts === 'function') {
         window.HonginkiTab.reloadCharts();
+      } else if (v === 'kkangto' && window.KkangtoTab && typeof window.KkangtoTab.reloadCharts === 'function') {
+        window.KkangtoTab.reloadCharts();
       } else if (v === 'manju') {
         paintManjuCharts();
       }
@@ -874,7 +912,7 @@
       var v = activeView();
       if (!v || v === lastView) return;
       lastView = v;
-      if (v === 'bijoong' || v === 'honginki' || v === 'jongbe' || v === 'manju' || v === 'rnzone') {
+      if (v === 'bijoong' || v === 'honginki' || v === 'kkangto' || v === 'jongbe' || v === 'manju' || v === 'rnzone') {
         setTimeout(function () { refreshVisibleCharts(true); paintManjuCharts(); }, 700);
       }
     }, 700);

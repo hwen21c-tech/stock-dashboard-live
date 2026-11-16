@@ -178,8 +178,8 @@ def load_json(path: str):
         return None
 
 
-def load_strategies(data_dir: str = DATA):
-    """(bijoong_by_code, honginki_by_code, basis_label)"""
+def load_strategies(data_dir: str = DATA, index_path: str | None = None):
+    """(bijoong, honginki, labels, extra) — extra = {kkangto, jongbe, manju} 종목별 기준선 원본"""
     bj = {}
     hk = {}
     labels = {}
@@ -197,7 +197,70 @@ def load_strategies(data_dir: str = DATA):
             code = str(c.get("code") or "")
             if re.fullmatch(r"\d{6}", code):
                 hk[code] = c
-    return bj, hk, labels
+    # 📈 깡토 (전고점 · −8% · +24% · 60일선)
+    kk = {}
+    j = load_json(os.path.join(data_dir, "kkangto-latest.json"))
+    if isinstance(j, dict):
+        labels["kkangto"] = (j.get("basisDate") or "", j.get("basisLabel") or "")
+        for c in j.get("cards") or []:
+            code = str(c.get("code") or "")
+            if re.fullmatch(r"\d{6}", code):
+                kk[code] = c
+    # 🏆 종가베팅 (진입가 · 손절선)
+    jb = {}
+    j = load_json(os.path.join(data_dir, "jongbe-latest.json"))
+    if isinstance(j, dict):
+        labels["jongbe"] = (j.get("basisDate") or "", "")
+        for c in j.get("stocks") or []:
+            code = str(c.get("code") or "")
+            if re.fullmatch(r"\d{6}", code):
+                jb[code] = c
+    # 🤖 만쥬 — 종목별 JSON 이 없어 화면(index.html)의 자동 타점 문장을 읽는다
+    if index_path is None:
+        index_path = os.path.join(os.path.dirname(data_dir), "index.html")
+    mj = load_manju(index_path)
+    if mj:
+        labels["manju"] = ("", "만쥬 자동 채점(화면 캡처)")
+    return bj, hk, labels, {"kkangto": kk, "jongbe": jb, "manju": mj}
+
+
+def load_manju(index_path: str):
+    """#tabManju 의 '자동 타점' 문장에서 종목별 매수존 상단 · 손절선을 읽는다.
+
+    만쥬 4대 기준 스크리너는 별도 JSON 없이 화면 카드로만 존재한다. 문장 형식이 고정돼 있어
+    ('매수존 A ~ B원 | 익일 시초가 목표 C원 (+4.5%) | 손절선 D원 (-3.0%)') 정규식으로 뽑는다.
+    형식이 바뀌면 조용히 0건이 되고 알림 대상에서만 빠진다(다른 기준선은 그대로 동작).
+    """
+    try:
+        html = open(index_path, encoding="utf-8").read()
+    except Exception:                                          # noqa: BLE001
+        return {}
+    if 'id="tabManju"' not in html:
+        return {}
+    seg = html.split('id="tabManju"', 1)[1][:260000]
+    head = re.compile(r'<strong style="color:#ffffff; font-size:13px;">([^<]+?)\s*\((\d{6})\)</strong>')
+    marks = list(head.finditer(seg))
+    out = {}
+    for i, m in enumerate(marks):
+        block = seg[m.end(): marks[i + 1].start() if i + 1 < len(marks) else len(seg)]
+        if "자동 타점" not in block:
+            continue
+        # 태그(style 의 숫자·색상값)를 지운 '문장'에서 금액만 읽는다
+        plain = re.sub(r"<[^>]+>", " ", block)
+        plain = re.sub(r"\s+", " ", plain)
+        buy = re.search(r"매수존\s*([\d,]+)\s*~\s*([\d,]+)원", plain)
+        stop = re.search(r"손절선\s*([\d,]+)원", plain)
+        target = re.search(r"목표\s*([\d,]+)원", plain)
+        if not buy and not stop:
+            continue
+        out[m.group(2)] = {
+            "code": m.group(2), "name": m.group(1).strip(),
+            "buy_low": num(buy.group(1)) if buy else None,
+            "buy_high": num(buy.group(2)) if buy else None,
+            "stop": num(stop.group(1)) if stop else None,
+            "target": num(target.group(1)) if target else None,
+        }
+    return out
 
 
 def bijoong_lines(card, quote, date_ok=True):
@@ -244,7 +307,51 @@ def honginki_lines(card):
     ]
 
 
-def build_lines(item, quote, bj, hk, strategies_ok=True, date_ok=True):
+def kkangto_lines(card):
+    """깡토 기준선 — 전고점(매수 타점) · −8% 손절 · +24% 익절 · 60일선(잔량 이탈 감시)."""
+    base = num(card.get("basis") if card.get("basis") is not None else card.get("hi60"))
+    out = []
+    if base:
+        out.append({"basis": "깡토 전고점(매수 타점)", "kind": "kkangto-base", "family": "kkangto", "price": base})
+        stop = num(card.get("stop")) or round(base * 0.92)
+        tp = num(card.get("tp")) or round(base * 1.24)
+        out.append({"basis": "깡토 −8% 손절선", "kind": "kkangto-stop", "family": "kkangto-stop", "price": stop})
+        out.append({"basis": "깡토 +24% 1/3 익절선", "kind": "kkangto-tp", "family": "kkangto-tp", "price": tp})
+    ma60 = num(card.get("ma60"))
+    if ma60:
+        out.append({"basis": "깡토 60일선(잔량 이탈 감시)", "kind": "kkangto-ma60", "family": "kkangto-ma60",
+                    "price": ma60})
+    return out
+
+
+def jongbe_lines(stock):
+    """종가베팅 — 진입가(그날 종가) · 손절선. 손절선은 카드 문장의 첫 금액."""
+    entry = num(stock.get("price"))
+    out = []
+    if entry:
+        out.append({"basis": "종베 진입가(전일 종가)", "kind": "jongbe-entry", "family": "jongbe-entry", "price": entry})
+    stop = num(stock.get("stop"))
+    if not stop:
+        m = re.search(r"([\d,]+)\s*원", str(stock.get("stop_raw") or stock.get("stop") or ""))
+        stop = num(m.group(1)) if m else None
+    if stop and stop > 0 and (not entry or stop < entry * 1.2):
+        out.append({"basis": "종베 손절선", "kind": "jongbe-stop", "family": "jongbe-stop", "price": stop})
+    return out
+
+
+def manju_lines(item):
+    """만쥬 — 매수존 상단(진입가) · 손절선."""
+    out = []
+    hi = num(item.get("buy_high")) or num(item.get("buy_low"))
+    if hi:
+        out.append({"basis": "만쥬 매수존 상단(진입가)", "kind": "manju-buy", "family": "manju-buy", "price": hi})
+    stop = num(item.get("stop"))
+    if stop:
+        out.append({"basis": "만쥬 손절선", "kind": "manju-stop", "family": "manju-stop", "price": stop})
+    return out
+
+
+def build_lines(item, quote, bj, hk, strategies_ok=True, date_ok=True, extra=None):
     lines = []
     if item.get("buy"):
         lines.append({"basis": "내가 적은 매수 희망가", "kind": "user-buy", "family": "user-buy",
@@ -258,6 +365,17 @@ def build_lines(item, quote, bj, hk, strategies_ok=True, date_ok=True):
     card = hk.get(item.get("code") or "")
     if card:
         lines.extend(honginki_lines(card))
+    ex = extra or {}
+    code = item.get("code") or ""
+    card = (ex.get("kkangto") or {}).get(code)
+    if card:
+        lines.extend(kkangto_lines(card))
+    stock = (ex.get("jongbe") or {}).get(code)
+    if stock:
+        lines.extend(jongbe_lines(stock))
+    mj = (ex.get("manju") or {}).get(code)
+    if mj:
+        lines.extend(manju_lines(mj))
     seen = set()
     out = []
     for ln in lines:
@@ -404,7 +522,7 @@ def run(tol=DEFAULT_TOL, data_dir=DATA, state_path=STATE_FILE, save=True,
             return {"ok": False, "error": items_err, "touches": [], "skipped": [],
                     "items": 0, "today": today}
 
-    bj, hk, labels = load_strategies(data_dir)
+    bj, hk, labels, extras = load_strategies(data_dir)
 
     if not items:
         return {"ok": True, "items": 0, "touches": [], "already": [], "skipped": [],
@@ -429,10 +547,10 @@ def run(tol=DEFAULT_TOL, data_dir=DATA, state_path=STATE_FILE, save=True,
             skipped.append({"name": it.get("name"), "code": it["code"], "why": "시세 없음/거래정지"})
             continue
         date_ok = quote_date_ok(q, now)
-        lines = build_lines(it, q, bj, hk, date_ok=date_ok)
+        lines = build_lines(it, q, bj, hk, date_ok=date_ok, extra=extras)
         if not lines:
             skipped.append({"name": it.get("name"), "code": it["code"],
-                            "why": "기준선 없음(매수·손절가 미입력 · 비중법사/홍인기 카드 아님)"})
+                            "why": "기준선 없음(매수·손절가 미입력 · 비중법사/홍인기/깡토/종베/만쥬 카드 아님)"})
             continue
         hits = judge(it, q, lines, tol, date_ok=date_ok)
         if not hits:
@@ -475,6 +593,7 @@ def run(tol=DEFAULT_TOL, data_dir=DATA, state_path=STATE_FILE, save=True,
         "already": already,
         "skipped": skipped,
         "labels": labels,
+        "sources": {k: len(v) for k, v in (extras or {}).items()},
         "quoteError": qerr,
     }
 
@@ -632,13 +751,53 @@ def selftest():
     check("직전 체결가 → 알림 없음", len(r4["touches"]), 0)
     check("오늘 체결가 → 알림 있음", len(r5["touches"]), 1)
 
+    # ⑪ 깡토 — 전고점(매수 타점) · −8% 손절 · +24% 익절 · 60일선
+    kk_card = {"code": "425420", "name": "티에프이", "basis": 10000, "stop": 9200, "tp": 12400, "ma60": 8700}
+    kk_map = {ln["kind"]: round(ln["price"]) for ln in kkangto_lines(kk_card)}
+    check("깡토 전고점", kk_map.get("kkangto-base"), 10000)
+    check("깡토 −8%", kk_map.get("kkangto-stop"), 9200)
+    check("깡토 +24%", kk_map.get("kkangto-tp"), 12400)
+    check("깡토 60일선", kk_map.get("kkangto-ma60"), 8700)
+    # ⑫ 종베 — 진입가(그날 종가) · 손절선(문장의 첫 금액)
+    jb_lines = jongbe_lines({"code": "002990", "price": 11210, "stop": "11,120원 (-0.8%) 이탈 시 즉시"})
+    jb_map = {ln["kind"]: round(ln["price"]) for ln in jb_lines}
+    check("종베 진입가", jb_map.get("jongbe-entry"), 11210)
+    check("종베 손절선", jb_map.get("jongbe-stop"), 11120)
+    # ⑬ 만쥬 — 화면 '자동 타점' 문장에서 매수존 상단·손절선
+    manju_html = ('<div id="tabManju">'
+                  '<strong style="color:#ffffff; font-size:13px;">삼양식품 (003230)</strong>'
+                  '<div style="font-size:10.5px;color:#cbd5e1;">'
+                  '🎯 <strong>자동 타점:</strong> 매수존 1,262,770 ~ 1,282,000원 | '
+                  '익일 시초가 목표 <span style="color:#34d399; font-weight:700;">1,339,690원 (+4.5%)</span> | '
+                  '손절선 <span style="color:#fca5a5;">1,243,540원 (-3.0%)</span></div></div>')
+    mj_path = os.path.join(tmpdir, "manju.html")
+    open(mj_path, "w", encoding="utf-8").write(manju_html)
+    mj = load_manju(mj_path)
+    check("만쥬 파싱 건수", len(mj), 1)
+    mj_one = mj.get("003230") or {}
+    check("만쥬 매수존 상단", mj_one.get("buy_high"), 1282000.0)
+    check("만쥬 손절선", mj_one.get("stop"), 1243540.0)
+    check("만쥬 기준선 생성", len(manju_lines(mj_one)), 2)
+    # ⑭ ★ 종목 하나에 다섯 전략 기준선이 겹쳐도 종목당 1건으로 접힌다 (종베·만쥬·깡토 통합)
+    q4 = {"code": "425420", "name": "티에프이", "price": 9250.0, "open": 9200.0,
+          "high": 9300.0, "low": 9180.0, "tradedAt": "2026-11-16T10:03:00+09:00"}
+    merged4 = collapse(judge(
+        {"code": "425420", "name": "티에프이"},
+        q4,
+        kkangto_lines(kk_card) + jongbe_lines({"price": 9200, "stop": "9,150원 (-0.5%)"}) +
+        manju_lines({"buy_high": 9300, "stop": 9000}),
+        tol=0.01, date_ok=True))
+    check("5전략 기준선 통합 — family 별 1개로 접힘", len(merged4), 2)
+    twins = [m for m in merged4 if round(m["price"]) == 9200]
+    check("같은 가격(깡토 −8% = 종베 진입가) 라벨 병합", (len(twins), len(twins[0]["kinds"]) if twins else 0), (1, 2))
+
     if fails:
         print("✗ selftest 실패")
         for f in fails:
             print("  -", f)
         return 2
-    print("✓ selftest 통과 ({}개 판정) — 매수희망가 · 4분할(1일차/몸통) · 홍인기 · 겹친 선 접기 · "
-          "중복 차단 · 장외 가드 · Supabase 파싱 · 숫자 파싱".format(checks[0]))
+    print("✓ selftest 통과 ({}개 판정) — 매수희망가 · 4분할(1일차/몸통) · 홍인기 · 깡토(전고점/−8%/+24%/60일선) · "
+          "종베(진입가/손절선) · 만쥬(화면 타점 파싱) · 겹친 선 접기 · 중복 차단 · 장외 가드 · Supabase 파싱 · 숫자 파싱".format(checks[0]))
     return 0
 
 

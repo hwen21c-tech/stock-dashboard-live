@@ -207,8 +207,12 @@ def build_universe(pages=30):
         elif p is None or val is None:
             continue
         seen.add(code)
+        # 시가총액(억원) — API 의 marketValue 는 '억원' 단위 문자열(예: 11,447,014 = 1,144조)
+        cap = num(r.get("marketValue"))
         uni.append({"code": code, "name": name, "market": r["_market"], "pct": p,
-                    "value_eok": round(val / 100, 1), "status": r.get("marketStatus")})
+                    "value_eok": round(val / 100, 1), "status": r.get("marketStatus"),
+                    "cap": round(cap, 1) if cap is not None else 0.0,
+                    "close": num(r.get("closePrice")) or 0.0})
     uni.sort(key=lambda x: -x["value_eok"])
     for i, u in enumerate(uni):
         u["rank"] = i + 1
@@ -1164,6 +1168,349 @@ def build_jongbe(uni, per, cache, days):
     return picks, basis
 
 
+# ------------------------------------------------------------------ 7c) 📈 깡토 추세추종 · 💰 수급주도주 (일일 자동 교체)
+#   깡토(「깡토의 추세추종」 총정리): 전고점 돌파 추세추종.
+#     · 후보 ①  전고점(60/120일 고점) 5% 이내 접근 — 시총 1조↑(또는 주도주) + 종가 > 60일선
+#     · 후보 ②  당일·최근 60일 전고점 돌파 + 종가 > 60일선
+#     · 기준선   매수타점 = 전고점, −8% 손절, +24% 1/3 익절, 60일선(잔량 2/3 이탈 감시)
+#   수급: 네이버 종목별 투자자별 매매동향(거래소 확정 bizdate)으로 외인·기관 순매수 상위를 매일 새로 뽑는다.
+#     · 금액 = 순매수 주수 × 그날 종가 ÷ 1억 (화면 표기와 같은 기준)
+#     · 연기금·금융투자 등 세부 주체는 공개 API에 없어 '외인 + 기관' 두 축만 쓴다(정직 표기).
+KK_CAP_EOK = 10000.0        # 시총 1조
+KK_LEAD_VALUE = 500.0       # 주도주 근사: 거래대금 500억↑
+KK_LEAD_RANK = 50           #            + 대금 순위 50위 내
+# 깡토 스캔 전용 ETF/ETN/스팩 추가 제외 (공통 ETF_PAT 에 없는 브랜드·'액티브' 상품)
+KK_ETF_PAT = re.compile(r"(1Q |KoAct|KIWOOM|히어로즈|액티브|ETF|ETN|스팩|인버스|레버리지)", re.I)
+KK_NEAR_PICK = 12
+KK_BREAK_PICK = 12
+SUP_CAND_VALUE = 220        # 수급 랭킹 후보: 거래대금 상위 220
+SUP_CAND_CAP = 130          #                 + 시총 상위 130
+SUP_PICK = 6
+SUP_SELL_PICK = 5
+SUP_TREND = "https://m.stock.naver.com/api/stock/{code}/trend?pageSize=10&page=1"
+
+
+def _highest(win):
+    best = None
+    for c in win:
+        if best is None or c["h"] > best["h"]:
+            best = c
+    return best
+
+
+def _cap_text(cap_eok):
+    if not cap_eok:
+        return ""
+    if cap_eok >= 10000:
+        return f"{cap_eok / 10000:,.1f}조"
+    return f"{cap_eok:,.0f}억"
+
+
+def build_kkangto(uni, per, cache, days, themes=None):
+    """깡토 추세추종 — ① 전고점 5% 이내 접근 ② 전고점 돌파. 카드에 매수타점·−8%·+24%·60일선."""
+    themes = themes or []
+    basis = days[2]
+    L2 = dshort(basis)
+    MEM = {}
+    for t in themes:
+        for m in t["members"]:
+            MEM.setdefault(m["code"], []).append(t)
+
+    def breadth(code):
+        """업종 동반상승 근사 — 네이버 테마 분류 중 동반 상승 비율이 가장 높은 테마."""
+        best = None
+        for t in MEM.get(code, []):
+            rows = [per[m["code"]][basis] for m in t["members"]
+                    if m["code"] in per and basis in per[m["code"]]]
+            if len(rows) < 3:
+                continue
+            up = sum(1 for r in rows if r["pct"] > 0)
+            rate = sum(r["pct"] for r in rows) / len(rows)
+            cand = {"name": t["name"], "up": up, "total": len(rows),
+                    "ratio": round(up * 100.0 / len(rows)), "rate": round(rate, 2)}
+            if best is None or cand["ratio"] > best["ratio"] or (
+                    cand["ratio"] == best["ratio"] and cand["rate"] > best["rate"]):
+                best = cand
+        return best
+
+    def series(code):
+        cs = cache.get(code) or []
+        closes = [c["c"] for c in cs]
+        ma60 = sum(closes[-60:]) / 60 if len(closes) >= 60 else None
+        last = cs[-1] if cs else None
+        avg20v = sum(c["v"] for c in cs[-21:-1]) / 20 if len(cs) >= 21 else 0
+        return {
+            "candles": [{"d": c["date"], "o": c["o"], "h": c["h"], "l": c["l"], "c": c["c"], "v": c["v"]} for c in cs[-130:]],
+            "spark15": [[c["date"], c["c"], c["v"]] for c in cs[-15:]],
+            "ma60": ma60,
+            "chg5": round(pct(last["c"], closes[-6]), 2) if last and len(closes) >= 6 else None,
+            "chg20": round(pct(last["c"], closes[-21]), 2) if last and len(closes) >= 21 else None,
+            "volRatio": round(last["v"] / avg20v, 2) if last and avg20v else None,
+        }
+
+    near, brk = [], []
+    scanned = above = 0
+    for u in uni:
+        code = u["code"]
+        cs = cache.get(code) or []
+        rec = (per.get(code) or {}).get(basis)
+        if not rec or len(cs) < 70:
+            continue
+        prior = [c for c in cs if c["date"] < basis]
+        if len(prior) < 60:
+            continue
+        scanned += 1
+        if KK_ETF_PAT.search(u["name"] or ""):
+            continue
+        close = rec["c"]
+        if close <= 0:
+            continue
+        ser = series(code)
+        ma60 = ser["ma60"]
+        if ma60 and close > ma60:
+            above += 1
+        h60, h120 = _highest(prior[-60:]), _highest(prior[-120:])
+        cap = float(u.get("cap") or 0)
+        rank = int(u.get("rank") or 9999)
+        cap_ok = cap >= KK_CAP_EOK
+        leader = rec["valueEok"] >= KK_LEAD_VALUE and rank <= KK_LEAD_RANK
+        # ── 전고점 돌파 (오늘·전일·전전일 종가가 그 시점의 60일 전고점을 넘었는가)
+        brk_days = None
+        for ago, d in enumerate(reversed(days)):
+            r = (per.get(code) or {}).get(d)
+            if not r:
+                continue
+            pri = [c for c in cs if c["date"] < d][-60:]
+            if len(pri) < 30:
+                continue
+            if r["c"] >= max(x["h"] for x in pri):
+                brk_days = ago
+                break
+        up_trend = bool(ma60 and close > ma60)
+        size_ok = cap_ok or leader        # 깡토 발굴 조건: 시총 1조↑(또는 주도주 근사)
+        card = None
+        if brk_days is not None and up_trend and size_ok:
+            card = {"section": "break", "breakDaysAgo": brk_days, "basis": int(h60["h"]),
+                    "hi60": int(h60["h"]), "hi60Date": h60["date"],
+                    "hi120": int(h120["h"]), "hi120Date": h120["date"],
+                    "dist": round((h60["h"] - close) / close * 100, 2)}
+        elif size_ok and up_trend:
+            ref = h60 if h60["h"] >= close else h120
+            dist = (ref["h"] - close) / close * 100
+            if 0 <= dist <= 5.0:
+                card = {"section": "near", "breakDaysAgo": None, "basis": int(ref["h"]),
+                        "hi60": int(h60["h"]), "hi60Date": h60["date"],
+                        "hi120": int(h120["h"]), "hi120Date": h120["date"],
+                        "dist": round(dist, 2)}
+        if not card:
+            continue
+        bd = breadth(code)
+        base = card["basis"]
+        flags, note = [], ""
+        if rec["upper"] >= 3.0:
+            flags.append(f"윗꼬리 {rec['upper']:+.2f}% — 돌파 후 윗꼬리가 길면 진입하지 않는 규칙(깡토 03:53)")
+        if rec["valueEok"] < 300:
+            flags.append(f"대금 {rec['valueEok']:,.0f}억 — 얇은 종목이라 호가 충격 주의")
+        if ser["chg5"] is not None and ser["chg5"] >= 20:
+            flags.append(f"5일 누적 {ser['chg5']:+.1f}% — 이미 달린 자리(추격 주의)")
+        if not cap_ok:
+            note = "시총 1조 미만 — 주도주 근사(대금 500억↑·50위 내)로 편입"
+        item = {
+            "code": code, "name": u["name"], "market": u.get("market") or "",
+            "close": int(close), "pct": round(rec["pct"], 2), "prevClose": int(rec["prevClose"]),
+            "valueEok": rec["valueEok"], "rank": rank, "capEok": int(cap), "capText": _cap_text(cap),
+            "stop": to_tick(base * 0.92), "tp": to_tick(base * 1.24),
+            "ma60": int(round(ma60)) if ma60 else None,
+            "theme": (bd or {}).get("name"), "themeRate": (bd or {}).get("rate"),
+            "industryUp": (bd or {}).get("up"), "industryTotal": (bd or {}).get("total"),
+            "industryRatio": (bd or {}).get("ratio"),
+            "upper": rec["upper"], "chg5": ser["chg5"], "chg20": ser["chg20"], "volRatio": ser["volRatio"],
+            "capOk": cap_ok, "leaderOk": leader,
+            "candles": ser["candles"], "spark15": ser["spark15"],
+            "flags": flags, "note": note,
+            "upTrend": up_trend,
+            "reasons": [
+                f"{L2} 종가 <b>{close:,.0f}원({rec['pct']:+.2f}%)</b> · 60일선 {ma60:,.0f}원 " + ("위(추세 유지)" if up_trend else "아래"),
+                f"60일 전고점 <b>{h60['h']:,.0f}원({dshort(h60['date'])})</b> · 120일 전고점 <b>{h120['h']:,.0f}원({dshort(h120['date'])})</b>",
+                f"거래대금 <b>{rec['valueEok']:,.0f}억</b>({rank}위) · 시총 <b>{_cap_text(cap) or '—'}</b>",
+            ],
+        }
+        item.update(card)
+        item["gapPct"] = round((close - base) / base * 100, 2) if base else None
+        # 돌파 후 −8% 손절선을 이미 이탈한 종목은 '돌파 종목'이 아니라 실패 사례다 — 목록에서 뺀다
+        if item["section"] == "break" and item["gapPct"] is not None and item["gapPct"] < -8.0:
+            continue
+        (brk if card["section"] == "break" else near).append(item)
+
+    near.sort(key=lambda x: (x["dist"], -x["valueEok"]))
+    brk.sort(key=lambda x: (x["breakDaysAgo"], -x["valueEok"]))
+    cards = near[:KK_NEAR_PICK] + brk[:KK_BREAK_PICK]
+    nxt = next_trading_day(basis)
+    payload = {
+        "generatedAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"),
+        "basisDate": basis, "basisLabel": dlong(basis),
+        "nextLabel": dlong_short(nxt), "days": days,
+        "universe": len(uni), "scanned": scanned,
+        "kpi": {"near": len(near), "breakout": len(brk), "aboveMa60": above},
+        "counts": {"near": len(near), "breakout": len(brk)},
+        "rule": {"stop": -8.0, "tp": 24.0, "seedRisk": 2.0, "units": 5, "marketUnits": [2, 1], "stockUnits": [1, 2, 3]},
+        "cards": cards,
+    }
+    log(f"  깡토 — 스캔 {scanned} · 60일선 위 {above} · 접근 후보 {len(near)} · 돌파 {len(brk)}  (카드 {len(cards)})")
+    return payload
+
+
+def fetch_trend_one(code):
+    """종목별 투자자별 매매동향(거래소 확정) — 최신순 [{'d','close','f','o','i'}], 실패는 None."""
+    try:
+        data = getj(SUP_TREND.format(code=code), timeout=12)
+    except Exception:                     # noqa: BLE001
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    rows = []
+    for r in data:
+        bd = str(r.get("bizdate") or "")
+        if not re.fullmatch(r"\d{8}", bd):
+            continue
+        rows.append({"d": bd, "close": num(r.get("closePrice")),
+                     "f": num(r.get("foreignerPureBuyQuant")),
+                     "o": num(r.get("organPureBuyQuant")),
+                     "i": num(r.get("individualPureBuyQuant"))})
+    rows.sort(key=lambda x: -int(x["d"]))
+    return rows or None
+
+
+def _streak(rows, key):
+    """최신일부터 같은 부호가 며칠 이어졌는지."""
+    n = 0
+    for r in rows:
+        v = r.get(key)
+        if v is None or v == 0:
+            break
+        if n == 0:
+            sign = 1 if v > 0 else -1
+            n = 1
+        elif (v > 0 and sign > 0) or (v < 0 and sign < 0):
+            n += 1
+        else:
+            break
+    return n
+
+
+def build_supply(uni, per, cache, days, workers=8, budget=150.0):
+    """2번 수급주도주 — 거래소 확정치(외인·기관 순매수 주수 × 종가)로 매일 새 목록."""
+    names = {u["code"]: u for u in uni}
+    by_value = sorted(uni, key=lambda u: -(u.get("valueEok") or 0))[:SUP_CAND_VALUE]
+    by_cap = sorted(uni, key=lambda u: -(u.get("cap") or 0))[:SUP_CAND_CAP]
+    cands, seen = [], set()
+    for u in by_value + by_cap:
+        c = u["code"]
+        if c in seen or not (cache.get(c) and len(cache.get(c)) > 30):
+            continue
+        seen.add(c)
+        cands.append(c)
+    log(f"  수급 후보 {len(cands)}종목 — 투자자별 매매동향 조회")
+    t0 = time.time()
+    rows_by = {}
+
+    def job(code):
+        return code, fetch_trend_one(code)
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for code, rows in ex.map(job, cands):
+            if rows:
+                rows_by[code] = rows
+            if time.time() - t0 > budget:
+                break
+    if not rows_by:
+        log("  ! 투자자별 매매동향 응답 없음 — 수급 목록을 갱신하지 않습니다")
+        return None
+    latest = max(rows[0]["d"] for rows in rows_by.values())
+    items = []
+    for code, rows in rows_by.items():
+        row = next((r for r in rows if r["d"] == latest), None)
+        if not row or not row["close"]:
+            continue
+        close = row["close"]
+        idx = rows.index(row)
+        prev = rows[idx + 1]["close"] if idx + 1 < len(rows) else None
+        u = names.get(code) or {}
+        f_amt = round((row["f"] or 0) * close / 1e8, 1)
+        o_amt = round((row["o"] or 0) * close / 1e8, 1)
+        i_amt = round((row["i"] or 0) * close / 1e8, 1)
+        cap = float(u.get("cap") or 0)
+        items.append({
+            "code": code, "name": u.get("name") or code, "market": u.get("market") or "",
+            "price": int(close), "pct": round(pct(close, prev), 2) if prev else 0.0,
+            "foreignEok": f_amt, "organEok": o_amt, "individualEok": i_amt,
+            "streakForeign": _streak(rows, "f"), "streakOrgan": _streak(rows, "o"),
+            "valueText": f"{u.get('value_eok', 0):,.0f}억" if u.get("value_eok") else "",
+            "capText": _cap_text(cap),
+            "desc": f"외국인 {f_amt:+,.0f}억 · 기관 {o_amt:+,.0f}억 · 개인 {i_amt:+,.0f}억 (확정 {dshort(latest)} 종가 기준)",
+        })
+    if not items:
+        log("  ! 확정 수급 항목 0건 — 수급 목록을 갱신하지 않습니다")
+        return None
+    foreign_buy = sorted([x for x in items if x["foreignEok"] > 0], key=lambda x: -x["foreignEok"])[:SUP_PICK]
+    organ_buy = sorted([x for x in items if x["organEok"] > 0], key=lambda x: -x["organEok"])[:SUP_PICK]
+    foreign_sell = sorted([x for x in items if x["foreignEok"] < 0], key=lambda x: x["foreignEok"])[:SUP_SELL_PICK]
+    dual = sorted([x for x in items if x["foreignEok"] > 0 and x["organEok"] > 0],
+                  key=lambda x: -(x["foreignEok"] + x["organEok"]))[:SUP_PICK]
+    payload = {
+        "generatedAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"),
+        "basisDate": latest, "basisLabel": dlong(latest), "confirmed": True,
+        "candidates": len(items), "source": "네이버 종목별 투자자별 매매동향(거래소 확정)",
+        "groups": {"foreignBuy": foreign_buy, "organBuy": organ_buy,
+                   "foreignSell": foreign_sell, "dualBuy": dual},
+    }
+    log(f"  수급 확정 {dlong(latest)} — 외인매수 {len(foreign_buy)} · 기관매수 {len(organ_buy)} · "
+        f"외인매도 {len(foreign_sell)} · 동반매수 {len(dual)}")
+    return payload
+
+
+def patch_js_const(path, name, obj):
+    """live-kkangto.js / live-supply.js 안의 `const NAME = {...};` 한 줄을 새 JSON으로 교체."""
+    if not os.path.exists(path):
+        return False
+    src = open(path, encoding="utf-8").read()
+    pat = re.compile(r"^const " + name + r" = \{.*\};$", re.M)
+    if not pat.search(src):
+        return False
+    payload = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    new = pat.sub(lambda m: "const " + name + " = " + payload + ";", src, count=1)
+    if new == src:
+        return False
+    open(path, "w", encoding="utf-8").write(new)
+    return True
+
+
+def force_today_from_krx(cache, basis, key):
+    """장마감 직후 캐시의 '오늘 봉'이 장중 값이면 KRX 확정치로 덮어쓴다(깡토 재계산용)."""
+    if not key:
+        return 0
+    krx, errs = fetch_krx_daily(basis, key)
+    if not krx:
+        log(f"  ! KRX 확정치 없음 {errs[:1]}")
+        return 0
+    fixed = 0
+    for code, k in krx.items():
+        cs = cache.get(code)
+        if not cs or not k.get("close"):
+            continue
+        bar = {"date": basis, "o": k["open"] or k["close"], "h": k["high"] or k["close"],
+               "l": k["low"] or k["close"], "c": k["close"], "v": int(k["vol"] or 0)}
+        if cs and cs[-1]["date"] == basis:
+            cs[-1] = bar
+            fixed += 1
+        elif cs and cs[-1]["date"] < basis:
+            cs.append(bar)
+            fixed += 1
+    save_cache(cache)
+    log(f"  KRX 확정치로 오늘 봉 보정 {fixed}종목 ({dlong(basis)})")
+    return fixed
+
+
 def rn_chip_html(stocks):
     """1번 탭 '실전 타점 신호등'의 RN존 칩을 오늘 자동선정 종목으로 다시 만든다.
        (예전에는 피에스케이홀딩스·하나마이크론이 박혀 있어 목록에서 빠지면 눌러도 열리지 않았다)"""
@@ -1333,6 +1680,8 @@ def main():
     ap.add_argument("--pages", type=int, default=30, help="랭킹 API 페이지 수(100개/페이지)")
     ap.add_argument("--limit", type=int, default=0, help="테스트용 종목 수 제한")
     ap.add_argument("--seed", default="", help="첫 실행 때 재사용할 기존 일봉 DB(JSON 경로, 선택)")
+    ap.add_argument("--only", choices=["all", "kkangto"], default="all",
+                    help="kkangto = 깡토·수급만 다시 스캔(홍인기·비중법사·RN존·종베는 그대로 둠)")
     args = ap.parse_args()
 
     t_start = time.time()
@@ -1377,6 +1726,60 @@ def main():
                 return 0
         except Exception:              # noqa: BLE001
             pass
+
+    # ---- 깡토·수급만 다시 스캔하는 경량 경로 (전체 4탭은 그대로 둔다)
+    if args.only == "kkangto":
+        log("[kkangto] 깡토 추세추종 · 수급주도주만 재스캔")
+        uni, _totals = build_universe(args.pages)
+        if not uni:
+            log("유니버스 0종목 — 중단(기존 스캔 유지)")
+            return 2
+        cache = load_cache()
+        key = load_krx_key()
+        today = now_kst().strftime("%Y%m%d")
+        fixed = 0
+        if basis == today:
+            fixed = force_today_from_krx(cache, basis, key)
+            if not fixed:
+                # KRX 확정치가 아직 없으면 시총·대금 랭킹의 최신 종가로 오늘 봉 종가를 맞춘다
+                for u in uni:
+                    cs = cache.get(u["code"])
+                    c0 = float(u.get("close") or 0)
+                    if not cs or not c0 or cs[-1]["date"] != basis:
+                        continue
+                    bar = cs[-1]
+                    bar["c"] = c0
+                    bar["h"] = max(bar["h"], c0)
+                    bar["l"] = min(bar["l"], c0)
+                    fixed += 1
+                save_cache(cache)
+                log(f"  랭킹 최신 종가로 오늘 봉 종가 보정 {fixed}종목")
+        per = {}
+        for u in uni:
+            cs = cache.get(u["code"])
+            if not cs or len(cs) < 130:
+                continue
+            r = day_records(u["code"], cs, days)
+            if r:
+                per[u["code"]] = r
+        themes = build_themes()
+        kk = build_kkangto(uni, per, cache, days, themes)
+        sup = build_supply(uni, per, cache, days)
+        open(os.path.join(DATA_DIR, "kkangto-latest.json"), "w", encoding="utf-8").write(
+            json.dumps(kk, ensure_ascii=False, separators=(",", ":")))
+        if sup:
+            open(os.path.join(DATA_DIR, "supply-latest.json"), "w", encoding="utf-8").write(
+                json.dumps(sup, ensure_ascii=False, separators=(",", ":")))
+        if not args.dry:
+            ok_kk = patch_js_const(os.path.join(PUB, "live-kkangto.js"), "DATA", kk)
+            ok_sup = patch_js_const(os.path.join(PUB, "live-supply.js"), "SUPPLY", sup) if sup else None
+            log(f"  모듈 반영 — 깡토 {ok_kk} · 수급 {ok_sup}")
+            if not ok_kk:
+                return 1
+        print(json.dumps({"ok": True, "only": "kkangto", "basisDate": basis,
+                          "kkangto": kk["kpi"], "supply": (sup or {}).get("candidates", 0),
+                          "fixedToday": fixed}, ensure_ascii=False))
+        return 0
 
     # ---- 유니버스 + 테마 + 일봉
     log("[1/4] 유니버스")
@@ -1451,6 +1854,9 @@ def main():
     # 5개 전략 탭 통일 — RN존·종가베팅도 같은 장마감 일봉으로 매일 새로 선정한다.
     rn_stocks, rn_counts, rn_basis = build_rnzone(uni, per, cache, days)
     jb_stocks, jb_basis = build_jongbe(uni, per, cache, days)
+    # 📈 깡토 추세추종 · 💰 수급주도주 — 같은 장마감 일봉으로 매일 새로 뽑는다
+    kk = build_kkangto(uni, per, cache, days, themes)
+    sup = build_supply(uni, per, cache, days)
 
     payload = {
         "generatedAt": hong["generatedAt"], "basisDate": basis, "days": days,
@@ -1461,6 +1867,8 @@ def main():
         "honginki": hong, "bijoong": bij,
         "rnzone": {"count": len(rn_stocks), "counts": rn_counts, "basisDate": rn_basis},
         "jongbe": {"count": len(jb_stocks), "basisDate": jb_basis},
+        "kkangto": {"near": kk["kpi"]["near"], "breakout": kk["kpi"]["breakout"], "cards": len(kk["cards"])},
+        "supply": {"count": (sup or {}).get("candidates", 0), "basisDate": (sup or {}).get("basisDate")},
         "krx": {"basisDate": basis, "stat": krx_stat, "errors": krx_errors[:3]},
     }
     wd = payload["nextLongLabel"].split("(")[-1].rstrip(")")
@@ -1476,6 +1884,18 @@ def main():
                       (os.path.join(DATA_DIR, "bijoong-latest.json"), bij)):
         open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
     open(LATEST, "w", encoding="utf-8").write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    # 📈 깡토 · 💰 수급 (데이터 파일 + 프런트 모듈의 const 한 줄)
+    open(os.path.join(DATA_DIR, "kkangto-latest.json"), "w", encoding="utf-8").write(
+        json.dumps(kk, ensure_ascii=False, separators=(",", ":")))
+    if sup:
+        open(os.path.join(DATA_DIR, "supply-latest.json"), "w", encoding="utf-8").write(
+            json.dumps(sup, ensure_ascii=False, separators=(",", ":")))
+    if not args.dry:
+        ok_kk = patch_js_const(os.path.join(PUB, "live-kkangto.js"), "DATA", kk)
+        ok_sup = patch_js_const(os.path.join(PUB, "live-supply.js"), "SUPPLY", sup) if sup else None
+        log(f"  깡토 모듈 반영 {ok_kk} · 수급 모듈 반영 {ok_sup}")
+        if not ok_kk:
+            log("! live-kkangto.js 의 const DATA 블록을 찾지 못했습니다 — 파일을 건드리지 않습니다")
     for path, obj in ((os.path.join(DATA_DIR, "rnzone-latest.json"),
                        {"generatedAt": payload["generatedAt"], "basisDate": rn_basis,
                         "counts": rn_counts, "stocks": rn_stocks}),
