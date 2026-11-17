@@ -35,7 +35,8 @@ const DEFAULT_STOCKS = [
   { code: '035420', name: 'NAVER' },
   { code: '034020', name: '두산에너빌리티' },
   { code: '028300', name: 'HLB' },
-  { code: '143240', name: '펨트론' },
+  { code: '143240', name: '사람인' },
+  { code: '168360', name: '펨트론' },
   { code: '058470', name: '리노공업' },
 ];
 

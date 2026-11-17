@@ -206,6 +206,17 @@
   function applyLive(payload) {
     var applied = 0;
     var indices = payload.indices || [];
+    /* 화면에 실제로 반영한 값을 남긴다 — '💾 오늘 저장' 이 옛 하드코딩 대신 이 값을 쓴다 */
+    try {
+      window.__LIVE_SNAPSHOT = {
+        at: payload.generatedAtKst || nowText(),
+        marketStatus: payload.marketStatus || null,
+        indices: indices.map(function (i) {
+          return { key: i.key, price: num(i.price), changePct: num(i.changePct),
+                   status: i.status || null, valueText: i.valueText || null };
+        })
+      };
+    } catch (e) { /* noop */ }
 
     for (var i = 0; i < indices.length; i += 1) {
       var idx = indices[i];
@@ -988,6 +999,44 @@
     return null;
   }
 
+  /* ── 종목코드 최종 폴백 ───────────────────────────────────────────────
+     내장 500일 캔들 DB에는 있는데 window.stockCodes(내장 87종목)에 없는 종목
+     (예: SK스퀘어 402340)은 코드를 못 찾아 '⏳ 종목코드 확인 중…'에서 영구히 멈췄다.
+     /api/stock-chart 는 종목명을 네이버 자동완성·검색으로 6자리 코드까지 해석해 주므로
+     그 응답의 code 로 네이버·토스 링크를 즉시 활성화한다(실패하면 '네이버에서 검색'). */
+  var codeLookup = { cache: {}, reqId: 0 };
+
+  function resolveCodeViaApi(name, title) {
+    var query = name || cleanName(title);
+    if (!query) { markLinksFailed(name); return; }
+    if (codeLookup.cache[query]) { setLinks(codeLookup.cache[query]); return; }
+    codeLookup.reqId += 1;
+    var myId = codeLookup.reqId;
+    var controller = null;
+    var timer = null;
+    try { controller = new AbortController(); } catch (e) { controller = null; }
+    if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, 9000);
+    fetch(CHART_URL + '?code=' + encodeURIComponent(query) + '&count=20',
+      controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
+      .then(function (res) { return res.json().catch(function () { return null; }); })
+      .then(function (body) {
+        if (timer) clearTimeout(timer);
+        if (myId !== codeLookup.reqId) return;         // 그 사이 다른 종목이 열렸다
+        var code = body && body.ok === true ? String(body.code || '') : '';
+        if (/^\d{6}$/.test(code)) {
+          codeLookup.cache[query] = code;
+          setLinks(code);
+        } else {
+          markLinksFailed(name || query);
+        }
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        if (myId !== codeLookup.reqId) return;
+        markLinksFailed(name || query);
+      });
+  }
+
   function setLinks(code) {
     if (!code) return;
     var nv = $('btnNaverQuote');
@@ -1213,7 +1262,11 @@
         var out = orig.apply(this, arguments);
         var known = code || knownCode(name, title);
         if (known) setLinks(known);
-        else markLinksPending();
+        else {
+          /* 내장 DB엔 있지만 코드표에 없는 종목 — 대기 상태로 두지 말고 API로 코드를 찾는다 */
+          markLinksPending();
+          resolveCodeViaApi(name, title);
+        }
         return out;
       }
       loadLiveChart(title, code);
@@ -1235,7 +1288,7 @@
         var name = cleanName(title);
         var code = codeFromTitle(title) || knownCode(name, title);
         if (code) setLinks(code);
-        else markLinksPending();
+        else { markLinksPending(); resolveCodeViaApi(name, title); }
       } catch (e) { /* noop */ }
       return out;
     };

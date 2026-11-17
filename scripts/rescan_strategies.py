@@ -2226,6 +2226,18 @@ def main():
             log(json.dumps(rep, ensure_ascii=False)[:1200])
             return 1
 
+    # ---- 종목코드 ↔ 종목명 교차 점검 (11/18 점검 D2 재발 방지)
+    #   같은 코드가 다른 이름으로 표시되면 차트·링크·수급 카드가 남의 종목을 가리킨다.
+    #   (11/17에 "고쳤다"고 한 143240 = 펨트론 오기가 그대로 남아 있었다)
+    try:
+        import verify_code_names                 # scripts/verify_code_names.py
+        _vres = verify_code_names.verify()
+        verify_code_names.report(_vres)
+        if not _vres["ok"]:
+            log("  ! 종목코드/이름 불일치 — api/stock-live.js(DEFAULT_STOCKS)·api/stock-chart.js(ALIAS) 를 고치세요")
+    except Exception as e:                        # noqa: BLE001
+        log(f"  ! 종목코드 교차 점검 건너뜀({e})")
+
     os.makedirs(CACHE_DIR, exist_ok=True)
     json.dump({"lastRunAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"), "basisDate": basis,
                "tookSec": round(time.time() - t_start, 1), "patched": patched,

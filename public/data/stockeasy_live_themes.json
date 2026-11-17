@@ -3,25 +3,25 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-17 13:42:16",
- "updatedAt": "2026-11-17T13:42:07.189406+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-17 20:18:57",
+ "updatedAt": "2026-11-17T20:18:34.977176+09:00",
+ "updatedAgeMin": 0.4,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "417010",
-  "033790",
-  "029480",
   "033340",
   "047770",
   "025980",
+  "417010",
+  "033790",
+  "029480",
   "012200",
-  "448900",
   "030530",
-  "008830",
-  "399720",
-  "394280",
-  "054450",
+  "389500",
+  "448900",
+  "069510",
+  "347700",
+  "027360",
   "086450",
   "009420",
   "000100"
@@ -29,56 +29,56 @@
  "themes": [
   {
    "rank": 1,
-   "name": "2차전지",
-   "avgRS": 67,
+   "name": "남북경협",
+   "avgRS": 68,
    "stocks": [
     {
-     "code": "417010",
-     "name": "나노팀",
-     "chg": 29.8,
-     "value_eok": 28.39,
+     "code": "033340",
+     "name": "좋은사람들",
+     "chg": 26.6,
+     "value_eok": 89.69,
      "verified": true
     },
     {
-     "code": "033790",
-     "name": "피노",
-     "chg": 13.9,
-     "value_eok": 163.84,
+     "code": "047770",
+     "name": "코데즈컴바인",
+     "chg": 13.8,
+     "value_eok": 308.15,
      "verified": true
     },
     {
-     "code": "029480",
-     "name": "광무",
-     "chg": 6.2,
-     "value_eok": 14.88,
+     "code": "025980",
+     "name": "아난티",
+     "chg": 5.8,
+     "value_eok": 387.35,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "남북경협",
-   "avgRS": 51,
+   "name": "2차전지",
+   "avgRS": 71,
    "stocks": [
     {
-     "code": "033340",
-     "name": "좋은사람들",
-     "chg": 19.6,
-     "value_eok": 75.24,
+     "code": "417010",
+     "name": "나노팀",
+     "chg": 29.8,
+     "value_eok": 28.91,
      "verified": true
     },
     {
-     "code": "047770",
-     "name": "코데즈컴바인",
-     "chg": 16.5,
-     "value_eok": 257.32,
+     "code": "033790",
+     "name": "피노",
+     "chg": 12.4,
+     "value_eok": 187.77,
      "verified": true
     },
     {
-     "code": "025980",
-     "name": "아난티",
-     "chg": 5.6,
-     "value_eok": 366.18,
+     "code": "029480",
+     "name": "광무",
+     "chg": 6.8,
+     "value_eok": 16.81,
      "verified": true
     }
    ]
@@ -86,27 +86,27 @@
   {
    "rank": 3,
    "name": "로봇",
-   "avgRS": 90,
+   "avgRS": 93,
    "stocks": [
     {
      "code": "012200",
      "name": "계양전기",
      "chg": 29.9,
-     "value_eok": 141.81,
-     "verified": true
-    },
-    {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 2.9,
-     "value_eok": 37.1,
+     "value_eok": 142.29,
      "verified": true
     },
     {
      "code": "030530",
      "name": "원익홀딩스",
-     "chg": 1.8,
-     "value_eok": 541.5,
+     "chg": 3.2,
+     "value_eok": 700.3,
+     "verified": true
+    },
+    {
+     "code": "389500",
+     "name": "에스비비테크",
+     "chg": 2.1,
+     "value_eok": 13.51,
      "verified": true
     }
    ]
@@ -114,76 +114,76 @@
   {
    "rank": 4,
    "name": "자동차부품",
-   "avgRS": 77,
+   "avgRS": 93,
    "stocks": [
     {
      "code": "012200",
      "name": "계양전기",
      "chg": 29.9,
-     "value_eok": 141.81,
+     "value_eok": 142.29,
      "verified": true
     },
     {
      "code": "448900",
      "name": "한국피아이엠",
-     "chg": 2.9,
-     "value_eok": 37.1
+     "chg": 1.0,
+     "value_eok": 42.91
     },
     {
-     "code": "008830",
-     "name": "대동기어",
-     "chg": 1.1,
-     "value_eok": 43.94
+     "code": "069510",
+     "name": "에스텍",
+     "chg": 0.6,
+     "value_eok": 58.65
     }
    ]
   },
   {
    "rank": 5,
-   "name": "온디바이스 AI",
-   "avgRS": 22,
+   "name": "스페이스X",
+   "avgRS": 93,
    "stocks": [
     {
-     "code": "399720",
-     "name": "가온칩스",
-     "chg": 10.2,
-     "value_eok": 1637.15
+     "code": "417010",
+     "name": "나노팀",
+     "chg": 29.8,
+     "value_eok": 28.91
     },
     {
-     "code": "394280",
-     "name": "오픈엣지테크놀로지",
-     "chg": 7.0,
-     "value_eok": 229.4
+     "code": "347700",
+     "name": "스피어",
+     "chg": 1.0,
+     "value_eok": 93.84
     },
     {
-     "code": "054450",
-     "name": "텔레칩스",
-     "chg": 2.9,
-     "value_eok": 39.52
+     "code": "027360",
+     "name": "아주IB투자",
+     "chg": -1.2,
+     "value_eok": 34.92
     }
    ]
   },
   {
    "rank": 6,
    "name": "제약",
-   "avgRS": 66,
+   "avgRS": 70,
    "stocks": [
     {
      "code": "086450",
      "name": "동국제약",
-     "chg": 8.9,
-     "value_eok": 303.14
+     "chg": 7.6,
+     "value_eok": 376.63
     },
     {
      "code": "009420",
      "name": "한올바이오파마",
-     "chg": 5.7,
-     "value_eok": 197.76
+     "chg": 5.5,
+     "value_eok": 268.53
     },
     {
      "code": "000100",
      "name": "유한양행",
      "chg": 2.6,
-     "value_eok": 291.9
+     "value_eok": 384.88
     }
    ]
   }
