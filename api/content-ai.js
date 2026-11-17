@@ -322,6 +322,567 @@ const num = (v, fb) => {
 };
 const round1 = (n) => Math.round(n * 10) / 10;
 
+/* ---------------------------------------------------------------- 🎬 유튜브 자막 추출 */
+
+/**
+ * 유튜브 링크 → 자막(스크립트) 텍스트.
+ *  - 링크: youtube.com/watch?v= / youtu.be/ / /shorts/ / /embed/ / /live/ / 11자리 ID
+ *  - 경로 3단: ① 유튜브 innertube(player) → captionTracks → timedtext
+ *              ② 시청 페이지 HTML(ytInitialPlayerResponse) → captionTracks → timedtext
+ *              ③ 공개 Invidious 계열 미러(/api/v1/captions) — 서버 IP가 봇으로 막힐 때
+ *  - 자막이 없으면 oEmbed/플레이어 메타(제목·채널·길이·설명)만 돌려주고 '자막 없음'을 사실대로 알린다.
+ *  - 실패를 감추지 않는다: 어느 경로에서 무엇이 막혔는지 errors[] 에 남긴다.
+ */
+
+const YT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const YT_SAFARI_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+const YT_ACCEPT_LANG = 'ko-KR,ko;q=0.9,en-US;q=0.7,en;q=0.6';
+const YT_TEXT_MAX = 16000;
+const YT_ROUTE_BUDGET_MS = 22000; // 자막 경로 전체 예산(서버리스 60초 안에서 여유를 남긴다)
+const YT_CACHE_MS = 10 * 60 * 1000;
+const ytCache = new Map();
+
+// 자막을 대신 받아 주는 공개 미러(순서대로 시도). 2026-11-18 실측: chocolatemoo53 은 한국어 자막 본문까지 정상.
+const YT_MIRRORS = [
+  'https://yt.chocolatemoo53.com',
+  'https://inv.nadeko.net',
+  'https://invidious.nerdvpn.de',
+  'https://iv.melmac.space',
+  'https://yewtu.be',
+];
+
+// innertube 클라이언트 — VISIONOS 는 자막 baseUrl 이 실제로 살아 있는 경로(실측)
+const YT_CLIENTS = [
+  {
+    key: 'visionos',
+    cid: '101',
+    client: {
+      clientName: 'VISIONOS', clientVersion: '1.02', deviceMake: 'Apple', deviceModel: 'RealityDevice17,1',
+      osName: 'visionOS', osVersion: '26.5.23O471', hl: 'ko', gl: 'KR', userAgent: YT_SAFARI_UA,
+    },
+  },
+  {
+    key: 'web',
+    cid: '1',
+    client: { clientName: 'WEB', clientVersion: '2.20240814.00.00', hl: 'ko', gl: 'KR', userAgent: YT_UA },
+  },
+];
+
+function ytVideoId(raw) {
+  const t = String(raw == null ? '' : raw).trim();
+  if (!t) return '';
+  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  let u = null;
+  try {
+    u = new URL(/^https?:\/\//i.test(t) ? t : 'https://' + t);
+  } catch (_) {
+    return '';
+  }
+  const host = u.hostname.toLowerCase().replace(/^www\./, '');
+  if (host === 'youtu.be') {
+    const id = (u.pathname.split('/').filter(Boolean)[0] || '').slice(0, 11);
+    return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : '';
+  }
+  if (!/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return '';
+  const v = String(u.searchParams.get('v') || '');
+  if (/^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+  const m = /\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]{11})/.exec(u.pathname);
+  return m ? m[1] : '';
+}
+
+async function ytFetch(url, init, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || 10000);
+  try {
+    return await fetch(url, Object.assign({ redirect: 'follow' }, init || {}, { signal: ctrl.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 문자열 안의 JSON 객체를 중괄호 균형으로 정확히 잘라낸다(정규식은 긴 HTML 에서 깨진다) */
+function ytGrabObject(src, fromIdx) {
+  const start = String(src).indexOf('{', fromIdx);
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < src.length; i++) {
+    const c = src[i];
+    if (esc) { esc = false; continue; }
+    if (c === '\\') { esc = true; continue; }
+    if (inStr) { if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function ytPlayerOf(html) {
+  const src = String(html || '');
+  const idx = src.indexOf('ytInitialPlayerResponse');
+  if (idx < 0) return null;
+  const raw = ytGrabObject(src, idx);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function ytMetaFromPlayer(p) {
+  const v = (p && p.videoDetails) || {};
+  const len = Number(v.lengthSeconds);
+  return {
+    title: s(v.title, 200),
+    author: s(v.author, 100),
+    lengthSec: Number.isFinite(len) && len > 0 ? Math.round(len) : null,
+    description: s(v.shortDescription, 4000),
+  };
+}
+
+function ytTracksOf(p) {
+  const t = p && p.captions && p.captions.playerCaptionsTracklistRenderer && p.captions.playerCaptionsTracklistRenderer.captionTracks;
+  return Array.isArray(t) ? t : [];
+}
+
+function ytLangScore(t) {
+  const lang = String((t && t.languageCode) || '').toLowerCase();
+  const asr = String((t && t.kind) || '') === 'asr' ? 1 : 0;
+  const rank = lang.indexOf('ko') === 0 ? 0 : lang.indexOf('en') === 0 ? 2 : 3;
+  return rank * 2 + asr;
+}
+
+function ytPickTrack(tracks) {
+  const list = (tracks || []).slice().sort((a, b) => ytLangScore(a) - ytLangScore(b));
+  return list[0] || null;
+}
+
+function ytDecode(t) {
+  return String(t == null ? '' : t)
+    .replace(/&#(\d+);/g, (_, d) => {
+      const n = parseInt(d, 10);
+      return Number.isFinite(n) ? String.fromCodePoint(Math.min(0x10ffff, n)) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const n = parseInt(h, 16);
+      return Number.isFinite(n) ? String.fromCodePoint(Math.min(0x10ffff, n)) : '';
+    })
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
+function ytCleanLine(t) {
+  return ytDecode(String(t == null ? '' : t).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function ytCuesFromJson3(text) {
+  let j = null;
+  try {
+    j = JSON.parse(text);
+  } catch (_) {
+    return [];
+  }
+  const events = (j && Array.isArray(j.events) && j.events) || [];
+  const out = [];
+  events.forEach((e) => {
+    const segs = (e && e.segs) || [];
+    const line = ytCleanLine(segs.map((x) => (x && x.utf8) || '').join(''));
+    if (line) out.push({ at: num(e.tStartMs, 0) / 1000, text: line });
+  });
+  return out;
+}
+
+function ytCuesFromVtt(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let cur = null;
+  lines.forEach((raw) => {
+    const t = raw.trim();
+    if (!t) { cur = null; return; }
+    if (/^WEBVTT/i.test(t) || /^Kind:/i.test(t) || /^Language:/i.test(t) || /^NOTE\b/i.test(t)) return;
+    const tm = /^(\d{1,2}:\d{2}:\d{2}\.\d{1,3}|\d{2}:\d{2}\.\d{1,3})\s*-->/.exec(t);
+    if (tm) {
+      const parts = tm[1].split(':').map(Number);
+      const at = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+      cur = { at: at, text: '' };
+      out.push(cur);
+      return;
+    }
+    if (!cur) return;
+    cur.text = ((cur.text ? cur.text + ' ' : '') + t).trim();
+  });
+  return out.map((c) => ({ at: c.at, text: ytCleanLine(c.text) })).filter((c) => c.text);
+}
+
+function ytCuesFromXml(text) {
+  const out = [];
+  const re = /<text[^>]*start="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/g;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const line = ytCleanLine(m[2]);
+    if (line) out.push({ at: num(m[1], 0), text: line });
+  }
+  return out;
+}
+
+/** 자동 자막의 롤링 중복을 걷어내고 읽기 좋은 줄로 잇는다 */
+function ytJoinCues(cues) {
+  const parts = [];
+  let tail = '';
+  (cues || []).forEach((c) => {
+    const t = ytCleanLine(c && c.text).replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    // 자동 자막은 앞 조각의 꼬리를 다시 겹처 준다. 겹치는 만큼만 잘라 새 부분만 붙인다.
+    const max = Math.min(90, tail.length, t.length);
+    let cut = 0;
+    for (let k = max; k >= 8; k--) {
+      if (tail.slice(-k).toLowerCase() === t.slice(0, k).toLowerCase()) {
+        cut = k;
+        break;
+      }
+    }
+    const add = t.slice(cut).trim();
+    if (!add) return;
+    if (parts.length && parts[parts.length - 1] === add) return;
+    parts.push(add);
+    tail = (tail + ' ' + add).slice(-140);
+  });
+  let out = '';
+  let line = '';
+  parts.forEach((p) => {
+    if (!line) line = p;
+    else if (line.length + p.length + 1 <= 220) line += ' ' + p;
+    else {
+      out += (out ? '\n' : '') + line;
+      line = p;
+    }
+  });
+  if (line) out += (out ? '\n' : '') + line;
+  return out;
+}
+
+/** timedtext — json3 → vtt → xml 순서로 시도. 빈 응답(자막 차단)이면 빈 배열 */
+async function ytTimedText(baseUrl) {
+  if (!baseUrl) return [];
+  const tries = [
+    { url: baseUrl + '&fmt=json3', kind: 'json3' },
+    { url: baseUrl + '&fmt=vtt', kind: 'vtt' },
+    { url: baseUrl, kind: 'xml' },
+  ];
+  for (const t of tries) {
+    try {
+      const r = await ytFetch(t.url, { headers: { 'User-Agent': YT_UA, 'Accept-Language': YT_ACCEPT_LANG } }, 9000);
+      if (!r.ok) continue;
+      const body = await r.text();
+      if (!body || body.length < 20) continue;
+      let cues = t.kind === 'json3' ? ytCuesFromJson3(body) : t.kind === 'vtt' ? ytCuesFromVtt(body) : ytCuesFromXml(body);
+      if (!cues.length) {
+        const vtt = ytCuesFromVtt(body);
+        cues = vtt.length ? vtt : ytCuesFromXml(body);
+      }
+      if (cues.length) return cues;
+    } catch (_) {}
+  }
+  return [];
+}
+
+async function ytRouteInnertube(id, errors) {
+  for (const c of YT_CLIENTS) {
+    try {
+      const r = await ytFetch(
+        'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': c.client.userAgent,
+            'X-Youtube-Client-Name': c.cid,
+            'X-Youtube-Client-Version': c.client.clientVersion,
+            'Accept-Language': YT_ACCEPT_LANG,
+          },
+          body: JSON.stringify({ context: { client: c.client }, videoId: id, contentCheckOk: true, racyCheckOk: true }),
+        },
+        11000,
+      );
+      if (!r.ok) {
+        errors.push('innertube/' + c.key + ': HTTP ' + r.status);
+        continue;
+      }
+      const p = await r.json().catch(() => null);
+      const status = (p && p.playabilityStatus && p.playabilityStatus.status) || '';
+      const reason = (p && p.playabilityStatus && p.playabilityStatus.reason) || '';
+      const meta = ytMetaFromPlayer(p);
+      const tracks = ytTracksOf(p);
+      if (!tracks.length) {
+        errors.push('innertube/' + c.key + ': 자막 목록 없음' + (status ? ' (' + status + (reason ? ' · ' + String(reason).slice(0, 60) : '') + ')' : ''));
+        continue;
+      }
+      const track = ytPickTrack(tracks);
+      const cues = await ytTimedText(track && track.baseUrl);
+      if (!cues.length) {
+        errors.push('innertube/' + c.key + ': 자막 본문 비어 있음(차단)');
+        continue;
+      }
+      return { route: 'innertube/' + c.key, meta, tracks, track, cues, errors };
+    } catch (e) {
+      errors.push('innertube/' + c.key + ': ' + String((e && e.message) || e).slice(0, 80));
+    }
+  }
+  return null;
+}
+
+async function ytRouteWatch(id, errors) {
+  try {
+    const r = await ytFetch(
+      'https://www.youtube.com/watch?v=' + encodeURIComponent(id) + '&hl=ko&gl=KR&has_verified=1&bpctr=9999999999',
+      { headers: { 'User-Agent': YT_UA, 'Accept-Language': YT_ACCEPT_LANG } },
+      12000,
+    );
+    if (!r.ok) {
+      errors.push('watch: HTTP ' + r.status);
+      return null;
+    }
+    const html = await r.text();
+    const p = ytPlayerOf(html);
+    if (!p) {
+      errors.push('watch: 플레이어 정보를 찾지 못했습니다');
+      return null;
+    }
+    const meta = ytMetaFromPlayer(p);
+    const tracks = ytTracksOf(p);
+    if (!tracks.length) {
+      const st = (p.playabilityStatus && p.playabilityStatus.status) || '';
+      const rs = (p.playabilityStatus && p.playabilityStatus.reason) || '';
+      errors.push('watch: 자막 목록 없음' + (st ? ' (' + st + (rs ? ' · ' + String(rs).slice(0, 60) : '') + ')' : ''));
+      return { route: 'watch', meta, tracks: [], track: null, cues: [], errors };
+    }
+    const track = ytPickTrack(tracks);
+    const cues = await ytTimedText(track && track.baseUrl);
+    if (!cues.length) {
+      errors.push('watch: 자막 본문 비어 있음(차단)');
+      return { route: 'watch', meta, tracks, track, cues: [], errors };
+    }
+    return { route: 'watch', meta, tracks, track, cues, errors };
+  } catch (e) {
+    errors.push('watch: ' + String((e && e.message) || e).slice(0, 80));
+    return null;
+  }
+}
+
+async function ytRouteMirror(id, started, errors) {
+  for (const host of YT_MIRRORS) {
+    if (Date.now() - started > YT_ROUTE_BUDGET_MS) {
+      errors.push('mirror: 시간 예산 초과로 남은 미러 생략');
+      break;
+    }
+    const name = host.replace(/^https:\/\//, '');
+    try {
+      let meta = { title: '', author: '', lengthSec: null, description: '' };
+      let caps = [];
+      try {
+        const vr = await ytFetch(
+          host + '/api/v1/videos/' + encodeURIComponent(id) + '?fields=title,author,lengthSeconds,description',
+          { headers: { 'User-Agent': YT_UA, Accept: 'application/json' } },
+          9000,
+        );
+        if (vr.ok) {
+          const vj = await vr.json().catch(() => null);
+          if (vj && !vj.error) {
+            const len = Number(vj.lengthSeconds);
+            meta = {
+              title: s(vj.title, 200),
+              author: s(vj.author, 100),
+              lengthSec: Number.isFinite(len) && len > 0 ? Math.round(len) : null,
+              description: s(vj.description, 4000),
+            };
+            caps = Array.isArray(vj.captions) ? vj.captions : [];
+          }
+        }
+      } catch (_) {}
+      if (!caps.length) {
+        const cr = await ytFetch(host + '/api/v1/captions/' + encodeURIComponent(id), { headers: { 'User-Agent': YT_UA, Accept: 'application/json' } }, 9000);
+        if (cr.ok) {
+          const cj = await cr.json().catch(() => null);
+          caps = (cj && Array.isArray(cj.captions) && cj.captions) || [];
+        }
+      }
+      if (!caps.length) {
+        errors.push('mirror/' + name + ': 자막 목록 없음');
+        continue;
+      }
+      // 미러마다 필드명이 다르다(languageCode / language_code). 자동 생성 여부는 라벨로도 판별한다.
+      const normCaps = caps
+        .map((c) => ({
+          languageCode: String((c && (c.languageCode || c.language_code)) || ''),
+          kind: String((c && c.kind) || '') || (/\(auto-generated\)/i.test(String((c && c.label) || '')) ? 'asr' : ''),
+          label: String((c && c.label) || ''),
+          url: String((c && c.url) || ''),
+        }))
+        .filter((c) => c.url);
+      if (!normCaps.length) {
+        errors.push('mirror/' + name + ': 자막 URL 없음');
+        continue;
+      }
+      const cap = normCaps.slice().sort((a, b) => ytLangScore(a) - ytLangScore(b))[0];
+      const tr = await ytFetch(host + cap.url, { headers: { 'User-Agent': YT_UA, 'Accept-Language': YT_ACCEPT_LANG } }, 12000);
+      const body = tr.ok ? await tr.text() : '';
+      const cues = body ? (ytCuesFromVtt(body).length ? ytCuesFromVtt(body) : ytCuesFromXml(body)) : [];
+      if (!cues.length) {
+        errors.push('mirror/' + name + ': 자막 본문 비어 있음');
+        continue;
+      }
+      return { route: 'mirror/' + name, meta, caps: normCaps, cap, cues, errors };
+    } catch (e) {
+      errors.push('mirror/' + name + ': ' + String((e && e.message) || e).slice(0, 80));
+    }
+  }
+  return null;
+}
+
+async function ytOembed(id) {
+  try {
+    const r = await ytFetch(
+      'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id),
+      { headers: { 'User-Agent': YT_UA, Accept: 'application/json' } },
+      8000,
+    );
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null);
+    if (!j) return null;
+    return { title: s(j.title, 200), author: s(j.author_name, 100), lengthSec: null, description: '' };
+  } catch (_) {
+    return null;
+  }
+}
+
+const YT_LANG_LABEL = { ko: '한국어', en: '영어', ja: '일본어', 'zh-hans': '중국어(간체)', 'zh-hant': '중국어(번체)', de: '독일어', es: '스페인어', fr: '프랑스어', 'pt-br': '포르투갈어', ru: '러시아어' };
+
+async function ytTranscript(id) {
+  const started = Date.now();
+  const errors = [];
+  const out = {
+    ok: false,
+    action: 'youtube_transcript',
+    videoId: id,
+    url: 'https://www.youtube.com/watch?v=' + id,
+    title: '',
+    author: '',
+    lengthSec: null,
+    description: '',
+    langCode: '',
+    langLabel: '',
+    auto: false,
+    source: '',
+    route: '',
+    cuesNum: 0,
+    chars: 0,
+    truncated: false,
+    text: '',
+    notes: [],
+    errors,
+  };
+
+  let hit = null;
+  hit = await ytRouteInnertube(id, errors);
+  if (!hit || !hit.cues.length) {
+    const w = await ytRouteWatch(id, errors);
+    if (w && w.cues.length) hit = w;
+    else if (w && w.meta && !hit) hit = w;
+  }
+  if (!hit || !hit.cues.length) {
+    const m = await ytRouteMirror(id, started, errors);
+    if (m) hit = m;
+  }
+
+  const meta = (hit && hit.meta) || {};
+  out.title = s(meta.title, 200);
+  out.author = s(meta.author, 100);
+  out.lengthSec = meta.lengthSec == null ? null : meta.lengthSec;
+  out.description = s(meta.description, 4000);
+
+  if (hit && hit.cues && hit.cues.length) {
+    const text = ytJoinCues(hit.cues);
+    const track = hit.track || hit.cap || null;
+    out.ok = true;
+    out.route = hit.route;
+    out.source = hit.route.indexOf('mirror/') === 0 ? 'invidious-mirror' : hit.route.indexOf('innertube/') === 0 ? 'youtube-innertube' : 'youtube-watch';
+    out.langCode = s(track && track.languageCode, 12) || '';
+    out.langLabel = YT_LANG_LABEL[out.langCode.toLowerCase()] || out.langCode || '';
+    out.auto =
+      String((track && track.kind) || '') === 'asr' ||
+      /auto-generated/i.test(String((track && track.label) || '')) ||
+      /auto-generated/i.test(String((track && track.name && track.name.simpleText) || ''));
+    out.cuesNum = hit.cues.length;
+    out.chars = text.length;
+    out.truncated = text.length >= YT_TEXT_MAX;
+    out.text = text;
+    out.notes.push('경로: ' + out.route + (out.auto ? ' · 자동 생성 자막(오탈자·오인식이 있을 수 있습니다)' : ''));
+    if (out.truncated) out.notes.push('자막이 ' + YT_TEXT_MAX.toLocaleString('en-US') + '자를 넘어 앞부분만 담았습니다.');
+    return out;
+  }
+
+  if (!out.title) {
+    const oe = await ytOembed(id);
+    if (oe) {
+      out.title = oe.title;
+      out.author = oe.author;
+    }
+  }
+
+  if (!out.title) {
+    out.reason = 'not_found';
+    out.message = '이 영상의 정보를 가져오지 못했습니다. 링크가 비공개·삭제·연령 제한 영상이거나, 유튜브가 이 서버 IP를 막은 경우입니다.';
+    return out;
+  }
+
+  out.reason = 'no_captions';
+  out.message =
+    '자막을 받지 못했습니다. 유튜브가 이 영상의 자막을 주지 않았거나(자막 없음), 서버 IP를 봇으로 막았습니다. ' +
+    '제목·채널·설명만 가져왔으니 그 내용으로 진행하거나, 유튜브 화면에서 자막을 복사해 [참고 자료]에 붙여넣어 주세요.';
+  return out;
+}
+
+async function handleYoutubeTranscript(res, body) {
+  const raw = s(body.url || body.link || body.query || body.video, 300);
+  const id = ytVideoId(raw);
+  if (!id) {
+    return send(res, 400, {
+      ok: false,
+      action: 'youtube_transcript',
+      reason: 'bad_youtube_url',
+      message: '유튜브 링크가 아닙니다. youtube.com/watch?v=… / youtu.be/… / /shorts/… 형식이나 11자리 영상 ID를 넣어 주세요.',
+    });
+  }
+  const hit = ytCache.get(id);
+  if (hit && Date.now() - hit.at < YT_CACHE_MS) {
+    return send(res, 200, Object.assign({}, hit.value, { cached: true }));
+  }
+  let out;
+  try {
+    out = await ytTranscript(id);
+  } catch (e) {
+    return send(res, 200, {
+      ok: false,
+      action: 'youtube_transcript',
+      videoId: id,
+      reason: 'extract_failed',
+      message: '자막 추출 중 오류가 났습니다: ' + String((e && e.message) || e).slice(0, 160),
+    });
+  }
+  if (out.ok) ytCache.set(id, { at: Date.now(), value: out });
+  return send(res, 200, out);
+}
+
 /* ---------------------------------------------------------------- 스키마 */
 
 const SCHEMA_BLOG = {
@@ -462,6 +1023,85 @@ const SCHEMA_SHORTS = {
   required: ['title', 'hook', 'scenes', 'ending'],
 };
 
+/* ---------------- 톤 변환 · AI 티 빼기 · 1타 3피 · SEO 태그 · 마무리 박스 스키마 */
+
+const SCHEMA_REWRITE = {
+  type: 'object',
+  properties: {
+    body: { type: 'string', description: '톤을 바꾼 완성 본문 (마크다운)' },
+    changed: { type: 'array', description: '실제로 바꾼 점 2~4개 — 한 줄씩', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['body'],
+};
+
+const SCHEMA_HUMANIZE = {
+  type: 'object',
+  properties: {
+    body: { type: 'string', description: '사람 말투로 다듬은 완성 본문 (마크다운)' },
+    removed: {
+      type: 'array',
+      description: '본문에서 실제로 걷어낸 기계적 상투어·수식어 (지운 것만, 없으면 빈 배열)',
+      items: { type: 'string' },
+    },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['body'],
+};
+
+const SCHEMA_MULTI = {
+  type: 'object',
+  properties: {
+    insta: {
+      type: 'object',
+      properties: {
+        lines: { type: 'array', description: '인스타·스레드용 3줄 요약 — 각 45자 이내, 첫 줄이 훅', items: { type: 'string' } },
+        hashtags: { type: 'array', description: '본문 소재 해시태그 10개 (# 없이)', items: { type: 'string' } },
+      },
+      required: ['lines', 'hashtags'],
+    },
+    shorts: SCHEMA_SHORTS,
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['insta', 'shorts'],
+};
+
+const SCHEMA_SEO = {
+  type: 'object',
+  properties: {
+    keywords: {
+      type: 'array',
+      description: '네이버 검색 유입 키워드 10개 — 실제로 검색될 법한 한국어 명사 조합(띄어쓰기 포함, # 없이)',
+      items: { type: 'string' },
+    },
+    hashtags: { type: 'array', description: '본문 기반 해시태그 10개 (# 없이, 공백 없는 형태)', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['keywords', 'hashtags'],
+};
+
+const SCHEMA_CLOSING = {
+  type: 'object',
+  properties: {
+    question: { type: 'string', description: '본문 말미에 붙일 댓글 유도 질문 한 문장 (상투적인 "어떠셨나요?" 금지)' },
+    boxTitle: { type: 'string', description: '링크 안내 박스 제목 (예: 🔗 이 글에서 나온 링크)' },
+    items: {
+      type: 'array',
+      description: '박스에 넣을 안내 항목 2~3개 — label 은 무엇을 넣을지, hint 는 독자에게 필요한 이유',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: '예: 예약·특가 링크' },
+          hint: { type: 'string', description: '예: 요금은 날짜마다 다르니 예약 화면에서 확인' },
+        },
+        required: ['label', 'hint'],
+      },
+    },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['question', 'items'],
+};
+
 /* ---------------------------------------------------------------- 공통 규칙 */
 
 const HONESTY = [
@@ -491,6 +1131,7 @@ function promptBlog(b) {
   const sections = arr(form.sections, 8).map((x, i) => `${i + 1}) ${s(x, 80)}`).join('\n');
   const sample = s(b.toneSample, 4000);
   const note = s(b.experienceNote, 2000);
+  const src = s(b.sourceMaterial, 8000);
   const gaps = arr(b.gaps, 6).map((x) => `- ${s(x, 120)}`).join('\n');
   const user = [
     `주제: ${s(b.topic, 200)}`,
@@ -499,12 +1140,15 @@ function promptBlog(b) {
     form.highlight ? `\n[강조 포인트 — 이걸 지켜야 통과]\n${s(form.highlight, 400)}` : '',
     sample ? `\n[내 문체 샘플 — 문장 길이·어미·말버릇을 이 사람처럼]\n"""${sample}"""` : '',
     note ? `\n[내 경험 메모 — 사용자가 직접 적은 사실. 1인칭 경험은 여기 있는 내용만 쓴다]\n"""${note}"""` : '',
+    src ? `\n[참고 자료 — 남이 말한 내용(유튜브 자막·기사·시황 요약). 사실 근거로만 인용하고 내 경험으로 쓰지 않는다]\n"""${src}"""` : '',
     gaps ? `\n[경쟁 글 빈틈 메모 — 본문에서 실제로 메꿔라]\n${gaps}` : '',
     b.theme ? `\n참고 카테고리: ${s(b.theme, 40)}` : '',
     banLine(b.banPhrases),
     `
 [경험·사실 규칙 — 이걸 어기면 실패다]
 - 위 [내 경험 메모]에 없는 1인칭 경험(다녀왔다·가보니·먹어봤다·내돈내산·써봤다)을 절대 쓰지 않는다. 실제로 방문·구매한 적이 없다.
+- [참고 자료]는 남의 영상·기사다. 그 내용을 내가 직접 겪은 일처럼 쓰지 않는다.
+- [참고 자료]를 인용할 때는 "영상에서 말한 ~", "자료에 따르면 ~" 처럼 근거를 밝힌다. 자료에 없는 수치·사례를 덧붙이지 않는다.
 - 경험 메모가 비어 있으면 '담백한 큐레이터' 어조로 쓴다. 확인된 조건·핵심 포인트·주의사항 중심으로. ("조건을 보면", "확인해야 할 것은", "~로 알려져 있다")
 - 경험 메모가 있으면 그 내용만 1인칭으로 살린다. 메모에 없는 디테일을 덧붙이지 않는다.
 - 사용자가 준 정보에 없는 업체·장소·상품·브랜드 이름을 지어내지 않는다. 예시가 필요하면 "A 업체", "B 숙소" 같은 자리표시자를 쓴다.
@@ -634,6 +1278,174 @@ function promptShorts(b) {
     user,
     schema: SCHEMA_SHORTS,
     maxTokens: 2200,
+    temperature: 0.9,
+  };
+}
+
+/* ---------------------------------------------------------------- 다듬기 프롬프트 */
+
+const TONES = {
+  honest: {
+    label: '솔직 후기형',
+    guide:
+      '짧게 끊어 말하고, 좋았던 점과 아쉬웠던 점을 같이 말한다. "~더라고요", "~긴 하더라", "솔직히" 같은 구어체를 쓰되 과장·보장은 쓰지 않는다. 이미 있는 판단만 솔직하게 말한다.',
+  },
+  expert: {
+    label: '전문가 분석형',
+    guide:
+      '근거·조건·수치 중심으로 쓴다. "~로 판단된다", "조건을 보면", "확인해야 할 것은" 같은 표현을 쓰고, 단정 대신 근거를 먼저 둔다. 형용사보다 비교와 기준을 세운다.',
+  },
+  warm: {
+    label: '따뜻한 에세이형',
+    guide:
+      '부드러운 서술로 상대를 배려한다. 사실은 그대로 두고 문장만 느리게 풀어 쓴다. 감정 표현은 원문에 있는 범위 안에서만 쓰고, 새로운 일화·기억을 만들지 않는다.',
+  },
+};
+
+const KEEP_STRUCTURE = [
+  '섹션 구조를 유지한다 — "## " 소제목의 개수·순서·의미를 그대로 둔다.',
+  '표는 같은 행·열 구조로 두고 셀 값만 다듬는다. 수치·날짜·업체명·고유명사는 절대 바꾸거나 새로 만들지 않는다.',
+  '"[📸 사진: ... | search: ...]" 태그는 글자 그대로 복사한다(위치·검색어 변경 금지).',
+  '"[확인 필요]" 표시를 지우지 않는다.',
+  '1인칭 경험(다녀왔다·먹어봤다·써봤다·내돈내산)은 원문에 있을 때만 유지하고 새로 만들지 않는다.',
+  '마크다운 본문만 출력한다. 머리말·설명·인사 없이.',
+].join(' ');
+
+function promptRewrite(b) {
+  const tone = TONES[b.tone] || TONES.honest;
+  const user = [
+    b.topic ? `글 주제: ${s(b.topic, 200)}` : '',
+    `\n[바꿀 어조] ${tone.label} — ${tone.guide}`,
+    `\n[현재 초안 — 이 글의 내용과 사실은 그대로 두고 어조만 바꾼다]\n"""${s(b.body, 14000)}"""`,
+    banLine(b.banPhrases),
+    `
+[규칙]
+1) ${KEEP_STRUCTURE}
+2) 분량은 원문의 85~115%로 맞춘다. 잘라서 끝내지 않는다.
+3) 어조만 바꾼다. 원문에 없는 사실·사례·수치를 추가하면 실패다.
+4) changed 에는 실제로 바꾼 점을 2~4개 적는다(예: "문장 길이를 8~15자로 끊음").
+[출력] body · changed · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한국어 블로그 편집자다. 같은 글을 다른 어조로 다시 쓴다. 내용·사실은 손대지 않고 문장만 바꾼다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_REWRITE,
+    maxTokens: 3600,
+    temperature: 0.75,
+  };
+}
+
+const AI_TICS = [
+  '~에 대해 알아보겠습니다', '알아보겠습니다', '결론적으로', '다양한 측면에서', '여러 측면에서',
+  '살펴보겠습니다', '살펴보도록 하겠습니다', '정리해 보겠습니다', '정리해보자면', '무엇보다도',
+  '이번 포스팅에서는', '이번 글에서는', '~하는 것이 중요합니다', '매우 중요합니다', '그렇기 때문에',
+  '이와 같이', '위와 같이', '다음과 같습니다', '도움이 되셨길 바랍니다', '참고하시기 바랍니다',
+  '시사하는 바가 큽니다', '긍정적인 영향을 미칩니다', '중요한 역할을 합니다', '다양한 방법이 있습니다',
+];
+
+function promptHumanize(b) {
+  const user = [
+    b.topic ? `글 주제: ${s(b.topic, 200)}` : '',
+    `\n[현재 초안]\n"""${s(b.body, 14000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — AI 티 빼기]
+위 초안에서 기계적인 상투어를 걷어내고 사람이 쓴 것처럼 다시 쓴다.
+1) 다음 같은 표현은 반드시 지운다: ${AI_TICS.join(' / ')}
+2) 문장을 8~22자 단위로 끊고, 한 문단은 2~4문장으로 줄인다. 접속사("또한", "따라서", "즉")를 줄인다.
+3) "~습니다"와 "~요/~더라고요"를 섞어 리듬을 만든다. 같은 어미를 연속 3번 쓰지 않는다.
+4) 수식어 남발(매우·정말·굉장히·다양한·효과적인)을 덜어낸다. 구체적인 숫자·상황으로 대신한다.
+5) ${KEEP_STRUCTURE}
+6) 분량은 원문의 90~110%. 사실을 새로 만들지 않는다.
+7) removed 에는 실제로 지운 표현만 적는다(최대 10개).
+[출력] body · removed · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 사람이 쓴 글을 고치는 교정자다. AI가 쓴 티가 나는 문장을 걷어내고 짧고 담백한 한국어로 다시 쓴다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_HUMANIZE,
+    maxTokens: 3600,
+    temperature: 0.7,
+  };
+}
+
+function promptMulti(b) {
+  const user = [
+    b.topic ? `글 주제: ${s(b.topic, 200)}` : '',
+    `\n[완성된 블로그 본문]\n"""${s(b.body, 12000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — 1타 3피]
+A) insta: 인스타그램·스레드에 바로 붙여넣을 3줄 요약. 각 45자 이내, 첫 줄이 훅(숫자·결론·반전). 줄바꿈은 lines 배열로. 이모지는 1~2개만.
+   hashtags: 본문에 실제로 나온 소재로 10개(# 없이, 공백 없이, 12자 이내). 없는 브랜드·지역을 만들지 않는다.
+B) shorts: 같은 글을 50초 쇼츠 대본으로. 0~2초 후킹 → 3~40초 핵심 3컷(각 10~13초) → 41~50초 엔딩.
+   scenes[].line 은 실제로 말할 문장 + (화면 지시). title 은 32자 이내. captionGuide 는 자막 스타일 권장 1줄.
+C) 본문에 없는 수치·사실을 새로 만들지 않는다. 확인 못 한 값은 "[확인 필요]"로 남긴다.
+[출력] insta{lines, hashtags} · shorts{title, hook, scenes, ending, captionGuide, warnings} · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한 편의 글을 여러 채널로 나눠 쓰는 콘텐츠 편집자다. 원문에 있는 내용만 쓴다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_MULTI,
+    maxTokens: 3000,
+    temperature: 0.9,
+  };
+}
+
+function promptSeo(b) {
+  const user = [
+    b.title ? `제목: ${s(b.title, 120)}` : '',
+    b.topic ? `주제: ${s(b.topic, 160)}` : '',
+    `\n[본문]\n"""${s(b.body, 9000)}"""`,
+    `
+[해야 할 일 — 검색 유입 태그]
+1) keywords: 이 글을 찾을 사람이 네이버에 실제로 칩 것 같은 검색어 10개. 2~4단어 한국어 명사 조합.
+   - 본문에 있는 지역·대상·상황만 쓴다. 본문에 없는 브랜드·지역·연도를 만들지 않는다.
+   - 너무 넓은 단어("여행", "주식")만 쓰지 말고 글의 각도를 살린다("동탄 실내 키즈카페", "코스피 마감 정리").
+   - 10개는 서로 겹치지 않게. 중복 단어만 다른 검색어는 빼고 다른 각도로 채운다.
+2) hashtags: 같은 기준으로 10개. # 없이, 공백 없이, 12자 이내.
+3) 확신이 없는 고유명사는 넣지 않는다.
+[출력] keywords(10) · hashtags(10) · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한국 블로그 검색 유입(SEO)을 다루는 편집자다. 본문에 실제로 있는 내용에서만 키워드를 뽑는다. ${HONESTY}`,
+    user,
+    schema: SCHEMA_SEO,
+    maxTokens: 900,
+    temperature: 0.6,
+  };
+}
+
+function promptClosing(b) {
+  const user = [
+    b.topic ? `글 주제: ${s(b.topic, 160)}` : '',
+    `\n[본문 마지막 부분]\n"""${s(b.body, 6000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — 마무리]
+1) question: 이 글을 읽은 사람이 댓글을 달고 싶어지는 질문 한 문장. 본문의 갈림길(선택·경험·판단)을 묻는다.
+   - 상투적인 "어떠셨나요?", "여러분의 생각은?" 금지. 본문에 나온 구체적인 대상·조건을 언급한다.
+   - 광고성 유도("구독 부탁") 금지. 60자 이내.
+2) boxTitle: 링크 안내 박스 제목. 본문 성격에 맞게(특가·예약 / 지도·경로 / 도서·자료). 20자 이내.
+3) items: 박스에 넣을 안내 2~3개. label 은 무엇을 넣을 자리인지(예: "예약·최저가 링크"), hint 는 왜 필요한지 한 줄.
+   - 실제 URL·가격을 만들지 않는다. 사용자가 직접 넣을 자리만 안내한다.
+[출력] question · boxTitle · items · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 블로그 글 끝을 정리하는 편집자다. 독자가 댓글을 달 자연스러운 질문 하나와, 링크를 넣을 안내 박스를 만든다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_CLOSING,
+    maxTokens: 800,
     temperature: 0.9,
   };
 }
@@ -977,7 +1789,126 @@ function normShorts(data) {
   };
 }
 
+function normRewrite(data, banPhrases) {
+  const body = s(data && data.body, 24000);
+  const changed = arr(data && data.changed, 6).map((x) => s(x, 140)).filter(Boolean);
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  const banHits = scanBans(body, banPhrases);
+  if (!body) warnings.push('본문이 비어 있습니다. 다시 시도해 주세요.');
+  return {
+    body,
+    changed,
+    warnings,
+    banHits,
+    chars: body.length,
+    needsCheck: (body.match(/\[확인 필요\]/g) || []).length,
+    photoSlots: (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length,
+    headings: (body.match(/^##\s+/gm) || []).length,
+    tables: (body.match(/^\|[^\n]*\|\s*$/gm) || []).length,
+  };
+}
+
+function normHumanize(data, banPhrases) {
+  const body = s(data && data.body, 24000);
+  const removed = arr(data && data.removed, 12).map((x) => s(x, 80)).filter(Boolean);
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  const banHits = scanBans(body, banPhrases);
+  if (!body) warnings.push('본문이 비어 있습니다. 다시 시도해 주세요.');
+  return {
+    body,
+    removed,
+    warnings,
+    banHits,
+    chars: body.length,
+    sentences: (body.match(/[.!?。](\s|$)/g) || []).length,
+    needsCheck: (body.match(/\[확인 필요\]/g) || []).length,
+    photoSlots: (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length,
+  };
+}
+
+function normTags(list, max) {
+  return arr(list, max)
+    .map((x) => s(x, 40).replace(/^#+/, '').replace(/[\s#]+/g, ''))
+    .filter(Boolean)
+    .filter((x, i, a) => a.indexOf(x) === i);
+}
+
+function normMulti(data, banPhrases) {
+  const insta = (data && data.insta) || {};
+  const lines = arr(insta.lines, 5).map((x) => s(x, 120)).filter(Boolean).slice(0, 3);
+  const hashtags = normTags(insta.hashtags, 12).slice(0, 10);
+  const sh = normShorts((data && data.shorts) || {});
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  if (!lines.length) warnings.push('인스타 3줄 요약이 비어 왔습니다. 한 번 더 눌러 주세요.');
+  const banHits = scanBans(lines.join(' ') + ' ' + sh.hook + ' ' + sh.scenes.map((x) => x.line).join(' '), banPhrases);
+  return {
+    insta: {
+      lines,
+      hashtags,
+      text: lines.join('\n') + (hashtags.length ? '\n\n' + hashtags.map((t) => '#' + t).join(' ') : ''),
+    },
+    shorts: sh,
+    warnings,
+    banHits,
+  };
+}
+
+function normSeo(data) {
+  const keywords = arr(data && data.keywords, 12).map((x) => s(x, 40)).filter(Boolean).slice(0, 10);
+  const hashtags = normTags(data && data.hashtags, 12).slice(0, 10);
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  if (!keywords.length) warnings.push('키워드가 비어 왔습니다. 한 번 더 눌러 주세요.');
+  return { keywords, hashtags, warnings };
+}
+
+/** 마무리 박스 → 본문에 붙일 마크다운(인용구 박스 + 질문). 네이버 서식 복사에서도 박스로 살아난다. */
+function closingMarkdown(d) {
+  const q = s(d && d.question, 200);
+  const title = s(d && d.boxTitle, 40) || '🔗 링크 안내';
+  const items = arr(d && d.items, 4)
+    .map((x) => ({ label: s(x && x.label, 40), hint: s(x && x.hint, 120) }))
+    .filter((x) => x.label);
+  const L = [];
+  L.push('> **' + title + '**');
+  if (items.length) {
+    items.forEach((it) => {
+      L.push('> · **' + it.label + '** — ' + it.hint + ' : [확인 필요]');
+    });
+  } else {
+    L.push('> · 링크: [확인 필요]');
+  }
+  if (q) {
+    L.push('');
+    L.push(q);
+  }
+  return L.join('\n');
+}
+
+function normClosing(data) {
+  const question = s(data && data.question, 200);
+  const boxTitle = s(data && data.boxTitle, 40) || '🔗 링크 안내';
+  const items = arr(data && data.items, 4)
+    .map((x) => ({ label: s(x && x.label, 40), hint: s(x && x.hint, 120) }))
+    .filter((x) => x.label);
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  if (!question) warnings.push('댓글 유도 질문이 비어 왔습니다. 다시 시도해 주세요.');
+  const markdown = closingMarkdown({ question, boxTitle, items });
+  return { question, boxTitle, items, markdown, warnings };
+}
+
 /* ---------------------------------------------------------------- 핸들러 */
+
+const GEN_ACTIONS = [
+  'blog',
+  'video_plan',
+  'youtube_analyze',
+  'blog_to_shorts',
+  'rewrite_tone',
+  'humanize',
+  'multi_use',
+  'seo_tags',
+  'closing_box',
+];
 
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -1001,7 +1932,12 @@ module.exports = async function handler(req, res) {
       keyConfigured,
       model: PRIMARY_MODEL,
       fallbacks: FALLBACK_MODELS,
-      actions: ['blog', 'video_plan', 'youtube_analyze', 'blog_to_shorts'],
+      actions: GEN_ACTIONS,
+      youtube: {
+        action: 'youtube_transcript',
+        how: "POST { action:'youtube_transcript', url:'https://youtu.be/…' } → { ok, title, author, lengthSec, langLabel, auto, route, text, errors[] }",
+        note: '자막을 못 받으면 ok:false + reason(no_captions / not_found) 과 제목·설명만 돌려준다.',
+      },
       photos: {
         pixabay: !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim()),
         commons: true,
@@ -1022,11 +1958,13 @@ module.exports = async function handler(req, res) {
   }
 
   const action = s(body.action, 30);
-  if (!['blog', 'video_plan', 'youtube_analyze', 'blog_to_shorts'].includes(action)) {
+  // 유튜브 자막은 Gemini 호출이 아니라서 키 설정과 무관하게 먼저 처리한다.
+  if (action === 'youtube_transcript') return handleYoutubeTranscript(res, body);
+  if (GEN_ACTIONS.indexOf(action) < 0) {
     return send(res, 400, {
       ok: false,
       reason: 'unknown_action',
-      message: 'action 은 blog / video_plan / youtube_analyze / blog_to_shorts 중 하나여야 합니다.',
+      message: 'action 은 ' + GEN_ACTIONS.join(' / ') + ' / youtube_transcript 중 하나여야 합니다.',
     });
   }
 
@@ -1059,6 +1997,38 @@ module.exports = async function handler(req, res) {
       return send(res, 400, { ok: false, reason: 'missing_query', message: '검색어(query)가 필요합니다.' });
     }
     prompt = promptYt({ ...body, banPhrases });
+  } else if (action === 'rewrite_tone') {
+    const draft = s(body.body, 16000);
+    if (draft.length < 80) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '어조를 바꿀 초안이 필요합니다(80자 이상).' });
+    }
+    const tone = s(body.tone, 20) || 'honest';
+    if (!TONES[tone]) {
+      return send(res, 400, { ok: false, reason: 'unknown_tone', message: 'tone 은 honest / expert / warm 중 하나입니다.' });
+    }
+    prompt = promptRewrite({ ...body, banPhrases, body: draft, tone });
+  } else if (action === 'humanize') {
+    const draft = s(body.body, 16000);
+    if (draft.length < 80) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '다듬을 초안이 필요합니다(80자 이상).' });
+    }
+    prompt = promptHumanize({ ...body, banPhrases, body: draft });
+  } else if (action === 'multi_use') {
+    const draft = s(body.body, 16000);
+    if (draft.length < 120) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '1타 3피로 바꿀 완성 본문이 필요합니다(120자 이상).' });
+    }
+    prompt = promptMulti({ ...body, banPhrases, body: draft });
+  } else if (action === 'seo_tags') {
+    if (!s(body.body, 200) && !s(body.title, 120)) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '태그를 뽑을 본문이나 제목이 필요합니다.' });
+    }
+    prompt = promptSeo({ ...body, title: s(body.title, 120), body: s(body.body, 12000) });
+  } else if (action === 'closing_box') {
+    if (!s(body.body, 200)) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '마무리 박스를 붙일 본문이 필요합니다.' });
+    }
+    prompt = promptClosing({ ...body, banPhrases, body: s(body.body, 12000) });
   } else {
     const draft = s(body.body, 20000);
     if (draft.length < 80) return send(res, 400, { ok: false, reason: 'missing_body', message: '쇼츠로 바꿀 블로그 본문이 필요합니다.' });
@@ -1114,6 +2084,11 @@ module.exports = async function handler(req, res) {
   if (action === 'blog') result = normBlog(data, banPhrases);
   else if (action === 'video_plan') result = normVideo(data, arr(body.clips, 6));
   else if (action === 'youtube_analyze') result = normYt(data);
+  else if (action === 'rewrite_tone') result = normRewrite(data, banPhrases);
+  else if (action === 'humanize') result = normHumanize(data, banPhrases);
+  else if (action === 'multi_use') result = normMulti(data, banPhrases);
+  else if (action === 'seo_tags') result = normSeo(data);
+  else if (action === 'closing_box') result = normClosing(data);
   else result = normShorts(data);
 
   if (result.banHits && result.banHits.length) {
@@ -1125,7 +2100,12 @@ module.exports = async function handler(req, res) {
     (action === 'blog' && !s(result.body, 10)) ||
     (action === 'video_plan' && !(result.cuts || []).length) ||
     (action === 'blog_to_shorts' && !(result.scenes || []).length) ||
-    (action === 'youtube_analyze' && !((result.shorts || {}).scenes || []).length);
+    (action === 'youtube_analyze' && !((result.shorts || {}).scenes || []).length) ||
+    (action === 'rewrite_tone' && !s(result.body, 10)) ||
+    (action === 'humanize' && !s(result.body, 10)) ||
+    (action === 'multi_use' && !(((result.insta || {}).lines) || []).length) ||
+    (action === 'seo_tags' && !((result.hashtags || []).length || (result.keywords || []).length)) ||
+    (action === 'closing_box' && !s(result.question, 3));
   if (truncated || emptyMain) {
     return send(res, 200, {
       ok: false,
