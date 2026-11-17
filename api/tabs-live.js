@@ -59,6 +59,16 @@ try {
   HONG_DATA = null;
 }
 
+/* 직전 거래일 장마감 기준 강세 Top 8 테마 스냅샷(scripts/save_last_dynamic_themes.py 가 정규장 마감 뒤 저장).
+ *  프리마켓(08:00~08:50)에는 네이버 테마 랭킹이 전 종목 0.00%(PREOPEN)로 내려오므로,
+ *  고정 8대 테마(과거 기준) 대신 이 파일의 테마 구성에 오늘 아침 프리마켓 체결가를 덧씌운다. */
+let LAST_DYNAMIC = null;
+try {
+  LAST_DYNAMIC = require('../public/data/last-dynamic-themes.json');
+} catch (e) {
+  LAST_DYNAMIC = null;
+}
+
 const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
 const REFRESH_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=10';
 const NAVER_TIMEOUT = 5000;
@@ -769,18 +779,122 @@ function mergeThemeQuotes(themes, map, premarket) {
   });
 }
 
+/* ------------- 직전 거래일 장마감 강세 Top 8 테마 스냅샷 → 장전 테마맵 ------------- */
+
+/** 스냅샷 파일에 그릴 만한 테마가 있는지 */
+function lastDynamicSnapshotThemes() {
+  if (!LAST_DYNAMIC || !Array.isArray(LAST_DYNAMIC.themes)) return null;
+  const list = LAST_DYNAMIC.themes.filter((t) => t && t.name && Array.isArray(t.stocks) && t.stocks.length);
+  return list.length ? list : null;
+}
+
+/** 테마 랭킹이 '오늘 값'을 내지 못했는지 — 비었거나 전 테마 0.00%(프리마켓 PREOPEN 응답) */
+function dynamicThemesFlat(dyn) {
+  if (!dyn || !dyn.ok || !Array.isArray(dyn.themes) || !dyn.themes.length) return true;
+  return dyn.themes.every((t) => {
+    const v = typeof t.top4Avg === 'number' ? t.top4Avg : typeof t.avgPct === 'number' ? t.avgPct : null;
+    return v === null || Math.abs(v) < 0.005;
+  });
+}
+
+/**
+ * 직전 거래일 스냅샷 테마에 오늘 아침 polling 시세를 덧씌운다.
+ *  · 테마 구성·순위는 직전 거래일 마감 그대로 유지(오늘 랭킹이 없으므로 다시 줄 세우지 않는다)
+ *  · 종목 등락률: 프리마켓 체결이 있으면 그 값(livePct), 없으면 직전 거래일 마감 등락률
+ *  · 종목 거래대금·시고저: 직전 거래일 마감 값(프리마켓에는 정규장 대금이 아직 없다)
+ *  · 테마 헤더: 절반 이상이 프리마켓 체결되면 프리마켓 평균, 아니면 직전 거래일 평균
+ */
+function mapPrevDayThemes(snapshot, themes, map, premarket) {
+  const label = (snapshot && snapshot.shortLabel) || '직전 거래일';
+  return (themes || []).map((t, i) => {
+    const stocks = (t.stocks || []).map((s) => {
+      const q = map[s.code] || null;
+      const hasOver = Boolean(q) && typeof q.overPct === 'number' && q.overPct !== null;
+      const livePct = premarket && hasOver ? q.overPct : null;
+      const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
+      const prevClose = typeof s.price === 'number' ? s.price : null;
+      return {
+        code: s.code,
+        name: s.name,
+        tileName: s.name,
+        role: s.role || null,
+        price: livePrice !== null ? livePrice : prevClose,
+        changePct: typeof s.changePct === 'number' ? s.changePct : null, // 직전 거래일 마감 등락률
+        prevDayPct: typeof s.changePct === 'number' ? s.changePct : null,
+        prevDayClose: prevClose,
+        open: s.open ?? null,
+        high: s.high ?? null,
+        low: s.low ?? null,
+        volume: s.volume ?? null,
+        value: typeof s.value === 'number' ? s.value : null,
+        valueText: s.valueText || formatKoreanMoney(s.value),
+        valueBasis: label + ' 정규장 마감',
+        livePct,
+        livePrice,
+        livePhase: livePct === null ? null : '프리마켓',
+        priceBasis: livePct === null ? '직전 종가' : '프리마켓',
+        prevDayLabel: label,
+        missing: !q,
+      };
+    });
+    const livePcts = stocks.map((s) => s.livePct).filter((v) => typeof v === 'number');
+    const prevPcts = stocks.map((s) => s.prevDayPct).filter((v) => typeof v === 'number');
+    const needLive = Math.max(2, Math.ceil(stocks.length / 2));
+    const avgLive =
+      livePcts.length >= needLive
+        ? Number((livePcts.reduce((a, b) => a + b, 0) / livePcts.length).toFixed(2))
+        : null;
+    const avgPrev = prevPcts.length
+      ? Number((prevPcts.reduce((a, b) => a + b, 0) / prevPcts.length).toFixed(2))
+      : null;
+    const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
+    return {
+      ...t,
+      rank: i + 1,
+      stocks,
+      pricedCount: stocks.length,
+      avgPct: typeof t.avgPct === 'number' ? t.avgPct : avgPrev,
+      top4Avg: typeof t.top4Avg === 'number' ? t.top4Avg : null,
+      /* 헤더 등락률은 '테마를 세운' 직전 거래일 마감 기준으로 고정하고,
+       *  오늘 아침 프리마켓 평균은 별도 값(avgPctLive)으로 함께 내려 화면이 나란히 표시한다. */
+      avgPctCalc: avgPrev,
+      avgPctBasisLabel: label + ' 종가 평균',
+      avgPctLive: avgLive,
+      livePricedCount: livePcts.length,
+      liveCoverage: `${livePcts.length}/${stocks.length}`,
+      livePhase: livePcts.length ? '프리마켓' : null,
+      prevDayTop4Avg: typeof t.top4Avg === 'number' ? t.top4Avg : null,
+      prevDayLabel: label,
+      sumValue,
+      sumValueText: formatKoreanMoney(sumValue),
+    };
+  });
+}
+
 async function fetchThemeQuotes(extraCodes, premarket) {
   // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
   const dyn = await buildDynamicThemes();
+  /* 장전(프리마켓)에는 랭킹이 비었거나 전 테마가 0.00%로 내려온다 → '오늘 강세'라 부를 근거가 없다.
+   *  이때는 직전 거래일 장마감 Top 8 테마 스냅샷을 그대로 세우고 프리마켓 체결가만 덧씌운다. */
+  const dynFlat = dynamicThemesFlat(dyn);
+  const prevDayList = premarket && dynFlat ? lastDynamicSnapshotThemes() : null;
   // 2) 고정 테마 32 + 감시군(RN존·종베) + NXT 랭킹 동적 + 신규 동적 테마 종목을 한 번에 polling
   const extra = Array.isArray(extraCodes) ? extraCodes : [];
-  const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes);
+  const prevDayCodes = prevDayList
+    ? prevDayList.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), [])
+    : [];
+  const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes, prevDayCodes);
   const map = await pollQuotes(pollCodes);
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
-  let themes = dyn.ok ? mergeThemeQuotes(dyn.themes, map, premarket) : mapStaticThemes(map, premarket);
-  if (dyn.ok) {
+  let themes;
+  let themeSource;
+  if (prevDayList) {
+    themes = mapPrevDayThemes(LAST_DYNAMIC, prevDayList, map, premarket);
+    themeSource = 'prev-day-dynamic';
+  } else if (dyn.ok) {
+    themes = mergeThemeQuotes(dyn.themes, map, premarket);
     /* 시세가 붙은 뒤 한 번 더 — 화면에 보이는 Top4 기준으로 순위를 확정한다 */
     themes = themes
       .slice()
@@ -792,6 +906,10 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themes.forEach((t, i) => {
       t.rank = i + 1;
     });
+    themeSource = 'naver-theme';
+  } else {
+    themes = mapStaticThemes(map, premarket);
+    themeSource = 'static-fallback';
   }
 
   const first = Object.values(map)[0];
@@ -799,9 +917,11 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themes,
     map,
     marketStatus: (first && first.marketStatus) || dyn.marketStatus || null,
-    themeSource: dyn.ok ? 'naver-theme' : 'static-fallback',
-    themeRankTotal: dyn.total || 0,
+    themeSource,
+    themeRankTotal: dyn.ok ? dyn.total || 0 : prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.rankTotal) || 0 : 0,
     themeErrors: dyn.errors || [],
+    themePrevLabel: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.shortLabel) || null : null,
+    themePrevAsOf: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.asOfDate) || null : null,
   };
 }
 
@@ -1837,6 +1957,10 @@ module.exports = async function handler(req, res) {
   const p = kstParts(now);
   const overSession = overSessionOf(p);
   const premarket = overSession.phase === '프리마켓';
+  /* 08:50~09:00(정규장 개장 전)에도 네이버 테마 랭킹은 아직 오늘 값을 내지 않는다 →
+   *  프리마켓과 같은 기준(직전 거래일 강세 Top 8 유지 + 오늘 체결 덧씌우기)으로 그린다. */
+  const preOpenTheme =
+    premarket || (p.wd !== 'Sat' && p.wd !== 'Sun' && p.minutes >= PRE_START && p.minutes < 9 * 60);
 
   // 1) NXT 랭킹을 먼저 받아 "지금 실제로 움직이는 종목"을 감시군에 합친다.
   //    (프리마켓에는 정규장 랭킹이 빈 목록이라 이 경로만 유효하다)
@@ -1844,7 +1968,7 @@ module.exports = async function handler(req, res) {
   const dynCodes = nxt.ok ? pickDynamicCodes(nxt, WATCH_CODES) : [];
 
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR] = await Promise.allSettled([
-    fetchThemeQuotes(dynCodes, premarket),
+    fetchThemeQuotes(dynCodes, preOpenTheme),
     fetchList('high52week', 'KOSPI'),
     fetchList('high52week', 'KOSDAQ'),
     fetchList('up', 'KOSPI'),
@@ -2033,12 +2157,22 @@ module.exports = async function handler(req, res) {
     notes.push('주말·휴장일에는 국내 시세가 직전 거래일(금요일) 확정 종가 기준입니다(네이버 금융).');
   }
   notes.push('거래대금은 통합(KRX+NXT·시간외 포함) 기준이며, 통합 체결이 없는 종목은 정규장 값입니다.');
-  notes.push('1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).');
+  notes.push(
+    themeData.themeSource === 'prev-day-dynamic'
+      ? `1번 주도 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 강세 Top 8 테마 구성에 오늘 아침 프리마켓 체결가를 덧씌운 상태입니다(오늘 랭킹은 09:00 이후 실시간 반영).`
+      : '1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).',
+  );
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
-  if (premarket) {
-    notes.push(
-      '프리마켓(08:00~08:50)에는 정규장 시세가 아직 없어 8대 테마 카드의 등락률은 NXT 프리마켓 체결가(전일 종가 대비)를 쓰고, \'프리마켓\' 기준임을 표시합니다.',
-    );
+  if (premarket || themeData.themeSource === 'prev-day-dynamic') {
+    if (themeData.themeSource === 'prev-day-dynamic') {
+      notes.push(
+        `프리마켓(08:00~08:50)에는 네이버 테마 랭킹이 아직 오늘 값을 내지 않아, 1번 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 강세 Top 8 테마의 구성·순위를 유지하고 각 종목 위에 오늘 아침 NXT 프리마켓 실시간 체결가(전일 종가 대비)를 덧씌워 표시합니다.`,
+      );
+    } else {
+      notes.push(
+        '프리마켓(08:00~08:50)에는 정규장 시세가 아직 없어 8대 테마 카드의 등락률은 NXT 프리마켓 체결가(전일 종가 대비)를 쓰고, \'프리마켓\' 기준임을 표시합니다.',
+      );
+    }
   }
   if (!overSession.inSession) {
     notes.push(
@@ -2062,6 +2196,8 @@ module.exports = async function handler(req, res) {
     themes,
     themeSource: themeData.themeSource || null,
     themeRankTotal: themeData.themeRankTotal || 0,
+    themePrevLabel: themeData.themePrevLabel || null,
+    themePrevAsOf: themeData.themePrevAsOf || null,
     themeErrors: themeData.themeErrors || [],
     strategyLive,
     high52,

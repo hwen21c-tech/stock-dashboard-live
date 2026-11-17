@@ -3257,7 +3257,7 @@
           '<span class="st-name" style="color:#ffffff; font-weight:800;">' + esc(s.name) + '</span>' +
           '<span class="st-change" style="color:' + colFor(pct) + '; font-weight:800;">' + esc(slPct(pct)) + '</span>' +
         '</div>' +
-        '<div class="st-ohlc">' + (isNum(s.livePrice) ? '프' : '현') + ' <strong>' + esc(fmt(price)) + '</strong>' +
+        '<div class="st-ohlc">' + (isNum(s.livePrice) ? '프' : s.priceBasis === '직전 종가' ? '종' : '현') + ' <strong>' + esc(fmt(price)) + '</strong>' +
           ' | 시 ' + esc(fmt(s.open)) + ' 고 ' + esc(fmt(s.high)) + ' 저 ' + esc(fmt(s.low)) + '</div>' +
         '<div class="st-bottom">' +
           '<span class="st-vol" title="거래대금 ' + esc(s.valueText || '—') + ' (' + esc(s.valueBasis || '통합') + ')">' + esc(s.valueText || '—') + '</span>' +
@@ -3288,9 +3288,18 @@
           '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
+            (t.avgPctBasisLabel
+              ? '<span style="font-size:9px; color:#94a3b8; font-weight:700; margin-left:3px; letter-spacing:-0.2px;">' +
+                esc(t.avgPctBasisLabel) + '</span>'
+              : '') +
             ' <span style="font-size:10px; color:' + spreadColor + '; font-weight:700; margin-left:4px; letter-spacing:-0.2px;" title="테마 구성종목 중 당일 상승 종목 비율(확산도)">' +
               '(합산 ' + esc(t.sumValueText || '—') + spread + ')</span>' +
           '</span>' +
+          (isNum(t.avgPctLive)
+            ? '<span style="font-size:10px; font-weight:800; color:' + colFor(t.avgPctLive) + '; letter-spacing:-0.2px;"' +
+              ' title="오늘 아침 NXT 프리마켓 체결 평균 (' + esc(t.liveCoverage || '') + ' 종목 체결)">프 ' +
+              esc(slPct(t.avgPctLive)) + '</span>'
+            : '') +
         '</div>' +
         '<div class="stock-tiles">' +
           stocks.map(function (s) { s.themeNameRef = t.name; return dynTileHtml(s); }).join('') +
@@ -3301,7 +3310,8 @@
 
   function renderDynamicThemes(body, stamp) {
     var gridEl = document.querySelector('#tabOverview .theme-grid-8');
-    if (body.themeSource !== 'naver-theme') {
+    var isPrevDay = body.themeSource === 'prev-day-dynamic';
+    if (body.themeSource !== 'naver-theme' && !isPrevDay) {
       // 랭킹이 죽으면 고정 8대 테마(과거 기준)가 그대로 남는다 — 오늘 값으로 오해하지 않게 머리말에 못박는다.
       if (gridEl && gridEl.previousElementSibling) {
         var h0 = gridEl.previousElementSibling;
@@ -3326,19 +3336,26 @@
       grid.setAttribute('data-sig', html);
     }
     grid.setAttribute('data-dynamic', '1');
+    grid.setAttribute('data-theme-source', body.themeSource);
 
     var head = grid.previousElementSibling;
     if (head && head.querySelector) {
       var title = head.querySelector('span');
       if (title) {
-        var ttxt = '🔥 실시간 주도 테마맵 (오늘 장중 강세 테마 Top ' + themes.length + ')';
+        var ttxt = isPrevDay
+          ? '🔥 주도 테마맵 (직전 강세 Top ' + themes.length + ')'
+          : '🔥 실시간 주도 테마맵 (오늘 장중 강세 테마 Top ' + themes.length + ')';
         if (title.textContent !== ttxt) title.textContent = ttxt;
       }
       var sub = head.querySelector('.sub');
       if (sub) {
-        var stxt = '네이버 실시간 테마 랭킹(노출 상위 4종목 평균 등락률·합산 대금 기준 ' + themes.length +
-          '테마 · 후보 ' + (body.themeRankTotal || 0) + '개) · ⚡ ' + stamp + ' 갱신';
+        var stxt = isPrevDay
+          ? '직전 ' + (body.themePrevLabel || '거래일') + ' 마감 강세 Top ' + themes.length +
+            ' · 네이버 프리마켓 실시간 체결 · ⚡ ' + stamp + ' 갱신'
+          : '네이버 실시간 테마 랭킹(노출 상위 4종목 평균 등락률·합산 대금 기준 ' + themes.length +
+            '테마 · 후보 ' + (body.themeRankTotal || 0) + '개) · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== stxt) sub.textContent = stxt;
+        sub.style.color = isPrevDay ? '#7dd3fc' : '';
         sub.setAttribute('data-live', '1');
       }
     }
@@ -3353,7 +3370,7 @@
     var head = grid.previousElementSibling;
     var sub = head && head.querySelector ? head.querySelector('.sub') : null;
     if (!sub) return;
-    var base = '스탁이지 · 주맵 실시간 체결 검증';
+    var base = '네이버 실시간 체결 검증 · 고정 8대 테마(과거 기준)';
     sub.textContent = base + ' · ⚡ ' + stamp + ' 갱신';
     sub.setAttribute('data-live', '1');
   }

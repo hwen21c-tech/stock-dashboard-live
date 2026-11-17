@@ -2179,6 +2179,19 @@ def main():
                         "stocks": jb_stocks})):
         open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
 
+    # 📌 장전 프리마켓 테마맵용 '직전 거래일 강세 Top 8 테마' 스냅샷
+    #   프리마켓에는 네이버 테마 랭킹이 전 종목 0.00%로 내려와 장전 테마맵이 고정 8대 테마로 폴백한다.
+    #   장마감 확정 일봉(방금 받은 cache)으로 오늘 강세 Top 8을 다시 계산해 public/data/last-dynamic-themes.json 에 남긴다.
+    try:
+        import save_last_dynamic_themes as lastdyn
+        snap = lastdyn.build_from_cache(basis=basis, groups=themes, cache=cache, write=not args.dry)
+        if snap.get("ok"):
+            log("  직전 강세 테마 스냅샷 " + snap["asOfDate"] + " — " + " / ".join(snap.get("themes", [])[:3]))
+        else:
+            log(f"  ! 직전 강세 테마 스냅샷 미생성: {snap.get('reason')}")
+    except Exception as e:      # noqa: BLE001
+        log(f"  ! 직전 강세 테마 스냅샷 실패: {e}")
+
     # ---- HTML 반영
     patched = {"hong": 0, "bij": 0}
     if not args.dry:
