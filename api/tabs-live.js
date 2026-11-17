@@ -779,6 +779,169 @@ function mergeThemeQuotes(themes, map, premarket) {
   });
 }
 
+/* ============================================================================
+ * 🔗 스탁이지(StockEasy) 실시간 강세 테마 — Supabase 경유 편입
+ * ----------------------------------------------------------------------------
+ *  · 테마보드 화면은 로그인 전용(세션 없으면 401)이라 이 함수는 화면을 긁지 않는다.
+ *    15분 자동 동기화(scripts/fetch_stockeasy_themes.py)가 익명 공개 응답
+ *    `landing-data.themeBoardPreview`(테마명·6자리 코드·등락률·대금)를 읽어
+ *    family_sync(code='stockeasy_themes_live') 에 넣어 두면 여기서 읽기만 한다.
+ *  · 이 함수가 느리거나 실패해도 테마맵은 네이버 랭킹만으로 그대로 돌아간다(1.5초 타임아웃).
+ *  · 오래된 값(45분 초과)은 편입하지 않는다 — 어제 테마가 오늘처럼 보이는 고착 방지.
+ * ========================================================================== */
+const SE_SUPABASE = {
+  url: process.env.SUPABASE_URL || 'https://hiruybkapzuhjrzjoyik.supabase.co',
+  key: process.env.SUPABASE_ANON_KEY || 'sb_publishable_e5JJbvCPDhY91uXaUEVNVA_8Byv_gI8',
+  code: 'stockeasy_themes_live',
+};
+const SE_TIMEOUT = 1500; // 브리프: Supabase 응답 1.5초 타임아웃
+const SE_MAX_AGE_MIN = 45; // 이보다 오래된 수집값이면 편입하지 않는다
+
+/* 번들 폐백 — Supabase 가 잡힐 때 쓸 수 있는 마지막 카드.
+ *  배포 시점에 구워진 값이라 빌드 후 45분이 지나면 스스로 쓰지 않는다(고착 방지). */
+let SE_BUNDLED = null;
+try {
+  SE_BUNDLED = require('../public/data/stockeasy_live_themes.json');
+} catch (e) {
+  SE_BUNDLED = null;
+}
+
+function seAgeMinutes(updatedAt) {
+  if (!updatedAt) return null;
+  const t = Date.parse(updatedAt);
+  if (!Number.isFinite(t)) return null;
+  return Math.round(((Date.now() - t) / 60000) * 10) / 10;
+}
+
+function seAcceptable(doc, sourceLabel) {
+  if (!doc || !Array.isArray(doc.themes) || !doc.themes.length) return { ok: false, themes: [], error: sourceLabel + ' 테마 없음' };
+  const ageMin = seAgeMinutes(doc.updatedAt);
+  if (ageMin !== null && ageMin > SE_MAX_AGE_MIN) {
+    return { ok: false, themes: [], ageMin, updatedAt: doc.updatedAt || null, error: sourceLabel + ` 오래된 값(${ageMin}분 전)` };
+  }
+  return { ok: true, themes: doc.themes, updatedAt: doc.updatedAt || null, ageMin };
+}
+
+async function fetchStockEasyThemes() {
+  const url =
+    `${SE_SUPABASE.url}/rest/v1/family_sync?code=eq.${encodeURIComponent(SE_SUPABASE.code)}` +
+    '&select=code,data,updated_at';
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), SE_TIMEOUT) : null;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        apikey: SE_SUPABASE.key,
+        Authorization: 'Bearer ' + SE_SUPABASE.key,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: ctl ? ctl.signal : undefined,
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return seAcceptable(row && row.data, '스탁이지(Supabase)');
+  } catch (e) {
+    /* Supabase 가 느리거나 막혔을 때 — 배포 번들에 들어 있는 같은 파일로 한 번 더 시도한다. */
+    const fallback = seAcceptable(SE_BUNDLED, '스탁이지(번들)');
+    if (fallback.ok) return { ...fallback, via: 'bundled', supabaseError: String((e && e.message) || e) };
+    return { ok: false, themes: [], error: fallback.error || String((e && e.message) || e) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** 스탁이지 테마 구성종목에 실시간 시세를 붙여 화면용 테마 객체로 만든다(Naver 테마와 같은 필드) */
+function buildStockEasyThemes(se, map) {
+  const out = [];
+  (se && se.themes ? se.themes : []).forEach((t) => {
+    if (!t || !t.name) return;
+    const stocks = [];
+    (t.stocks || []).forEach((s) => {
+      if (!s || !/^\d{6}$/.test(String(s.code || ''))) return;
+      const q = map[s.code];
+      if (!q || typeof q.price !== 'number') return;
+      stocks.push({
+        code: s.code,
+        name: s.name || (q && q.name) || s.code,
+        tileName: s.name || (q && q.name) || s.code,
+        price: q.price,
+        changePct: typeof q.changePct === 'number' ? q.changePct : null,
+        open: q.open ?? null,
+        high: q.high ?? null,
+        low: q.low ?? null,
+        volume: q.volume ?? null,
+        value: typeof q.value === 'number' ? q.value : null,
+        valueText: q.valueText || formatKoreanMoney(q.value),
+        valueBasis: q.valueBasis || '통합',
+        upperLimit: Boolean(q.upperLimit),
+        missing: false,
+      });
+    });
+    if (stocks.length < 2) return;
+    const picked = pickThemeStocks(stocks);
+    if (!picked.length) return;
+    const shown = picked.slice(0, THEME_STOCK_TOP);
+    const pcts = shown.map((x) => x.changePct).filter((v) => typeof v === 'number');
+    const top4Avg = pcts.length ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2)) : null;
+    if (top4Avg === null) return;
+    const top4Sum = shown.reduce((acc, x) => acc + (typeof x.value === 'number' ? x.value : 0), 0);
+    out.push({
+      rank: 0,
+      name: String(t.name).trim(),
+      keyword: String(t.name).trim(),
+      themeNo: null,
+      source: 'stockeasy',
+      seRank: t.rank || null,
+      avgPct: null,
+      avgPctLive: null,
+      top4Avg,
+      top4Sum,
+      avgPctCalc: top4Avg,
+      sumValue: top4Sum,
+      sumValueText: formatKoreanMoney(top4Sum),
+      riseCount: shown.filter((x) => typeof x.changePct === 'number' && x.changePct > 0).length,
+      fallCount: shown.filter((x) => typeof x.changePct === 'number' && x.changePct < 0).length,
+      steadyCount: shown.filter((x) => x.changePct === 0).length,
+      riseRatio: Math.round(
+        (shown.filter((x) => typeof x.changePct === 'number' && x.changePct > 0).length / shown.length) * 1000,
+      ) / 10,
+      stockCount: stocks.length,
+      membersShown: picked.length,
+      stocks: picked,
+    });
+  });
+  return out;
+}
+
+/** 테마명·구성종목이 사실상 같은 묶음인지(중복 노출 방지) */
+function themeNameKey(s) {
+  return String(s || '')
+    .replace(/[^0-9A-Za-z가-힣]+/g, '')
+    .toLowerCase();
+}
+
+function stockEasyDuplicates(seTheme, others) {
+  const seKey = themeNameKey(seTheme.name).replace(/(테마|관련|수혜|급등|신규)/g, '');
+  const seCodes = (seTheme.stocks || []).map((s) => s.code);
+  for (const o of others) {
+    const oKey = themeNameKey(o.name).replace(/(테마|관련|수혜|급등|신규)/g, '');
+    if (seKey && oKey && seKey === oKey) return true;
+    if (seKey && oKey && Math.min(seKey.length, oKey.length) >= 3 && (seKey.includes(oKey) || oKey.includes(seKey))) {
+      return true;
+    }
+    const oCodes = (o.stocks || []).map((s) => s.code);
+    if (seCodes.length && oCodes.length) {
+      const shared = seCodes.filter((c) => oCodes.includes(c)).length;
+      if (shared / Math.min(seCodes.length, oCodes.length) >= 0.8) return true;
+    }
+  }
+  return false;
+}
+
+
+
 /* ------------- 직전 거래일 장마감 강세 Top 8 테마 스냅샷 → 장전 테마맵 ------------- */
 
 /** 스냅샷 파일에 그릴 만한 테마가 있는지 */
@@ -874,7 +1037,12 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
 
 async function fetchThemeQuotes(extraCodes, premarket) {
   // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
-  const dyn = await buildDynamicThemes();
+  //    동시에 스탁이지 실시간 테마(Supabase 경유·1.5초 타임아웃)도 따로 받아 둔다 —
+  //    이쪽이 실패해도 네이버 테마맵은 그대로 그린다.
+  const [dyn, se] = await Promise.all([
+    buildDynamicThemes(),
+    fetchStockEasyThemes().catch((e) => ({ ok: false, themes: [], error: String((e && e.message) || e) })),
+  ]);
   /* 장전(프리마켓)에는 랭킹이 비었거나 전 테마가 0.00%로 내려온다 → '오늘 강세'라 부를 근거가 없다.
    *  이때는 직전 거래일 장마감 Top 8 테마 스냅샷을 그대로 세우고 프리마켓 체결가만 덧씌운다. */
   const dynFlat = dynamicThemesFlat(dyn);
@@ -884,13 +1052,17 @@ async function fetchThemeQuotes(extraCodes, premarket) {
   const prevDayCodes = prevDayList
     ? prevDayList.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), [])
     : [];
-  const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes, prevDayCodes);
+  const seCodes = se.ok
+    ? se.themes.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), [])
+    : [];
+  const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes, prevDayCodes, seCodes);
   const map = await pollQuotes(pollCodes);
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
   let themes;
   let themeSource;
+  let seIn = 0;
   if (prevDayList) {
     themes = mapPrevDayThemes(LAST_DYNAMIC, prevDayList, map, premarket);
     themeSource = 'prev-day-dynamic';
@@ -904,6 +1076,20 @@ async function fetchThemeQuotes(extraCodes, premarket) {
           (b.avgPctCalc ?? b.top4Avg ?? -999) - (a.avgPctCalc ?? a.top4Avg ?? -999) ||
           (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
       );
+    /* 🔗 스탁이지 테마도 같은 잣대(노출 종목 평균 등락률 → 합산 대금)로 Top 8 경쟁에 넣는다.
+     *   네이버 테마와 이름·구성종목이 80% 이상 겹치면 중복 노출하지 않는다. */
+    if (se.ok && se.themes.length) {
+      const seBuilt = buildStockEasyThemes(se, map).filter((t) => !stockEasyDuplicates(t, themes));
+      if (seBuilt.length) {
+        themes = themes.concat(seBuilt).sort(
+          (a, b) =>
+            (b.avgPctCalc ?? b.top4Avg ?? -999) - (a.avgPctCalc ?? a.top4Avg ?? -999) ||
+            (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
+        );
+        themes = themes.slice(0, THEME_TOP);
+        seIn = themes.filter((t) => t.source === 'stockeasy').length;
+      }
+    }
     themes.forEach((t, i) => {
       t.rank = i + 1;
     });
@@ -923,6 +1109,9 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themeErrors: dyn.errors || [],
     themePrevLabel: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.shortLabel) || null : null,
     themePrevAsOf: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.asOfDate) || null : null,
+    themeSeIn: seIn,
+    themeSeUpdatedAt: se.ok ? se.updatedAt || null : null,
+    themeSeError: se.ok ? null : se.error || null,
   };
 }
 
@@ -2008,7 +2197,17 @@ module.exports = async function handler(req, res) {
 
   const themeData = okTheme
     ? themeR.value
-    : { themes: [], map: {}, marketStatus: null, themeSource: null, themeErrors: [], themeRankTotal: 0 };
+    : {
+        themes: [],
+        map: {},
+        marketStatus: null,
+        themeSource: null,
+        themeErrors: [],
+        themeRankTotal: 0,
+        themeSeIn: 0,
+        themeSeUpdatedAt: null,
+        themeSeError: null,
+      };
   const themes = themeData.themes;
   const knownMap = themeData.map || {};
 
@@ -2164,6 +2363,18 @@ module.exports = async function handler(req, res) {
       : '1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).',
   );
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
+  if (themeData.themeSource === 'naver-theme') {
+    if (themeData.themeSeIn > 0) {
+      const seAt = themeData.themeSeUpdatedAt ? String(themeData.themeSeUpdatedAt).slice(11, 16) : '—';
+      notes.push(
+        `1번 테마맵의 🔗 표시 ${themeData.themeSeIn}개는 스탁이지(stockeasy.intellio.kr)가 분류한 실시간 강세 테마입니다. 테마 구성은 15분마다 갱신(${seAt} 기준)되고, 등락률·거래대금은 네이버 테마와 같은 잣대(Top4 평균·합산 대금)로 매 20초 실시간 계산합니다.`,
+      );
+    } else if (themeData.themeSeError) {
+      notes.push(
+        `스탁이지 테마는 이번 응답에서 편입하지 않았습니다(${themeData.themeSeError}) — 네이버 실시간 테마 랭킹만으로 표시합니다.`,
+      );
+    }
+  }
   if (premarket || themeData.themeSource === 'prev-day-dynamic') {
     if (themeData.themeSource === 'prev-day-dynamic') {
       notes.push(
@@ -2197,6 +2408,9 @@ module.exports = async function handler(req, res) {
     themes,
     themeSource: themeData.themeSource || null,
     themeRankTotal: themeData.themeRankTotal || 0,
+    themeSeIn: themeData.themeSeIn || 0,
+    themeSeUpdatedAt: themeData.themeSeUpdatedAt || null,
+    themeSeError: themeData.themeSeError || null,
     themePrevLabel: themeData.themePrevLabel || null,
     themePrevAsOf: themeData.themePrevAsOf || null,
     themeErrors: themeData.themeErrors || [],

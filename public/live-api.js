@@ -3277,6 +3277,11 @@
     var steady = isNum(t.steadyCount) ? t.steadyCount : 0;
     var totalN = isNum(t.stockCount) ? t.stockCount : (rise + fall + steady);
     var riseRatio = isNum(t.riseRatio) ? t.riseRatio : (totalN ? Math.round((rise / totalN) * 1000) / 10 : null);
+    /* 🔗 스탁이지 테마는 '네이버 랭킹'이 아니라 스탁이지 분류임을 카드에서 바로 구분되게 표시한다 */
+    var isSe = t.source === 'stockeasy';
+    var nameBadge = isSe
+      ? '<span style="font-size:9px; font-weight:900; color:#c4b5fd; background:rgba(124,58,237,0.22); border:1px solid rgba(167,139,250,0.45); border-radius:4px; padding:1px 4px; margin-left:5px; letter-spacing:-0.2px;">스탁이지</span>'
+      : '';
     /* 상승 확산도 — 단독 1종목 급등인지 섹터 전체가 오르는지 한눈에 보이게 한다 */
     var spread = totalN
       ? ' · 상승 ' + rise + '/' + totalN + (riseRatio != null ? ' (' + riseRatio + '%)' : '')
@@ -3285,7 +3290,7 @@
     return (
       '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
         '<div class="theme-header">' +
-          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 🔥 ' + esc(t.name) + '</span>' +
+          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 ' + (isSe ? '🔗 ' : '🔥 ') + esc(t.name) + '</span>' + nameBadge +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
             (t.avgPctBasisLabel
@@ -3353,7 +3358,9 @@
           ? '직전 ' + (body.themePrevLabel || '거래일') + ' 마감 강세 Top ' + themes.length +
             ' · 네이버 프리마켓 실시간 체결 · ⚡ ' + stamp + ' 갱신'
           : '네이버 실시간 테마 랭킹(노출 상위 4종목 평균 등락률·합산 대금 기준 ' + themes.length +
-            '테마 · 후보 ' + (body.themeRankTotal || 0) + '개) · ⚡ ' + stamp + ' 갱신';
+            '테마 · 후보 ' + (body.themeRankTotal || 0) + '개)' +
+            (body.themeSeIn ? ' + 🔗 스탁이지 ' + body.themeSeIn + '개' : '') +
+            ' · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== stxt) sub.textContent = stxt;
         sub.style.color = isPrevDay ? '#7dd3fc' : '';
         sub.setAttribute('data-live', '1');

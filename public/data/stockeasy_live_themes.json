@@ -1,0 +1,191 @@
+{
+ "ok": true,
+ "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
+ "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
+ "via": "landing-data",
+ "fetchedAt": "2026-11-17 11:54:46",
+ "updatedAt": "2026-11-17T11:54:34.405853+09:00",
+ "updatedAgeMin": 0.2,
+ "stale": false,
+ "themeCount": 6,
+ "codes": [
+  "399720",
+  "394280",
+  "054450",
+  "012200",
+  "030530",
+  "448900",
+  "281820",
+  "232140",
+  "033340",
+  "047770",
+  "025980",
+  "308080",
+  "085660",
+  "358570",
+  "356860",
+  "007810"
+ ],
+ "themes": [
+  {
+   "rank": 1,
+   "name": "온디바이스 AI",
+   "avgRS": 22,
+   "stocks": [
+    {
+     "code": "399720",
+     "name": "가온칩스",
+     "chg": 14.9,
+     "value_eok": 1457.11,
+     "verified": true
+    },
+    {
+     "code": "394280",
+     "name": "오픈엣지테크놀로지",
+     "chg": 10.4,
+     "value_eok": 216.0,
+     "verified": true
+    },
+    {
+     "code": "054450",
+     "name": "텔레칩스",
+     "chg": 5.3,
+     "value_eok": 38.29,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 2,
+   "name": "로봇",
+   "avgRS": 90,
+   "stocks": [
+    {
+     "code": "012200",
+     "name": "계양전기",
+     "chg": 29.9,
+     "value_eok": 110.05,
+     "verified": true
+    },
+    {
+     "code": "030530",
+     "name": "원익홀딩스",
+     "chg": 3.4,
+     "value_eok": 397.22,
+     "verified": true
+    },
+    {
+     "code": "448900",
+     "name": "한국피아이엠",
+     "chg": 3.1,
+     "value_eok": 27.51,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 3,
+   "name": "HBM",
+   "avgRS": 64,
+   "stocks": [
+    {
+     "code": "394280",
+     "name": "오픈엣지테크놀로지",
+     "chg": 10.4,
+     "value_eok": 216.0,
+     "verified": true
+    },
+    {
+     "code": "281820",
+     "name": "케이씨텍",
+     "chg": 6.2,
+     "value_eok": 174.32,
+     "verified": true
+    },
+    {
+     "code": "232140",
+     "name": "와이씨",
+     "chg": 5.9,
+     "value_eok": 205.39,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 4,
+   "name": "남북경협",
+   "avgRS": 51,
+   "stocks": [
+    {
+     "code": "033340",
+     "name": "좋은사람들",
+     "chg": 16.1,
+     "value_eok": 60.02,
+     "verified": true
+    },
+    {
+     "code": "047770",
+     "name": "코데즈컴바인",
+     "chg": 10.8,
+     "value_eok": 140.78
+    },
+    {
+     "code": "025980",
+     "name": "아난티",
+     "chg": 6.1,
+     "value_eok": 319.25
+    }
+   ]
+  },
+  {
+   "rank": 5,
+   "name": "면역항암제",
+   "avgRS": 45,
+   "stocks": [
+    {
+     "code": "308080",
+     "name": "바이젠셀",
+     "chg": 11.7,
+     "value_eok": 48.07
+    },
+    {
+     "code": "085660",
+     "name": "차바이오텍",
+     "chg": 7.3,
+     "value_eok": 26.28
+    },
+    {
+     "code": "358570",
+     "name": "지아이이노베이션",
+     "chg": 6.0,
+     "value_eok": 15.4
+    }
+   ]
+  },
+  {
+   "rank": 6,
+   "name": "CXL",
+   "avgRS": 68,
+   "stocks": [
+    {
+     "code": "394280",
+     "name": "오픈엣지테크놀로지",
+     "chg": 10.4,
+     "value_eok": 216.0
+    },
+    {
+     "code": "356860",
+     "name": "티엘비",
+     "chg": 6.0,
+     "value_eok": 680.18
+    },
+    {
+     "code": "007810",
+     "name": "코리아써키트",
+     "chg": 4.2,
+     "value_eok": 1862.88
+    }
+   ]
+  }
+ ]
+}
