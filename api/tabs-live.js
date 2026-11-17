@@ -802,7 +802,8 @@ function dynamicThemesFlat(dyn) {
  *  · 테마 구성·순위는 직전 거래일 마감 그대로 유지(오늘 랭킹이 없으므로 다시 줄 세우지 않는다)
  *  · 종목 등락률: 프리마켓 체결이 있으면 그 값(livePct), 없으면 직전 거래일 마감 등락률
  *  · 종목 거래대금·시고저: 직전 거래일 마감 값(프리마켓에는 정규장 대금이 아직 없다)
- *  · 테마 헤더: 절반 이상이 프리마켓 체결되면 프리마켓 평균, 아니면 직전 거래일 평균
+ *  · 테마 헤더 등락률: 테마를 세운 '직전 거래일 마감' 평균으로 고정하고, 오늘 아침 프리마켓 평균은
+ *    avgPctLive 로 따로 내려 화면이 옆에 작게 병기한다(두 기준을 섞지 않는다).
  */
 function mapPrevDayThemes(snapshot, themes, map, premarket) {
   const label = (snapshot && snapshot.shortLabel) || '직전 거래일';
