@@ -574,6 +574,57 @@
   }
   .checkbar{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px;font-size:11.4px;font-weight:900;color:#7dd3fc}
 
+  /* ---------- 📸 본문 추천 사진 · 썸네일 ---------- */
+  .pslot{border:1px solid var(--line);border-radius:11px;background:#0a1424;padding:9px 10px;margin-top:9px;min-width:0}
+  .phead{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:7px;min-width:0}
+  .pnum{flex:0 0 auto;font-size:10px;font-weight:900;color:#0b1120;background:#7dd3fc;border-radius:5px;padding:1px 5px;letter-spacing:0}
+  .pdesc{font-size:11.4px;font-weight:800;color:#dbeafe;line-height:1.4;min-width:0;word-break:keep-all}
+  .pdesc.dim{color:var(--faint);font-weight:700}
+  .prow{display:flex;align-items:center;gap:6px;min-width:0}
+  .prow input, .padd input{
+    flex:1;min-width:0;font-size:12px;font-weight:700;padding:7px 9px;border-radius:8px;
+    border:1px solid var(--line);background:#070f1b;color:#e2e8f0;letter-spacing:0;
+  }
+  .prow input:focus, .padd input:focus{outline:none;border-color:rgba(56,189,248,.55)}
+  .psrc{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:10.4px;font-weight:900;color:#6ee7b7;margin:8px 0 6px}
+  .psrc .pnote{color:var(--faint);font-weight:700;letter-spacing:0;line-height:1.4}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:7px}
+  .pcell{min-width:0}
+  .pthumb{
+    position:relative;display:block;width:100%;padding:0;border:1px solid var(--line);border-radius:9px;
+    overflow:hidden;background:#070f1b;aspect-ratio:4/3;cursor:pointer;
+  }
+  .pthumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .pthumb .pdl{
+    position:absolute;right:4px;bottom:4px;font-size:9.6px;font-weight:900;color:#0b1120;
+    background:#7dd3fc;border-radius:5px;padding:2px 5px;opacity:.95;letter-spacing:0;
+  }
+  .pthumb:hover{border-color:rgba(56,189,248,.6)}
+  .pcell .pmeta{font-size:9.8px;font-weight:700;color:var(--faint);line-height:1.35;margin-top:3px;letter-spacing:0}
+  .pcell .pmeta b{
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    color:#cbd5e1;font-weight:800;font-size:10.2px;word-break:break-word;
+  }
+  .pcell .pmeta span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pcell .pmeta a{color:#7dd3fc;text-decoration:none;font-weight:800}
+  .pwait{font-size:11px;font-weight:700;color:var(--faint);padding:7px 2px;line-height:1.55}
+  .pempty{
+    font-size:11.3px;font-weight:700;color:#fcd34d;background:rgba(245,158,11,.07);
+    border:1px dashed rgba(245,158,11,.3);border-radius:9px;padding:8px 10px;margin-top:8px;line-height:1.55;
+  }
+  .padd{display:flex;gap:6px;margin-top:9px;min-width:0}
+  .ptoggle{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;font-weight:800;color:#cbd5e1;cursor:pointer}
+  .ptoggle input{flex:0 0 auto;width:15px;height:15px;accent-color:#38bdf8;margin:0}
+  .thumbcard{margin-top:12px;padding:10px;border:1px solid rgba(168,85,247,.28);border-radius:11px;background:rgba(168,85,247,.05);min-width:0}
+  .thumbcard .thlabel{display:block;font-size:10.4px;font-weight:900;color:#c4b5fd;margin:7px 0 4px}
+  .thumbcard input[type=text]{
+    width:100%;font-size:12px;font-weight:700;padding:7px 9px;border-radius:8px;
+    border:1px solid var(--line);background:#070f1b;color:#e2e8f0;letter-spacing:0;
+  }
+  .thumbcard input[type=text]:focus{outline:none;border-color:rgba(168,85,247,.6)}
+  #thumbCanvas{width:100%;height:auto;display:block;border-radius:9px;border:1px solid var(--line);background:#070c14;margin-top:7px}
+  .throw{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+
   /* ---------- v2 upgrade: subtitle presets ---------- */
   .preset3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
   .presh{
@@ -1038,7 +1089,7 @@
           <button class="btn primary big" id="genBtn" style="flex:1 1 150px">🤖 AI 본문 생성</button>
           <button class="btn small ghost" id="genLocalBtn">오프라인 뼈대만</button>
         </div>
-        <p class="hint" style="margin-top:8px">Gemini가 섹션 순서 · 말투 · 내 문체 샘플 · 금지 상투어 · 빈틈 메모를 모두 넣어 <b>완성 본문</b>(표 · 도입 3줄 훅 · [📷 사진 자리] · 솔직한 단점)을 씁니다. 보통 10~25초.</p>
+        <p class="hint" style="margin-top:8px">Gemini가 섹션 순서 · 말투 · 내 문체 샘플 · 금지 상투어 · 빈틈 메모를 모두 넣어 <b>완성 본문</b>(표 · 도입 3줄 훅 · [📸 사진: 묘사 | search: 영문검색어] · 솔직한 단점)을 씁니다. 보통 10~25초.</p>
       </div>
 
       <div class="card">
@@ -1099,8 +1150,35 @@
           <div class="out-foot"><b>[AI 본문 생성]은 Gemini가 쓴 완성 본문입니다.</b> 값·날짜·업체명은 [확인 필요]로 남아 있을 수 있으니 발행 전에 직접 확인하세요. 여기서 고쳐 쓰면 그대로 보관함에 저장됩니다.</div>
         </div>
       </div>
+      <div class="card" id="photoCard" hidden>
+        <div class="card-head">
+          <span class="num">8</span><h2>📸 본문 추천 사진 & 썸네일</h2>
+          <span class="bdg real" id="photoStat">사진 0곳</span>
+          <span class="spacer"></span>
+          <button class="btn small ghost" id="photoFindAll">🔄 사진 전체 다시 찾기</button>
+        </div>
+        <p class="hint" id="photoHint">본문의 <b>[📸 사진: 묘사 | search: 영문검색어]</b> 자리를 자동으로 찾아 <b>무료 사진</b>을 검색합니다. 사진을 누르면 <b>원클릭 저장</b>. (PIXABAY_API_KEY가 있으면 Pixabay, 없으면 Wikimedia Commons — 둘 다 무료·키 없이 동작)</p>
+        <div id="photoSlots"></div>
+        <div class="pempty" id="photoNone" hidden>본문에서 사진 자리를 찾지 못했습니다. 아래 <b>사진 직접 검색</b>으로 찾거나, 본문에 <b>[📸 사진: 묘사 | search: english keywords]</b> 를 넣어 주세요.</div>
+        <div class="padd">
+          <input type="text" id="photoAddQ" placeholder="사진 직접 검색 (영문 권장 · 예: hanok village autumn)" maxlength="60">
+          <button class="btn small" id="photoAddBtn">검색</button>
+        </div>
+        <label class="ptoggle"><input type="checkbox" id="photoInCopy" checked> 네이버 서식 복사에 '📸 사진 자리' 안내 박스 포함 (해제하면 복사본에서 사진 자리를 뺍니다)</label>
+        <div class="thumbcard">
+          <div class="flabel">블로그 대표 이미지(썸네일) · 1200×630 PNG <span class="bdg info">API·키 없이 100% 동작</span></div>
+          <label class="thlabel" for="thumbTitle">제목 — 비우면 [제목 3종]에서 고른 제목을 그대로 씁니다</label>
+          <input type="text" id="thumbTitle" maxlength="70" placeholder="대표 이미지에 넣을 제목">
+          <canvas id="thumbCanvas" width="1200" height="630" role="img" aria-label="대표 이미지 1200×630 미리보기"></canvas>
+          <div class="throw">
+            <button class="btn small primary" id="thumbDlBtn">⬇ 썸네일 PNG 저장</button>
+            <button class="btn small ghost" id="thumbStyleBtn">🎲 다른 스타일</button>
+          </div>
+          <p class="hint" style="margin-top:7px">글 제목 + 카테고리 배지 + 키워드로 <b>1200×630</b> 대표 이미지를 브라우저에서 직접 그립니다(네이버·티스토리 대표 이미지 규격).</p>
+        </div>
+      </div>
       <div class="card" id="checkCard" hidden>
-        <div class="card-head"><span class="num">8</span><h2>발행 전 5초 체크리스트</h2><span class="bdg real" id="checkCount">0 / 4</span></div>
+        <div class="card-head"><span class="num">9</span><h2>발행 전 5초 체크리스트</h2><span class="bdg real" id="checkCount">0 / 4</span></div>
         <div class="checks" id="checkList"></div>
         <div class="checkbar" id="checkBar"></div>
         <button class="btn primary big" id="toShortsBtn" style="margin-top:11px">🎬 이 글로 50초 쇼츠 대본 넘기기</button>
@@ -1108,7 +1186,7 @@
       </div>
       <div class="card" id="shortsCard" hidden>
         <div class="card-head">
-          <span class="num">9</span><h2>🎬 50초 쇼츠 대본</h2>
+          <span class="num">10</span><h2>🎬 50초 쇼츠 대본</h2>
           <span class="bdg real" id="shortsBadge">Gemini</span>
           <span class="spacer"></span>
           <button class="btn small" id="copyShortsBtn">복사</button>
@@ -1129,7 +1207,7 @@
 </section>
 
 <footer>
-  <b>동적 스튜디오 v2 안내</b> — <b>실제로 동작(Gemini 3.8 Flash 호출)</b>: 영상 파일 메타·길이·미리보기와 클립별 In/Out 슬라이더, 블로그 완성 본문 생성(제목 3종·경쟁 글 빈틈 2개·표·도입 훅·[📷 사진 자리]·솔직한 단점), 유튜브 빈틈 분석 + 50초 쇼츠 대본, 블로그→쇼츠 변환, 영상 컷 설계도(구간·자막·전환·BGM 덕킹), 제목 3종의 네이버 32자 잘림 미리보기와 네이버 서식 복사, 발행 전 체크리스트, 자막 프리셋 3종 미리보기, 양식·문체 샘플·금지 상투어·빈틈 메모·루틴표·보관함(localStorage) 저장. <b style="color:#fbbf24">아직 없는 것</b>: 유튜브 실시간 검색·조회수·댓글 수집, 영상 픽셀 분석, ffmpeg.wasm 컷편집·자막 렌더·BGM 합성·MP4 저장, 15:45 자동 생성과 루틴표 연동. Gemini가 만든 글은 값·날짜·업체명이 [확인 필요]로 남을 수 있으니 발행 전에 직접 확인하세요. 기존 콘텐츠 스튜디오·관제탑과는 별개 파일입니다.
+  <b>동적 스튜디오 v2 안내</b> — <b>실제로 동작(Gemini 3.8 Flash 호출)</b>: 영상 파일 메타·길이·미리보기와 클립별 In/Out 슬라이더, 블로그 완성 본문 생성(제목 3종·경쟁 글 빈틈 2개·표·도입 훅·[📸 사진: 묘사 | search: 영문검색어]·솔직한 단점), <b>본문 사진 자리 자동 파싱 → 무료 사진 검색(Pixabay 키가 있으면 Pixabay, 없으면 Wikimedia Commons) 및 원클릭 저장</b>, <b>Canvas 1200×630 대표 이미지 PNG 생성·저장</b>, 유튜브 빈틈 분석 + 50초 쇼츠 대본, 블로그→쇼츠 변환, 영상 컷 설계도(구간·자막·전환·BGM 덕킹), 제목 3종의 네이버 32자 잘림 미리보기와 네이버 서식 복사, 발행 전 체크리스트, 자막 프리셋 3종 미리보기, 양식·문체 샘플·금지 상투어·빈틈 메모·루틴표·보관함(localStorage) 저장. <b style="color:#fbbf24">아직 없는 것</b>: 유튜브 실시간 검색·조회수·댓글 수집, 영상 픽셀 분석, ffmpeg.wasm 컷편집·자막 렌더·BGM 합성·MP4 저장, 15:45 자동 생성과 루틴표 연동. Gemini가 만든 글은 값·날짜·업체명이 [확인 필요]로 남을 수 있으니 발행 전에 직접 확인하세요. 무료 사진은 사진마다 라이선스가 다르니 카드의 라이선스를 확인하고 출처를 표기하세요. 기존 콘텐츠 스튜디오·관제탑과는 별개 파일입니다.
 </footer>
 <!-- modal -->
 <div class="overlay" id="formModal" hidden>
@@ -2300,6 +2378,9 @@
     renderChecks(text);
     $('#checkCard').hidden = false;
     scanBans(text);
+    var ttEl = $('#thumbTitle');
+    if (ttEl) ttEl.value = '';
+    refreshPhotoSlots(true);
   }
 
   async function runBlogAI(){
@@ -2370,6 +2451,569 @@
   });
 
   topicEl.addEventListener('keydown', function(e){ if (e.key === 'Enter') $('#genBtn').click(); });
+
+  /* ================================================================
+     📸 본문 추천 사진 · 썸네일
+     - 본문의 [📸 사진: 묘사 | search: 영문검색어] 자리를 파싱해 카드로 띄운다.
+     - 사진 검색: /api/content-ai?action=photos (PIXABAY_API_KEY 있으면 Pixabay,
+       없으면 Wikimedia Commons) → 서버가 막혀 있으면 브라우저가 Commons 를 직접 친다.
+     - 저장: ① 서버 프록시(파일명 지정) → ② 브라우저 직접 fetch → ③ 새 탭 안내.
+     - 썸네일: Canvas 1200×630 PNG. 외부 API·키 없이 100% 동작.
+     ================================================================ */
+  var PHOTO = { slots: [], cache: {}, includeInRich: true, style: 0 };
+  var PHOTO_TAG_RE = /\[(?:📸|📷)\s*사진[^\]]{0,200}\]/g;
+  var PHOTO_LINE_RE = /^[\s>*\-]*\[(?:📸|📷)\s*사진[^\]]*\]\s*$/;
+  var THUMB_STYLES = [
+    { bg: ['#071019', '#0d2033'], accent: '#38bdf8', glow: 'rgba(56,189,248,.22)', chip: 'rgba(56,189,248,.16)', chipText: '#bae6fd' },
+    { bg: ['#0b1512', '#123024'], accent: '#22c55e', glow: 'rgba(34,197,94,.20)', chip: 'rgba(34,197,94,.16)', chipText: '#bbf7d0' },
+    { bg: ['#150e22', '#241234'], accent: '#c084fc', glow: 'rgba(192,132,252,.22)', chip: 'rgba(192,132,252,.16)', chipText: '#e9d5ff' }
+  ];
+  var THUMB_FONT = '"Pretendard","Malgun Gothic","Apple SD Gothic Neo",-apple-system,"Noto Sans KR",sans-serif';
+
+  function parsePhotoTag(raw){
+    var inner = String(raw == null ? '' : raw)
+      .replace(/^\[/, '').replace(/\]$/, '')
+      .replace(/^(📸|📷)/, '')
+      .replace(/^\s*사진/, '')
+      .replace(/^[\s:：\-–—]*/, '');
+    var q = '';
+    var sm = /search\s*[:：]\s*([^|\]]+)/i.exec(inner);
+    if (sm){
+      q = sm[1].replace(/[\s.]+$/, '').trim();
+      inner = inner.replace(sm[0], '');
+    }
+    inner = inner.replace(/[|/]+\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+    var legacy = !inner || /^자리/.test(inner);
+    return { desc: legacy ? '' : inner.slice(0, 120), q: q.slice(0, 80), legacy: legacy };
+  }
+
+  function photoSlotList(text){
+    var src = String(text || ''), out = [], m;
+    PHOTO_TAG_RE.lastIndex = 0;
+    while ((m = PHOTO_TAG_RE.exec(src))){
+      var p = parsePhotoTag(m[0]);
+      out.push({ raw: m[0], desc: p.desc, q: p.q, legacy: p.legacy });
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+
+  function stripPhotoSlots(text){
+    return String(text || '').split('\n').filter(function(line){
+      return !PHOTO_LINE_RE.test(line.trim());
+    }).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function photoSourceText(){
+    var ed = $('#outEdit');
+    if (ed && !ed.hidden) return ed.value || '';
+    return outText ? (outText.textContent || '') : '';
+  }
+
+  function photoDefaultQuery(slot){
+    if (slot && slot.q) return slot.q;
+    var t = (state.lastDraft && state.lastDraft.topic) || (topicEl ? topicEl.value : '') || '';
+    return String(t).replace(/[^\w가-힣\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  }
+
+  function photoCardHtml(slot, i){
+    var q = photoDefaultQuery(slot);
+    return '<div class="pslot" data-i="' + i + '">' +
+      '<div class="phead"><span class="pnum">사진 ' + (i + 1) + '</span>' +
+        (slot.desc ? '<span class="pdesc">' + esc(slot.desc) + '</span>'
+          : '<span class="pdesc dim">' + (slot.manual ? '직접 검색' : '본문에 묘사 없음 — 검색어로 찾습니다') + '</span>') +
+      '</div>' +
+      '<div class="prow">' +
+        '<input type="text" class="pquery" value="' + esc(q) + '" placeholder="영문 검색어 (예: hanok village autumn)" maxlength="60" aria-label="사진 ' + (i + 1) + ' 검색어">' +
+        '<button type="button" class="btn small" data-act="find">🔍 찾기</button>' +
+      '</div>' +
+      '<div class="presult" data-role="result"><div class="pwait">사진을 찾는 중…</div></div>' +
+    '</div>';
+  }
+
+  function photoKnownSources(j){
+    if (!j) return '';
+    if (j.source === 'pixabay') return 'Pixabay';
+    if (j.source === 'wikimedia') return 'Wikimedia Commons';
+    return '';
+  }
+
+  function photoResultHtml(j){
+    var photos = (j && j.photos) || [];
+    if (!photos.length){
+      return '<div class="pwait">' + esc((j && j.message) || '결과가 없습니다. 영어 명사로 바꿔 다시 찾아보세요.') + '</div>';
+    }
+    var src = photoKnownSources(j) || '무료 사진';
+    var h = '<div class="psrc">' + esc(src) + ' · ' + photos.length + '장' +
+      (j.note ? ' <span class="pnote">' + esc(j.note) + '</span>' : '') + '</div><div class="pgrid">';
+    photos.forEach(function(p, k){
+      h += '<div class="pcell">' +
+        '<button type="button" class="pthumb" data-k="' + k + '" title="눌러서 바로 저장">' +
+          '<img src="' + esc(p.thumb || p.preview) + '" alt="' + esc(p.title || '사진') + '" loading="lazy" referrerpolicy="no-referrer">' +
+          '<span class="pdl">⬇ 저장</span>' +
+        '</button>' +
+        '<div class="pmeta"><b>' + esc(trunc(p.title || '무료 사진', 44)) + '</b>' +
+          '<span>' + esc(trunc(p.license || '무료', 34)) + (p.author ? ' · ' + esc(trunc(p.author, 22)) : '') + '</span>' +
+          (p.page ? ' <a href="' + esc(p.page) + '" target="_blank" rel="noopener noreferrer">원본</a>' : '') +
+        '</div>' +
+      '</div>';
+    });
+    return h + '</div>';
+  }
+
+  /* 브라우저가 Wikimedia Commons 를 직접 검색(서버 함수가 없거나 실패했을 때) */
+  async function photoSearchCommonsDirect(q, n){
+    var url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*' +
+      '&generator=search&gsrnamespace=6&gsrlimit=' + Math.max(3, Math.min(20, n || 6)) +
+      '&gsrsearch=' + encodeURIComponent('filetype:bitmap ' + q) +
+      '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=960';
+    var res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var j = await res.json();
+    var pages = (j && j.query && j.query.pages) || [];
+    var photos = [];
+    (Array.isArray(pages) ? pages : []).forEach(function(p){
+      var ii = (p.imageinfo && p.imageinfo[0]) || null;
+      if (!ii || !ii.url) return;
+      if (!/^image\/(jpeg|png|webp)$/.test(String(ii.mime || ''))) return;
+      if ((ii.width || 0) < 600 || (ii.height || 0) < 380) return;
+      var meta = ii.extmetadata || {};
+      function mt(k){ var v = meta[k] && meta[k].value; return v ? String(v).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''; }
+      photos.push({
+        id: 'wc' + p.pageid,
+        source: 'wikimedia',
+        title: String(p.title || '').replace(/^File:/, '').replace(/\.[a-z0-9]{3,4}$/i, '').slice(0, 120),
+        thumb: ii.thumburl || ii.url,
+        preview: ii.thumburl || ii.url,
+        full: ii.url,
+        save: ii.thumburl || ii.url,
+        page: ii.descriptionurl || '',
+        author: mt('Artist').slice(0, 60),
+        license: mt('LicenseShortName').slice(0, 40) || 'Wikimedia Commons'
+      });
+    });
+    return { ok: true, source: 'wikimedia', query: q, photos: photos, note: '사진마다 라이선스가 다릅니다 — 표기된 라이선스를 확인하세요.' };
+  }
+
+  async function photoSearch(q, n){
+    var key = String(q || '').toLowerCase();
+    if (PHOTO.cache[key]) return PHOTO.cache[key];
+    var j = null;
+    try {
+      var r = await fetch(AI.url + '?action=photos&q=' + encodeURIComponent(q) + '&n=' + (n || 6), { cache: 'no-store' });
+      var t = await r.text();
+      j = t ? JSON.parse(t) : null;
+      if (!r.ok || !j || j.ok === false) j = null;
+    } catch(e){ j = null; }
+    if (!j || !(j.photos || []).length){
+      try { j = await photoSearchCommonsDirect(q, n || 6); }
+      catch(e){
+        j = { ok: false, source: '', photos: [], message: '사진 검색에 실패했습니다(' + String((e && e.message) || 'network') + '). 잠시 뒤 다시 시도해 주세요.' };
+      }
+      // 두 단어로 줄여 한 번 더 (Commons 는 긴 문장 검색에 약하다)
+      if (j && j.ok && !(j.photos || []).length){
+        var shortQ = String(q).split(/\s+/).slice(0, 2).join(' ');
+        if (shortQ && shortQ !== q){
+          try {
+            var j2 = await photoSearchCommonsDirect(shortQ, n || 6);
+            if (j2 && (j2.photos || []).length) j = j2;
+          } catch(e2){}
+        }
+      }
+    }
+    PHOTO.cache[key] = j;
+    return j;
+  }
+
+  async function searchPhotoSlot(i){
+    var slot = PHOTO.slots[i];
+    if (!slot) return;
+    var card = $('.pslot[data-i="' + i + '"]');
+    if (!card) return;
+    var input = card.querySelector('.pquery');
+    var q = String((input && input.value) || '').trim() || photoDefaultQuery(slot);
+    var res = card.querySelector('[data-role="result"]');
+    if (!q){
+      if (res) res.innerHTML = '<div class="pwait">검색어를 입력하고 [찾기]를 눌러 주세요.</div>';
+      return;
+    }
+    if (res) res.innerHTML = '<div class="pwait">' + esc(q) + ' 로 사진을 찾는 중…</div>';
+    slot.query = q;
+    var j = await photoSearch(q, 6);
+    slot.result = j;
+    var card2 = $('.pslot[data-i="' + i + '"]');
+    var res2 = card2 && card2.querySelector('[data-role="result"]');
+    if (res2) res2.innerHTML = photoResultHtml(j);
+  }
+
+  function photoExt(p){
+    var m = /\.(jpe?g|png|webp|gif)(?:[?#]|$)/i.exec(String((p && (p.full || p.thumb)) || ''));
+    return m ? m[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
+  }
+  function photoFileName(q, k, p){
+    var base = String(q || 'photo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return (base || 'photo') + '-' + (k + 1) + '.' + photoExt(p);
+  }
+
+  function triggerDownload(href, name){
+    var a = document.createElement('a');
+    a.href = href;
+    a.download = name || 'download';
+    a.rel = 'noopener';
+    a.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){
+      try { if (href.indexOf('blob:') === 0) URL.revokeObjectURL(href); } catch(e){}
+      if (a.parentNode) a.parentNode.removeChild(a);
+    }, 15000);
+  }
+
+  function photoBlobSave(blob, name){
+    if (!blob || !blob.size) return false;
+    triggerDownload(URL.createObjectURL(blob), name);
+    return true;
+  }
+
+  /* 원클릭 저장: ① 서버 프록시(저장용 960~1280px) → ② 더 작은 미리보기 → ③ 브라우저 직접 → ④ 새 탭 안내 */
+  async function savePhotoItem(p, name){
+    var tries = [];
+    [p.save, p.preview, p.thumb].forEach(function(u){ if (u && tries.indexOf(u) < 0) tries.push(u); });
+    if (!tries.length){ toast('저장할 이미지 주소가 없습니다.'); return false; }
+    for (var i = 0; i < tries.length; i++){
+      try {
+        var r = await fetch(AI.url + '?action=photo-dl&u=' + encodeURIComponent(tries[i]) + '&name=' + encodeURIComponent(name), { cache: 'no-store' });
+        var ct = String(r.headers.get('content-type') || '').toLowerCase();
+        if (r.ok && ct.indexOf('image/') === 0){
+          var b = await r.blob();
+          if (photoBlobSave(b, name)){ toast('사진을 저장했습니다 · ' + name); return true; }
+        }
+      } catch(e){}
+    }
+    var direct = p.full || p.save || p.thumb;
+    try {
+      var r2 = await fetch(direct, { mode: 'cors' });
+      if (r2.ok){
+        var b2 = await r2.blob();
+        if (photoBlobSave(b2, name)){ toast('사진을 저장했습니다 · ' + name); return true; }
+      }
+    } catch(e){}
+    var w = null;
+    try { w = window.open(direct, '_blank', 'noopener'); } catch(e){ w = null; }
+    toast(w ? '새 탭의 이미지를 길게 눌러 저장해 주세요.' : '자동 저장이 막혔습니다. 사진을 길게 눌러 저장해 주세요.');
+    return false;
+  }
+
+  function refreshPhotoSlots(autoSearch){
+    var card = $('#photoCard');
+    if (!card) return;
+    PHOTO.slots = photoSlotList(photoSourceText());
+    var host = $('#photoSlots');
+    if (host) host.innerHTML = PHOTO.slots.map(photoCardHtml).join('');
+    var none = $('#photoNone');
+    if (none) none.hidden = PHOTO.slots.length > 0;
+    var stat = $('#photoStat');
+    if (stat) stat.textContent = PHOTO.slots.length ? '사진 ' + PHOTO.slots.length + '곳' : '사진 자리 없음';
+    card.hidden = false;
+    drawThumb();
+    if (autoSearch) PHOTO.slots.forEach(function(_s, i){ searchPhotoSlot(i); });
+  }
+
+  function addPhotoSearch(){
+    var el = $('#photoAddQ');
+    var q = String((el && el.value) || '').trim();
+    if (!q){ toast('검색어를 입력해 주세요. (영문 권장)'); if (el) el.focus(); return; }
+    var i = PHOTO.slots.length;
+    PHOTO.slots.push({ raw: '', desc: '', q: q, legacy: false, manual: true });
+    var host = $('#photoSlots');
+    if (host){
+      var wrap = document.createElement('div');
+      wrap.innerHTML = photoCardHtml(PHOTO.slots[i], i);
+      host.appendChild(wrap.firstChild);
+    }
+    if (el) el.value = '';
+    var stat = $('#photoStat');
+    if (stat) stat.textContent = '사진 ' + PHOTO.slots.length + '곳';
+    var none = $('#photoNone');
+    if (none) none.hidden = true;
+    searchPhotoSlot(i);
+  }
+
+  /* ---------- 대표 이미지(썸네일) 1200×630 ---------- */
+  function thumbTitleText(){
+    var el = $('#thumbTitle');
+    var v = String((el && el.value) || '').trim();
+    if (v) return v;
+    var t = (state.titles || [])[state.titleIdx];
+    if (t && t.text) return t.text;
+    if (state.lastDraft && state.lastDraft.topic) return state.lastDraft.topic;
+    return (topicEl && topicEl.value ? topicEl.value : '') || '블로그 제목';
+  }
+  function thumbCategory(){
+    var f = getForm(state.selectedFormId);
+    var th = (f && f.name) ? f.name : '블로그';
+    var t = (state.titles || [])[state.titleIdx];
+    return (t && t.tag) ? (th + ' · ' + t.tag) : th;
+  }
+  function thumbKeywords(){
+    var base = (state.lastDraft && state.lastDraft.topic) || (topicEl && topicEl.value) || '';
+    var words = String(base).replace(/[^\w가-힣\s]/g, ' ').split(/\s+/).filter(function(w){ return charLen(w) > 1; });
+    var out = [];
+    words.forEach(function(w){ if (out.length < 3 && out.indexOf(w) < 0) out.push(w); });
+    PHOTO.slots.forEach(function(sl){
+      if (out.length >= 3) return;
+      var w0 = String(sl.query || sl.q || '').split(/\s+/)[0];
+      if (w0 && w0.length > 1 && out.indexOf(w0) < 0) out.push(w0);
+    });
+    return out.slice(0, 3);
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r){
+    var rr = Math.min(r, h / 2, w / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  function wrapCanvasText(ctx, text, maxW, maxLines){
+    var words = String(text || '').split(/\s+/).filter(Boolean);
+    var lines = [], cur = '';
+    var truncated = false;
+    function pushLine(s){ lines.push(s); }
+    for (var i = 0; i < words.length; i++){
+      var w = words[i];
+      var test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width <= maxW){ cur = test; continue; }
+      if (cur){ pushLine(cur); cur = ''; }
+      if (lines.length >= maxLines){ truncated = true; break; }
+      if (ctx.measureText(w).width <= maxW){ cur = w; continue; }
+      // 한 단어가 한 줄을 넘으면 글자 단위로 자른다
+      var chars = Array.from(w), part = '';
+      for (var c = 0; c < chars.length; c++){
+        var t2 = part + chars[c];
+        if (ctx.measureText(t2).width > maxW && part){
+          pushLine(part); part = chars[c];
+          if (lines.length >= maxLines){ truncated = true; break; }
+        } else part = t2;
+      }
+      if (truncated) break;
+      cur = part;
+    }
+    if (!truncated && cur && lines.length < maxLines) pushLine(cur);
+    if (truncated && lines.length){
+      var last = lines[lines.length - 1];
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+      lines[lines.length - 1] = last + '…';
+    }
+    return lines;
+  }
+
+  function drawThumb(){
+    var cv = $('#thumbCanvas');
+    if (!cv || !cv.getContext) return;
+    var ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height;
+    var st = THUMB_STYLES[PHOTO.style % THUMB_STYLES.length];
+    ctx.clearRect(0, 0, W, H);
+
+    var g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, st.bg[0]);
+    g.addColorStop(1, st.bg[1]);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(255,255,255,.05)';
+    for (var x = 48; x < W; x += 42){
+      for (var y = 42; y < H; y += 42) ctx.fillRect(x, y, 2, 2);
+    }
+    var rg = ctx.createRadialGradient(W - 110, H - 60, 12, W - 110, H - 60, 230);
+    rg.addColorStop(0, st.glow);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(W - 110, H - 60, 230, 0, Math.PI * 2);
+    ctx.fillStyle = rg;
+    ctx.fill();
+
+    // 카테고리 배지
+    var cat = thumbCategory();
+    ctx.font = '900 22px ' + THUMB_FONT;
+    var cw = ctx.measureText(cat).width + 40;
+    ctx.fillStyle = st.chip;
+    roundRectPath(ctx, 72, 84, Math.min(cw, 560), 48, 24);
+    ctx.fill();
+    ctx.strokeStyle = st.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = st.chipText;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(cat, 92, 109);
+
+    // 제목(최대 3줄, 길면 폰트 축소)
+    var title = thumbTitleText();
+    var maxW = W - 104 - 96;
+    var sizes = [62, 56, 50, 44];
+    var lines = [], size = sizes[0];
+    for (var si = 0; si < sizes.length; si++){
+      size = sizes[si];
+      ctx.font = '900 ' + size + 'px ' + THUMB_FONT;
+      lines = wrapCanvasText(ctx, title, maxW, 3);
+      if (lines.length <= 3 && ctx.measureText(lines.join(' ')).width <= maxW * 3) break;
+    }
+    ctx.fillStyle = st.accent;
+    ctx.fillRect(72, 178, 8, Math.max(72, lines.length * (size + 18) - 12));
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'top';
+    var ty = 176;
+    lines.forEach(function(line){
+      ctx.fillText(line, 104, ty);
+      ty += size + 18;
+    });
+
+    // 키워드 칩 — 제목이 짧으면 위로 당긴다
+    var kws = thumbKeywords();
+    var ky = Math.min(500, Math.max(436, ty + 34));
+    var kx = 104;
+    ctx.textBaseline = 'middle';
+    kws.forEach(function(kw){
+      ctx.font = '800 20px ' + THUMB_FONT;
+      var w = ctx.measureText(kw).width + 34;
+      if (kx + w > W - 90) return;
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      roundRectPath(ctx, kx, ky, w, 42, 21);
+      ctx.fill();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText(kw, kx + 17, ky + 21);
+      kx += w + 10;
+    });
+
+    // 하단
+    ctx.strokeStyle = 'rgba(255,255,255,.14)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(72, 548);
+    ctx.lineTo(W - 72, 548);
+    ctx.stroke();
+    var d = new Date();
+    var ds = d.getFullYear() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + ('0' + d.getDate()).slice(-2);
+    ctx.font = '700 20px ' + THUMB_FONT;
+    ctx.fillStyle = 'rgba(226,232,240,.72)';
+    ctx.fillText('블로그 대표 이미지 · ' + ds, 72, 584);
+    ctx.fillStyle = st.accent;
+    ctx.beginPath();
+    ctx.arc(W - 88, 584, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(226,232,240,.72)';
+    ctx.font = '800 20px ' + THUMB_FONT;
+    ctx.textAlign = 'right';
+    ctx.fillText('1200×630', W - 104, 584);
+    ctx.textAlign = 'left';
+  }
+
+  function thumbFileName(){
+    var t = thumbTitleText();
+    var base = String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36);
+    if (base.replace(/-/g, '').length < 3) base = '';
+    return (base || 'blog') + '-thumb-1200x630.png';
+  }
+
+  function downloadThumb(){
+    var cv = $('#thumbCanvas');
+    if (!cv) return;
+    var name = thumbFileName();
+    function ok(){ toast('대표 이미지 PNG를 저장했습니다 · ' + name); }
+    function fail(){ toast('PNG를 만들지 못했습니다. 다시 한 번 눌러 주세요.'); }
+    try {
+      if (cv.toBlob){
+        cv.toBlob(function(b){ if (photoBlobSave(b, name)) ok(); else fail(); }, 'image/png');
+        return;
+      }
+      var data = cv.toDataURL('image/png');
+      triggerDownload(data, name);
+      ok();
+    } catch(e){ fail(); }
+  }
+
+  /* ---------- 사진 UI 이벤트 ---------- */
+  (function bindPhotoUI(){
+    var host = $('#photoSlots');
+    if (!host) return;
+    host.addEventListener('click', function(e){
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      var card = btn.closest('.pslot');
+      if (!card) return;
+      var i = Number(card.getAttribute('data-i')) || 0;
+      if (btn.getAttribute('data-act') === 'find'){
+        var iv = card.querySelector('.pquery');
+        var q = String((iv && iv.value) || '').trim();
+        if (!q){ toast('검색어를 입력해 주세요.'); if (iv) iv.focus(); return; }
+        searchPhotoSlot(i);
+        return;
+      }
+      if (btn.classList.contains('pthumb')){
+        var slot = PHOTO.slots[i];
+        var k = Number(btn.getAttribute('data-k')) || 0;
+        var p = slot && slot.result && slot.result.photos && slot.result.photos[k];
+        if (!p) return;
+        btn.disabled = true;
+        var nm = photoFileName(slot.query || 'photo', k, p);
+        savePhotoItem(p, nm).then(function(){ btn.disabled = false; });
+      }
+    });
+    host.addEventListener('keydown', function(e){
+      if (e.key !== 'Enter') return;
+      if (!e.target.classList || !e.target.classList.contains('pquery')) return;
+      e.preventDefault();
+      var card = e.target.closest('.pslot');
+      var i = card ? (Number(card.getAttribute('data-i')) || 0) : 0;
+      searchPhotoSlot(i);
+    });
+
+    var fa = $('#photoFindAll');
+    if (fa) fa.addEventListener('click', function(){
+      if (!PHOTO.slots.length){ toast('본문에서 사진 자리를 찾지 못했습니다.'); return; }
+      toast('사진 ' + PHOTO.slots.length + '곳을 다시 찾습니다.');
+      PHOTO.slots.forEach(function(_s, i){ searchPhotoSlot(i); });
+    });
+    var ab = $('#photoAddBtn');
+    if (ab) ab.addEventListener('click', addPhotoSearch);
+    var aq = $('#photoAddQ');
+    if (aq) aq.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); addPhotoSearch(); } });
+
+    var cb = $('#photoInCopy');
+    if (cb) cb.addEventListener('change', function(){
+      PHOTO.includeInRich = !!cb.checked;
+      toast(PHOTO.includeInRich ? '복사본에 사진 자리 안내 박스를 포함합니다.' : '복사본에서 사진 자리를 뺍니다.');
+    });
+
+    var tt = $('#thumbTitle');
+    if (tt){
+      tt.addEventListener('input', drawThumb);
+      tt.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); drawThumb(); } });
+    }
+    var sb = $('#thumbStyleBtn');
+    if (sb) sb.addEventListener('click', function(){
+      PHOTO.style = (PHOTO.style + 1) % THUMB_STYLES.length;
+      drawThumb();
+      toast('대표 이미지 스타일 ' + (PHOTO.style + 1) + ' / ' + THUMB_STYLES.length);
+    });
+    var db = $('#thumbDlBtn');
+    if (db) db.addEventListener('click', downloadThumb);
+  })();
+  try {
+    window.CS2_PHOTO = {
+      refresh: refreshPhotoSlots, parse: parsePhotoTag, list: photoSlotList,
+      strip: stripPhotoSlots, draw: drawThumb, state: PHOTO, thumbTitle: thumbTitleText
+    };
+  } catch(e){}
 
   /* ================================================================
      네이버 서식 복사 — Markdown → Rich HTML
@@ -2458,6 +3102,13 @@
       while (i < lines.length){
         var t = lines[i].trim();
         if (!t){ i++; continue; }
+        if (PHOTO_LINE_RE.test(t)){
+          var pslot = parsePhotoTag(t);
+          out.push('<div style="margin:16px 0;padding:12px 14px;border:1px dashed #94a3b8;border-radius:9px;background-color:#f8fafc;color:#475569;font-size:13px;line-height:1.65">' +
+            '<b style="color:#0f172a">📸 사진 자리</b>' + (pslot.desc ? ' — ' + inline(pslot.desc) : ' — 이 위치에 사진을 넣으세요') +
+            (pslot.q ? '<br><span style="color:#64748b;font-size:12px">검색어: ' + inline(pslot.q) + '</span>' : '') + '</div>');
+          i++; continue;
+        }
         if (/^([-*_])\1{2,}$/.test(t)){
           out.push('<hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0">');
           i++; continue;
@@ -2502,6 +3153,7 @@
           if (isTableRow(tt)) break;
           if (/^#{1,4}\s+/.test(tt)) break;
           if (tt.charAt(0) === '>') break;
+          if (PHOTO_LINE_RE.test(tt)) break;
           if (listMatch(lines[i])) break;
           buf.push(tt); i++;
         }
@@ -2515,6 +3167,10 @@
       var body = lines.map(function(raw){
         var t = raw.trim();
         if (!t) return '';
+        if (PHOTO_LINE_RE.test(t)){
+          var ps = parsePhotoTag(t);
+          return '📸 사진 자리' + (ps.desc ? ' — ' + ps.desc : '') + (ps.q ? ' (검색: ' + ps.q + ')' : '');
+        }
         if (/^([-*_])\1{2,}$/.test(t)) return '';
         if (isTableRow(t)){
           var cs = splitRow(t);
@@ -2591,6 +3247,7 @@
   $('#copyHtmlBtn').addEventListener('click', function(){
     var txt = currentDraftText();
     if (!txt || !txt.trim()){ toast('복사할 내용이 없습니다. 먼저 뼈대를 생성해 주세요.'); return; }
+    if (!PHOTO.includeInRich) txt = stripPhotoSlots(txt);
     RICH.copyRich(txt, '네이버 서식(HTML)으로 복사했습니다. 스마트에디터에 바로 붙여넣으세요.');
     outStat.textContent = '서식 복사됨';
   });
@@ -2863,6 +3520,7 @@
       list.appendChild(b);
     });
     renderNaver();
+    drawThumb();
   }
   function renderNaver(){
     var el = $('#naverPrev');
@@ -2897,7 +3555,7 @@
   var CHECKS = [
     { id:'hook', t:'도입 3줄 훅 — 인사말 없이 결론·숫자로 시작' },
     { id:'table', t:'비교표 1개 — 조건을 표로 비교' },
-    { id:'photo', t:'[📷 사진 자리] 표시 — 촬영·캡처 위치' },
+    { id:'photo', t:'[📸 사진] 자리 2~3곳 — 사진이 들어갈 위치' },
     { id:'weak', t:'솔직한 단점 1줄 — 신뢰를 만드는 문장' }
   ];
   var checkState = {};
@@ -2906,7 +3564,7 @@
     var t = String(text || '');
     return {
       table: /\|\s*구분\s*\|/.test(t),
-      photo: t.indexOf('[📷 사진 자리]') > -1,
+      photo: /\[(?:📸|📷)\s*사진[^\]]*\]/.test(t),
       weak: t.indexOf('솔직한 단점') > -1
     };
   }
@@ -3215,6 +3873,9 @@
       renderChecks(rec.text || '');
       $('#checkCard').hidden = false;
       scanBans(rec.text || '');
+      var ttRec = $('#thumbTitle');
+      if (ttRec) ttRec.value = '';
+      refreshPhotoSlots(true);
       setTimeout(function(){ outCard.scrollIntoView({ behavior:'smooth', block:'start' }); }, 150);
       toast('보관함에서 불러왔습니다. 고쳐서 다시 저장할 수 있습니다.');
       return;
@@ -3285,6 +3946,7 @@
     renderChecks(txt);
     scanBans(txt);
     outStat.textContent = '편집됨';
+    refreshPhotoSlots(true);
     toast('수정 내용을 반영했습니다. 보관함 저장을 누르면 덮어씁니다.');
   });
   $('#saveBlogBtn').addEventListener('click', function(){

@@ -100,6 +100,221 @@ async function readJson(req) {
 }
 
 const s = (v, max) => String(v == null ? '' : v).replace(/\r/g, '').trim().slice(0, max || 4000);
+
+/* ---------------------------------------------------------------- 📸 무료 사진 (Pixabay → Wikimedia Commons) */
+
+// Wikimedia 는 식별 가능한 User-Agent 를 요구한다(없으면 403).
+const PHOTO_UA = 'yeonolang-content-studio/1.0 (personal blog helper; +https://github.com/hwen21c-tech)';
+const PHOTO_MAX_N = 12;
+const PHOTO_TIMEOUT_MS = 12000;
+const PHOTO_DL_MAX_BYTES = 15 * 1024 * 1024;
+// 사진 다운로드 프록시가 받아도 되는 호스트만 (열린 프록시·SSRF 방지)
+const PHOTO_DL_HOSTS = ['upload.wikimedia.org', 'thumb.wikimedia.org', 'commons.wikimedia.org', 'cdn.pixabay.com', 'pixabay.com'];
+
+function stripTags(v) {
+  return String(v == null ? '' : v)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchJsonTimed(url, headers, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || PHOTO_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { headers: headers || {}, signal: ctrl.signal });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const e = new Error(`HTTP ${res.status} ${body.slice(0, 120)}`);
+      e.status = res.status;
+      throw e;
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Pixabay — PIXABAY_API_KEY 가 있을 때만. 없으면 null */
+async function searchPixabay(q, n) {
+  const key = String(process.env.PIXABAY_API_KEY || '').trim();
+  if (!key) return null;
+  const url =
+    'https://pixabay.com/api/?key=' + encodeURIComponent(key) +
+    '&q=' + encodeURIComponent(q) +
+    '&image_type=photo&safesearch=true&order=popular&lang=en' +
+    '&per_page=' + Math.max(3, Math.min(20, n));
+  const j = await fetchJsonTimed(url, { 'User-Agent': PHOTO_UA, Accept: 'application/json' });
+  const hits = Array.isArray(j.hits) ? j.hits : [];
+  return hits
+    .map((h) => ({
+      id: 'px' + h.id,
+      source: 'pixabay',
+      title: s(h.tags, 90) || 'pixabay ' + h.id,
+      thumb: h.previewURL || h.webformatURL || '',
+      preview: h.webformatURL || h.previewURL || '',
+      full: h.largeImageURL || h.webformatURL || h.previewURL || '',
+      // 저장용 = 블로그에 쓰기 좋은 1280px (원본 대용량을 그대로 받지 않게)
+      save: h.largeImageURL || h.webformatURL || h.previewURL || '',
+      width: num(h.imageWidth, 0),
+      height: num(h.imageHeight, 0),
+      page: h.pageURL || '',
+      author: s(h.user, 40),
+      license: 'Pixabay License',
+    }))
+    .filter((p) => p.thumb && p.full);
+}
+
+/** Wikimedia Commons — 키 없이 동작하는 2순위 */
+async function searchCommons(q, n) {
+  const url =
+    'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*' +
+    '&generator=search&gsrnamespace=6&gsrlimit=' + Math.max(3, Math.min(20, n)) +
+    '&gsrsearch=' + encodeURIComponent('filetype:bitmap ' + q) +
+    '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=960';
+  const j = await fetchJsonTimed(url, { 'User-Agent': PHOTO_UA, Accept: 'application/json' });
+  const pages = (j && j.query && j.query.pages) || [];
+  const out = [];
+  (Array.isArray(pages) ? pages : []).forEach((p) => {
+    const ii = (p.imageinfo && p.imageinfo[0]) || null;
+    if (!ii || !ii.url) return;
+    const mime = String(ii.mime || '');
+    if (!/^image\/(jpeg|png|webp)$/.test(mime)) return;
+    if (num(ii.width, 0) < 600 || num(ii.height, 0) < 380) return;
+    const meta = ii.extmetadata || {};
+    const title = String(p.title || '').replace(/^File:/, '').replace(/\.[a-z0-9]{3,4}$/i, '');
+    out.push({
+      id: 'wc' + p.pageid,
+      source: 'wikimedia',
+      title: s(title, 120),
+      thumb: ii.thumburl || ii.url,
+      preview: ii.thumburl || ii.url,
+      full: ii.url,
+      // 저장용 = 960px 썸네일(원본이 15MB를 넘는 사진이 흔하다)
+      save: ii.thumburl || ii.url,
+      width: num(ii.width, 0),
+      height: num(ii.height, 0),
+      page: ii.descriptionurl || ('https://commons.wikimedia.org/wiki/' + encodeURIComponent(String(p.title || ''))),
+      author: s(stripTags(meta.Artist && meta.Artist.value), 60),
+      license: s(stripTags(meta.LicenseShortName && meta.LicenseShortName.value), 40) || 'Wikimedia Commons',
+    });
+  });
+  return out;
+}
+
+async function handlePhotos(res, u) {
+  const q = s(u.searchParams.get('q'), 120).replace(/[<>"\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  const n = Math.min(PHOTO_MAX_N, Math.max(3, parseInt(u.searchParams.get('n'), 10) || 6));
+  if (!q) {
+    return send(res, 400, { ok: false, reason: 'missing_query', message: '검색어(q)가 필요합니다. 예: ?action=photos&q=hanok village' });
+  }
+  const out = { ok: true, query: q, n, source: '', photos: [], tried: [] };
+  const pixabayReady = !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim());
+
+  if (pixabayReady) {
+    try {
+      const px = await searchPixabay(q, n);
+      out.tried.push({ source: 'pixabay', ok: !!(px && px.length), count: px ? px.length : 0 });
+      if (px && px.length) {
+        out.source = 'pixabay';
+        out.photos = px;
+        return send(res, 200, out);
+      }
+    } catch (e) {
+      out.tried.push({ source: 'pixabay', ok: false, error: String((e && e.message) || '').slice(0, 120) });
+    }
+  } else {
+    out.tried.push({ source: 'pixabay', ok: false, error: 'PIXABAY_API_KEY 없음 → Wikimedia Commons 로 대체' });
+  }
+
+  const queries = [q];
+  const shortQ = q.split(/\s+/).slice(0, 2).join(' ');
+  if (shortQ && shortQ !== q) queries.push(shortQ);
+
+  for (const query of queries) {
+    try {
+      const wm = await searchCommons(query, n);
+      out.tried.push({ source: 'wikimedia', query, ok: !!(wm && wm.length), count: wm ? wm.length : 0 });
+      if (wm && wm.length) {
+        out.source = 'wikimedia';
+        out.query = query;
+        out.photos = wm;
+        out.note = '사진마다 라이선스가 다릅니다 — 표기된 라이선스를 확인하세요.';
+        return send(res, 200, out);
+      }
+    } catch (e) {
+      out.tried.push({ source: 'wikimedia', query, ok: false, error: String((e && e.message) || '').slice(0, 120) });
+    }
+  }
+
+  out.message = '이 검색어로 무료 사진을 찾지 못했습니다. 영어 명사 위주(예: hanok village, autumn park)로 바꿔 다시 찾아보세요.';
+  return send(res, 200, out);
+}
+
+function safePhotoName(raw) {
+  const base = String(raw == null ? '' : raw)
+    .replace(/[\\/:*?"<>|\r\n]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/^[.-]+/, '')
+    .slice(0, 80);
+  if (!base) return 'photo.jpg';
+  return /\.(jpe?g|png|webp|gif)$/i.test(base) ? base : base + '.jpg';
+}
+
+/** 원클릭 저장 — 이미지 바이트를 그대로 받아 파일명을 붙여 내려준다(브라우저 CORS 무관). */
+async function handlePhotoDownload(res, u) {
+  let target;
+  try {
+    target = new URL(String(u.searchParams.get('u') || ''));
+  } catch (_) {
+    return send(res, 400, { ok: false, reason: 'bad_url', message: '이미지 주소(u)가 올바르지 않습니다.' });
+  }
+  if (!/^https?:$/.test(target.protocol)) {
+    return send(res, 400, { ok: false, reason: 'bad_protocol', message: 'http(s) 주소만 받습니다.' });
+  }
+  const host = target.hostname.toLowerCase();
+  if (PHOTO_DL_HOSTS.indexOf(host) < 0) {
+    return send(res, 403, { ok: false, reason: 'host_not_allowed', message: '허용되지 않은 이미지 호스트입니다: ' + host });
+  }
+  const name = safePhotoName(u.searchParams.get('name'));
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const r = await fetch(target.toString(), { headers: { 'User-Agent': PHOTO_UA, Accept: 'image/*' }, signal: ctrl.signal });
+    if (!r.ok) {
+      return send(res, 502, { ok: false, reason: 'upstream_error', message: '원본 서버가 이미지를 주지 않았습니다(HTTP ' + r.status + ').' });
+    }
+    const declared = Number(r.headers.get('content-length') || 0);
+    if (declared && declared > PHOTO_DL_MAX_BYTES) {
+      return send(res, 413, { ok: false, reason: 'too_large', message: '이미지가 너무 큽니다(15MB 초과). 미리보기 이미지를 저장하세요.' });
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!buf.length) return send(res, 502, { ok: false, reason: 'empty_image', message: '이미지가 비어 있습니다.' });
+    if (buf.length > PHOTO_DL_MAX_BYTES) {
+      return send(res, 413, { ok: false, reason: 'too_large', message: '이미지가 너무 큽니다(15MB 초과). 미리보기 이미지를 저장하세요.' });
+    }
+    const ct = String(r.headers.get('content-type') || '');
+    res.statusCode = 200;
+    res.setHeader('Content-Type', /^image\//.test(ct) ? ct : 'image/jpeg');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + name + '"');
+    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.end(buf);
+  } catch (e) {
+    const aborted = e && e.name === 'AbortError';
+    return send(res, 504, {
+      ok: false,
+      reason: aborted ? 'timeout' : 'download_failed',
+      message: aborted ? '이미지를 20초 안에 받지 못했습니다.' : '이미지를 받지 못했습니다: ' + String((e && e.message) || '').slice(0, 120),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const arr = (v, max) => (Array.isArray(v) ? v : []).slice(0, max || 12);
 const num = (v, fb) => {
   const n = Number(v);
@@ -129,7 +344,7 @@ const SCHEMA_BLOG = {
       description: '경쟁 인기 글이 비워 둔 빈틈 2개 — 각 1~2문장',
       items: { type: 'string' },
     },
-    body: { type: 'string', description: '완성된 마크다운 본문 (표·도입 3줄 훅·[📷 사진 자리]·솔직한 단점 포함)' },
+    body: { type: 'string', description: '완성된 마크다운 본문 (표·도입 3줄 훅·[📸 사진: 묘사 | search: 영문검색어] 2~3곳·솔직한 단점 포함)' },
     warnings: {
       type: 'array',
       description: '내가 확인하지 못해 [확인 필요]로 남긴 값·사실 목록',
@@ -299,7 +514,10 @@ function promptBlog(b) {
 1) 첫 3줄이 훅이다. 인사말("안녕하세요") 없이 결론·숫자·상황으로 바로 시작한다.
 2) 위 섹션 순서를 그대로 쓰고 각 섹션 제목은 "## " 마크다운 소제목으로 단다.
 3) 조건 비교용 마크다운 표를 최소 1개 넣는다. ( | 구분 | A | B | 형식, 헤더 구분선 포함)
-4) 사진이 들어갈 자리는 정확히 "[📷 사진 자리]" 로 표시하고 2곳 이상 넣는다.
+4) 사진이 들어가면 글이 자연스러워지는 지점 2~3곳에 정확히 "[📸 사진: 구체적 묘사 | search: 영문검색어]" 형식으로 넣는다.
+   - 묘사는 한국어 20자 내외(무엇이 보여야 하는지), search 는 무료 사진 DB에서 실제로 검색될 영어 명사 2~4단어.
+   - search 에 브랜드·상호·사람 이름·연도·한글을 넣지 않는다(그런 사진은 무료 DB에 없다). "street food", "autumn park", "hotel lobby" 처럼 보편 명사만.
+   - 사진 태그는 그 줄 하나로 끝낸다(같은 줄에 다른 문장을 붙이지 않는다). 표 안에는 넣지 않는다.
 5) 솔직한 단점을 최소 1줄 쓴다. ("아쉬운 점:" 으로 시작)
 6) 분량 900~1300자. 이 길이를 넘기면 출력이 잘려 실패한다 — 짧고 밀도 있게.
 7) 확인 못 한 값은 "[확인 필요]"로 남긴다. (지어내면 안 된다)
@@ -670,7 +888,8 @@ function normBlog(data, banPhrases) {
   const warnings = arr(data.warnings, 10).map((w) => s(w, 200)).filter(Boolean);
   const banHits = scanBans(body, banPhrases);
   if (!body) warnings.push('본문이 비어 있습니다. 다시 생성해 주세요.');
-  return { titles, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length };
+  const photoSlots = (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length;
+  return { titles, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length, photoSlots };
 }
 
 function scanBans(text, banPhrases) {
@@ -772,12 +991,22 @@ module.exports = async function handler(req, res) {
   const keyConfigured = !!(process.env.GEMINI_API_KEY && String(process.env.GEMINI_API_KEY).trim());
 
   if (req.method === 'GET') {
+    const u = new URL(req.url || '/', 'http://localhost');
+    const act = s(u.searchParams.get('action'), 20);
+    // 📸 사진 검색 — 블로그 생성과 별개로 GET 으로 쓴다(키 없이도 Wikimedia Commons 로 동작).
+    if (act === 'photos') return handlePhotos(res, u);
+    if (act === 'photo-dl') return handlePhotoDownload(res, u);
     return send(res, 200, {
       ok: true,
       keyConfigured,
       model: PRIMARY_MODEL,
       fallbacks: FALLBACK_MODELS,
       actions: ['blog', 'video_plan', 'youtube_analyze', 'blog_to_shorts'],
+      photos: {
+        pixabay: !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim()),
+        commons: true,
+        how: 'GET ?action=photos&q=검색어&n=6 → { ok, source, photos[] } / ?action=photo-dl&u=이미지주소&name=파일명.jpg',
+      },
     });
   }
 
