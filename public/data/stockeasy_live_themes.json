@@ -3,187 +3,181 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-17 20:18:57",
- "updatedAt": "2026-11-17T20:18:34.977176+09:00",
+ "fetchedAt": "2026-11-18 08:09:46",
+ "updatedAt": "2026-11-18T08:09:20.069040+09:00",
  "updatedAgeMin": 0.4,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "033340",
-  "047770",
-  "025980",
-  "417010",
-  "033790",
-  "029480",
-  "012200",
-  "030530",
-  "389500",
-  "448900",
-  "069510",
-  "347700",
-  "027360",
-  "086450",
-  "009420",
-  "000100"
+  "007810",
+  "323280",
+  "356860",
+  "009150",
+  "399720",
+  "000660",
+  "281820",
+  "031980",
+  "222800",
+  "053610"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "남북경협",
-   "avgRS": 68,
+   "name": "PCB",
+   "avgRS": 91,
    "stocks": [
     {
-     "code": "033340",
-     "name": "좋은사람들",
-     "chg": 26.6,
-     "value_eok": 89.69,
+     "code": "007810",
+     "name": "코리아써키트",
+     "chg": 8.6,
+     "value_eok": 228.94,
      "verified": true
     },
     {
-     "code": "047770",
-     "name": "코데즈컴바인",
-     "chg": 13.8,
-     "value_eok": 308.15,
+     "code": "323280",
+     "name": "태성",
+     "chg": 8.1,
+     "value_eok": 32.17,
      "verified": true
     },
     {
-     "code": "025980",
-     "name": "아난티",
-     "chg": 5.8,
-     "value_eok": 387.35,
+     "code": "356860",
+     "name": "티엘비",
+     "chg": 7.9,
+     "value_eok": 98.27,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "2차전지",
-   "avgRS": 71,
+   "name": "온디바이스 AI",
+   "avgRS": 73,
    "stocks": [
     {
-     "code": "417010",
-     "name": "나노팀",
-     "chg": 29.8,
-     "value_eok": 28.91,
+     "code": "323280",
+     "name": "태성",
+     "chg": 8.1,
+     "value_eok": 32.17,
      "verified": true
     },
     {
-     "code": "033790",
-     "name": "피노",
-     "chg": 12.4,
-     "value_eok": 187.77,
+     "code": "009150",
+     "name": "삼성전기",
+     "chg": 6.9,
+     "value_eok": 907.6,
      "verified": true
     },
     {
-     "code": "029480",
-     "name": "광무",
-     "chg": 6.8,
-     "value_eok": 16.81,
+     "code": "399720",
+     "name": "가온칩스",
+     "chg": 6.9,
+     "value_eok": 165.09,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "로봇",
-   "avgRS": 93,
+   "name": "CXL",
+   "avgRS": 92,
    "stocks": [
     {
-     "code": "012200",
-     "name": "계양전기",
-     "chg": 29.9,
-     "value_eok": 142.29,
+     "code": "007810",
+     "name": "코리아써키트",
+     "chg": 8.6,
+     "value_eok": 228.94,
      "verified": true
     },
     {
-     "code": "030530",
-     "name": "원익홀딩스",
-     "chg": 3.2,
-     "value_eok": 700.3,
+     "code": "356860",
+     "name": "티엘비",
+     "chg": 7.9,
+     "value_eok": 98.27,
      "verified": true
     },
     {
-     "code": "389500",
-     "name": "에스비비테크",
-     "chg": 2.1,
-     "value_eok": 13.51,
+     "code": "000660",
+     "name": "SK하이닉스",
+     "chg": 5.7,
+     "value_eok": 2829.59,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "자동차부품",
-   "avgRS": 93,
+   "name": "HBM",
+   "avgRS": 91,
    "stocks": [
     {
-     "code": "012200",
-     "name": "계양전기",
-     "chg": 29.9,
-     "value_eok": 142.29,
+     "code": "281820",
+     "name": "케이씨텍",
+     "chg": 6.5,
+     "value_eok": 14.83,
      "verified": true
     },
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 1.0,
-     "value_eok": 42.91
+     "code": "031980",
+     "name": "피에스케이홀딩스",
+     "chg": 5.8,
+     "value_eok": 15.39
     },
     {
-     "code": "069510",
-     "name": "에스텍",
-     "chg": 0.6,
-     "value_eok": 58.65
+     "code": "000660",
+     "name": "SK하이닉스",
+     "chg": 5.7,
+     "value_eok": 2829.59
     }
    ]
   },
   {
    "rank": 5,
-   "name": "스페이스X",
+   "name": "반도체 소부장",
    "avgRS": 93,
    "stocks": [
     {
-     "code": "417010",
-     "name": "나노팀",
-     "chg": 29.8,
-     "value_eok": 28.91
+     "code": "007810",
+     "name": "코리아써키트",
+     "chg": 8.6,
+     "value_eok": 228.94
     },
     {
-     "code": "347700",
-     "name": "스피어",
-     "chg": 1.0,
-     "value_eok": 93.84
+     "code": "222800",
+     "name": "심텍",
+     "chg": 6.3,
+     "value_eok": 146.35
     },
     {
-     "code": "027360",
-     "name": "아주IB투자",
-     "chg": -1.2,
-     "value_eok": 34.92
+     "code": "031980",
+     "name": "피에스케이홀딩스",
+     "chg": 5.8,
+     "value_eok": 15.39
     }
    ]
   },
   {
    "rank": 6,
-   "name": "제약",
-   "avgRS": 70,
+   "name": "아이폰",
+   "avgRS": 92,
    "stocks": [
     {
-     "code": "086450",
-     "name": "동국제약",
-     "chg": 7.6,
-     "value_eok": 376.63
+     "code": "009150",
+     "name": "삼성전기",
+     "chg": 6.9,
+     "value_eok": 907.6
     },
     {
-     "code": "009420",
-     "name": "한올바이오파마",
-     "chg": 5.5,
-     "value_eok": 268.53
+     "code": "000660",
+     "name": "SK하이닉스",
+     "chg": 5.7,
+     "value_eok": 2829.59
     },
     {
-     "code": "000100",
-     "name": "유한양행",
-     "chg": 2.6,
-     "value_eok": 384.88
+     "code": "053610",
+     "name": "프로텍",
+     "chg": 5.0,
+     "value_eok": 0.75
     }
    ]
   }

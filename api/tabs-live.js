@@ -1264,6 +1264,69 @@ async function fetchNxtLeaders() {
   return { byPct, byValue, searchTop, sessionType, errors, ok: byPct.length + byValue.length > 0 };
 }
 
+/* ------------------- 네이버 실시간 검색순위 (KRX · searchTop) -------------------
+ *  · stock.naver.com 의 통합(정규장) 랭킹을 orderType=searchTop 으로 받아 Top 30 을 쓴다.
+ *  · 장전(PREOPEN)·응답 실패에는 빈 배열을 돌려준다 — 어제 순위를 오늘 검색순위로 추정하지 않는다.
+ *  · 순위는 원본 응답의 자리(index+1)를 그대로 쓴다(필터로 빠진 종목이 있어도 순위가 밀리지 않게).
+ */
+const SEARCH_TOP_URL =
+  'https://stock.naver.com/api/domestic/market/stock/default' +
+  '?tradeType=KRX&marketType=ALL&orderType=searchTop&startIdx=0&pageSize=30';
+const SEARCH_TOP_MAX = 30;
+
+async function fetchSearchTopKRX(preOpen) {
+  if (preOpen) return [];
+  try {
+    const data = await fetchJson(SEARCH_TOP_URL, { headers: NXT_RANK_HEADERS, timeout: NXT_RANK_TIMEOUT });
+    if (!Array.isArray(data) || !data.length) throw new Error('검색순위 목록이 비었습니다');
+    const out = [];
+    data.forEach((d, i) => {
+      if (!d || !d.itemcode) return;
+      if (String(d.type || '') !== 'ST') return;
+      if (isPreferredStock({ name: d.itemname, code: d.itemcode })) return;
+      if (out.some((x) => x.code === d.itemcode)) return;
+      out.push({
+        rank: i + 1,
+        code: d.itemcode,
+        name: d.itemname || null,
+        changePct: nxtSigned(d.prevChangeRate, d.upDownGb),
+        value: parseNum(d.tradeAmount),
+        market: d.sosok === '1' ? 'KOSDAQ' : d.sosok === '0' ? 'KOSPI' : null,
+      });
+    });
+    return out.slice(0, SEARCH_TOP_MAX);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * 테마 카드 제목 옆 검색 뱃지 — 테마 카드에 노출된 종목 중 검색 Top 30 진입분만 센다.
+ *  bestRank = 진입 종목 중 가장 높은(작은 숫자) 순위, count = 진입 종목 수.
+ *  한 종목도 없으면 searchBadge = null (화면에서 생략).
+ */
+function attachSearchBadges(themes, searchTop) {
+  const list = Array.isArray(themes) ? themes : [];
+  if (!list.length) return list;
+  const rankOf = new Map();
+  (searchTop || []).forEach((x) => {
+    if (x && x.code && typeof x.rank === 'number') rankOf.set(x.code, x.rank);
+  });
+  list.forEach((t) => {
+    let best = null;
+    let count = 0;
+    (t.stocks || []).forEach((s) => {
+      if (!s || !s.code) return;
+      const r = rankOf.get(s.code);
+      if (typeof r !== 'number') return;
+      count += 1;
+      if (best === null || r < best) best = r;
+    });
+    t.searchBadge = best === null ? null : { bestRank: best, count };
+  });
+  return list;
+}
+
 /** 고정 감시군(테마32+RN11+종베10) 밖에서 지금 실제로 움직이는 종목 코드를 고른다. */
 function pickDynamicCodes(nxt, excludeCodes) {
   const known = new Set(excludeCodes || []);
@@ -2157,13 +2220,14 @@ module.exports = async function handler(req, res) {
   const nxt = await fetchNxtLeaders();
   const dynCodes = nxt.ok ? pickDynamicCodes(nxt, WATCH_CODES) : [];
 
-  const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR] = await Promise.allSettled([
+  const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR, searchR] = await Promise.allSettled([
     fetchThemeQuotes(dynCodes, preOpenTheme),
     fetchList('high52week', 'KOSPI'),
     fetchList('high52week', 'KOSDAQ'),
     fetchList('up', 'KOSPI'),
     fetchList('up', 'KOSDAQ'),
     fetchNews(),
+    fetchSearchTopKRX(preOpenTheme),
   ]);
 
   const sources = [];
@@ -2185,6 +2249,16 @@ module.exports = async function handler(req, res) {
   const okUpKospi = note('naver-up-KOSPI', upKospiR);
   const okUpKosdaq = note('naver-up-KOSDAQ', upKosdaqR);
   const okNews = note('naver-news', newsR);
+  const searchTop = searchR.status === 'fulfilled' && Array.isArray(searchR.value) ? searchR.value : [];
+  sources.push({
+    name: 'naver-search-top',
+    ok: searchTop.length > 0,
+    detail: searchTop.length
+      ? `KRX searchTop ${searchTop.length}종목 (1위 ${searchTop[0].name || searchTop[0].code})`
+      : preOpenTheme
+        ? '장전 — 검색순위 비움(어제 순위로 추정하지 않음)'
+        : '응답 없음/빈 목록 — 뱃지 생략',
+  });
   sources.push({
     name: 'naver-nxt-rank',
     ok: nxt.ok,
@@ -2208,7 +2282,7 @@ module.exports = async function handler(req, res) {
         themeSeUpdatedAt: null,
         themeSeError: null,
       };
-  const themes = themeData.themes;
+  const themes = attachSearchBadges(themeData.themes, searchTop);
   const knownMap = themeData.map || {};
 
   const high52Lists = [okHighKospi ? highKospiR.value : null, okHighKosdaq ? highKosdaqR.value : null].filter(Boolean);
@@ -2363,6 +2437,13 @@ module.exports = async function handler(req, res) {
       : '1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).',
   );
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
+  if (searchTop.length) {
+    notes.push(
+      `테마 제목 옆 🔍 뱃지는 네이버 실시간 검색순위 Top 30 안에 든 테마 카드 노출 종목의 최고 순위·종목 수입니다(1위 ${searchTop[0].name || searchTop[0].code}).`,
+    );
+  } else {
+    notes.push('실시간 검색순위(네이버 searchTop)는 장전·응답 실패로 비어 있어 🔍 뱃지·검색 가점을 생략합니다.');
+  }
   if (themeData.themeSource === 'naver-theme') {
     if (themeData.themeSeIn > 0) {
       const seAt = themeData.themeSeUpdatedAt ? String(themeData.themeSeUpdatedAt).slice(11, 16) : '—';
@@ -2406,6 +2487,8 @@ module.exports = async function handler(req, res) {
     sessionLabel: session.label,
     marketStatus: naverStatus,
     themes,
+    searchTop,
+    searchTopBasis: 'naver stock.naver.com KRX searchTop Top 30 (실시간 검색순위)',
     themeSource: themeData.themeSource || null,
     themeRankTotal: themeData.themeRankTotal || 0,
     themeSeIn: themeData.themeSeIn || 0,
@@ -2450,3 +2533,5 @@ module.exports = async function handler(req, res) {
 // 테스트(test_local.mjs)에서 우선주 판별 규칙을 직접 검증할 수 있게 내보낸다.
 module.exports.isPreferredStock = isPreferredStock;
 module.exports.PREFERRED_NAME_RE = PREFERRED_NAME_RE;
+module.exports.fetchSearchTopKRX = fetchSearchTopKRX;
+module.exports.attachSearchBadges = attachSearchBadges;

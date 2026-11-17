@@ -1697,7 +1697,10 @@
     sessionPhase: null,
     reqId: 0,
     folds: {},          // 접힘 목록 사용자 상태(기본 접힘)
-    afterMinValue: null // 3번 탭 '시간외 대금 10억↑만 보기' 토글 상태(null=기본 ON)
+    afterMinValue: null, // 3번 탭 '시간외 대금 10억↑만 보기' 토글 상태(null=기본 ON)
+    tv: null,            // 당일 거래대금 1분 버킷(종목코드 → [[분, 억], ...])
+    tvDate: null,        // 버킷을 불러온 날짜(당일 키)
+    tvNowMin: null       // 마지막 버킷 기록 분
   };
 
   /* ------------------------------ 포맷 유틸 ------------------------------ */
@@ -1864,8 +1867,13 @@
 
     var volEl = tile.querySelector('.st-vol');
     if (volEl && stock.valueText) {
-      volEl.textContent = stock.valueText;
-      volEl.title = '거래대금 ' + stock.valueText + ' (' + (stock.valueBasis || '통합') + ')';
+      var g = isNum(stock.value) && stock.code ? tvGain(stock.code, tvEok(stock.value), state.tvNowMin) : null;
+      volEl.className = 'st-vol' + (g && g.level !== 'low' ? ' tv-' + g.level : '');
+      volEl.innerHTML = esc(stock.valueText) +
+        (g ? '<span class="tv-gain">' + esc(tvGainText(g)) + '</span>' : '') +
+        (g && g.level === 'hot' ? '<span class="tv-badge">🔥 급증</span>' : '');
+      volEl.title = '거래대금 ' + stock.valueText + ' (' + (stock.valueBasis || '통합') + ')' +
+        (g ? ' · 5분·15분 전 대비 순증' : '');
       hits += 1;
     }
 
@@ -3278,6 +3286,270 @@
   }
 
   /* ==========================================================================
+   * 🕯 [1탭] 거래대금 5분 · 15분 순증 + 형광 신호등
+   * ----------------------------------------------------------------------------
+   *  · 취득한 실시간 거래대금(통합·억)을 종목별 '1분 버킷'으로 브라우저 메모리 +
+   *    localStorage(당일 날짜 키 sd_tv_bucket_YYYY-MM-DD)에 최근 45분 저장한다.
+   *  · 5분 전 / 15분 전 버킷과 비교해 순증을 표시한다 — 아직 쌓이지 않았거나
+   *    증가분이 0 이하이면 아무 것도 그리지 않는다(값을 만들지 않는다).
+   *  · 신호등: 5분 +30억↑ 또는 15분 +100억↑ = 🔥급증(핫핑크 글로우 + 뱃지),
+   *            5분 +10억↑ 또는 15분 +30억↑  = 🌿유입(라임 하이라이트).
+   * ==========================================================================*/
+  var TV_KEY_PREFIX = 'sd_tv_bucket_';
+  var TV_KEEP_MIN = 45;
+  var TV_GAIN_HOT_5 = 30;
+  var TV_GAIN_HOT_15 = 100;
+  var TV_GAIN_IN_5 = 10;
+  var TV_GAIN_IN_15 = 30;
+
+  function tvTodayKey() {
+    var d = new Date();
+    function p2(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  }
+
+  function tvLoad() {
+    var today = tvTodayKey();
+    if (state.tvDate === today && state.tv) return state.tv;
+    var parsed = {};
+    try {
+      var raw = window.localStorage ? window.localStorage.getItem(TV_KEY_PREFIX + today) : null;
+      parsed = raw ? JSON.parse(raw) : {};
+    } catch (e) { parsed = {}; }
+    state.tvDate = today;
+    state.tv = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    return state.tv;
+  }
+
+  function tvSave(tv) {
+    try {
+      if (window.localStorage) window.localStorage.setItem(TV_KEY_PREFIX + tvTodayKey(), JSON.stringify(tv));
+    } catch (e) { /* 저장소 가득참·사생활 모드 — 메모리 값으로만 계산한다 */ }
+  }
+
+  function tvEok(value) { return Math.round((value / 1e8) * 10) / 10; }
+
+  /* 이번 폴링 값을 1분 버킷에 기록한다(같은 분이면 덮어쓴다). */
+  function tvRecord(themes) {
+    var nowMin = Math.floor(Date.now() / 60000);
+    var tv = tvLoad();
+    var touched = 0;
+    (themes || []).forEach(function (t) {
+      (t.stocks || []).forEach(function (s) {
+        if (!s || !s.code || !isNum(s.value)) return;
+        var eok = tvEok(s.value);
+        var arr = tv[s.code];
+        if (!Array.isArray(arr)) { arr = []; tv[s.code] = arr; }
+        var last = arr[arr.length - 1];
+        if (last && last[0] === nowMin) last[1] = eok;
+        else arr.push([nowMin, eok]);
+        while (arr.length > 1 && arr[0][0] < nowMin - TV_KEEP_MIN) arr.shift();
+        touched += 1;
+      });
+    });
+    state.tvNowMin = nowMin;
+    if (touched) tvSave(tv);
+    return touched;
+  }
+
+  /* 목표 시각(now-5 / now-15) 이전의 가장 가까운 버킷. 구간이 비어 있으면 null. */
+  function tvPastEok(code, nowMin, targetMin, tolMin) {
+    var tv = state.tv || tvLoad();
+    var arr = tv[code];
+    if (!Array.isArray(arr) || arr.length < 2) return null;
+    var hit = null;
+    for (var i = 0; i < arr.length; i += 1) {
+      if (typeof arr[i][0] === 'number' && arr[i][0] <= targetMin) hit = arr[i];
+    }
+    if (!hit) return null;
+    if (hit[0] >= nowMin) return null;
+    if (hit[0] < targetMin - tolMin) return null; // 스냅샷 사이가 비어 오차가 큼
+    return hit[1];
+  }
+
+  function tvFmt(v) {
+    var n = Math.round(v * 10) / 10;
+    return n >= 10 ? String(Math.round(n)) : n.toFixed(1);
+  }
+
+  function tvGain(code, eok, nowMin) {
+    if (!code || !isNum(eok)) return null;
+    var now = isNum(nowMin) ? nowMin : Math.floor(Date.now() / 60000);
+    var d5 = null;
+    var d15 = null;
+    var p5 = tvPastEok(code, now, now - 5, 3);
+    if (isNum(p5)) d5 = Math.round((eok - p5) * 10) / 10;
+    var p15 = tvPastEok(code, now, now - 15, 4);
+    if (isNum(p15)) d15 = Math.round((eok - p15) * 10) / 10;
+    if (d5 !== null && d5 <= 0) d5 = null;
+    if (d15 !== null && d15 <= 0) d15 = null;
+    if (d5 === null && d15 === null) return null;
+    var level = 'low';
+    if ((d5 !== null && d5 >= TV_GAIN_HOT_5) || (d15 !== null && d15 >= TV_GAIN_HOT_15)) level = 'hot';
+    else if ((d5 !== null && d5 >= TV_GAIN_IN_5) || (d15 !== null && d15 >= TV_GAIN_IN_15)) level = 'in';
+    return { d5: d5, d15: d15, level: level };
+  }
+
+  function tvGainText(g) {
+    if (!g) return '';
+    var parts = [];
+    if (g.d5 !== null) parts.push('5분 +' + tvFmt(g.d5));
+    if (g.d15 !== null) parts.push('15분 +' + tvFmt(g.d15));
+    return parts.length ? ' (' + parts.join(' · ') + ')' : '';
+  }
+
+  /* 거래대금 span — 순증 텍스트 + 신호등 클래스. 순증이 없으면 원래 표기 그대로. */
+  function volHtml(stock) {
+    var text = esc((stock && stock.valueText) || '—');
+    if (!stock || !stock.code || !isNum(stock.value)) return '<span class="st-vol">' + text + '</span>';
+    var g = tvGain(stock.code, tvEok(stock.value), state.tvNowMin);
+    var tip = '거래대금 ' + ((stock && stock.valueText) || '—') + ' (' + ((stock && stock.valueBasis) || '통합') + ')';
+    if (g && g.level !== 'low') {
+      tip += ' · 5분·15분 전 대비 순증 — ' + (g.level === 'hot' ? '급증(5분 +30억↑ / 15분 +100억↑)' : '유입(5분 +10억↑ / 15분 +30억↑)');
+    }
+    return '<span class="st-vol' + (g && g.level !== 'low' ? ' tv-' + g.level : '') + '" title="' + esc(tip) + '">' +
+      text + (g ? '<span class="tv-gain">' + esc(tvGainText(g)) + '</span>' : '') +
+      (g && g.level === 'hot' ? '<span class="tv-badge">🔥 급증</span>' : '') +
+      '</span>';
+  }
+
+  /* ==========================================================================
+   * 👀 [1탭] 지금 봐야 할 섹터 & 종목 (테마맵 바로 아래 접기/펴기 박스)
+   *  · 점수 = 등락률×3 + log10(합산/종목 대금)×4 + 검색순위 가점((31-순위)/3) + 진입종목×0.8
+   *  · 강세 테마·거래대금·실시간 검색순위를 한 줄에 모아, 직장인이 잠깐 봐도
+   *    '지금 강한 섹터'와 '그 안에서 대금·검색이 붙는 종목'을 바로 집게 한다.
+   *  · 값은 /api/tabs-live 의 themes(top4 평균·합산 대금·검색 뱃지)만 쓴다 — 추정 없음.
+   * ==========================================================================*/
+  function watchScoreTheme(t) {
+    var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : t.avgPct);
+    var sumEok = isNum(t.sumValue) ? t.sumValue / 1e8 : 0;
+    var best = t.searchBadge && isNum(t.searchBadge.bestRank) ? t.searchBadge.bestRank : null;
+    var cnt = t.searchBadge && isNum(t.searchBadge.count) ? t.searchBadge.count : 0;
+    var score = (isNum(avg) ? avg * 3 : 0) + Math.log(Math.max(sumEok, 1)) / Math.LN10 * 4 +
+      (best ? (31 - best) / 3 : 0) + cnt * 0.8;
+    return {
+      name: t.name || '—',
+      avg: isNum(avg) ? avg : null,
+      sumEok: sumEok,
+      sumText: t.sumValueText || '—',
+      bestRank: best,
+      count: cnt,
+      score: Math.round(score * 10) / 10,
+      rank: t.rank || 0,
+    };
+  }
+
+  function watchScoreStock(s, themeScore) {
+    var pct = isNum(s.livePct) ? s.livePct : s.changePct;
+    var eok = isNum(s.value) ? s.value / 1e8 : 0;
+    var rank = isNum(s.searchRank) ? s.searchRank : null;
+    var score = (isNum(pct) ? pct * 3 : 0) + Math.log(Math.max(eok, 1)) / Math.LN10 * 3 +
+      (rank ? (31 - rank) / 3 : 0) + (isNum(themeScore) ? themeScore * 0.05 : 0);
+    return {
+      name: s.name || '—',
+      code: s.code || '',
+      pct: isNum(pct) ? pct : null,
+      price: isNum(s.livePrice) ? s.livePrice : s.price,
+      valueEok: eok,
+      valueText: s.valueText || '—',
+      searchRank: rank,
+      themeName: s.themeNameRef || '',
+      role: s.role || '',
+      score: Math.round(score * 10) / 10,
+    };
+  }
+
+  function watchSectorItemHtml(w, idx) {
+    var meta = '합산 ' + w.sumText;
+    if (w.bestRank) meta += ' · 🔍 최고 ' + w.bestRank + '위 · ' + w.count + '종목';
+    var tip = '종합점수 ' + w.score + ' = 등락률×3 + log₁₀(합산 대금)×4' +
+      (w.bestRank ? ' + 검색순위 가점' : '') + ' + 검색 진입종목×0.8 (누르면 테마 카드로 이동)';
+    return '<div class="watch-item" data-live="1" onclick="themeWatchFocus(' + (idx - 1) + ')" title="' + esc(tip) + '">' +
+      '<div class="wi-head"><span class="wi-rank">' + idx + '</span>' +
+        '<span class="wi-name">' + esc(w.name) + '</span>' +
+        '<span class="wi-pct" style="color:' + colFor(w.avg) + '">' + esc(pctTxt(w.avg)) + '</span></div>' +
+      '<div class="wi-meta">' + esc(meta) + '</div></div>';
+  }
+
+  function watchStockItemHtml(w, idx) {
+    var meta = w.valueText;
+    if (w.searchRank) meta += ' · 🔍 ' + w.searchRank + '위';
+    if (w.themeName) meta += ' · ' + w.themeName;
+    var click = buildOnclick(
+      w.name + (w.code ? ' (' + w.code + ')' : ''),
+      pctTxt(w.pct),
+      '대금 ' + w.valueText + ' | 현재가 ' + fmt(w.price) + '원',
+      '지금 봐야 할 종목 ' + idx + '위 — ' + (w.themeName || '테마') + ' · ' +
+        (w.searchRank ? '실시간 검색 ' + w.searchRank + '위 · ' : '') + '대금 ' + w.valueText
+    );
+    var tip = '종합점수 ' + w.score + ' = 등락률×3 + log₁₀(대금)×3' +
+      (w.searchRank ? ' + 검색순위 가점' : '') + ' + 소속 테마 점수 가점';
+    return '<div class="watch-item" data-live="1" onclick="' + esc(click) + '" title="' + esc(tip) + '">' +
+      '<div class="wi-head"><span class="wi-rank">' + idx + '</span>' +
+        '<span class="wi-name">' + esc(w.name) + '</span>' +
+        '<span class="wi-pct" style="color:' + colFor(w.pct) + '">' + esc(pctTxt(w.pct)) + '</span></div>' +
+      '<div class="wi-meta">' + esc(meta) + '</div></div>';
+  }
+
+  function renderWatchBox(body, stamp) {
+    var host = document.getElementById('watchBody');
+    if (!host) return 0;
+    var themes = (body.themes || []).filter(function (t) { return t && t.name; });
+    if (!themes.length) return 0;
+
+    var rankOf = {};
+    (body.searchTop || []).forEach(function (x) {
+      if (x && x.code && isNum(x.rank)) rankOf[x.code] = x.rank;
+    });
+
+    var sectors = themes.map(function (t) { return watchScoreTheme(t); });
+    var stocks = [];
+    themes.forEach(function (t, ti) {
+      var sc = sectors[ti].score;
+      (t.stocks || []).forEach(function (s) {
+        if (!s || !s.code) return;
+        var row = watchScoreStock(s, sc);
+        row.searchRank = rankOf[s.code] || null;
+        row.themeName = t.name || '';
+        stocks.push(row);
+      });
+    });
+
+    var topSectors = sectors.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
+    var topStocks = stocks.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
+
+    var leftHtml = topSectors.map(function (w, i) {
+      return watchSectorItemHtml(w, i + 1);
+    }).join('');
+    var rightHtml = topStocks.map(function (w, i) {
+      return watchStockItemHtml(w, i + 1);
+    }).join('');
+    if (!leftHtml && !rightHtml) return 0;
+
+    var html =
+      '<div class="watch-col"><div class="watch-col-head">🔥 지금 봐야 할 섹터 <span>1 · 2 · 3위</span></div>' +
+        (leftHtml || '<div class="watch-empty">실시간 테마 데이터 없음</div>') + '</div>' +
+      '<div class="watch-col"><div class="watch-col-head">🎯 지금 봐야 할 종목 <span>1 · 2 · 3위</span></div>' +
+        (rightHtml || '<div class="watch-empty">실시간 종목 데이터 없음</div>') + '</div>';
+
+    if (host.getAttribute('data-sig') !== html) {
+      host.innerHTML = html;
+      host.setAttribute('data-sig', html);
+    }
+    host.setAttribute('data-live', '1');
+    var box = document.getElementById('watchBox');
+    if (box) {
+      var sub = box.querySelector('.watch-sub');
+      if (sub) {
+        var txt = '강세 테마 + 거래대금 + 실시간 검색 종합 · ⚡ ' + stamp + ' 갱신';
+        if (sub.textContent !== txt) sub.textContent = txt;
+      }
+      box.setAttribute('data-live', '1');
+    }
+    return topSectors.length + topStocks.length;
+  }
+
+  /* ==========================================================================
    * [1탭] 주도 테마맵 — 네이버 실시간 테마 랭킹(동적 Top 8)으로 통째로 다시 그린다.
    *  · /api/tabs-live 의 themes 가 themeSource='naver-theme' 일 때만 그린다.
    *  · 테마 랭킹이 죽으면 고정 8대 테마(정적 HTML)를 그대로 둔다 — 동적 테마를 고정값으로 덮어쓰지 않는다.
@@ -3313,7 +3585,7 @@
         '<div class="st-ohlc">' + (isNum(s.livePrice) ? '프' : s.priceBasis === '직전 종가' ? '종' : '현') + ' <strong>' + esc(fmt(price)) + '</strong>' +
           ' | 시 ' + esc(fmt(s.open)) + ' 고 ' + esc(fmt(s.high)) + ' 저 ' + esc(fmt(s.low)) + '</div>' +
         '<div class="st-bottom">' +
-          '<span class="st-vol" title="거래대금 ' + esc(s.valueText || '—') + ' (' + esc(s.valueBasis || '통합') + ')">' + esc(s.valueText || '—') + '</span>' +
+          volHtml(s) +
           (role ? '<span class="st-role" style="' + roleStyle + ' font-size:9px; white-space:nowrap;">' + esc(roleTxt) + '</span>' : '') +
         '</div>' +
       '</div>'
@@ -3335,6 +3607,11 @@
     var nameBadge = isSe
       ? '<span style="font-size:9px; font-weight:900; color:#c4b5fd; background:rgba(124,58,237,0.22); border:1px solid rgba(167,139,250,0.45); border-radius:4px; padding:1px 4px; margin-left:5px; letter-spacing:-0.2px;">스탁이지</span>'
       : '';
+    /* 🔍 실시간 검색 뱃지 — 테마 카드 노출 종목 중 검색 Top 30 진입분(최고 순위 + 종목 수) */
+    var sb = t.searchBadge;
+    var searchBadge = sb && isNum(sb.bestRank)
+      ? '<span class="tv-search" title="네이버 실시간 검색순위 Top 30 — 테마 카드 노출 종목 중 ' + esc(sb.count) + '종목 진입 · 최고 ' + esc(sb.bestRank) + '위">🔍 최고 ' + esc(sb.bestRank) + '위 · ' + esc(sb.count) + '종목</span>'
+      : '';
     /* 상승 확산도 — 단독 1종목 급등인지 섹터 전체가 오르는지 한눈에 보이게 한다 */
     var spread = totalN
       ? ' · 상승 ' + rise + '/' + totalN + (riseRatio != null ? ' (' + riseRatio + '%)' : '')
@@ -3343,7 +3620,7 @@
     return (
       '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
         '<div class="theme-header">' +
-          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 ' + (isSe ? '🔗 ' : '🔥 ') + esc(t.name) + '</span>' + nameBadge +
+          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 ' + (isSe ? '🔗 ' : '🔥 ') + esc(t.name) + '</span>' + nameBadge + searchBadge +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
             (t.avgPctBasisLabel
@@ -3445,8 +3722,10 @@
 
     // 1번 탭 — 주도 테마맵 : 네이버 실시간 테마 랭킹(동적 Top 8)으로 통째로 다시 그린다.
     //  랭킹이 살아 있으면 고정 8대 테마(정적 HTML)로 되돌리지 않는다.
-    var dynThemes = renderDynamicThemes(body, stamp);
+    //  ⚡ 거래대금 1분 버킷을 먼저 쌓은 뒤 그려야 이번 값까지 순증에 들어간다.
     var themes = body.themes || [];
+    tvRecord(themes);
+    var dynThemes = renderDynamicThemes(body, stamp);
     if (dynThemes > 0) {
       applied += dynThemes;
     } else {
@@ -3456,6 +3735,9 @@
       });
       if (themes.length) markThemeHead(stamp);
     }
+
+    // 1번 탭 — 👀 지금 봐야 할 섹터 & 종목 (테마맵 바로 아래 박스)
+    applied += renderWatchBox(body, stamp);
 
     // 비중법사·홍인기 탭 — 장중 실시간 기준봉/타점 판정 패널
     applied += renderStrategyLive(body, stamp);
@@ -3581,6 +3863,14 @@
     refresh: function () { poll(true); },
     state: state,
     _applyTheme: applyTheme,
+    _renderWatchBox: renderWatchBox,
+    _watchScoreTheme: watchScoreTheme,
+    _watchScoreStock: watchScoreStock,
+    _tvRecord: tvRecord,
+    _tvGain: tvGain,
+    _tvLoad: tvLoad,
+    _volHtml: volHtml,
+    _themeState: function () { return { tvDate: state.tvDate, tvNowMin: state.tvNowMin, codes: state.tv ? Object.keys(state.tv).length : 0 }; },
     _renderHigh52: renderHigh52,
     _renderUpperLimit: renderUpperLimit,
     _renderNews: renderNews,
