@@ -755,7 +755,8 @@
     <li>키 발급 — <b>Google AI Studio</b>(aistudio.google.com) → <code>Get API key</code> <span style="color:#fbbf24">(무료 티어 있음 · 초과 시 종량제)</span></li>
     <li><b>Vercel 프로젝트(sd_live)</b> → Settings → Environment Variables → <code>GEMINI_API_KEY</code> 저장 + Production 체크</li>
     <li>Redeploy 후 이 페이지에서 <b>[연동 확인]</b> → 위 상태가 <b>연동</b>으로 바뀌면 생성 버튼이 살아납니다.</li>
-    <li>모델 — <code>gemini-3.8-flash</code> 우선, 몰릴 때 3.1 Flash Lite → 3 Flash 로 자동 재시도하고 <b>실제 답한 모델</b>을 결과에 표시합니다.</li>
+    <li>모델 — <code>gemini-3.8-flash</code>(thinking 끔 → 응답 3~5초대) 우선, 429·타임아웃이면 <code>gemini-flash-lite-latest</code> → <code>gemini-3-flash-preview</code> 로 자동 폴백하고 <b>실제 답한 모델</b>을 결과에 표시합니다.</li>
+    <li>무료 티어는 <b>모델별 하루 20회</b> 제한이 있습니다. 다 쓰면 위 상태에 한도 안내가 뜨고, 다음 날 풀립니다.</li>
   </ol>
   <div class="warn">⚠️ 키는 이 페이지·GitHub 저장소에 넣지 않습니다. Vercel 서버리스 함수(<code>/api/content-ai</code>)만 키를 읽고, 브라우저는 키를 보지도 저장하지도 않습니다.</div>
 </div>
@@ -998,6 +999,14 @@
             <button class="qchip" data-topic="겨울 제주 가족여행 항공+숙소 최저가 정리">제주 특가</button>
           </div>
         </div>
+        <div class="field" style="margin-top:12px">
+          <label class="flabel" for="expNote">내 경험 메모 (선택) <span class="bdg info">1인칭 경험은 이 칸만</span></label>
+          <textarea id="expNote" rows="2" placeholder="직접 가본 곳·직접 써본 물건만 적으세요. 비우면 경험담 없이 조건·핵심 포인트만 담백하게 정리합니다. (예) 11/15 토 11시 방문, 주차 2시간 무료, 대기 20분" maxlength="2000"></textarea>
+          <div class="store-note">
+            <span id="expInfo">0자 · 이 브라우저에 저장 · AI가 지어낸 경험담은 쓰지 않습니다</span>
+            <button class="linkbtn" id="expClear">지우기</button>
+          </div>
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
           <button class="btn primary big" id="genBtn" style="flex:1 1 150px">🤖 AI 본문 생성</button>
           <button class="btn small ghost" id="genLocalBtn">오프라인 뼈대만</button>
@@ -1235,6 +1244,15 @@
       msg = '서버에 <b>GEMINI_API_KEY</b>가 없습니다. Vercel → Settings → Environment Variables 에 넣고 Redeploy 하면 켜집니다.';
     } else if (p.reason === 'all_models_busy' || err.status === 503){
       msg = 'Gemini 모델이 지금 몰려 있습니다(3.8 Flash → 3.1 Flash Lite → 3 Flash 순으로 시도). 1~2분 뒤 다시 눌러 주세요.';
+    } else if (p.reason === 'quota_exceeded' || err.status === 429){
+      var hrs = p.quota && p.quota.retryDelaySec ? Math.round(p.quota.retryDelaySec / 360) / 10 : null;
+      msg = '무료 티어의 <b>모델별 하루 요청 한도</b>(3.8 Flash 20회/일)를 다 썼습니다.' +
+        (hrs ? ' 약 ' + hrs + '시간 뒤 자동으로 풀립니다.' : '') +
+        ' Google AI Studio에서 결제(종량제)를 켜면 바로 늘어납니다. 지금은 [오프라인 뼈대]로 틀만 만들 수 있습니다.';
+    } else if (p.reason === 'truncated'){
+      msg = '출력이 토큰 한도에서 잘려 본문이 완성되지 않았습니다. 다시 누르면 더 짧게 다시 씁니다.';
+    } else if (p.reason === 'empty_result'){
+      msg = '답이 비어 왔습니다. 한 번 더 눌러 주세요.';
     } else if (p.reason === 'timeout' || err.status === 504){
       msg = 'Gemini가 시간 안에 답하지 않았습니다. 긴 글은 한 번 더 걸릴 수 있습니다.';
     } else {
@@ -2189,12 +2207,25 @@
 
   var outCard = $('#outCard'), outEmpty = $('#outEmpty'), outText = $('#outText'), outStat = $('#outStat');
 
+  function expNoteText(){
+    var el = $('#expNote');
+    return el ? String(el.value || '').trim() : '';
+  }
+  function saveExpNote(){
+    var el = $('#expNote');
+    if (!el) return;
+    try { localStorage.setItem('cs2_exp_note_v1', el.value || ''); } catch(e) {}
+    var info = $('#expInfo');
+    if (info) info.textContent = charLen(el.value || '') + '자 · 이 브라우저에 저장 · AI가 지어낸 경험담은 쓰지 않습니다';
+  }
+
   function blogPayload(topic, f){
     return {
       topic: topic,
       theme: guessTheme(f),
       form: { name: f.name, tone: f.tone, sections: f.sections, highlight: f.highlight },
       toneSample: getSample(f.id),
+      experienceNote: expNoteText(),
       banPhrases: banAll(),
       gaps: activeGapTexts('blog:' + f.id)
     };
@@ -3460,6 +3491,14 @@
   renderHooks();
   renderSubStage();
   renderTitles();
+  try { $('#expNote').value = localStorage.getItem('cs2_exp_note_v1') || ''; } catch(e){}
+  saveExpNote();
+  $('#expNote').addEventListener('input', saveExpNote);
+  $('#expClear').addEventListener('click', function(){
+    $('#expNote').value = '';
+    saveExpNote();
+    toast('경험 메모를 지웠습니다. 이제 경험담 없이 정리합니다.');
+  });
   $('#pingBtn').addEventListener('click', function(){ pingAI(); toast('연동 상태를 다시 확인합니다.'); });
   pingAI();
 

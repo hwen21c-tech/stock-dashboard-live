@@ -20,7 +20,12 @@
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models/';
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+// 429/타임아웃/오류 시 자동 폴백 — 1순위 lite-latest(3초대 응답) → 3 Flash(더 좋은 문장)
+const FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-3-flash-preview'];
+// thinkingConfig 를 400 INVALID_ARGUMENT 로 거절하는 모델 (실측 2026-11-17)
+const THINKING_UNSUPPORTED = ['gemini-flash-lite-latest'];
+// 응답 속도를 3~5초대로 낮추기 위한 thinking 예산 (3.8 Flash 는 기본 thinking 때문에 첫 토큰이 10초+ 걸린다)
+const THINKING_OFF = { thinkingBudget: 0 };
 const DEADLINE_MS = 50000; // Vercel maxDuration 60s 안에서 안전하게(직렬화·네트워크 여유 10초)
 const MAX_BODY_BYTES = 300 * 1024;
 const FIRST_TOKEN_MS = 16000; // 첫 토큰이 이 시간 안에 안 오면 그 모델은 죽은 것으로 보고 다음 모델로
@@ -247,6 +252,7 @@ const SCHEMA_SHORTS = {
 const HONESTY = [
   '확인하지 못한 가격·수치·통계·영업시간·고유 업체명을 절대 지어내지 않는다.',
   '사용자가 준 정보에 없는 고유명사·금액·날짜는 "[확인 필요]"로 남기고 warnings 에 적는다.',
+  '실제로 방문·구매하지 않은 대상을 "다녀왔다·먹어봤다·내돈내산·써봤다" 같은 1인칭 경험담으로 쓰지 않는다.',
   '추측과 사실을 섞지 않는다. 추측이면 "내 추정"이라고 밝힌다.',
   '과장·보장 표현("무조건", "100%", "역대급")을 쓰지 않는다.',
 ].join(' ');
@@ -269,6 +275,7 @@ function promptBlog(b) {
   const form = b.form || {};
   const sections = arr(form.sections, 8).map((x, i) => `${i + 1}) ${s(x, 80)}`).join('\n');
   const sample = s(b.toneSample, 4000);
+  const note = s(b.experienceNote, 2000);
   const gaps = arr(b.gaps, 6).map((x) => `- ${s(x, 120)}`).join('\n');
   const user = [
     `주제: ${s(b.topic, 200)}`,
@@ -276,17 +283,25 @@ function promptBlog(b) {
     sections ? `\n[반드시 이 순서로 섹션을 구성]\n${sections}` : '',
     form.highlight ? `\n[강조 포인트 — 이걸 지켜야 통과]\n${s(form.highlight, 400)}` : '',
     sample ? `\n[내 문체 샘플 — 문장 길이·어미·말버릇을 이 사람처럼]\n"""${sample}"""` : '',
+    note ? `\n[내 경험 메모 — 사용자가 직접 적은 사실. 1인칭 경험은 여기 있는 내용만 쓴다]\n"""${note}"""` : '',
     gaps ? `\n[경쟁 글 빈틈 메모 — 본문에서 실제로 메꿔라]\n${gaps}` : '',
     b.theme ? `\n참고 카테고리: ${s(b.theme, 40)}` : '',
     banLine(b.banPhrases),
     `
+[경험·사실 규칙 — 이걸 어기면 실패다]
+- 위 [내 경험 메모]에 없는 1인칭 경험(다녀왔다·가보니·먹어봤다·내돈내산·써봤다)을 절대 쓰지 않는다. 실제로 방문·구매한 적이 없다.
+- 경험 메모가 비어 있으면 '담백한 큐레이터' 어조로 쓴다. 확인된 조건·핵심 포인트·주의사항 중심으로. ("조건을 보면", "확인해야 할 것은", "~로 알려져 있다")
+- 경험 메모가 있으면 그 내용만 1인칭으로 살린다. 메모에 없는 디테일을 덧붙이지 않는다.
+- 사용자가 준 정보에 없는 업체·장소·상품·브랜드 이름을 지어내지 않는다. 예시가 필요하면 "A 업체", "B 숙소" 같은 자리표시자를 쓴다.
+- "내돈내산", "협찬 없음", "직접 써본" 표현은 경험 메모가 있을 때만 쓴다.
+
 [본문 작성 규칙]
 1) 첫 3줄이 훅이다. 인사말("안녕하세요") 없이 결론·숫자·상황으로 바로 시작한다.
 2) 위 섹션 순서를 그대로 쓰고 각 섹션 제목은 "## " 마크다운 소제목으로 단다.
 3) 조건 비교용 마크다운 표를 최소 1개 넣는다. ( | 구분 | A | B | 형식, 헤더 구분선 포함)
 4) 사진이 들어갈 자리는 정확히 "[📷 사진 자리]" 로 표시하고 2곳 이상 넣는다.
 5) 솔직한 단점을 최소 1줄 쓴다. ("아쉬운 점:" 으로 시작)
-6) 분량 1000~1500자. 모바일에서 스크롤 3번 안에 끝나는 길이.
+6) 분량 900~1300자. 이 길이를 넘기면 출력이 잘려 실패한다 — 짧고 밀도 있게.
 7) 확인 못 한 값은 "[확인 필요]"로 남긴다. (지어내면 안 된다)
 8) 제목 3종은 각각 32자 이내 — 네이버 모바일 검색 결과에서 잘리지 않게.
 9) gaps 에는 "같은 주제 인기 글들이 비워 둔 지점" 2개를, 각각 왜 비었는지 + 내가 무엇으로 채울지 1~2문장으로.
@@ -298,7 +313,7 @@ function promptBlog(b) {
     system: `너는 한국어 블로그를 직접 운영하는 사람이다. 검색 상위 글을 베끼지 않고, 내 경험과 실측값으로 쓴다. ${VOICE} ${HONESTY}`,
     user,
     schema: SCHEMA_BLOG,
-    maxTokens: 3072,
+    maxTokens: 3600,
     temperature: 0.95,
   };
 }
@@ -439,18 +454,21 @@ function sleep(ms) {
  *    (모델이 완전히 멈춘 경우 30초를 버리지 않기 위한 장치)
  *  - 첫 토큰이 온 뒤에는 attemptDeadline 까지 계속 받아 긴 글도 끝까지 받는다.
  */
-async function callModel(model, prompt, attemptDeadline) {
+async function callModel(model, prompt, attemptDeadline, thinkingOff) {
   const key = process.env.GEMINI_API_KEY;
   const url = `${API_ROOT}${model}:streamGenerateContent?alt=sse&key=${key}`;
+  const gen = {
+    temperature: prompt.temperature,
+    maxOutputTokens: prompt.maxTokens,
+    responseMimeType: 'application/json',
+    responseSchema: prompt.schema,
+  };
+  const wantThinkingOff = thinkingOff !== false && THINKING_UNSUPPORTED.indexOf(model) < 0;
+  if (wantThinkingOff) gen.thinkingConfig = THINKING_OFF;
   const body = {
     systemInstruction: { parts: [{ text: prompt.system }] },
     contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
-    generationConfig: {
-      temperature: prompt.temperature,
-      maxOutputTokens: prompt.maxTokens,
-      responseMimeType: 'application/json',
-      responseSchema: prompt.schema,
-    },
+    generationConfig: gen,
   };
   const ctrl = new AbortController();
   let phase = 'first'; // first | body
@@ -486,10 +504,26 @@ async function callModel(model, prompt, attemptDeadline) {
       } catch (_) {}
       const status = res.status;
       const msg = (json && json.error && json.error.message) || raw.slice(0, 300);
+      // thinkingConfig 를 지원하지 않는 모델이면 그 옵션만 빼고 한 번 더
+      if (status === 400 && wantThinkingOff && /invalid argument/i.test(msg)) {
+        clearTimeout(timer);
+        return callModel(model, prompt, attemptDeadline, false);
+      }
       const e = new Error(msg || `HTTP ${status}`);
       e.status = status;
       e.retryable = status === 503 || status === 429 || status === 500 || status === 504;
       e.geminiStatus = (json && json.error && json.error.status) || '';
+      const det = (json && json.error && Array.isArray(json.error.details)) ? json.error.details : [];
+      det.forEach((d) => {
+        if (d && /RetryInfo/.test(String(d['@type'] || '')) && d.retryDelay) {
+          const n = parseInt(String(d.retryDelay), 10);
+          if (Number.isFinite(n)) e.retryDelaySec = n;
+        }
+        (d && Array.isArray(d.violations) ? d.violations : []).forEach((v) => {
+          if (v && v.quotaId) e.quotaId = v.quotaId;
+          if (v && v.quotaValue) e.quotaValue = v.quotaValue;
+        });
+      });
       throw e;
     }
 
@@ -575,34 +609,53 @@ function modelOrder() {
 async function generate(prompt, deadline) {
   const order = modelOrder().filter((m, i, a) => m && a.indexOf(m) === i);
   const tries = [];
-  for (let i = 0; i < order.length; i++) {
-    const model = order[i];
-    const remaining = deadline - Date.now();
-    if (remaining < 6000) {
-      tries.push({ model, status: 0, message: '건너뜀(남은 시간 부족)' });
-      break;
+  // 1패스: 3.8 Flash → Lite Latest → 3 Flash. 2패스: 일시 혼잡(503/타임아웃)이었으면 한 바퀴 더.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < order.length; i++) {
+      const model = order[i];
+      const remaining = deadline - Date.now();
+      if (remaining < 6000) {
+        if (pass === 0) tries.push({ model, status: 0, message: '건너뜀(남은 시간 부족)' });
+        break;
+      }
+      const isLast = i === order.length - 1;
+      // 3.8 Flash 가 완전히 멈춘 상태에서 시간을 다 쓰지 않도록 뒤 모델 몫을 남겨 둔다.
+      const cap = isLast ? remaining : Math.min(model === PRIMARY_MODEL ? 30000 : 25000, Math.max(8000, remaining - 12000));
+      const attemptDeadline = Date.now() + Math.max(8000, cap);
+      try {
+        const out = await callModel(model, prompt, attemptDeadline);
+        if (model === PRIMARY_MODEL) primaryDownUntil = 0;
+        return { ...out, tries, fellBack: model !== PRIMARY_MODEL };
+      } catch (err) {
+        const downish = err.status === 503 || err.status === 429 || err.noFirstToken;
+        tries.push({
+          model,
+          pass: pass + 1,
+          status: err.status || 0,
+          message: String(err.message || '').slice(0, 200),
+          quotaId: err.quotaId || undefined,
+          retryDelaySec: err.retryDelaySec || undefined,
+        });
+        if (err.retryable === false) throw Object.assign(err, { tries });
+        if (model === PRIMARY_MODEL && downish) primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS;
+        if (i < order.length - 1) await sleep(120);
+      }
     }
-    const isLast = i === order.length - 1;
-    // 3.8 Flash 가 완전히 멈춘 상태에서 30초를 다 쓰지 않도록 뒤 모델 몫(20초)을 남겨 둔다.
-    const cap = isLast ? remaining : Math.min(model === PRIMARY_MODEL ? 30000 : 25000, remaining - 16000);
-    const attemptDeadline = Date.now() + Math.max(8000, cap);
-    try {
-      const out = await callModel(model, prompt, attemptDeadline);
-      if (model === PRIMARY_MODEL) primaryDownUntil = 0;
-      return { ...out, tries, fellBack: model !== PRIMARY_MODEL };
-    } catch (err) {
-      const downish = err.status === 503 || err.status === 429 || err.noFirstToken;
-      tries.push({ model, status: err.status || 0, message: String(err.message || '').slice(0, 200) });
-      if (err.retryable === false) throw Object.assign(err, { tries });
-      if (model === PRIMARY_MODEL && downish) primaryDownUntil = Date.now() + PRIMARY_COOLDOWN_MS;
-      if (!err.retryable) throw Object.assign(err, { tries });
-      if (i < order.length - 1) await sleep(150);
+    const transient = tries.some((t) => t.status === 503 || t.status === 504 || t.status === 0);
+    const quotaOnly = tries.length > 0 && tries.every((t) => t.status === 429);
+    if (pass === 0 && transient && !quotaOnly && deadline - Date.now() > 16000) {
+      await sleep(700);
+      continue;
     }
+    break;
   }
-  const e = new Error('모든 모델이 응답하지 않았습니다.');
-  e.status = 503;
-  e.code = 'all_models_busy';
+  const quotaHit = tries.length > 0 && tries.every((t) => t.status === 429);
+  const e = new Error(quotaHit ? '무료 티어 하루 요청 한도를 다 썼습니다.' : '모든 모델이 응답하지 않았습니다.');
+  e.status = quotaHit ? 429 : 503;
+  e.code = quotaHit ? 'quota_exceeded' : 'all_models_busy';
   e.tries = tries;
+  e.retryDelaySec = tries.reduce((a, t) => (t.retryDelaySec ? Math.min(a || 1e9, t.retryDelaySec) : a), null);
+  e.quotaId = (tries.find((t) => t.quotaId) || {}).quotaId || null;
   throw e;
 }
 
@@ -790,19 +843,27 @@ module.exports = async function handler(req, res) {
   try {
     out = await generate(prompt, deadline);
   } catch (err) {
-    const status = err.status === 400 ? 400 : err.status === 504 ? 504 : 503;
-    const busy = (err.tries || []).every((t) => t.status === 503 || t.status === 429 || t.status === 0 || t.status === 500);
+    // 400(잘못된 요청)만 400으로 돌려주고, 모델 혼잡·쿼터·타임아웃은 200 + ok:false 로 답한다.
+    // (브라우저 콘솔에 실패한 리소스가 에러로 쌓이지 않게 하면서, JSON 안에는 사실대로 적는다)
+    const status = err.status === 400 ? 400 : 200;
+    const hours = err.retryDelaySec ? Math.round(err.retryDelaySec / 360) / 10 : null;
+    const message =
+      err.code === 'quota_exceeded'
+        ? 'Gemini 무료 티어의 모델별 하루 요청 한도를 다 썼습니다(3.8 Flash 기준 20회/일). ' +
+          (hours ? `약 ${hours}시간 뒤에 자동으로 풀립니다. ` : '') +
+          '급하면 Google AI Studio(aistudio.google.com)에서 결제(종량제)를 켜면 바로 늘어납니다. 지금은 [오프라인 뼈대]로 틀만 만들 수 있습니다.'
+        : err.status === 504
+          ? 'Gemini 응답이 시간 안에 오지 않았습니다. 잠시 뒤 다시 눌러 주세요(긴 글은 한 번 더 걸릴 수 있습니다).'
+          : err.code === 'all_models_busy'
+            ? 'Gemini 모델이 지금 몰려서 응답하지 않았습니다(3.8 Flash → Flash Lite Latest → 3 Flash 순으로 시도). 1~2분 뒤 다시 눌러 주세요.'
+            : `Gemini 호출 실패: ${String(err.message || '').slice(0, 200)}`;
     return send(res, status, {
       ok: false,
       reason: err.code || (err.status === 504 ? 'timeout' : 'gemini_unavailable'),
-      message:
-        err.status === 504
-          ? 'Gemini 응답이 시간 안에 오지 않았습니다. 잠시 뒤 다시 눌러 주세요(긴 글은 한 번 더 걸릴 수 있습니다).'
-          : busy
-            ? 'Gemini 모델이 지금 몰려서 응답하지 않습니다(3.8 Flash → 3.1 Flash Lite → 3 Flash 순서로 시도). 1~2분 뒤 다시 눌러 주세요.'
-            : `Gemini 호출 실패: ${String(err.message || '').slice(0, 200)}`,
+      message,
       keyConfigured: true,
       model: PRIMARY_MODEL,
+      quota: err.code === 'quota_exceeded' ? { quotaId: err.quotaId, retryDelaySec: err.retryDelaySec } : undefined,
       tries: err.tries || [],
     });
   }
@@ -828,6 +889,29 @@ module.exports = async function handler(req, res) {
 
   if (result.banHits && result.banHits.length) {
     notes.push(`금지 표현이 본문에 남아 있습니다: ${result.banHits.join(', ')}`);
+  }
+
+  const truncated = !parsed && out.finish === 'MAX_TOKENS';
+  const emptyMain =
+    (action === 'blog' && !s(result.body, 10)) ||
+    (action === 'video_plan' && !(result.cuts || []).length) ||
+    (action === 'blog_to_shorts' && !(result.scenes || []).length) ||
+    (action === 'youtube_analyze' && !((result.shorts || {}).scenes || []).length);
+  if (truncated || emptyMain) {
+    return send(res, 200, {
+      ok: false,
+      reason: truncated ? 'truncated' : 'empty_result',
+      message: truncated
+        ? '출력이 토큰 한도에서 잘려 본문이 완성되지 않았습니다. 다시 누르면 조금 더 짧게 다시 씁니다.'
+        : '답이 비어 왔습니다. 한 번 더 눌러 주세요.',
+      keyConfigured: true,
+      model: out.model,
+      finishReason: out.finish,
+      notes,
+      tries: out.tries,
+      partial: parsed ? result : undefined,
+      __raw: parsed ? undefined : out.text.slice(0, 8000),
+    });
   }
 
   return send(res, 200, {
