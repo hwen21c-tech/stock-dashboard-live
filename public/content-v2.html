@@ -4,7 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#070c14">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AI 스튜디오">
+<meta name="application-name" content="AI 스튜디오">
+<link rel="manifest" href="/content-v2.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/content-v2-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icons/content-v2-512.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/icons/content-v2-192.png">
 <title>🎬✍️ AI 콘텐츠 스튜디오 v2 — 동적</title>
 <style>
   :root{
@@ -68,6 +76,24 @@
   .btn-guide:hover{filter:brightness(1.12)}
   .btn-guide .cv{transition:transform .18s;font-size:10px}
   .btn-guide[aria-expanded="true"] .cv{transform:rotate(180deg)}
+  .btn-install{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:12px;font-weight:900;color:#04231c;
+    background:linear-gradient(135deg,#34d399,#38bdf8);
+    border:1px solid rgba(56,189,248,.55);border-radius:9px;padding:6px 10px;white-space:nowrap;
+    box-shadow:0 2px 10px rgba(52,211,153,.18);
+  }
+  .btn-install:hover{filter:brightness(1.08)}
+  .btn-install:active{transform:translateY(1px)}
+  /* 단독 앱(standalone) 실행 시 노치·홈 인디케이터 여백 확보 */
+  @media (display-mode: standalone), (display-mode: fullscreen){
+    body{
+      padding-top:calc(14px + env(safe-area-inset-top));
+      padding-bottom:calc(40px + env(safe-area-inset-bottom));
+      padding-left:calc(14px + env(safe-area-inset-left));
+      padding-right:calc(14px + env(safe-area-inset-right));
+    }
+  }
 
   /* ---------- api guide ---------- */
   .guide{
@@ -744,6 +770,7 @@
   <div class="top-actions">
     <span class="status-badge" id="statusBadge"><span class="dot"></span>동적 스튜디오 · Gemini 3.8 Flash 연동</span>
     <button class="btn-guide" id="apiGuideBtn" aria-expanded="false" aria-controls="apiGuide">Gemini 연결 안내 <span class="cv">▼</span></button>
+    <button class="btn-install" id="pwaInstallBtn" type="button" title="AI 스튜디오를 홈 화면에 앱으로 설치" hidden>📲 앱 설치</button>
   </div>
 </header>
 
@@ -3502,6 +3529,110 @@
   $('#pingBtn').addEventListener('click', function(){ pingAI(); toast('연동 상태를 다시 확인합니다.'); });
   pingAI();
 
+})();
+</script>
+
+<script>
+/* ============ PWA 설치 버튼 (단독 앱: AI 스튜디오) ============ */
+(function(){
+  var btn = document.getElementById('pwaInstallBtn');
+  if (!btn) return;
+  var deferred = null;
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null, toastToken = null, toastObserver = null;
+
+  function isStandalone(){
+    try{
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+    }catch(e){}
+    return window.navigator.standalone === true;
+  }
+
+  function hideBtn(){ btn.hidden = true; }
+  function showBtn(){ btn.hidden = isStandalone(); }
+
+  /* 페이지 본문의 toast()와 같은 #toast 요소를 쓰되, 안내 문구는 더 오래 보여 준다.
+     다른 문구가 뜨면(페이지 toast) 이 타이머는 스스로 물러난다. */
+  function pwaToast(msg, ms){
+    if (!toastEl) return;
+    if (toastObserver) { toastObserver.disconnect(); toastObserver = null; }
+    clearTimeout(toastTimer);
+    toastToken = String(Date.now()) + Math.random();
+    toastEl.setAttribute('data-pwa', toastToken);
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    if (window.MutationObserver){
+      toastObserver = new MutationObserver(function(){
+        if (toastEl.getAttribute('data-pwa') !== toastToken || toastEl.textContent !== msg){
+          clearTimeout(toastTimer);
+          if (toastEl.getAttribute('data-pwa') === toastToken) toastEl.removeAttribute('data-pwa');
+          toastObserver.disconnect();
+          toastObserver = null;
+        }
+      });
+      toastObserver.observe(toastEl, { childList: true, characterData: true, subtree: true });
+    }
+    toastTimer = setTimeout(function(){
+      toastEl.classList.remove('on');
+      if (toastEl.getAttribute('data-pwa') === toastToken) toastEl.removeAttribute('data-pwa');
+      if (toastObserver) { toastObserver.disconnect(); toastObserver = null; }
+    }, ms || 6000);
+  }
+
+  function manualGuide(){
+    var ua = navigator.userAgent || '';
+    if (/SamsungBrowser/i.test(ua)) return '📲 삼성 인터넷 — 하단 ≡ 메뉴 → 「홈 화면에 추가」를 누르면 AI 스튜디오가 앱처럼 설치됩니다.';
+    if (/iPhone|iPad|iPod/i.test(ua)) return '📲 Safari — 하단 공유 버튼 → 「홈 화면에 추가」를 누르면 AI 스튜디오가 앱처럼 설치됩니다.';
+    if (/Chrome/i.test(ua)) return '📲 Chrome — 우측 상단 ⋮ → 「앱 설치」(또는 「홈 화면에 추가」)를 누르면 설치됩니다.';
+    return '📲 브라우저 메뉴에서 「앱 설치」 또는 「홈 화면에 추가」를 선택하면 설치됩니다.';
+  }
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferred = e;
+    showBtn();
+  });
+
+  window.addEventListener('appinstalled', function(){
+    deferred = null;
+    hideBtn();
+    pwaToast('설치 완료 — 홈 화면의 「AI 스튜디오」 아이콘으로 바로 열립니다.', 4500);
+  });
+
+  btn.addEventListener('click', function(){
+    if (deferred && typeof deferred.prompt === 'function'){
+      var ev = deferred;
+      deferred = null;
+      try{
+        ev.prompt();
+        var choice = ev.userChoice;
+        if (choice && typeof choice.then === 'function'){
+          choice.then(function(res){
+            if (res && res.outcome === 'accepted'){
+              hideBtn();
+              pwaToast('설치를 시작했습니다. 홈 화면에 「AI 스튜디오」가 생깁니다.', 4000);
+            } else {
+              pwaToast('설치를 취소했습니다. 나중에 헤더의 📲 앱 설치로 다시 시도할 수 있어요.', 4500);
+            }
+          }).catch(function(){ pwaToast(manualGuide(), 7000); });
+        }
+      }catch(err){
+        pwaToast(manualGuide(), 7000);
+      }
+      return;
+    }
+    pwaToast(manualGuide(), 7000);
+  });
+
+  /* 설치된 앱 창으로 열렸는지에 따라 버튼 상태 유지 */
+  try{
+    var mq = window.matchMedia('(display-mode: standalone)');
+    if (mq && mq.addEventListener) mq.addEventListener('change', showBtn);
+    else if (mq && mq.addListener) mq.addListener(showBtn);
+  }catch(e){}
+  window.addEventListener('pageshow', showBtn);
+  showBtn();
 })();
 </script>
 </body>
