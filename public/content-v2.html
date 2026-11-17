@@ -2491,6 +2491,11 @@
     var src = String(text || ''), out = [], m;
     PHOTO_TAG_RE.lastIndex = 0;
     while ((m = PHOTO_TAG_RE.exec(src))){
+      // 그 줄이 체크리스트 항목(- [ ] …)이나 표 행이면 사진 자리로 세지 않는다
+      var ls = src.lastIndexOf('\n', m.index - 1) + 1;
+      var le = src.indexOf('\n', m.index);
+      var line = src.slice(ls, le < 0 ? src.length : le).trim();
+      if (/^[-*]\s*\[[ xX]\]/.test(line) || line.charAt(0) === '|') continue;
       var p = parsePhotoTag(m[0]);
       out.push({ raw: m[0], desc: p.desc, q: p.q, legacy: p.legacy });
       if (out.length >= 8) break;
