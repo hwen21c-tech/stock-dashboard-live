@@ -1770,6 +1770,241 @@ const SCHEMA_SHORT_SCRIPT = {
   required: ['title', 'hook', 'hookCaption', 'beats', 'ending'],
 };
 
+/* ---------------------------------------------------------------- 📋 요약 (유튜브 · 문서 · 짧은 영상/음성) */
+
+const SUMMARY_TEXT_MAX = 40000;                     // 요약에 넘기는 본문 상한(자)
+const SUMMARY_MEDIA_MAX_BYTES = 4 * 1024 * 1024;    // 원본 파일 기준 4MB (사용자 지정 한도)
+const SUMMARY_MEDIA_MIMES = [
+  'video/mp4', 'video/webm', 'video/quicktime',
+  'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac',
+  'audio/wav', 'audio/x-wav', 'audio/webm', 'audio/ogg',
+];
+const SUMMARY_MODES = ['three', 'timeline', 'table', 'handoff'];
+
+const SCHEMA_SUMMARY = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '자료의 제목 — 원문·영상에 실제로 있는 제목만. 없으면 빈 문자열' },
+    headline: { type: 'string', description: '한 줄 결론 (30자 내외, 이 자료가 말하는 바)' },
+    three: {
+      type: 'array',
+      description: '3줄 핵심 결론 — 각 45자 내외, 결론→근거→그래서 무엇을 할지 순서',
+      items: { type: 'string' },
+    },
+    timeline: {
+      type: 'array',
+      description: '시간·섹션 순서 정리 — 처음부터 끝까지 6~10구간',
+      items: {
+        type: 'object',
+        properties: {
+          at: { type: 'string', description: '시각·위치 — "0:42" · "1부" · "서론" 처럼. 없으면 빈 문자열' },
+          label: { type: 'string', description: '이 구간의 이름 (12자 내외)' },
+          point: { type: 'string', description: '이 구간에서 실제로 말한·나온 내용 한 줄 (60자 내외)' },
+        },
+        required: ['at', 'label', 'point'],
+      },
+    },
+    facts: {
+      type: 'array',
+      description: '표로 정리할 수치·조건·고유명사 — 자료에 실제로 나온 값만, 단위와 기준을 붙인다',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: '항목 (예: 셀 에너지밀도)' },
+          value: { type: 'string', description: '값 (예: 350 Wh/kg — 자료 3:12)' },
+          where: { type: 'string', description: '자료 안 위치 (시각·페이지·섹션). 모르면 빈 문자열' },
+        },
+        required: ['label', 'value'],
+      },
+    },
+    actions: {
+      type: 'array',
+      description: '듣고/읽고 바로 할 일 — 실행 가능한 동작만 3~6개',
+      items: { type: 'string' },
+    },
+    blog: {
+      type: 'object',
+      description: '블로그 글감으로 넘길 재료',
+      properties: {
+        title: { type: 'string', description: '블로그 제목 후보 (네이버 모바일 30자 이내)' },
+        angle: { type: 'string', description: '이 자료로 쓸 때의 각도 — 무엇을 검증·비교·정리할지 2문장' },
+        outline: { type: 'array', description: '본문 뼈대 4~6개 소제목', items: { type: 'string' } },
+      },
+      required: ['title', 'outline'],
+    },
+    shorts: {
+      type: 'object',
+      description: '쇼츠 1편으로 넘길 재료',
+      properties: {
+        hook: { type: 'string', description: '첫 3초에 말할 문장 (20자 내외, 인사 금지)' },
+        beats: { type: 'array', description: '3~5개 컷의 말할 문장', items: { type: 'string' } },
+        ending: { type: 'string', description: '마지막 한 줄 (여운·저장 유도)' },
+      },
+      required: ['hook'],
+    },
+    warnings: { type: 'array', description: '확인하지 못한 값·사실 (지어내지 말고 여기에)', items: { type: 'string' } },
+    needsCheck: { type: 'array', description: '자료에서 [확인 필요]로 남긴 항목', items: { type: 'string' } },
+  },
+  required: ['headline', 'three'],
+};
+
+function promptSummary(b) {
+  const mode = SUMMARY_MODES.indexOf(b.mode) >= 0 ? b.mode : 'three';
+  const kind = b.kind === 'media' ? 'media' : b.kind === 'youtube' ? 'youtube' : 'doc';
+  const focus = s(b.focus, 160);
+  const title = s(b.title, 200);
+  const text = s(b.text, SUMMARY_TEXT_MAX);
+  const modeLine = {
+    three: '3줄 핵심 결론(three)이 가장 중요하다 — 결론 → 근거 → 그래서 무엇을 할지 순서. 각 줄은 한 문장.',
+    timeline: '흐름(timeline)이 가장 중요하다 — 처음부터 끝까지 끊김 없이 6~10구간, 각 구간에 시각(at)과 내용 한 줄(point).',
+    table: '숫자·조건(facts)이 가장 중요하다 — 금액·수치·기간·조건을 6~12개, 단위와 기준을 붙여서. actions 도 3~6개 채운다.',
+    handoff: '글감(blog·shorts)이 가장 중요하다 — 이 자료로 블로그 1편·쇼츠 1편을 바로 쓸 수 있게 제목·각도·뼈대·훅을 구체적으로.',
+  }[mode];
+
+  const srcLine =
+    kind === 'media'
+      ? '자료: 이 메시지에 실제로 첨부된 영상/음성 파일 1개' + (title ? ' (' + title + ')' : '') + '. 넌 이 파일을 직접 보고 들었다.'
+      : kind === 'youtube'
+        ? '자료: 유튜브 영상의 자막(스크립트)' + (title ? ' — 제목: ' + title : '')
+        : '자료: 문서 텍스트' + (title ? ' — 파일: ' + title : '');
+
+  const body =
+    kind === 'media'
+      ? `[첨부 파일 규칙 — 어기면 실패다]
+- 위 파일을 실제로 보고 들은 것만 쓴다. 보이지 않은 장면·들리지 않은 말을 지어내지 않는다.
+- 화면에 크게 뜬 글자(자막·자료 화면·제품명·숫자)는 본 대로 옮긴다. 흐릿해서 못 읽었으면 읽지 못했다고 쓴다.
+- 소리만 있는 파일이면 목소리·말버릇·핵심 주장 위주로 쓰고, 보이지 않는 화면을 상상해 쓰지 않는다.
+- 타임라인의 at 은 파일에서 실제로 그 내용이 나온 시각(mm:ss).`
+      : `[본문 — 이 안에 있는 내용만 근거로 쓴다. 이 밖의 지식으로 내용을 덧붙이지 않는다]
+"""
+${text}
+"""`;
+
+  const user = [
+    srcLine,
+    b.chars ? `본문 길이: ${b.chars}자` + (b.truncated ? ' (앞부분만 넣었음 — 뒤는 없음)' : '') : '',
+    b.author ? `채널·저자: ${s(b.author, 100)}` : '',
+    b.durationSec ? `영상 길이: ${Math.round(num(b.durationSec, 0) / 6) / 10}분` : '',
+    b.auto === true ? '자동 생성 자막이다 — 고유명사·숫자는 오인식이 있을 수 있으니 의심되면 warnings 에 적는다.' : '',
+    focus ? `\n[사용자가 특히 뽑고 싶은 것 — 이걸 우선]\n${focus}` : '',
+    `\n[이번에 가장 중요한 양식]\n${modeLine}`,
+    body,
+    '\n[요약 규칙]\n' +
+      '1) 이 자료가 말하지 않은 사실·수치·업체명·날짜를 만들지 않는다. 자료에 없으면 쓰지 않는다.\n' +
+      '2) 숫자는 자료에 나온 값 그대로, 단위와 기준을 붙인다. 계산이 필요하면 계산식도 함께 적는다.\n' +
+      '3) 자막·발화를 그대로 옮길 때는 인용으로 표시한다. 요약과 발화를 섞지 않는다.\n' +
+      '4) 확인이 필요한 값은 needsCheck 에 넣고 본문에서는 뒤에 "[확인 필요]"를 붙인다.\n' +
+      '5) three 는 정확히 3줄. 각 줄은 서로 다른 내용이어야 한다(같은 말 반복 금지).\n' +
+      '6) 자료가 짧아 타임라인·수치가 없으면 그 항목은 빈 배열로 두고 warnings 에 이유를 한 줄 적는다. 억지로 채우지 않는다.\n' +
+      banLine(b.banPhrases) +
+      '\n[출력] headline · three(3) · timeline · facts · actions · blog · shorts · warnings · needsCheck 만 JSON 으로.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return {
+    system:
+      '너는 자료를 정확히 요약하는 편집자다. 원문에 있는 것만 남기고, 없는 것은 만들지 않는다. ' +
+      '요약은 짧고 정보 밀도가 높아야 한다. ' +
+      HONESTY +
+      ' ' +
+      VOICE,
+    user,
+    schema: SCHEMA_SUMMARY,
+    maxTokens: 3600,
+    temperature: 0.3,
+    media: arr(b.media, 1),
+  };
+}
+
+function summaryMarkdown(r) {
+  const L = [];
+  const h = (t) => {
+    L.push('');
+    L.push(t);
+  };
+  if (r.title) L.push('# ' + r.title);
+  if (r.headline) L.push('> ' + r.headline);
+  if ((r.three || []).length) {
+    h('## ⚡ 3줄 핵심');
+    r.three.forEach((t, i) => L.push(i + 1 + '. ' + t));
+  }
+  if ((r.timeline || []).length) {
+    h('## ⏱️ 타임라인');
+    r.timeline.forEach((x) => L.push('- ' + (x.at ? x.at + ' · ' : '') + (x.label ? x.label + ' — ' : '') + x.point));
+  }
+  if ((r.facts || []).length) {
+    h('## 📊 수치·조건');
+    L.push('| 항목 | 값 | 위치 |');
+    L.push('| --- | --- | --- |');
+    r.facts.forEach((f) => L.push('| ' + f.label + ' | ' + f.value + ' | ' + (f.where || '—') + ' |'));
+  }
+  if ((r.actions || []).length) {
+    h('## ✅ 할 일');
+    r.actions.forEach((a) => L.push('- ' + a));
+  }
+  if (r.blog && (r.blog.title || (r.blog.outline || []).length)) {
+    h('## ✍️ 블로그 글감');
+    if (r.blog.title) L.push('제목: ' + r.blog.title);
+    if (r.blog.angle) L.push('각도: ' + r.blog.angle);
+    (r.blog.outline || []).forEach((o) => L.push('- ' + o));
+  }
+  if (r.shorts && (r.shorts.hook || (r.shorts.beats || []).length)) {
+    h('## 🎬 쇼츠 글감');
+    if (r.shorts.hook) L.push('훅: ' + r.shorts.hook);
+    (r.shorts.beats || []).forEach((x) => L.push('- ' + x));
+    if (r.shorts.ending) L.push('엔딩: ' + r.shorts.ending);
+  }
+  if ((r.needsCheck || []).length) {
+    h('## ⚠️ 확인 필요');
+    r.needsCheck.forEach((x) => L.push('- ' + x));
+  }
+  if ((r.warnings || []).length) {
+    h('## 메모');
+    r.warnings.forEach((x) => L.push('- ' + x));
+  }
+  return L.join('\n').trim();
+}
+
+function normSummary(data, meta) {
+  const d = data || {};
+  const m = meta || {};
+  const timeline = arr(d.timeline, 16)
+    .map((x) => ({ at: s(x && x.at, 24), label: s(x && x.label, 60), point: s(x && x.point, 400) }))
+    .filter((x) => x.point);
+  const facts = arr(d.facts, 16)
+    .map((x) => ({ label: s(x && x.label, 60), value: s(x && x.value, 200), where: s(x && x.where, 80) }))
+    .filter((x) => x.label && x.value);
+  const blog = {
+    title: s(d.blog && d.blog.title, 90),
+    angle: s(d.blog && d.blog.angle, 300),
+    outline: arr(d.blog && d.blog.outline, 8).map((x) => s(typeof x === 'string' ? x : x && x.text, 120)).filter(Boolean),
+  };
+  const shorts = {
+    hook: s(d.shorts && d.shorts.hook, 200),
+    beats: arr(d.shorts && d.shorts.beats, 6).map((x) => s(typeof x === 'string' ? x : x && x.text, 200)).filter(Boolean),
+    ending: s(d.shorts && d.shorts.ending, 200),
+  };
+  const out = {
+    title: s(m.title, 200) || s(d.title, 200),
+    headline: s(d.headline, 160),
+    three: arr(d.three, 5).map((x) => s(typeof x === 'string' ? x : x && x.text, 240)).filter(Boolean),
+    timeline,
+    facts,
+    actions: arr(d.actions, 8).map((x) => s(typeof x === 'string' ? x : x && x.text, 240)).filter(Boolean),
+    blog,
+    shorts,
+    warnings: arr(d.warnings, 10).map((x) => s(x, 240)).filter(Boolean),
+    needsCheck: arr(d.needsCheck, 10).map((x) => s(x, 160)).filter(Boolean),
+  };
+  if (out.title && !out.headline) out.headline = s(m.headline, 160);
+  if (!out.three.length) out.warnings.push('3줄 핵심이 비어 왔습니다. 다시 눌러 주세요.');
+  if (!timeline.length) out.warnings.push('타임라인·섹션 구간이 없습니다(자료가 짧거나 흐름이 없는 자료일 수 있습니다).');
+  if (!facts.length) out.warnings.push('수치·조건 항목이 없습니다 — 자료에 숫자가 없을 수 있습니다.');
+  out.markdown = summaryMarkdown(out);
+  return out;
+}
+
 /* ---------------------------------------------------------------- 공통 규칙 */
 
 const HONESTY = [
@@ -2424,7 +2659,15 @@ async function callModel(model, prompt, attemptDeadline, thinkingOff) {
     .filter((im) => im && im.data && /^image\/(jpeg|png|webp)$/.test(String(im.mimeType || '')))
     .slice(0, MAX_INLINE_IMAGES)
     .map((im) => ({ inlineData: { mimeType: im.mimeType, data: im.data } }));
-  const userParts = imgParts.length ? imgParts.concat([{ text: prompt.user }]) : [{ text: prompt.user }];
+  const mediaParts = (Array.isArray(prompt.media) ? prompt.media : [])
+    .filter((m) => m && m.data && SUMMARY_MEDIA_MIMES.indexOf(String(m.mimeType || '').toLowerCase()) >= 0)
+    .slice(0, 1)
+    .map((m) => ({ inlineData: { mimeType: m.mimeType, data: m.data } }));
+  const userParts = mediaParts.length
+    ? imgParts.concat(mediaParts, [{ text: prompt.user }])
+    : imgParts.length
+      ? imgParts.concat([{ text: prompt.user }])
+      : [{ text: prompt.user }];
   const body = {
     systemInstruction: { parts: [{ text: prompt.system }] },
     contents: [{ role: 'user', parts: userParts }],
@@ -2907,6 +3150,7 @@ function normShortsScript(data) {
 
 const GEN_ACTIONS = [
   'blog',
+  'summarize',
   'video_plan',
   'youtube_analyze',
   'blog_to_shorts',
@@ -2952,6 +3196,14 @@ module.exports = async function handler(req, res) {
         how: "POST { action:'youtube_transcript', url:'https://youtu.be/…' } → { ok, title, author, lengthSec, langLabel, auto, route, text, errors[] }",
         note: '자막을 못 받으면 ok:false + reason(no_captions / not_found) 과 제목·설명만 돌려준다.',
       },
+      summary: {
+        action: 'summarize',
+        how:
+          "POST { action:'summarize', kind:'youtube'|'doc'|'media', mode:'three'|'timeline'|'table'|'handoff', " +
+          "url(유튜브) | text(문서·자막 붙여넣기) | media:{name,mimeType,data(base64),durationSec} (MP4·WEBM·MP3·M4A, 4MB 이하), focus } " +
+          "→ { ok, data:{ title, headline, three[], timeline[], facts[], actions[], blog, shorts, markdown }, source }",
+        limits: '본문 ' + SUMMARY_TEXT_MAX.toLocaleString('en-US') + '자 · 영상/음성 4MB · 요청 본문 약 4.2MB',
+      },
       photos: {
         pixabay: !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim()),
         commons: true,
@@ -2972,6 +3224,15 @@ module.exports = async function handler(req, res) {
   try {
     body = await readJson(req);
   } catch (err) {
+    if (err && err.code === 'body_too_large') {
+      return send(res, 413, {
+        ok: false,
+        reason: 'body_too_large',
+        message:
+          '첨부가 커서 서버가 요청을 거절했습니다(요청 본문 한도 약 4.2MB). 영상·음성은 base64 로 보내져 원본의 약 1.33배로 커집니다 — ' +
+          '3MB 이하로 줄이거나, 소리만 필요한 경우 음성만 짧게 잘라 다시 올려 주세요.',
+      });
+    }
     return send(res, 400, { ok: false, reason: err.code || 'bad_body', message: '요청 본문을 읽지 못했습니다.' });
   }
 
@@ -3167,6 +3428,139 @@ module.exports = async function handler(req, res) {
   } else if (action === 'shorts_script') {
     if (!s(body.topic, 200)) return send(res, 400, { ok: false, reason: 'missing_topic', message: '쇼츠 주제(topic)가 필요합니다.' });
     prompt = promptShortsScript({ ...body, banPhrases });
+  } else if (action === 'summarize') {
+    const kind = ['youtube', 'doc', 'media'].indexOf(s(body.kind, 12)) >= 0 ? s(body.kind, 12) : 'doc';
+    const mode = SUMMARY_MODES.indexOf(s(body.mode, 12)) >= 0 ? s(body.mode, 12) : 'three';
+    const meta = { kind, mode, title: '', chars: 0, truncated: false, notes: [] };
+    let sourceText = s(body.text, SUMMARY_TEXT_MAX + 40000);
+    let mediaParts = [];
+
+    if (kind === 'doc') meta.title = s(body.title, 160);
+
+    if (kind === 'youtube' && !sourceText.trim()) {
+      const id = ytVideoId(s(body.url, 300));
+      if (!id) {
+        return send(res, 400, {
+          ok: false,
+          action: 'summarize',
+          reason: 'bad_youtube_url',
+          message: '유튜브 링크가 아닙니다. youtube.com/watch?v=… / youtu.be/… / /shorts/… 형식이나 11자리 영상 ID를 넣어 주세요.',
+        });
+      }
+      let t = null;
+      try {
+        t = await ytTranscript(id);
+      } catch (e) {
+        t = null;
+      }
+      if (!t) {
+        return send(res, 200, {
+          ok: false,
+          action: 'summarize',
+          videoId: id,
+          reason: 'extract_failed',
+          message: '자막 추출 중 오류가 났습니다. 유튜브 화면에서 자막을 복사해 붙여넣어 주세요.',
+          fallback: 'paste',
+        });
+      }
+      meta.videoId = id;
+      meta.title = s(t.title, 200);
+      meta.author = s(t.author, 100);
+      meta.lengthSec = t.lengthSec == null ? null : t.lengthSec;
+      meta.auto = !!t.auto;
+      meta.langLabel = s(t.langLabel, 20);
+      meta.route = s(t.route, 80);
+      (t.notes || []).slice(0, 4).forEach((n) => meta.notes.push(s(n, 200)));
+      if (!meta.title) {
+        // 미러 경로는 자막만 주고 제목·채널을 비워 둔다 — oEmbed 로 채운다(없으면 빈 채로 둔다).
+        const oe = await ytOembed(id);
+        if (oe) {
+          meta.title = s(oe.title, 200);
+          meta.author = meta.author || s(oe.author, 100);
+        }
+      }
+      if (!t.ok) {
+        return send(res, 200, {
+          ok: false,
+          action: 'summarize',
+          videoId: id,
+          reason: t.reason || 'no_captions',
+          message:
+            (meta.title ? '「' + meta.title + '」 ' : '이 영상의 ') +
+            '자막을 받지 못했습니다. 유튜브가 이 영상의 자막을 주지 않았거나(자막 없음) 서버 IP를 봇으로 막았습니다. ' +
+            '유튜브 화면에서 자막(스크립트)을 복사해 [자막 붙여넣기] 칸에 넣으면 같은 요약을 합니다.',
+          youtube: { videoId: id, title: meta.title, author: meta.author, description: s(t.description, 600) },
+          fallback: 'paste',
+          hint: '유튜브 화면에서 자막(스크립트)을 복사해 [자막 붙여넣기] 칸에 넣고 다시 눌러 주세요. 붙여넣은 자막도 똑같이 요약합니다.',
+        });
+      }
+      sourceText = s(t.text, SUMMARY_TEXT_MAX + 1);
+    }
+
+    if (kind === 'media') {
+      const mime = s(body.media && body.media.mimeType, 60).toLowerCase().split(';')[0].trim();
+      const b64 = String((body.media && body.media.data) || '').replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+      if (!b64) {
+        return send(res, 400, {
+          ok: false,
+          action: 'summarize',
+          reason: 'missing_media',
+          message: '첨부된 영상·음성 데이터가 비어 있습니다. 파일을 다시 골라 주세요.',
+        });
+      }
+      if (SUMMARY_MEDIA_MIMES.indexOf(mime) < 0) {
+        return send(res, 400, {
+          ok: false,
+          action: 'summarize',
+          reason: 'unsupported_media_type',
+          message: 'MP4 · WEBM · MP3 · M4A 만 요약할 수 있습니다(받은 형식: ' + (mime || '알 수 없음') + ').',
+        });
+      }
+      const bytes = Math.floor((b64.length * 3) / 4);
+      if (bytes > SUMMARY_MEDIA_MAX_BYTES + 8192) {
+        return send(res, 413, {
+          ok: false,
+          action: 'summarize',
+          reason: 'media_too_large',
+          message: '영상·음성은 4MB까지입니다(지금 ' + (bytes / 1048576).toFixed(1) + 'MB). 짧게 잘라 다시 올려 주세요.',
+        });
+      }
+      mediaParts = [{ mimeType: mime, data: b64 }];
+      meta.bytes = bytes;
+      meta.title = s(body.media && body.media.name, 160);
+      meta.durationSec = num(body.media && body.media.durationSec, null);
+    }
+
+    if (!mediaParts.length && !sourceText.trim()) {
+      return send(res, 400, {
+        ok: false,
+        action: 'summarize',
+        reason: 'missing_source',
+        message: '요약할 자료가 없습니다. 유튜브 링크 · 문서 파일 · 붙여넣은 텍스트 중 하나를 넣어 주세요.',
+      });
+    }
+    if (sourceText.length > SUMMARY_TEXT_MAX) {
+      sourceText = sourceText.slice(0, SUMMARY_TEXT_MAX);
+      meta.truncated = true;
+      meta.notes.push('본문이 ' + SUMMARY_TEXT_MAX.toLocaleString('en-US') + '자를 넘어 앞부분만 넣었습니다.');
+    }
+    meta.chars = sourceText.length;
+
+    srcMeta = meta;
+    prompt = promptSummary({
+      kind,
+      mode,
+      text: sourceText,
+      media: mediaParts,
+      title: meta.title,
+      author: meta.author,
+      chars: meta.chars,
+      truncated: meta.truncated,
+      durationSec: meta.durationSec,
+      auto: meta.auto,
+      focus: body.focus,
+      banPhrases,
+    });
   } else {
     const draft = s(body.body, 20000);
     if (draft.length < 80) return send(res, 400, { ok: false, reason: 'missing_body', message: '쇼츠로 바꿀 블로그 본문이 필요합니다.' });
@@ -3231,6 +3625,7 @@ module.exports = async function handler(req, res) {
   else if (action === 'analyze_blogger_style') result = normStyle(data);
   else if (action === 'analyze_shorts_style') result = normShortsStyle(data);
   else if (action === 'shorts_script') result = normShortsScript(data);
+  else if (action === 'summarize') result = normSummary(data, srcMeta || {});
   else result = normShorts(data);
 
   if (result.banHits && result.banHits.length) {
@@ -3251,7 +3646,8 @@ module.exports = async function handler(req, res) {
     (action === 'proofread_draft' && !s(result.body, 10)) ||
     (action === 'analyze_shorts_style' && !s(result.hook, 3)) ||
     (action === 'shorts_script' && !(result.beats || []).length) ||
-    (action === 'analyze_blogger_style' && !(result.structure || []).length);
+    (action === 'analyze_blogger_style' && !(result.structure || []).length) ||
+    (action === 'summarize' && !((result.three || []).length || s(result.headline, 3)));
   if (truncated || emptyMain) {
     return send(res, 200, {
       ok: false,
