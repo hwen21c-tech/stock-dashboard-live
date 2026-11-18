@@ -2495,6 +2495,7 @@ function shortsStyleBlock(st, no) {
     st.who ? `- 이 채널에서 배울 점: ${s(st.who, 200)}` : '',
     st.hook ? `- 3초 훅 패턴: ${s(st.hook, 320)}` : '',
     st.pacing ? `- 컷·텀포 리듬: ${s(st.pacing, 320)}` : '',
+    arr(st.plan, 6).length ? `- 구간 설계(이 시간·순서를 그대로 따른다. beats 의 at 을 이 구간에 맞춘다):\n${arr(st.plan, 6).map((x) => `  · ${s(x, 90)}`).join('\n')}` : '',
     caption ? `- 자막·기호 슬관: ${caption}` : '',
     st.tone ? `- 말투/성우 톤: ${s(st.tone, 320)}` : '',
     avoid ? `- 금지 규칙(어기면 실패):\n${avoid}` : '',
