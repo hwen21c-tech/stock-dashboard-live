@@ -3,24 +3,23 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-18 10:16:07",
- "updatedAt": "2026-11-18T10:15:50.088084+09:00",
- "updatedAgeMin": 0.3,
+ "fetchedAt": "2026-11-18 10:20:55",
+ "updatedAt": "2026-11-18T10:20:50.889902+09:00",
+ "updatedAgeMin": 0.1,
  "stale": false,
  "themeCount": 6,
  "codes": [
+  "108490",
   "277810",
   "030530",
-  "108490",
-  "263860",
-  "042510",
-  "053800",
-  "437730",
-  "000150",
-  "024850",
-  "059090",
-  "090360",
   "125490",
+  "024850",
+  "000150",
+  "059090",
+  "042510",
+  "263860",
+  "053800",
+  "090360",
   "043260",
   "058610",
   "005930"
@@ -32,107 +31,107 @@
    "avgRS": 63,
    "stocks": [
     {
+     "code": "108490",
+     "name": "로보티즈",
+     "chg": 13.5,
+     "value_eok": 915.58,
+     "verified": true
+    },
+    {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 12.8,
-     "value_eok": 448.26,
+     "chg": 13.3,
+     "value_eok": 469.22,
      "verified": true
     },
     {
      "code": "030530",
      "name": "원익홀딩스",
-     "chg": 12.2,
-     "value_eok": 1708.85,
-     "verified": true
-    },
-    {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 12.1,
-     "value_eok": 864.26,
+     "chg": 11.1,
+     "value_eok": 1815.29,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "정보보안",
-   "avgRS": 93,
+   "name": "피지컬 AI",
+   "avgRS": 58,
    "stocks": [
     {
-     "code": "263860",
-     "name": "지니언스",
-     "chg": 12.7,
-     "value_eok": 1451.3,
+     "code": "108490",
+     "name": "로보티즈",
+     "chg": 13.5,
+     "value_eok": 915.58,
      "verified": true
     },
     {
-     "code": "042510",
-     "name": "라온시큐어",
-     "chg": 11.0,
-     "value_eok": 202.56,
+     "code": "277810",
+     "name": "레인보우로보틱스",
+     "chg": 13.3,
+     "value_eok": 469.22,
      "verified": true
     },
     {
-     "code": "053800",
-     "name": "안랩",
-     "chg": 7.5,
-     "value_eok": 930.2,
+     "code": "125490",
+     "name": "한라캐스트",
+     "chg": 6.7,
+     "value_eok": 23.7,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "피지컬 AI",
-   "avgRS": 64,
+   "name": "반도체 재료/부품",
+   "avgRS": 71,
    "stocks": [
     {
-     "code": "277810",
-     "name": "레인보우로보틱스",
-     "chg": 12.8,
-     "value_eok": 448.26,
+     "code": "024850",
+     "name": "HLB이노베이션",
+     "chg": 12.0,
+     "value_eok": 17.14,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 12.1,
-     "value_eok": 864.26,
+     "code": "000150",
+     "name": "두산",
+     "chg": 10.2,
+     "value_eok": 1238.63,
      "verified": true
     },
     {
-     "code": "437730",
-     "name": "삼현",
-     "chg": 6.7,
-     "value_eok": 610.24,
+     "code": "059090",
+     "name": "미코",
+     "chg": 9.1,
+     "value_eok": 86.47,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "반도체 재료/부품",
-   "avgRS": 71,
+   "name": "정보보안",
+   "avgRS": 93,
    "stocks": [
     {
-     "code": "000150",
-     "name": "두산",
-     "chg": 11.1,
-     "value_eok": 1202.37,
+     "code": "042510",
+     "name": "라온시큐어",
+     "chg": 11.3,
+     "value_eok": 205.97,
      "verified": true
     },
     {
-     "code": "024850",
-     "name": "HLB이노베이션",
-     "chg": 10.6,
-     "value_eok": 16.76
+     "code": "263860",
+     "name": "지니언스",
+     "chg": 11.1,
+     "value_eok": 1481.81
     },
     {
-     "code": "059090",
-     "name": "미코",
-     "chg": 8.8,
-     "value_eok": 83.75
+     "code": "053800",
+     "name": "안랩",
+     "chg": 6.7,
+     "value_eok": 946.22
     }
    ]
   },
@@ -144,20 +143,20 @@
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 12.1,
-     "value_eok": 864.26
+     "chg": 13.5,
+     "value_eok": 915.58
     },
     {
      "code": "090360",
      "name": "로보스타",
-     "chg": 6.6,
-     "value_eok": 19.23
+     "chg": 7.8,
+     "value_eok": 21.12
     },
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 6.6,
-     "value_eok": 21.62
+     "chg": 6.7,
+     "value_eok": 23.7
     }
    ]
   },
@@ -169,20 +168,20 @@
     {
      "code": "043260",
      "name": "성호전자",
-     "chg": 16.3,
-     "value_eok": 651.22
+     "chg": 15.6,
+     "value_eok": 685.61
     },
     {
      "code": "058610",
      "name": "에스피지",
-     "chg": 7.4,
-     "value_eok": 191.99
+     "chg": 8.1,
+     "value_eok": 199.84
     },
     {
      "code": "005930",
      "name": "삼성전자",
-     "chg": 2.4,
-     "value_eok": 18368.38
+     "chg": 2.7,
+     "value_eok": 18959.41
     }
    ]
   }
