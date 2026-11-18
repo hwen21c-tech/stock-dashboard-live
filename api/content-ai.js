@@ -633,6 +633,137 @@ function officialPagePhotos(html, finalUrl) {
   return { title, description, siteName, host, photos };
 }
 
+/* ------------------------------------------------ 🔗 내 블로거 글 → 양식 DNA 추출 (4번 양식)
+   - 네이버 블로그는 PC 주소가 iframe 껍데기라 본문이 안 잡힌다 → 모바일 PostView 로 바꿔 받는다.
+   - 사설 IP·DNS·리다이렉트·용량·시간 제한은 위의 fetchHtmlSafe 를 그대로 쓴다(SSRF 차단 동일).
+   - 저작권: 본문 ‘문장’을 결과에 담지 않는다. 구조·호흡·기호·말투 특징만 남기고 최대 4,500자만 모델에 넘긴다. */
+const BLOGGER_MAX_TEXT = 4500;
+
+function naverBlogIds(raw) {
+  const s0 = String(raw == null ? '' : raw).trim();
+  const out = { blogId: '', logNo: '' };
+  let m = /blog\.naver\.com\/([A-Za-z0-9_\-]+)\/(\d+)/.exec(s0);
+  if (m) {
+    out.blogId = m[1];
+    out.logNo = m[2];
+    return out;
+  }
+  try {
+    const u = new URL(s0);
+    const qBlog = (u.searchParams.get('blogId') || '').trim();
+    const qLog = (u.searchParams.get('logNo') || '').trim();
+    if (qBlog && qLog && /^\d+$/.test(qLog)) {
+      out.blogId = qBlog;
+      out.logNo = qLog;
+      return out;
+    }
+    m = /\/PostView\.naver\/([A-Za-z0-9_\-]+)\/(\d+)/.exec(u.pathname);
+    if (m) {
+      out.blogId = m[1];
+      out.logNo = m[2];
+    }
+  } catch (_) {}
+  return out;
+}
+
+/** 받아야 할 주소를 정한다. 네이버 글은 모바일 PostView 로 바꿔 본문을 실제로 받아온다. */
+function bloggerFetchTarget(raw) {
+  const src = String(raw == null ? '' : raw).trim();
+  const ids = naverBlogIds(src);
+  if (ids.blogId && ids.logNo) {
+    return {
+      url: 'https://m.blog.naver.com/PostView.naver?blogId=' + encodeURIComponent(ids.blogId) + '&logNo=' + encodeURIComponent(ids.logNo),
+      converted: /^https?:\/\/blog\.naver\.com\//i.test(src),
+      blogId: ids.blogId,
+      logNo: ids.logNo,
+    };
+  }
+  return { url: src, converted: false, blogId: '', logNo: '' };
+}
+
+function stripBlock(html) {
+  return String(html == null ? '' : html)
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+}
+
+/** 네이버 스마트에디터 본문(se-main-container)만 골라 문단·인용구·소제목 흔적을 살린다. */
+function extractNaverBody(html) {
+  const lower = html.toLowerCase();
+  const at = lower.indexOf('class="se-main-container"');
+  if (at < 0) return '';
+  let seg = html.slice(html.indexOf('>', at));
+  for (const mark of ['id="post_footer"', 'class="post_footer', 'id="comment"']) {
+    const k = seg.indexOf(mark);
+    if (k > 2000) seg = seg.slice(0, k);
+  }
+  seg = seg.replace(/<div class="se-component se-image[\s\S]*?<\/div>\s*<\/div>/gi, '\n[사진]\n');
+  seg = seg.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, (m) => '\n> ' + stripBlock(m).replace(/\s+/g, ' ').trim() + '\n');
+  seg = seg.replace(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, _l, t) => '\n\n## ' + stripBlock(t).trim() + '\n');
+  let text = stripBlock(seg)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/\u200b/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n');
+  return text.split('\n').map((l) => l.trim()).filter((l, i, a) => l || (i && a[i - 1])).join('\n').trim();
+}
+
+/** 그 밖의 블로그·티스토리 등 — article/main/#content 후보에서 문단을 긁는다. */
+function extractGenericBody(html) {
+  const pick = (re) => {
+    const m = re.exec(html);
+    return m ? m[1] : '';
+  };
+  const cand =
+    pick(/<article\b[^>]*>([\s\S]{200,})<\/article>/i) ||
+    pick(/<div[^>]+(?:id|class)="(?:content|post|entry|article)[^"]*"[^>]*>([\s\S]{200,}?)<\/(?:div|section)>/i) ||
+    pick(/<main\b[^>]*>([\s\S]{200,})<\/main>/i) ||
+    '';
+  let text = stripBlock(cand || html)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n');
+  return text.split('\n').map((l) => l.trim()).filter((l, i, a) => l || (i && a[i - 1])).join('\n').trim();
+}
+
+/** URL → { text, title, finalUrl, converted } / 본문을 못 읽으면 code:'body_not_found' */
+async function readBloggerSource(rawUrl) {
+  const target = bloggerFetchTarget(rawUrl);
+  if (!target.url) throw badUrl('블로그 글 주소를 넣어 주세요.');
+  /* 첫 홉도 반드시 검사한다(사설 IP·localhost·비http는 여기서 막힌다). fetchHtmlSafe 는 리다이렉트 홉만 재검사한다. */
+  const safe = await inspectPublicUrl(target.url);
+  const page = await fetchHtmlSafe(safe.toString());
+  const html = page.html || '';
+  const tags = metaTags(html);
+  const title = metaGet(tags, ['og:title', 'twitter:title']) || htmlUnesc((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html) || [])[1] || '');
+  const author = metaGet(tags, ['naverblog:nickname']);
+  let text = target.blogId ? extractNaverBody(html) : '';
+  if (text.length < 300) text = extractGenericBody(html);
+  if (text.length < 200) {
+    const e = new Error('이 페이지에서는 글 본문을 읽지 못했습니다(로그인 필요·스크립트 렌더·차단).');
+    e.code = 'body_not_found';
+    throw e;
+  }
+  return {
+    text: text.slice(0, BLOGGER_MAX_TEXT),
+    chars: text.length,
+    title: s(title.replace(/\s*:\s*네이버\s*블로그\s*$/, ''), 120),
+    author: s(author, 40),
+    finalUrl: page.finalUrl || target.url,
+    converted: target.converted,
+  };
+}
+
 /** 한국관광공사 TourAPI — 키가 설정된 환경에서만. 없으면 정직하게 건너뛴다. */
 async function searchTourApi(q, n) {
   const key = String(process.env.KTO_API_KEY || process.env.TOUR_API_KEY || '').trim();
@@ -1545,6 +1676,47 @@ const SCHEMA_CLOSING = {
   required: ['question', 'items'],
 };
 
+/* 내 블로거(4번) 양식 자동 분석 — 구조·호흡·기호·말투 DNA만 뽑는다 */
+const SCHEMA_STYLE = {
+  type: 'object',
+  properties: {
+    styleName: { type: 'string', description: '블로그에서 확인되는 필명·블로그 이름 (모르면 "내 블로그")' },
+    structure: {
+      type: 'array',
+      description: '이 글의 구성 뼈대 5~7단계 — 위에서부터 실제 순서대로, 각 20자 내외',
+      items: { type: 'string' },
+    },
+    rhythm: { type: 'string', description: '문단 호흡 — 몇 문장씩 끊는지, 사진·표·인용구를 어디에 두는지 1~2문장' },
+    symbols: {
+      type: 'array',
+      description: '실제로 쓰는 기호·박스 습관 3~5개 (예: > 소제목 인용구, 1️⃣ 단계 번호, | 표 |)',
+      items: { type: 'string' },
+    },
+    tone: { type: 'string', description: '말투 DNA — 어미(해요체/반말/보도체), 1인칭 정도, 문장 길이를 1~2문장으로' },
+    avoid: {
+      type: 'array',
+      description: '이 글에서 확인되는 금기·주의 2~4개 (예: 결말 스포 금지, 가격은 날짜와 함께)',
+      items: { type: 'string' },
+    },
+  },
+  required: ['styleName', 'structure', 'rhythm', 'symbols', 'tone'],
+};
+
+/* ✨ 2차 검수·다듬기 — 원문 구조는 유지하고 문장만 교정한다 */
+const SCHEMA_PROOF = {
+  type: 'object',
+  properties: {
+    body: { type: 'string', description: '교정을 마친 완성 본문 (원문의 소제목·표·[📸 사진] 자리·[확인 필요]를 그대로 유지)' },
+    fixes: {
+      type: 'array',
+      description: '무엇을 고쳤는지 2~3줄 (각 40자 내외, 사실대로)',
+      items: { type: 'string' },
+    },
+    warnings: { type: 'array', description: '발행 전에 사람이 확인해야 할 값·사실', items: { type: 'string' } },
+  },
+  required: ['body', 'fixes'],
+};
+
 /* ---------------------------------------------------------------- 공통 규칙 */
 
 const HONESTY = [
@@ -1577,7 +1749,7 @@ function styleBlock(st) {
   const symbols = arr(st.symbols, 10).map((x) => `- ${s(x, 130)}`).join('\n');
   const rules = arr(st.rules, 8).map((x) => `- ${s(x, 160)}`).join('\n');
   return [
-    `\n[1등 블로거 양식 — 「${name}」 스타일 · 구조·호흡·기호·말투만 따른다]`,
+    `\n[블로그 양식 — 「${name}」 스타일 · 구조·호흡·기호·말투만 따른다]`,
     st.who ? `- 이 글이 왜 읽히는가: ${s(st.who, 200)}` : '',
     struct ? `- 구성 뼈대(위에서부터 이 순서대로 "## " 소제목을 만든다. 번호는 붙이지 않는다):\n${struct}` : '',
     st.rhythm ? `- 문단 호흡: ${s(st.rhythm, 320)}` : '',
@@ -1945,6 +2117,78 @@ function promptClosing(b) {
     schema: SCHEMA_CLOSING,
     maxTokens: 800,
     temperature: 0.9,
+  };
+}
+
+/* ---------------------------------------------------------------- 🔗 4번 내 블로거 양식 분석 · ✨ 2차 검수 */
+
+function promptAnalyzeStyle(b) {
+  const text = s(b.sourceText, 4500);
+  const pick = Number(b.bloggerNo) >= 1 && Number(b.bloggerNo) <= 4 ? Number(b.bloggerNo) : 4;
+  const user = [
+    b.title ? `글 제목: ${s(b.title, 120)}` : '',
+    b.author ? `블로그 주인 이름(페이지에서 확인된 값): ${s(b.author, 40)}` : '',
+    b.theme ? `테마: ${s(b.theme, 40)}` : '',
+    `\n[분석할 글 본문 — 이 사람이 실제로 쓴 글. 문장을 베끼지 않고 ‘쓰는 방식’만 뽑는다]\n"""${text}"""`,
+    `
+[해야 할 일 — 이 글의 양식 DNA 추출]
+1) styleName: 위에 블로그 주인 이름이 있으면 그 이름을 그대로. 없으면 글에서 확인되는 필명, 그것도 없으면 "내 블로그".
+2) structure: 이 글이 실제로 진행된 순서를 5~7단계로. (예: 한 줄 결론 → 위치·이동 → 표 → 아쉬운 점 → 정리) 내용이 아니라 ‘틀’만.
+3) rhythm: 문단 호흡 — 몇 문장씩 끊는지, 한 줄씩 끊는지, 사진·표·인용구를 어디에 두는지 1~2문장.
+4) symbols: 실제로 쓰는 기호 습관 3~5개 (예: > 소제목 인용구, 1️⃣ 단계 번호, | 표 |, 📌 팁 박스, 마지막 문장 반복).
+5) tone: 말투 DNA — 어미 종류(해요체/반말/보도체/따뜻한 존댓말), 1인칭 노출 정도, 문장 길이를 1~2문장으로.
+6) avoid: 이 글에서 지키는 금기·주의 2~4개 (예: 결말 스포 없이, 가격은 날짜와 함께, 과장 금지).
+
+[저작권·정직 규칙 — 어기면 실패다]
+- 본문 문장을 그대로 옮기거나 인용하지 않는다. 숫자·고유명사·사건 내용은 결과에 쓰지 않는다. 오직 구성·호흡·기호·말투만.
+- 글에 없는 습관을 지어내지 않는다. 비슷한 예가 여러 개 보일 때만 적는다.
+- 결과는 ‘다른 사람이 자기 주제로 같은 양식대로 쓸 수 있는 규칙’이어야 한다.
+[출력] styleName · structure · rhythm · symbols · tone · avoid JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 블로그 글쓰기 양식을 분석하는 편집자다. 남의 글에서 구조·호흡·기호·말투 패턴만 뽑아 재사용 가능한 규칙으로 정리한다. 남의 문장을 베끼지 않는다. ${HONESTY}`,
+    user,
+    schema: SCHEMA_STYLE,
+    maxTokens: 1200,
+    temperature: 0.5,
+  };
+}
+
+function promptProofread(b) {
+  const style = styleBlock(b.stylePreset);
+  const note = s(b.experienceNote, 1200);
+  const pick = Number(b.bloggerNo) >= 1 && Number(b.bloggerNo) <= 4 ? Number(b.bloggerNo) : 0;
+  const user = [
+    b.topic ? `주제: ${s(b.topic, 200)}` : '',
+    pick ? `현재 선택된 양식: ${pick}번 블로거` : '',
+    style,
+    note ? `\n[내 경험 메모 — 1인칭 경험은 여기 있는 것만 허용]\n"""${note}"""` : '\n[내 경험 메모 — 없음. 1인칭 경험담은 모두 지운다]',
+    `\n[검수할 본문]\n"""${s(b.body, 16000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — 편집장 2차 검수]
+① 가지 않은 곳·안 겪은 일을 1인칭 경험담(다녀왔다·먹어봤다·내돈내산·써봤다)으로 쓴 문장은 지우거나 ‘조건·정보’ 문장으로 바꾼다. 위 경험 메모에 있는 내용만 1인칭으로 남긴다.
+② 과장·어색한 AI 문구를 자연스럽게 고친다. ("결론적으로" · "~할 수 있습니다" 나열 · "무엇보다도" · "살펴보겠습니다" · 같은 구조 반복 · 상투적 공감 질문)
+③ 위 양식(구성 순서·문단 호흡·기호·말투)이 빠졌으면 보충한다. 소제목·표·[📸 사진] 자리는 원문 위치를 지키고, 빠진 기호 박스만 다시 넣는다.
+④ 맞춤법·띄어쓰기를 정리한다. (되/돼, -데/-대, 띄어쓰기, 중복 단어)
+
+[절대 하지 말 것]
+- 분량은 원문의 90~110%를 유지한다. 통째로 요약하거나 문단을 삭제하지 않는다.
+- 숫자·가격·날짜·업체명을 새로 만들지 않는다. 모르는 값은 그대로 "[확인 필요]"로 둔다.
+- 글 길이를 크게 줄이거나 새 섹션을 지어내지 않는다. 원문 구조를 유지한 ‘교정본’이다.
+- fixes 에는 실제로 고친 것만 쓴다. 안 고쳤으면 "고칠 곳이 없었습니다"라고 사실대로.
+[출력] body(교정한 완성 본문) · fixes(2~3줄) · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한국어 블로그 원고를 마지막으로 검수하는 편집장이다. 사실은 그대로 두고 거짓 경험담·AI 문체·양식 누락·맞춤법만 고친다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_PROOF,
+    maxTokens: 4200,
+    temperature: 0.55,
   };
 }
 
@@ -2401,6 +2645,39 @@ function normClosing(data) {
   return { question, boxTitle, items, markdown, warnings };
 }
 
+function normStyle(data) {
+  const styleName = s(data && data.styleName, 40) || '내 블로그';
+  const structure = arr(data && data.structure, 8).map((x) => s(x, 90)).filter(Boolean);
+  const symbols = arr(data && data.symbols, 8).map((x) => s(x, 120)).filter(Boolean);
+  const avoid = arr(data && data.avoid, 6).map((x) => s(x, 120)).filter(Boolean);
+  const rhythm = s(data && data.rhythm, 320);
+  const tone = s(data && data.tone, 320);
+  const warnings = [];
+  if (structure.length < 3) warnings.push('구성 뼈대가 3단계 미만입니다 — 글 본문이 짧았을 수 있어요.');
+  if (!rhythm) warnings.push('문단 호흡을 찾지 못했습니다.');
+  if (!tone) warnings.push('말투 특징을 찾지 못했습니다.');
+  return { styleName, structure, rhythm, symbols, tone, avoid, warnings };
+}
+
+function normProof(data, banPhrases) {
+  const body = s(data && data.body, 24000);
+  const fixes = arr(data && data.fixes, 5).map((x) => s(x, 140)).filter(Boolean);
+  const warnings = arr(data && data.warnings, 10).map((x) => s(x, 200)).filter(Boolean);
+  const banHits = scanBans(body, banPhrases);
+  if (!body) warnings.push('본문이 비어 있습니다. 다시 시도해 주세요.');
+  return {
+    body,
+    fixes,
+    warnings,
+    banHits,
+    chars: body.length,
+    needsCheck: (body.match(/\[확인 필요\]/g) || []).length,
+    photoSlots: (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length,
+    headings: (body.match(/^##\s+/gm) || []).length,
+    tables: (body.match(/^\|[^\n]*\|\s*$/gm) || []).length,
+  };
+}
+
 /* ---------------------------------------------------------------- 핸들러 */
 
 const GEN_ACTIONS = [
@@ -2413,6 +2690,8 @@ const GEN_ACTIONS = [
   'multi_use',
   'seo_tags',
   'closing_box',
+  'analyze_blogger_style',
+  'proofread_draft',
 ];
 
 module.exports = async function handler(req, res) {
@@ -2503,6 +2782,7 @@ module.exports = async function handler(req, res) {
   const banPhrases = arr(body.banPhrases, 30).map((x) => s(x, 30)).filter(Boolean);
 
   let prompt;
+  let srcMeta = null;
   if (action === 'blog') {
     if (!s(body.topic, 200)) return send(res, 400, { ok: false, reason: 'missing_topic', message: '주제(topic)가 필요합니다.' });
     prompt = promptBlog({ ...body, banPhrases, form: body.form || {} });
@@ -2549,6 +2829,50 @@ module.exports = async function handler(req, res) {
       return send(res, 400, { ok: false, reason: 'missing_body', message: '마무리 박스를 붙일 본문이 필요합니다.' });
     }
     prompt = promptClosing({ ...body, banPhrases, body: s(body.body, 12000) });
+  } else if (action === 'proofread_draft') {
+    const draft = s(body.body, 16000);
+    if (draft.length < 80) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '검수할 본문이 필요합니다(80자 이상).' });
+    }
+    prompt = promptProofread({ ...body, banPhrases, body: draft });
+  } else if (action === 'analyze_blogger_style') {
+    let srcText = s(body.sourceText || body.pastedText, 20000);
+    let title = s(body.title, 120);
+    if (srcText.trim().length < 200) {
+      const u = s(body.url, 600);
+      if (!u) {
+        return send(res, 400, { ok: false, reason: 'missing_url', message: '블로그 글 주소(url) 또는 글 일부(sourceText)가 필요합니다.', fallback: 'paste' });
+      }
+      try {
+        const r = await readBloggerSource(u);
+        srcText = r.text;
+        title = r.title || title;
+        srcMeta = { url: u, finalUrl: r.finalUrl, converted: r.converted, chars: r.chars, title, author: r.author };
+      } catch (err) {
+        const code = s(err && err.code, 40) || 'fetch_failed';
+        const message =
+          code === 'blocked_url'
+            ? String((err && err.message) || '이 주소는 열 수 없습니다.')
+            : code === 'body_not_found'
+              ? '본문을 직접 읽을 수 없는 페이지예요 — 아래에 글 일부를 붙여넣어 분석해 주세요.'
+              : code === 'timeout'
+                ? '페이지가 13초 안에 응답하지 않았습니다 — 아래에 글 일부를 붙여넣어 분석해 주세요.'
+                : '이 페이지는 자동으로 열 수 없습니다(' + String((err && err.message) || code).slice(0, 90) + '). 아래에 글 일부를 붙여넣어 분석해 주세요.';
+        const status = code === 'blocked_url' ? 400 : 200;
+        return send(res, status, {
+          ok: false,
+          reason: code,
+          message,
+          url: u,
+          fallback: 'paste',
+          keyConfigured: true,
+          model: PRIMARY_MODEL,
+        });
+      }
+    } else {
+      srcMeta = { url: s(body.url, 600), finalUrl: '', converted: false, chars: srcText.length, title, pasted: true };
+    }
+    prompt = promptAnalyzeStyle({ ...body, sourceText: srcText, title, author: (srcMeta && srcMeta.author) || s(body.author, 40), banPhrases });
   } else {
     const draft = s(body.body, 20000);
     if (draft.length < 80) return send(res, 400, { ok: false, reason: 'missing_body', message: '쇼츠로 바꿀 블로그 본문이 필요합니다.' });
@@ -2609,6 +2933,8 @@ module.exports = async function handler(req, res) {
   else if (action === 'multi_use') result = normMulti(data, banPhrases);
   else if (action === 'seo_tags') result = normSeo(data);
   else if (action === 'closing_box') result = normClosing(data);
+  else if (action === 'proofread_draft') result = normProof(data, banPhrases);
+  else if (action === 'analyze_blogger_style') result = normStyle(data);
   else result = normShorts(data);
 
   if (result.banHits && result.banHits.length) {
@@ -2625,7 +2951,9 @@ module.exports = async function handler(req, res) {
     (action === 'humanize' && !s(result.body, 10)) ||
     (action === 'multi_use' && !(((result.insta || {}).lines) || []).length) ||
     (action === 'seo_tags' && !((result.hashtags || []).length || (result.keywords || []).length)) ||
-    (action === 'closing_box' && !s(result.question, 3));
+    (action === 'closing_box' && !s(result.question, 3)) ||
+    (action === 'proofread_draft' && !s(result.body, 10)) ||
+    (action === 'analyze_blogger_style' && !(result.structure || []).length);
   if (truncated || emptyMain) {
     return send(res, 200, {
       ok: false,
@@ -2656,6 +2984,7 @@ module.exports = async function handler(req, res) {
     notes,
     tries: out.tries,
     data: result,
+    source: srcMeta || undefined,
     __raw: parsed ? undefined : out.text.slice(0, 20000),
   });
 };
