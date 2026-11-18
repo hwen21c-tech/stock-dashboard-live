@@ -27,7 +27,11 @@ const THINKING_UNSUPPORTED = ['gemini-flash-lite-latest'];
 // 응답 속도를 3~5초대로 낮추기 위한 thinking 예산 (3.8 Flash 는 기본 thinking 때문에 첫 토큰이 10초+ 걸린다)
 const THINKING_OFF = { thinkingBudget: 0 };
 const DEADLINE_MS = 50000; // Vercel maxDuration 60s 안에서 안전하게(직렬화·네트워크 여유 10초)
-const MAX_BODY_BYTES = 300 * 1024;
+// 내 사진 4장(base64) 이 본문에 실려 온다 → 여유 있게. (Vercel 요청 본문 한도 4.5MB)
+const MAX_BODY_BYTES = 4200 * 1024;
+const MAX_INLINE_IMAGES = 4;
+const MAX_INLINE_ONE = 2000 * 1024;
+const MAX_INLINE_TOTAL = 3600 * 1024;
 const FIRST_TOKEN_MS = 16000; // 첫 토큰이 이 시간 안에 안 오면 그 모델은 죽은 것으로 보고 다음 모델로
 //                     (실측: 3 Flash 는 schema 응답에서 첫 토큰이 13.6초까지 걸렸다 → 16초로 잡는다)
 const PRIMARY_COOLDOWN_MS = 90000; // 3.8 Flash 가 밀린 걸 확인한 뒤 90초는 대체 모델 우선
@@ -266,18 +270,26 @@ function safePhotoName(raw) {
 
 /** 원클릭 저장 — 이미지 바이트를 그대로 받아 파일명을 붙여 내려준다(브라우저 CORS 무관). */
 async function handlePhotoDownload(res, u) {
+  const rawTarget = String(u.searchParams.get('u') || u.searchParams.get('img_proxy') || '').trim();
   let target;
   try {
-    target = new URL(String(u.searchParams.get('u') || ''));
+    target = new URL(rawTarget);
   } catch (_) {
-    return send(res, 400, { ok: false, reason: 'bad_url', message: '이미지 주소(u)가 올바르지 않습니다.' });
+    return send(res, 400, { ok: false, reason: 'bad_url', message: '이미지 주소(u 또는 img_proxy)가 올바르지 않습니다.' });
   }
   if (!/^https?:$/.test(target.protocol)) {
     return send(res, 400, { ok: false, reason: 'bad_protocol', message: 'http(s) 주소만 받습니다.' });
   }
   const host = target.hostname.toLowerCase();
-  if (PHOTO_DL_HOSTS.indexOf(host) < 0) {
-    return send(res, 403, { ok: false, reason: 'host_not_allowed', message: '허용되지 않은 이미지 호스트입니다: ' + host });
+  const known = PHOTO_DL_HOSTS.indexOf(host) > -1;
+  if (!known) {
+    // 무료 사진 DB 외 공식 홈페이지 이미지도 원클릭 저장할 수 있게 한다.
+    // 단 사설·내부망·메타데이터 주소는 절대 열어 주지 않는다(SSRF 차단).
+    try {
+      target = await inspectPublicUrl(target.toString());
+    } catch (e) {
+      return send(res, 403, { ok: false, reason: 'host_not_allowed', message: String((e && e.message) || '허용되지 않은 주소입니다.').slice(0, 160) });
+    }
   }
   const name = safePhotoName(u.searchParams.get('name'));
   const ctrl = new AbortController();
@@ -315,7 +327,438 @@ async function handlePhotoDownload(res, u) {
     clearTimeout(timer);
   }
 }
-const arr = (v, max) => (Array.isArray(v) ? v : []).slice(0, max || 12);
+/* ---------------------------------------------------------------- 🌐 공식 페이지 사진 (og:image · 본문 <img>) */
+
+const PAGE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const OFFICIAL_TIMEOUT_MS = 13000;
+const OFFICIAL_MAX_HTML = 1500 * 1024;
+const OFFICIAL_MAX_IMAGES = 12;
+
+function badUrl(message) {
+  const e = new Error(message);
+  e.code = 'blocked_url';
+  return e;
+}
+
+/** 사설·루프백·링크로컬·메타데이터 주소인지 (SSRF 차단의 핵심) */
+function ipIsPrivate(ip) {
+  const s = String(ip || '').trim();
+  if (!s) return true;
+  if (s.indexOf(':') > -1) {
+    const low = s.toLowerCase();
+    if (low === '::1' || low === '::' || low === '0:0:0:0:0:0:0:1') return true;
+    if (/^f[cd][0-9a-f]{2}:/.test(low)) return true; // fc00::/7 고유 로컬
+    if (/^fe[89ab][0-9a-f]:/.test(low)) return true; // fe80::/10 링크 로컬
+    const m = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(low);
+    if (m) return ipIsPrivate(m[1]);
+    return false;
+  }
+  const p = s.split('.').map(Number);
+  if (p.length !== 4 || p.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return true;
+  if (p[0] === 0 || p[0] === 10 || p[0] === 127) return true;
+  if (p[0] === 169 && p[1] === 254) return true; // 링크 로컬·클라우드 메타데이터
+  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+  if (p[0] === 192 && p[1] === 168) return true;
+  if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // CGNAT
+  if (p[0] >= 224) return true; // 멀티캐스트·예약
+  return false;
+}
+
+/** 주소 검증: http(s) + 공인 호스트(DNS까지 확인). 통과하면 URL 객체, 아니면 blocked_url 오류. */
+async function inspectPublicUrl(raw) {
+  let u;
+  try {
+    u = new URL(String(raw == null ? '' : raw).trim());
+  } catch (_) {
+    throw badUrl('주소 형식이 올바르지 않습니다. https://… 로 시작하는 전체 주소를 넣어 주세요.');
+  }
+  if (!/^https?:$/.test(u.protocol)) throw badUrl('http·https 주소만 열 수 있습니다.');
+  if (u.username || u.password) throw badUrl('아이디·비밀번호가 들어간 주소는 열지 않습니다.');
+  const host = String(u.hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) throw badUrl('주소에 호스트가 없습니다.');
+  if (host === 'localhost' || /\.(local|localhost|internal|lan|home|corp|intranet)$/.test(host)) {
+    throw badUrl('내부 주소(localhost·사설망)는 열지 않습니다.');
+  }
+  if (/^[\d.]+$/.test(host) || host.indexOf(':') > -1) {
+    if (ipIsPrivate(host)) throw badUrl('사설 IP 주소는 열지 않습니다.');
+    return u;
+  }
+  let addrs = [];
+  try {
+    addrs = await require('dns').promises.lookup(host, { all: true });
+  } catch (_) {
+    throw badUrl('주소를 찾지 못했습니다: ' + host);
+  }
+  if (!Array.isArray(addrs) || !addrs.length) throw badUrl('주소를 찾지 못했습니다: ' + host);
+  if (addrs.some((a) => ipIsPrivate(a && a.address))) throw badUrl('사설망으로 연결되는 주소는 열지 않습니다.');
+  return u;
+}
+
+function htmlUnesc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function metaTags(html) {
+  const out = [];
+  const re = /<meta\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 80) {
+    const tag = m[0];
+    const key = /(?:property|name)\s*=\s*["']([^"']+)["']/i.exec(tag);
+    const content = /content\s*=\s*["']([\s\S]*?)["']/i.exec(tag);
+    if (key && content) out.push({ key: String(key[1]).toLowerCase(), value: htmlUnesc(content[1]) });
+  }
+  return out;
+}
+
+function metaGet(tags, keys) {
+  for (const k of keys) {
+    const hit = tags.filter((t) => t.key === k && t.value).map((t) => t.value)[0];
+    if (hit) return hit;
+  }
+  return '';
+}
+
+function attrOf(tag, name) {
+  const r = new RegExp(name + '\\s*=\\s*(["\'])([\\s\\S]*?)\\1', 'i').exec(tag);
+  return r ? htmlUnesc(r[2]) : '';
+}
+
+/** 본문 <img>·CSS 배경 후보 — 1x1·로고·아이콘·팝업 같은 쓰레기 이미지는 거르고 크기로 정렬한다. */
+const BAD_IMG_NAME = /(logo|icon|favicon|sprite|spacer|blank|pixel|1x1|loading|placeholder|btn|bullet|arrow|popup|notice|close|event_banner|sns|(^|[_\-/])pop([_\-./]|\d))/i;
+
+function bodyImageCandidates(html, baseUrl) {
+  const out = [];
+  const push = (raw, alt, area) => {
+    if (!raw || /^data:/i.test(raw) || /^blob:/i.test(raw)) return;
+    if (/\.svg(\?|$)/i.test(raw)) return;
+    if (/\{\{|%7B%7B/i.test(raw)) return;
+    if (BAD_IMG_NAME.test(raw)) return;
+    let abs;
+    try {
+      abs = new URL(raw, baseUrl).toString();
+    } catch (_) {
+      return;
+    }
+    if (/^https?:/i.test(abs) === false) return;
+    // https 페이지에서 http 이미지는 브라우저가 막는다(혼합 콘텐츠) → https 로 올려 본다.
+    if (/^http:\/\//i.test(abs) && /^https:\/\//i.test(finalUrl || '')) abs = 'https://' + abs.slice(7);
+    out.push({ url: abs, alt: alt || '', area: area || 0 });
+  };
+  const re = /<img\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 80) {
+    const tag = m[0];
+    let src = attrOf(tag, 'data-src') || attrOf(tag, 'data-original') || attrOf(tag, 'data-lazy-src') || attrOf(tag, 'src');
+    if (!src) {
+      const ss = attrOf(tag, 'srcset');
+      if (ss) src = ss.split(',')[0].trim().split(/\s+/)[0];
+    }
+    const w = Number(attrOf(tag, 'width') || 0);
+    const h = Number(attrOf(tag, 'height') || 0);
+    if ((w && w < 240) || (h && h < 160)) continue;
+    push(src, attrOf(tag, 'alt'), w && h ? w * h : 0);
+  }
+  // CSS 배경 이미지(리조트 사이트는 대표 사진을 배경으로 까는 경우가 많다)
+  const reBg = /background(?:-image)?\s*:\s*url\(\s*(['"]?)([^)'"]+)\1\s*\)/gi;
+  let b;
+  while ((b = reBg.exec(html)) && out.length < 110) push(b[2], '', 0);
+  // 중복 제거 + 큰 이미지 우선
+  const seen = {};
+  return out
+    .filter((c) => {
+      if (seen[c.url]) return false;
+      seen[c.url] = 1;
+      return true;
+    })
+    .sort((a, z) => z.area - a.area)
+    .slice(0, 40);
+}
+
+/** 리다이렉트를 직접 따라가며 매 홉마다 공인 주소인지 다시 확인한다. */
+async function fetchHtmlSafe(startUrl) {
+  let current = startUrl;
+  for (let hop = 0; hop < 5; hop++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), OFFICIAL_TIMEOUT_MS);
+    let r;
+    try {
+      r = await fetch(current.toString(), {
+        redirect: 'manual',
+        signal: ctrl.signal,
+        headers: { 'User-Agent': PAGE_UA, Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5', 'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.6' },
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      const aborted = e && e.name === 'AbortError';
+      const err = new Error(aborted ? '페이지가 13초 안에 응답하지 않았습니다.' : '페이지를 열지 못했습니다: ' + String((e && e.message) || '').slice(0, 120));
+      err.code = aborted ? 'timeout' : 'fetch_failed';
+      throw err;
+    }
+    if (r.status >= 300 && r.status < 400) {
+      clearTimeout(timer);
+      const loc = r.headers.get('location');
+      if (!loc) {
+        const err = new Error('리다이렉트 주소가 비어 있습니다(HTTP ' + r.status + ').');
+        err.code = 'fetch_failed';
+        throw err;
+      }
+      let next;
+      try {
+        next = new URL(loc, current);
+      } catch (_) {
+        throw badUrl('리다이렉트 주소가 올바르지 않습니다.');
+      }
+      current = await inspectPublicUrl(next.toString());
+      continue;
+    }
+    if (!r.ok) {
+      clearTimeout(timer);
+      const err = new Error('페이지가 HTTP ' + r.status + ' 로 응답했습니다(차단·로그인 필요일 수 있습니다).');
+      err.code = 'fetch_failed';
+      throw err;
+    }
+    const ct = String(r.headers.get('content-type') || '').toLowerCase();
+    if (ct && ct.indexOf('html') < 0 && ct.indexOf('text/plain') < 0) {
+      clearTimeout(timer);
+      const err = new Error('HTML 페이지가 아닙니다(' + ct.slice(0, 40) + ').');
+      err.code = 'not_html';
+      throw err;
+    }
+    let text = '';
+    try {
+      const buf = Buffer.from(await r.arrayBuffer());
+      let charset = (/charset\s*=\s*([\w-]+)/i.exec(ct) || [])[1] || '';
+      if (!charset){
+        const head = buf.slice(0, 2048).toString('latin1');
+        const m = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(head);
+        if (m) charset = m[1];
+      }
+      charset = String(charset || 'utf-8').toLowerCase();
+      try {
+        text = new TextDecoder(charset).decode(buf);
+      } catch (_) {
+        text = buf.toString('utf8');
+      }
+      text = text.slice(0, OFFICIAL_MAX_HTML);
+    } catch (e) {
+      clearTimeout(timer);
+      const err = new Error('페이지 본문을 읽지 못했습니다.');
+      err.code = 'fetch_failed';
+      throw err;
+    }
+    clearTimeout(timer);
+    // 자바스크립트·meta 로 다른 주소로 넘기는 짧은 껍데기 페이지면 한 번 더 따라간다.
+    if (text.length < 4000 && hop < 3) {
+      const rf =
+        /<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["'][^"']*url\s*=\s*([^"'>\s]+)/i.exec(text) ||
+        /(?:window\.|document\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/i.exec(text);
+      if (rf && rf[1]) {
+        let nextUrl = null;
+        try {
+          nextUrl = new URL(htmlUnesc(rf[1]), current);
+        } catch (_) {
+          nextUrl = null;
+        }
+        if (nextUrl && /^https?:$/.test(nextUrl.protocol)) {
+          current = await inspectPublicUrl(nextUrl.toString());
+          continue;
+        }
+      }
+    }
+    return { html: text, finalUrl: current.toString() };
+  }
+  const err = new Error('리다이렉트가 너무 많습니다(4회 초과).');
+  err.code = 'too_many_redirects';
+  throw err;
+}
+
+function officialPagePhotos(html, finalUrl) {
+  const tags = metaTags(html);
+  const title = metaGet(tags, ['og:title', 'twitter:title']) || htmlUnesc((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html) || [])[1] || '');
+  const description = metaGet(tags, ['og:description', 'twitter:description', 'description']);
+  const siteName = metaGet(tags, ['og:site_name']);
+  const host = (() => {
+    try {
+      return new URL(finalUrl).hostname.replace(/^www\./, '');
+    } catch (_) {
+      return '';
+    }
+  })();
+  const found = [];
+  const push = (url, via, label, area, alt) => {
+    if (!url || !/^https?:/i.test(url)) return;
+    if (BAD_IMG_NAME.test(url)) return;
+    let abs = url;
+    try {
+      abs = new URL(url, finalUrl).toString();
+    } catch (_) {
+      return;
+    }
+    if (/^http:\/\//i.test(abs) && /^https:\/\//i.test(finalUrl || '')) abs = 'https://' + abs.slice(7);
+    if (/\.svg(\?|$)/i.test(abs)) return;
+    if (found.some((f) => f.url === abs)) return;
+    found.push({ url: abs, via, label, area: area || 0, alt: String(alt || '').trim() });
+  };
+  push(metaGet(tags, ['og:image:secure_url', 'og:image:url', 'og:image']), 'og:image', '대표 이미지(og:image)', 999999);
+  push(metaGet(tags, ['twitter:image', 'twitter:image:src']), 'twitter:image', '대표 이미지(twitter:image)', 900000);
+  bodyImageCandidates(html, finalUrl).forEach((c) => push(c.url, 'body', '본문 사진', c.area, c.alt));
+  found.sort((a, z) => z.area - a.area);
+  const photos = found.slice(0, OFFICIAL_MAX_IMAGES).map((f, i) => ({
+    id: 'of' + (i + 1),
+    source: 'official',
+    title: (f.alt && f.alt.length > 2 ? f.alt.slice(0, 90) : (title || host || '공식 페이지') +
+      (f.via === 'body' ? ' · 본문 사진 ' + (i + 1) : (f.via === 'og:image' || f.via === 'twitter:image' ? ' · 대표 이미지' : ''))),
+    thumb: f.url,
+    preview: f.url,
+    full: f.url,
+    save: f.url,
+    page: finalUrl,
+    author: host,
+    license: '출처: ' + (host || '공식 페이지') + (f.via === 'body' ? ' (본문 사진)' : ' (' + f.label + ')'),
+    via: f.via,
+  }));
+  return { title, description, siteName, host, photos };
+}
+
+/** 한국관광공사 TourAPI — 키가 설정된 환경에서만. 없으면 정직하게 건너뛴다. */
+async function searchTourApi(q, n) {
+  const key = String(process.env.KTO_API_KEY || process.env.TOUR_API_KEY || '').trim();
+  if (!key) return { ok: false, reason: 'no_key' };
+  const base = 'https://apis.data.go.kr/B551011/KorService1/';
+  const common = '&MobileOS=ETC&MobileApp=yeonolang&_type=json';
+  const listUrl =
+    base + 'searchKeyword1?serviceKey=' + encodeURIComponent(key) +
+    '&numOfRows=' + Math.max(3, Math.min(10, n || 6)) + '&pageNo=1' + common +
+    '&keyword=' + encodeURIComponent(q);
+  const j = await fetchJsonTimed(listUrl, { Accept: 'application/json' });
+  const body = ((j || {}).response || {}).body || {};
+  const items = body.items || {};
+  const list = Array.isArray(items.item) ? items.item : (items.item ? [items.item] : []);
+  const photos = [];
+  list.forEach((it) => {
+    const img = String(it.firstimage || it.firstimage2 || '').trim();
+    if (!/^https?:/i.test(img)) return;
+    photos.push({
+      id: 'kto' + String(it.contentid || photos.length),
+      source: 'kto',
+      title: s(it.title, 80) + (it.addr1 ? ' · ' + s(it.addr1, 60) : ''),
+      thumb: img,
+      preview: img,
+      full: img,
+      save: img,
+      page: 'https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=' + encodeURIComponent(String(it.contentid || '')),
+      author: '한국관광공사',
+      license: '출처: 한국관광공사 TourAPI',
+    });
+  });
+  return { ok: photos.length > 0, photos, count: photos.length };
+}
+
+async function handleOfficialPhotos(res, u) {
+  const rawUrl = s(u.searchParams.get('url'), 600);
+  const place = s(u.searchParams.get('place') || u.searchParams.get('q'), 80).replace(/[<>"\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  const n = Math.min(OFFICIAL_MAX_IMAGES, Math.max(3, parseInt(u.searchParams.get('n'), 10) || 8));
+  const out = { ok: true, action: 'fetch_official_photos', url: rawUrl, place, sources: [], photos: [], notes: [] };
+
+  if (!rawUrl && !place) {
+    return send(res, 400, {
+      ok: false,
+      reason: 'missing_url',
+      message: '리조트·장소의 공식 홈페이지 주소(url)나 장소명(place) 중 하나가 필요합니다.',
+    });
+  }
+
+  /* ① 공식 URL 이 있으면 그 페이지의 대표 이미지·본문 사진을 뽑는다. */
+  if (rawUrl) {
+    try {
+      const start = await inspectPublicUrl(rawUrl);
+      const page = await fetchHtmlSafe(start);
+      const got = officialPagePhotos(page.html, page.finalUrl);
+      out.finalUrl = page.finalUrl;
+      out.title = got.title;
+      out.description = got.description;
+      out.siteName = got.siteName;
+      out.photos = got.photos;
+      if (got.photos.length) out.sources.push({ key: 'official', label: '공식 홈페이지', count: got.photos.length, host: got.host });
+      out.notes.push('출처: 공식 홈페이지(' + (got.host || '') + ') — 사진 사용 권한·출처 표기는 그 사이트 정책을 확인하세요.');
+      if (!got.photos.length) {
+        out.notes.push('이 페이지에서 대표 이미지(og:image)·본문 사진을 찾지 못했습니다. 페이지가 자바스크립트로 사진을 그리는 경우가 있습니다.');
+        // 2차: 페이지가 알려 준 이름으로 공개 소스(위키미디어)를 한 번 더 본다 — 단 '공식 사진 아님'을 분명히 표시.
+        const guess = (got.siteName || got.title || '').replace(/[|\-–—].*$/, '').replace(/[<>"\\]/g, ' ').trim();
+        if (guess && guess.length >= 2 && guess.length <= 40) {
+          try {
+            const wm = await searchCommons(guess, Math.min(6, n));
+            if (wm && wm.length) {
+              wm.slice(0, Math.min(6, n)).forEach((p) => out.photos.push(Object.assign({}, p, { source: 'wikimedia', license: (p.license || 'Wikimedia Commons') + ' · 공식 사진 아님' })));
+              out.sources.push({ key: 'wikimedia', label: '위키미디어 커먼즈(참고)', count: out.photos.length });
+              out.notes.push('공식 페이지에서 사진을 못 찾아 「' + guess + '」로 위키미디어 커먼즈를 참고한 결과입니다 — 공식 홍보 사진이 아닐 수 있습니다.');
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      out.ok = false;
+      out.reason = e.code || 'fetch_failed';
+      out.message = String((e && e.message) || '공식 페이지를 읽지 못했습니다.').slice(0, 200);
+      out.notes.push('주소를 열지 못해 사진을 만들지 않았습니다. 값을 지어내지 않습니다.');
+      if (e.code === 'blocked_url') return send(res, 400, out);
+      return send(res, 200, out);
+    }
+  }
+
+  /* ② 장소명만 있으면 공개 소스(관광공사 → 위키미디어)를 차례로 본다. */
+  if (place) {
+    try {
+      const kto = await searchTourApi(place, n);
+      if (kto.ok) {
+        out.sources.push({ key: 'kto', label: '한국관광공사 TourAPI', count: kto.photos.length });
+        kto.photos.slice(0, n).forEach((p) => out.photos.push(p));
+      } else {
+        out.notes.push(
+          kto.reason === 'no_key'
+            ? 'TourAPI 키가 설정되지 않아 관광공사 사진은 건너뛰었습니다(공개 소스만 사용).'
+            : '관광공사 검색에서 사진을 찾지 못했습니다.'
+        );
+      }
+    } catch (e) {
+      out.notes.push('관광공사 검색 실패: ' + String((e && e.message) || '').slice(0, 80));
+    }
+    if (out.photos.length < n) {
+      try {
+        const wm = await searchCommons(place, n - out.photos.length);
+        if (wm && wm.length) {
+          out.sources.push({ key: 'wikimedia', label: '위키미디어 커먼즈', count: wm.length });
+          wm.slice(0, n - out.photos.length).forEach((p) => out.photos.push(Object.assign({}, p, { source: 'wikimedia' })));
+        }
+      } catch (e) {
+        out.notes.push('위키미디어 검색 실패: ' + String((e && e.message) || '').slice(0, 80));
+      }
+    }
+    out.notes.push('위키미디어 사진은 사진마다 라이선스가 다릅니다 — 카드의 라이선스를 확인하고 출처를 남기세요.');
+  }
+
+  if (!out.photos.length && out.ok) {
+    out.ok = false;
+    out.reason = 'no_photo';
+    out.message = '이 주소·장소에서 쓸 만한 사진을 찾지 못했습니다. 공식 홈페이지의 객실·전경 페이지 주소를 넣어 보세요.';
+  }
+  return send(res, 200, out);
+}
+
+const arr = (v, max) => (Array.isArray(v) ? v : []).slice(0, max || 12); 
 const num = (v, fb) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fb;
@@ -1126,6 +1569,43 @@ function banLine(banPhrases) {
 
 /* ---------------------------------------------------------------- 프롬프트 */
 
+function styleBlock(st) {
+  if (!st || typeof st !== 'object') return '';
+  const name = s(st.name, 60);
+  if (!name) return '';
+  const struct = arr(st.structure, 12).map((x) => `- ${s(x, 90)}`).join('\n');
+  const symbols = arr(st.symbols, 10).map((x) => `- ${s(x, 130)}`).join('\n');
+  const rules = arr(st.rules, 8).map((x) => `- ${s(x, 160)}`).join('\n');
+  return [
+    `\n[1등 블로거 양식 — 「${name}」 스타일 · 구조·호흡·기호·말투만 따른다]`,
+    st.who ? `- 이 글이 왜 읽히는가: ${s(st.who, 200)}` : '',
+    struct ? `- 구성 뼈대(위에서부터 이 순서대로 "## " 소제목을 만든다. 번호는 붙이지 않는다):\n${struct}` : '',
+    st.rhythm ? `- 문단 호흡: ${s(st.rhythm, 320)}` : '',
+    symbols ? `- 쓰는 기호·박스(본문에 실제로 넣는다):\n${symbols}` : '',
+    st.voice ? `- 말투 DNA: ${s(st.voice, 320)}` : '',
+    rules ? `- 지킬 규칙:\n${rules}` : '',
+    '- 저작권: 이 사람의 실제 문장을 옮기지 않는다. 뼈대·호흡·기호·말투만 내 글로 다시 쓴다. 글에 이 사람 이름·블로그 이름을 쓰지 않는다.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** 내 사진 — 실제로 첨부된 사진만 번호를 매기고, Gemini 에 inlineData 로 함께 보낸다. */
+function blogPhotos(b) {
+  const out = [];
+  arr(b.photos, MAX_INLINE_IMAGES).forEach((p) => {
+    if (!p || typeof p !== 'object') return;
+    const mime = s(p.mime, 40).toLowerCase();
+    const data = String(p.data == null ? '' : p.data).replace(/^data:[^,]*,/, '').trim();
+    if (!/^image\/(jpeg|png|webp)$/.test(mime)) return;
+    if (!data || data.length > MAX_INLINE_ONE) return;
+    out.push({ n: out.length + 1, mime, data, name: s(p.name, 80) || 'photo' + (out.length + 1) + '.jpg', memo: s(p.memo, 200) });
+  });
+  const total = out.reduce((a, p) => a + p.data.length, 0);
+  if (total > MAX_INLINE_TOTAL) return [];
+  return out;
+}
+
 function promptBlog(b) {
   const form = b.form || {};
   const sections = arr(form.sections, 8).map((x, i) => `${i + 1}) ${s(x, 80)}`).join('\n');
@@ -1133,18 +1613,33 @@ function promptBlog(b) {
   const note = s(b.experienceNote, 2000);
   const src = s(b.sourceMaterial, 8000);
   const gaps = arr(b.gaps, 6).map((x) => `- ${s(x, 120)}`).join('\n');
+  const style = styleBlock(b.stylePreset);
+  const photos = blogPhotos(b);
+  const photoList = photos.map((p) => `${p.n}) ${p.name}${p.memo ? ' — 메모: ' + p.memo : ''}`).join('\n');
+  const photoRule = photos.length
+    ? `
+[내 사진 배치 규칙 — 어기면 실패다]
+- 너는 위 사진을 실제로 보고 쓴다. 사진에 실제로 보이는 것만 쓴다. 없는 사람·간판·브랜드·음식·날씨를 지어내지 않는다.
+- 사진을 넣을 자리에 정확히 "[📸 내 사진 1: 사진에서 실제로 보이는 모습 20자 내외]" 형식으로 넣는다. 번호는 위 사진 번호다.
+- 그 태그 바로 앞 문단에서 그 사진을 자연스럽게 언급한다(캡션과 같은 문장을 반복하지 않는다).
+- 사진이 ${photos.length}장이면 태그도 ${photos.length}개다. 한 사진을 두 번 넣지 않는다.
+- 사진과 맞지 않는 자리에 억지로 넣지 않는다. 사진에 맞는 섹션으로 옮긴다.
+- 사진으로 채우지 못한 곳이 필요하면 "[📸 사진: 묘사 | search: 영문검색어]"를 최대 2곳만 쓴다. (사진이 있는 주제에 없는 사진을 지어내지 않는다)`
+    : '';
   const user = [
     `주제: ${s(b.topic, 200)}`,
     form.name ? `양식: ${s(form.name, 40)} / 말투: ${s(form.tone, 40)}` : `말투: ${s(form.tone, 40) || '친근한 리뷰형'}`,
-    sections ? `\n[반드시 이 순서로 섹션을 구성]\n${sections}` : '',
+    sections ? `\n[반드시 이 순서로 섹션을 구성 — 소제목에 1) 같은 번호를 붙이지 않는다]\n${sections}` : '',
     form.highlight ? `\n[강조 포인트 — 이걸 지켜야 통과]\n${s(form.highlight, 400)}` : '',
+    style,
     sample ? `\n[내 문체 샘플 — 문장 길이·어미·말버릇을 이 사람처럼]\n"""${sample}"""` : '',
     note ? `\n[내 경험 메모 — 사용자가 직접 적은 사실. 1인칭 경험은 여기 있는 내용만 쓴다]\n"""${note}"""` : '',
     src ? `\n[참고 자료 — 남이 말한 내용(유튜브 자막·기사·시황 요약). 사실 근거로만 인용하고 내 경험으로 쓰지 않는다]\n"""${src}"""` : '',
     gaps ? `\n[경쟁 글 빈틈 메모 — 본문에서 실제로 메꿔라]\n${gaps}` : '',
+    photos.length ? `\n[내 사진 — 이 메시지에 실제로 첨부된 사진 ${photos.length}장. 위에서부터 1번]\n${photoList}` : '',
     b.theme ? `\n참고 카테고리: ${s(b.theme, 40)}` : '',
     banLine(b.banPhrases),
-    `
+    `${photoRule}
 [경험·사실 규칙 — 이걸 어기면 실패다]
 - 위 [내 경험 메모]에 없는 1인칭 경험(다녀왔다·가보니·먹어봤다·내돈내산·써봤다)을 절대 쓰지 않는다. 실제로 방문·구매한 적이 없다.
 - [참고 자료]는 남의 영상·기사다. 그 내용을 내가 직접 겪은 일처럼 쓰지 않는다.
@@ -1158,7 +1653,8 @@ function promptBlog(b) {
 1) 첫 3줄이 훅이다. 인사말("안녕하세요") 없이 결론·숫자·상황으로 바로 시작한다.
 2) 위 섹션 순서를 그대로 쓰고 각 섹션 제목은 "## " 마크다운 소제목으로 단다.
 3) 조건 비교용 마크다운 표를 최소 1개 넣는다. ( | 구분 | A | B | 형식, 헤더 구분선 포함)
-4) 사진이 들어가면 글이 자연스러워지는 지점 2~3곳에 정확히 "[📸 사진: 구체적 묘사 | search: 영문검색어]" 형식으로 넣는다.
+4) 사진이 들어가면 글이 자연스러워지는 지점에 정확히 "[📸 사진: 구체적 묘사 | search: 영문검색어]" 형식으로 넣는다.
+   단 [내 사진]이 첨부된 경우에는 내 사진 태그를 우선하고, 남은 자리에만 0~2곳 넣는다.
    - 묘사는 한국어 20자 내외(무엇이 보여야 하는지), search 는 무료 사진 DB에서 실제로 검색될 영어 명사 2~4단어.
    - search 에 브랜드·상호·사람 이름·연도·한글을 넣지 않는다(그런 사진은 무료 DB에 없다). "street food", "autumn park", "hotel lobby" 처럼 보편 명사만.
    - 사진 태그는 그 줄 하나로 끝낸다(같은 줄에 다른 문장을 붙이지 않는다). 표 안에는 넣지 않는다.
@@ -1177,6 +1673,7 @@ function promptBlog(b) {
     schema: SCHEMA_BLOG,
     maxTokens: 3600,
     temperature: 0.95,
+    images: photos.map((p) => ({ mimeType: p.mime, data: p.data })),
   };
 }
 
@@ -1495,9 +1992,15 @@ async function callModel(model, prompt, attemptDeadline, thinkingOff) {
   };
   const wantThinkingOff = thinkingOff !== false && THINKING_UNSUPPORTED.indexOf(model) < 0;
   if (wantThinkingOff) gen.thinkingConfig = THINKING_OFF;
+  // 📷 내 사진 — Gemini 멀티모달(inlineData). 본문 텍스트보다 앞에 두고 같이 보낸다.
+  const imgParts = (Array.isArray(prompt.images) ? prompt.images : [])
+    .filter((im) => im && im.data && /^image\/(jpeg|png|webp)$/.test(String(im.mimeType || '')))
+    .slice(0, MAX_INLINE_IMAGES)
+    .map((im) => ({ inlineData: { mimeType: im.mimeType, data: im.data } }));
+  const userParts = imgParts.length ? imgParts.concat([{ text: prompt.user }]) : [{ text: prompt.user }];
   const body = {
     systemInstruction: { parts: [{ text: prompt.system }] },
-    contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+    contents: [{ role: 'user', parts: userParts }],
     generationConfig: gen,
   };
   const ctrl = new AbortController();
@@ -1701,7 +2204,8 @@ function normBlog(data, banPhrases) {
   const banHits = scanBans(body, banPhrases);
   if (!body) warnings.push('본문이 비어 있습니다. 다시 생성해 주세요.');
   const photoSlots = (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length;
-  return { titles, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length, photoSlots };
+  const myPhotoSlots = (body.match(/\[(?:📸|📷)\s*내 사진\s*\d+[^\]]*\]/g) || []).length;
+  return { titles, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length, photoSlots, myPhotoSlots };
 }
 
 function scanBans(text, banPhrases) {
@@ -1923,10 +2427,13 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     const u = new URL(req.url || '/', 'http://localhost');
-    const act = s(u.searchParams.get('action'), 20);
+    const act = s(u.searchParams.get('action'), 40);
     // 📸 사진 검색 — 블로그 생성과 별개로 GET 으로 쓴다(키 없이도 Wikimedia Commons 로 동작).
     if (act === 'photos') return handlePhotos(res, u);
     if (act === 'photo-dl') return handlePhotoDownload(res, u);
+    if (act === 'fetch_official_photos' || act === 'official_photos') return handleOfficialPhotos(res, u);
+    // 원클릭 다운로드 프록시 별칭: /api/content-ai?img_proxy=<이미지주소>
+    if (u.searchParams.get('img_proxy')) return handlePhotoDownload(res, u);
     return send(res, 200, {
       ok: true,
       keyConfigured,
@@ -1941,7 +2448,11 @@ module.exports = async function handler(req, res) {
       photos: {
         pixabay: !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim()),
         commons: true,
+        kto: !!(process.env.KTO_API_KEY || process.env.TOUR_API_KEY),
         how: 'GET ?action=photos&q=검색어&n=6 → { ok, source, photos[] } / ?action=photo-dl&u=이미지주소&name=파일명.jpg',
+        official:
+          'GET ?action=fetch_official_photos&url=https://…(공식 홈페이지) 또는 &place=장소명 → { ok, title, photos[], sources[] } — 사설 IP·localhost·비http는 SSRF 차단',
+        inline_images: 'POST { action:"blog", photos:[{ name, mime, data(base64), memo }] } — 최대 ' + MAX_INLINE_IMAGES + '장, Gemini 멀티모달',
       },
     });
   }
@@ -1958,6 +2469,14 @@ module.exports = async function handler(req, res) {
   }
 
   const action = s(body.action, 30);
+  // 🌐 공식 페이지 사진 — Gemini 키와 무관하게 먼저 처리한다(키 없이도 동작).
+  if (action === 'fetch_official_photos' || action === 'official_photos') {
+    const qp = new URLSearchParams();
+    qp.set('url', s(body.url, 600));
+    qp.set('place', s(body.place || body.q, 80));
+    qp.set('n', String(Math.min(OFFICIAL_MAX_IMAGES, Math.max(3, Math.trunc(num(body.n, 8))))));
+    return handleOfficialPhotos(res, { searchParams: qp });
+  }
   // 유튜브 자막은 Gemini 호출이 아니라서 키 설정과 무관하게 먼저 처리한다.
   if (action === 'youtube_transcript') return handleYoutubeTranscript(res, body);
   if (GEN_ACTIONS.indexOf(action) < 0) {
