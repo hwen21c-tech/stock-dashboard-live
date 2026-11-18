@@ -2791,6 +2791,23 @@
     },
   };
 
+  /* 🪙 코인 지갑 — pokemon-coins.js 가 window.PkmCoins 로 열어 준다.
+     학습 1판(+10)이 카드팩 앱의 코인과 같은 저장고(pkm.coins.v1)에 들어간다. */
+  const Coin = {
+    reward(slot, n) {
+      const C = window.PkmCoins;
+      if (!C) return 0;
+      const add = n === undefined ? (C.REWARD || 10) : n;
+      const now = C.add(C.idOf(slot), add);
+      try { C.pop(add); } catch (e) { /* */ }
+      return now;
+    },
+    of(slot) {
+      const C = window.PkmCoins;
+      return C ? C.getSlot(slot) : 0;
+    },
+  };
+
   /* 잠금 오버레이 — 몫을 다 채우면 배틀 화면 위로 올라온다 */
   const QuotaLock = {
     el: null,
@@ -2895,6 +2912,9 @@
     /* 판이 끝났을 때(포획·전투불능) 한 판으로 센다 — 게스트는 세지 않는다 */
     onPlay(kind) {
       const slot = Quota.kid();
+      /* 🪙 학습 1판 완료 = 이 프로필 코인 +10 (카드팩 앱과 같은 지갑 · 0623 클라우드로 동기화)
+         게스트도 자기 몫으로 쌓인다. 일일 미션 달성 보상은 따로 주지 않는다. */
+      try { Coin.reward(slot); } catch (e) { warn('coin reward', e); }
       if (Quota.isGuest(slot)) return false;
       const r = Quota.add(slot, 1);
       if (!r.blocked) return false;

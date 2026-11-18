@@ -59,6 +59,7 @@
   var EXACT = [
     'pkm.versus.mode.v1',
     'pkm.quota.v1',            /* 아빠가 정한 하루 판수 */
+    'pkm.coins.v1',            /* 🪙 코인 지갑 — 카드팩 앱(pokemon-cards)과 함께 쓴다 */
     'mpb.profiles.v1',         /* 산수 놀이 친구(이름) */
     'hpb.profiles.v1',         /* 한글 놀이 친구(이름) */
     'epb.profiles.v1',         /* 영어 놀이 친구(이름) */
@@ -231,6 +232,12 @@
       if (startsWith(k, 'pkm.shiny.v1.')) {
         v = jp(snap[k], null);
         if (Array.isArray(v) && v.length) return true;
+        continue;
+      }
+      if (k === COIN_KEY) {
+        v = jp(snap[k], null);
+        var cat = (v && v.at) || {};
+        for (i = 0; i < COIN_IDS.length; i += 1) if (Number(cat[COIN_IDS[i]]) > 0) return true;
       }
     }
     return false;
@@ -276,6 +283,12 @@
       if (startsWith(k, 'pkm.shiny.v1.')) {
         v = jp(snap[k], null);
         if (Array.isArray(v)) s += 2 * v.length;
+        continue;
+      }
+      if (k === 'pkm.coins.v1') {
+        v = jp(snap[k], null);
+        var cc = (v && v.at) || {};
+        for (i = 0; i < 3; i += 1) if (Number(cc[['arin', 'jian', 'guest'][i]]) > 0) s += 1;
       }
     }
     return s;
@@ -562,6 +575,39 @@
     for (var kk in out.at) { any = 1; break; }
     return any ? JSON.stringify(out) : '';
   }
+  /* 🪙 코인 지갑 — 프로필(arin·jian·guest)별로 '마지막으로 바뀐 시각(at)'이 더 최근인 쪽을 쓴다.
+     게임 1판 +10 · 카드팩 구매 -50 이 모두 at 을 갱신하므로,
+     낡은 기기가 예전 코인을 올려도 방금 번 코인을 지우지 않고,
+     방금 쓴 코인이 되살아나지도 않는다. 카드가 전혀 없는 쪽(at 없음)이면 기록이 있는 쪽을 남긴다. */
+  var COIN_KEY = 'pkm.coins.v1';
+  var COIN_IDS = ['arin', 'jian', 'guest'];
+  function coinNum(v) { var n = Number(v); return isFinite(n) && n >= 0 ? Math.round(n) : null; }
+  function mergeCoins(remoteRaw, localRaw) {
+    var r = jp(remoteRaw, null) || {}, l = jp(localRaw, null) || {};
+    var rc = (r && r.coins && typeof r.coins === 'object') ? r.coins : {};
+    var lc = (l && l.coins && typeof l.coins === 'object') ? l.coins : {};
+    var ra = (r && r.at && typeof r.at === 'object') ? r.at : {};
+    var la = (l && l.at && typeof l.at === 'object') ? l.at : {};
+    var out = { v: 1, coins: {}, at: {} };
+    var any = false;
+    for (var i = 0; i < COIN_IDS.length; i++) {
+      var id = COIN_IDS[i];
+      var rv = coinNum(rc[id]), lv = coinNum(lc[id]);
+      var rt = Number(ra[id]) > 0 ? Number(ra[id]) : 0;
+      var lt = Number(la[id]) > 0 ? Number(la[id]) : 0;
+      var v, t;
+      if (lv == null && rv == null) continue;
+      if (lv == null) { v = rv; t = rt; }
+      else if (rv == null) { v = lv; t = lt; }
+      else if (lt > rt) { v = lv; t = lt; }
+      else if (rt > lt) { v = rv; t = rt; }
+      else { v = Math.max(rv, lv); t = rt; }
+      out.coins[id] = v;
+      if (t > 0) out.at[id] = t;
+      any = true;
+    }
+    return any ? JSON.stringify(out) : '';
+  }
   function mergeDex(remoteRaw, localRaw, prevIds) {
     var r = jp(remoteRaw, {}) || {}, l = jp(localRaw, {}) || {};
     var rIds = Array.isArray(r.ids) ? r.ids : [];
@@ -685,6 +731,9 @@
         } else if (k === GIFT_KEY && remoteKeys[k] != null) {
           var mg = mergeGift(remoteKeys[k], local[k]);
           keys[k] = mg || local[k];
+        } else if (k === COIN_KEY && remoteKeys[k] != null) {
+          var mc = mergeCoins(remoteKeys[k], local[k]);
+          keys[k] = mc || local[k];
         } else {
           keys[k] = local[k];
         }
@@ -733,7 +782,7 @@
     applying = true;
     try {
       for (var k in keys) {
-        if (!startsWith(k, 'pkm.shared.dex.v1.') && k !== GIFT_KEY) continue;
+        if (!startsWith(k, 'pkm.shared.dex.v1.') && k !== GIFT_KEY && k !== COIN_KEY) continue;
         if (typeof keys[k] !== 'string') continue;
         if (lsGet(k) !== keys[k]) lsSet(k, keys[k]);
       }

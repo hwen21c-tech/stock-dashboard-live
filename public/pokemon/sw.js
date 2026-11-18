@@ -5,8 +5,8 @@
    · 캐시 이름에 pkm-world- 접두사를 붙여, 관제탑 워커의 캐시 정리와 섞이지 않게 한다.
    ============================================================ */
 const PREFIX = 'pkm-world-';
-const VERSION = PREFIX + 'v19';  /* 2026-11-17 v19: 🏃 「도망간다」= 야생 포켓몬·HP·진행 유지, 문제(보기)만 교체 — 이전 문제 상태·타이머·음성 잔존 차단
-                                    (v18: 🐛 지안 도감 분리 + ➕ 아빠 권한 포켓몬 추가 / v17: ☁️ 가족 클라우드 「⏪ 이전 백업 불러오기」 / v16: 🏡 3D 포켓몬 아지트 / v15: 🛡️ 아빠 PIN 도감 삭제 영구 방어) */
+const VERSION = PREFIX + 'v20';  /* 2026-11-18 v20: 🪙 코인 지갑(pokemon-coins.js) — 학습 1판당 +10코인 · 카드팩 앱과 같은 지갑(0623 클라우드)
+                                    (v19: 🏃 「도망간다」= 야생·HP·진행 유지 / v18: 🐛 지안 도감 분리 / v17: ☁️ 이전 백업 / v16: 🏡 3D 아지트 / v15: 🛡️ 삭제 방어) */
 const SHELL = [
   '/pokemon/manifest.json',
   '/pokemon-battle.html',
@@ -17,6 +17,7 @@ const SHELL = [
   '/pokemon/village-pokemon.html',
   '/pokemon-battle2.css',
   '/pokemon-battle2.js',
+  '/pokemon-coins.js',
   '/pokemon-audio.js',
   '/pokemon-3rd.js',
   '/pokemon-art.js',

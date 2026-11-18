@@ -64,17 +64,28 @@
   .dexhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 9px}
   .dexhead b{font-size:clamp(12px,3.2vw,14px);letter-spacing:-.02em}
   .dexhead span{font-size:clamp(9.5px,2.6vw,11px);font-weight:900;color:#6b8547}
-  .kids{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-  @media (min-width:600px){ .kids{grid-template-columns:repeat(3,1fr)} }
+  .kids{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  @media (min-width:600px){ .kids{grid-template-columns:repeat(3,minmax(0,1fr))} }
   @media (max-width:599px){ .kid.guest{grid-column:1 / -1} }
-  .kid{display:flex;align-items:center;gap:9px;background:#fffdf3;border:1.6px solid #e2eecd;
-    border-radius:14px;padding:9px 10px}
+  .kid{display:flex;flex-direction:column;align-items:stretch;gap:5px;background:#fffdf3;border:1.6px solid #e2eecd;
+    border-radius:14px;padding:8px 9px;min-width:0}
+  .kid .krow{display:flex;align-items:flex-start;gap:8px;min-width:0}
   .kid .av{width:38px;height:38px;flex:0 0 38px;border-radius:12px;display:grid;place-items:center;
     font-size:21px;background:linear-gradient(180deg,#eafbd6,#d3f0ae);border:1.5px solid #c6e69b}
-  .kid .txt{min-width:0;flex:1}
+  .kid .txt{min-width:0;flex:1 1 auto}
   .kid .nm{display:block;font-size:clamp(11.5px,3vw,13px);font-weight:900;letter-spacing:-.02em;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .kid .ct{display:block;font-size:clamp(10px,2.7vw,11.5px);font-weight:900;color:#4c7a26;white-space:nowrap}
+  .kid .ct{display:flex;align-items:center;flex-wrap:wrap;row-gap:2px;font-size:clamp(9px,2.5vw,11.5px);font-weight:900;color:#4c7a26;white-space:nowrap;line-height:1.55}
+  .kid .ct .cdot{padding:0 3px;opacity:.65;font-weight:900}
+  /* 🪙 코인 — 누르면 카드팩 상점으로 (배틀 월드와 같은 지갑) */
+  .kid .coinGo{display:inline-flex;align-items:center;gap:2px;padding:0 6px;border-radius:999px;
+    background:linear-gradient(180deg,#fff5d2,#ffe08a);border:1.2px solid #e8c25a;color:#7a4a00;
+    font-weight:900;font-size:inherit;white-space:nowrap;text-decoration:none;line-height:1.7}
+  .kid .coinGo b{font-weight:900}
+  .kid .coinGo:active{transform:translateY(1px)}
+  /* 3번째 줄 — [📖 도감 보기] [🃏 카드팩] 나란히 */
+  .kid .acts{display:flex;gap:4px;margin-top:4px}
+  .kid .bar{display:none}
   .bar{height:6px;border-radius:99px;background:#e6f2d2;overflow:hidden;margin-top:5px}
   .bar i{display:block;height:100%;width:0;border-radius:99px;
     background:linear-gradient(90deg,#8ce86a,#3fbe2c);transition:width .6s ease}
@@ -291,10 +302,26 @@
   .kid{cursor:pointer;transition:transform .1s ease,box-shadow .1s ease}
   .kid:active{transform:translateY(2px)}
   .kid:focus-visible{outline:3px solid #6fc23a;outline-offset:2px}
-  .kid .dgo{display:block;width:fit-content;margin-top:5px;padding:0 7px;
-    font-size:clamp(8.5px,2.3vw,10px);font-weight:900;line-height:1.75;letter-spacing:-.02em;
-    color:#3c6524;background:#f1f9e2;border:1.3px solid #d9e9bd;border-radius:999px;white-space:nowrap}
+  .kid .dgo{display:block;flex:1 1 0;min-width:0;text-align:center;padding:0 5px;margin-top:0;
+    font-size:clamp(8.5px,2.3vw,10px);font-weight:900;line-height:1.8;letter-spacing:-.03em;
+    color:#3c6524;background:#f1f9e2;border:1.3px solid #d9e9bd;border-radius:999px;white-space:nowrap;
+    text-decoration:none;overflow:hidden;text-overflow:ellipsis}
+  .kid .dpack{display:block;flex:1 1 0;min-width:0;text-align:center;padding:0 5px;
+    font-size:clamp(8.5px,2.3vw,10px);font-weight:900;line-height:1.8;letter-spacing:-.03em;
+    color:#4b2a7a;background:#f4eefe;border:1.3px solid #dccdf2;border-radius:999px;white-space:nowrap;
+    text-decoration:none;overflow:hidden;text-overflow:ellipsis}
   .kid:hover .dgo{background:#e7fbd8;border-color:#b6e79a;color:#1f6b12}
+  .kid:hover .dpack{background:#eee3ff;border-color:#cdb8f0;color:#3a1f63}
+  /* 좁은 화면(폴드8 외부 400px) — 아바타를 줄여 🪙 코인과 두 버튼이 다 보이게 */
+  @media (max-width:520px){
+    .kid{padding:7px;gap:4px}
+    .kid .krow{gap:6px}
+    .kid .av{width:28px;height:28px;flex:0 0 28px;border-radius:9px;font-size:16px}
+    .kid .acts{gap:3px}
+    .kid .dgo,.kid .dpack{padding:0 3px;font-size:clamp(8px,2.2vw,10px)}
+    .kid .ct{font-size:clamp(8px,2.2vw,11px)}
+    .kid .coinGo{padding:0 5px}
+  }
 
   .modal.dexwrap{padding:9px;z-index:64}
   .modal.dexdetail{padding:9px;z-index:72}
@@ -419,6 +446,7 @@
 <script src="/pokemon-lock.js"></script>
 <script src="/pokemon-sync.js" data-ui="badge"></script>
 <script src="/pokemon-dexadd.js"></script>
+<script src="/pokemon-coins.js"></script>
 <script>
 /* 슬롯(p1 아린 · p2 지안 · guest) ↔ 각 게임의 프로필 id — 이름으로 맞춘다
    ─ 한글 게임은 기본 프로필 순서가 p1=둘째로 뒤집혀 있었고, 지금은 아이들이 직접 이름을 넣어 두었다.
@@ -635,35 +663,41 @@
       <span id="dexNote">잡은 몬스터는 세 게임이 함께 써요</span>
     </div>
     <div class="kids">
-      <div class="kid" id="kidP1" role="button" tabindex="0" aria-label="첫째의 도감 보기">
-        <span class="av" data-emoji>👧</span>
-        <span class="txt">
-          <span class="nmrow"><span class="nm" data-name>첫째</span><button class="nedit" type="button" data-rename="p1" aria-label="첫째 이름 바꾸기">✏️</button></span>
-          <span class="ct" data-count>잡은 0마리</span>
-          <span class="rk" data-rank>🌱 초보</span>
-          <span class="bar"><i data-bar></i></span>
-          <span class="dgo">📖 도감 보기</span>
+      <div class="kid" id="kidP1" role="button" tabindex="0" data-slot="p1" aria-label="첫째의 도감 보기">
+        <span class="krow">
+          <span class="av" data-emoji>👧</span>
+          <span class="txt">
+            <span class="nmrow"><span class="nm" data-name>첫째</span><button class="nedit" type="button" data-rename="p1" aria-label="첫째 이름 바꾸기">✏️</button></span>
+            <span class="ct"><span data-count>잡은 0마리</span><span class="cdot">·</span><a class="coinGo" data-coinof="p1" href="#" aria-label="코인으로 카드팩 상점 열기">🪙 <b data-coin>100</b>코인</a></span>
+            <span class="rk" data-rank>🌱 초보</span>
+            <span class="bar" aria-hidden="true"><i data-bar></i></span>
+          </span>
         </span>
+        <span class="acts"><span class="dgo" data-dexgo="p1">📖 도감 보기</span><a class="dpack" data-packof="p1" href="#" aria-label="카드팩 도감 열기">🃏 카드팩</a></span>
       </div>
-      <div class="kid" id="kidP2" role="button" tabindex="0" aria-label="둘째의 도감 보기">
-        <span class="av" data-emoji>🧒</span>
-        <span class="txt">
-          <span class="nmrow"><span class="nm" data-name>둘째</span><button class="nedit" type="button" data-rename="p2" aria-label="둘째 이름 바꾸기">✏️</button></span>
-          <span class="ct" data-count>잡은 0마리</span>
-          <span class="rk" data-rank>🌱 초보</span>
-          <span class="bar"><i data-bar></i></span>
-          <span class="dgo">📖 도감 보기</span>
+      <div class="kid" id="kidP2" role="button" tabindex="0" data-slot="p2" aria-label="둘째의 도감 보기">
+        <span class="krow">
+          <span class="av" data-emoji>🧒</span>
+          <span class="txt">
+            <span class="nmrow"><span class="nm" data-name>둘째</span><button class="nedit" type="button" data-rename="p2" aria-label="둘째 이름 바꾸기">✏️</button></span>
+            <span class="ct"><span data-count>잡은 0마리</span><span class="cdot">·</span><a class="coinGo" data-coinof="p2" href="#" aria-label="코인으로 카드팩 상점 열기">🪙 <b data-coin>100</b>코인</a></span>
+            <span class="rk" data-rank>🌱 초보</span>
+            <span class="bar" aria-hidden="true"><i data-bar></i></span>
+          </span>
         </span>
+        <span class="acts"><span class="dgo" data-dexgo="p2">📖 도감 보기</span><a class="dpack" data-packof="p2" href="#" aria-label="카드팩 도감 열기">🃏 카드팩</a></span>
       </div>
-      <div class="kid guest" id="kidP3" role="button" tabindex="0" aria-label="게스트의 도감 보기">
-        <span class="av" data-emoji>🧪</span>
-        <span class="txt">
-          <span class="nmrow"><span class="nm" data-name>게스트</span><button class="nedit" type="button" data-rename="guest" aria-label="게스트 이름 바꾸기">✏️</button></span>
-          <span class="ct" data-count>잡은 0마리</span>
-          <span class="rk" data-rank>🌱 초보</span>
-          <span class="bar"><i data-bar></i></span>
-          <span class="dgo">📖 도감 보기</span>
+      <div class="kid guest" id="kidP3" role="button" tabindex="0" data-slot="guest" aria-label="게스트의 도감 보기">
+        <span class="krow">
+          <span class="av" data-emoji>🧪</span>
+          <span class="txt">
+            <span class="nmrow"><span class="nm" data-name>게스트</span><button class="nedit" type="button" data-rename="guest" aria-label="게스트 이름 바꾸기">✏️</button></span>
+            <span class="ct"><span data-count>잡은 0마리</span><span class="cdot">·</span><a class="coinGo" data-coinof="guest" href="#" aria-label="코인으로 카드팩 상점 열기">🪙 <b data-coin>100</b>코인</a></span>
+            <span class="rk" data-rank>🌱 초보</span>
+            <span class="bar" aria-hidden="true"><i data-bar></i></span>
+          </span>
         </span>
+        <span class="acts"><span class="dgo" data-dexgo="guest">📖 도감 보기</span><a class="dpack" data-packof="guest" href="#" aria-label="카드팩 도감 열기">🃏 카드팩</a></span>
       </div>
     </div>
   </section>
@@ -1280,6 +1314,17 @@
     바위: '#a08a52', 고스트: '#6a5fa8', 드래곤: '#5a48c8', 악: '#5a4a44', 강철: '#8794a0', 페어리: '#e07fb8'
   };
   var SUBJECT_NAME = { math: '⚡ 산수', hangul: '📖 한글', english: '🔤 영어', village: '🏡 마을', admin: '🛡 아빠' };
+  /* 🃏 카드팩 앱(정적 GitHub Pages) — 배틀 월드와 같은 0623 클라우드를 쓴다.
+     ?profile=arin|jian|guest&tab=shop|dex|battle 로 바로 그 탭을 연다. */
+  var CARDS_BASE = 'https://hwen21c-tech.github.io/stock-dashboard/pokemon-cards/';
+  var CARD_PROF = { p1: 'arin', p2: 'jian', guest: 'guest' };
+  function cardsUrl(slot, tab) {
+    return CARDS_BASE + '?profile=' + (CARD_PROF[slot] || 'guest') + '&tab=' + (tab || 'shop');
+  }
+  function coinOf(slot) {
+    try { if (window.PkmCoins) return window.PkmCoins.getSlot(slot); } catch (e) { /* */ }
+    return 100;
+  }
   var DEX_PAGE = 60;
   var SPR = function (id) { return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/' + id + '.png'; };
   var ART = function (id) { return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/' + id + '.png'; };
@@ -1533,9 +1578,21 @@
       if (bar) bar.style.width = pct + '%';
       var rk = box.querySelector('[data-rank]');
       if (rk) rk.textContent = rankOf(n);
-      box.setAttribute('aria-label', nm + '의 도감 보기 — 잡은 ' + n + '마리');
+      /* 🪙 코인 — 누르면 카드팩 상점 / 🃏 카드팩 — 누르면 카드팩 도감 */
+      var coinEl = box.querySelector('[data-coin]');
+      if (coinEl) coinEl.textContent = String(coinOf(row[0]));
+      var shopA = box.querySelector('[data-coinof]');
+      if (shopA) { shopA.href = cardsUrl(row[0], 'shop'); shopA.setAttribute('title', nm + ' 코인으로 카드팩 상점 열기'); }
+      var packA = box.querySelector('[data-packof]');
+      if (packA) { packA.href = cardsUrl(row[0], 'dex'); packA.setAttribute('title', nm + ' 카드팩 도감 열기'); }
+      box.setAttribute('aria-label', nm + '의 도감 보기 — 잡은 ' + n + '마리 · ' + coinOf(row[0]) + '코인');
     });
   }
+  /* ☁️ 클라우드에서 코인이 새로 들어오면 홈 카드의 🪙 숫자도 바로 맞춘다 */
+  try {
+    document.addEventListener('pkmcloud:refresh', function () { try { refreshHome(); } catch (e) { /* */ } });
+    document.addEventListener('pkmcoins:change', function () { try { refreshHome(); } catch (e) { /* */ } });
+  } catch (e) { /* */ }
 
   /* ---------- 그리기 ---------- */
   function dexBase(store) {
@@ -2023,6 +2080,28 @@
       el.addEventListener('click', function () { openDex(row[1]); });
       el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDex(row[1]); }
+      });
+    });
+    /* 🪙 코인 · 🃏 카드팩 · 📖 도감 — 카드 전체 클릭(도감 보기)과 섞이지 않게 여기서 멈춘다 */
+    $$('[data-coinof]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.stopPropagation(); e.preventDefault();
+        try { location.href = cardsUrl(a.dataset.coinof, 'shop'); } catch (err) { /* */ }
+      });
+      a.addEventListener('keydown', function (e) { e.stopPropagation(); });
+    });
+    $$('[data-packof]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.stopPropagation(); e.preventDefault();
+        try { location.href = cardsUrl(a.dataset.packof, 'dex'); } catch (err) { /* */ }
+      });
+      a.addEventListener('keydown', function (e) { e.stopPropagation(); });
+    });
+    $$('[data-dexgo]').forEach(function (s) {
+      s.addEventListener('click', function (e) { e.stopPropagation(); openDex(s.dataset.dexgo); });
+      s.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDex(s.dataset.dexgo); }
       });
     });
     /* ✏️ 연필 — 카드 전체 클릭(도감 보기)과 섞이지 않게 여기서 멈춘다 */
