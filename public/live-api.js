@@ -3515,8 +3515,14 @@
       });
     });
 
+    var bestByCode = {};
+    stocks.forEach(function (st) {
+      var k = st.code || st.name;
+      if (!bestByCode[k] || st.score > bestByCode[k].score) bestByCode[k] = st;
+    });
+    var uniqueStocks = Object.keys(bestByCode).map(function (k) { return bestByCode[k]; });
     var topSectors = sectors.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
-    var topStocks = stocks.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
+    var topStocks = uniqueStocks.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
 
     var leftHtml = topSectors.map(function (w, i) {
       return watchSectorItemHtml(w, i + 1);
