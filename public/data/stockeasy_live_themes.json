@@ -3,52 +3,52 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-18 11:08:32",
- "updatedAt": "2026-11-18T11:08:21.221243+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-18 13:10:14",
+ "updatedAt": "2026-11-18T13:09:52.090876+09:00",
+ "updatedAgeMin": 0.4,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "277810",
   "108490",
-  "000150",
-  "348340",
-  "024850",
+  "058610",
+  "307950",
+  "460940",
+  "090360",
   "295310",
-  "042510",
-  "263860",
-  "053800",
-  "491000",
-  "340570",
-  "290650",
-  "388720",
-  "460940"
+  "024850",
+  "000150",
+  "041510",
+  "035900",
+  "035760",
+  "030530",
+  "084370"
  ],
  "themes": [
   {
    "rank": 1,
    "name": "로봇",
-   "avgRS": 44,
+   "avgRS": 66,
    "stocks": [
     {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 14.0,
-     "value_eok": 744.17,
+     "chg": 19.6,
+     "value_eok": 1341.15,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 9.2,
-     "value_eok": 1172.46,
+     "chg": 13.2,
+     "value_eok": 1533.8,
      "verified": true
     },
     {
-     "code": "000150",
-     "name": "두산",
-     "chg": 8.7,
-     "value_eok": 1443.94,
+     "code": "058610",
+     "name": "에스피지",
+     "chg": 12.8,
+     "value_eok": 450.7,
      "verified": true
     }
    ]
@@ -61,127 +61,127 @@
     {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 14.0,
-     "value_eok": 744.17,
+     "chg": 19.6,
+     "value_eok": 1341.15,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 9.2,
-     "value_eok": 1172.46,
+     "chg": 13.2,
+     "value_eok": 1533.8,
      "verified": true
     },
     {
-     "code": "348340",
-     "name": "뉴로메카",
-     "chg": 5.1,
-     "value_eok": 12.26,
+     "code": "307950",
+     "name": "현대오토에버",
+     "chg": 11.0,
+     "value_eok": 200.14,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "반도체 재료/부품",
-   "avgRS": 74,
+   "name": "지능형로봇/인공지능",
+   "avgRS": 28,
    "stocks": [
     {
-     "code": "024850",
-     "name": "HLB이노베이션",
-     "chg": 9.0,
-     "value_eok": 20.45,
+     "code": "108490",
+     "name": "로보티즈",
+     "chg": 13.2,
+     "value_eok": 1533.8,
      "verified": true
     },
     {
-     "code": "000150",
-     "name": "두산",
-     "chg": 8.7,
-     "value_eok": 1443.94,
+     "code": "460940",
+     "name": "피앤에스로보틱스",
+     "chg": 11.5,
+     "value_eok": 135.24,
      "verified": true
     },
     {
-     "code": "295310",
-     "name": "에이치브이엠",
-     "chg": 7.8,
-     "value_eok": 149.15,
+     "code": "090360",
+     "name": "로보스타",
+     "chg": 8.4,
+     "value_eok": 46.29,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "정보보안",
-   "avgRS": 93,
+   "name": "반도체 재료/부품",
+   "avgRS": 74,
    "stocks": [
     {
-     "code": "042510",
-     "name": "라온시큐어",
-     "chg": 9.8,
-     "value_eok": 224.87,
+     "code": "295310",
+     "name": "에이치브이엠",
+     "chg": 12.3,
+     "value_eok": 213.5,
      "verified": true
     },
     {
-     "code": "263860",
-     "name": "지니언스",
-     "chg": 9.4,
-     "value_eok": 1639.45
+     "code": "024850",
+     "name": "HLB이노베이션",
+     "chg": 11.2,
+     "value_eok": 24.0
     },
     {
-     "code": "053800",
-     "name": "안랩",
-     "chg": 5.3,
-     "value_eok": 1035.43
+     "code": "000150",
+     "name": "두산",
+     "chg": 9.1,
+     "value_eok": 1746.18
     }
    ]
   },
   {
    "rank": 5,
-   "name": "의료기기",
-   "avgRS": 35,
+   "name": "음원/음반",
+   "avgRS": 46,
    "stocks": [
     {
-     "code": "491000",
-     "name": "리브스메드",
-     "chg": 13.3,
-     "value_eok": 94.41
+     "code": "041510",
+     "name": "에스엠",
+     "chg": 14.8,
+     "value_eok": 240.18
     },
     {
-     "code": "340570",
-     "name": "티앤엘",
-     "chg": 9.2,
-     "value_eok": 30.3
+     "code": "035900",
+     "name": "JYP Ent.",
+     "chg": 7.8,
+     "value_eok": 434.79
     },
     {
-     "code": "290650",
-     "name": "엘앤씨바이오",
+     "code": "035760",
+     "name": "CJ ENM",
      "chg": 7.5,
-     "value_eok": 89.47
+     "value_eok": 19.84
     }
    ]
   },
   {
    "rank": 6,
-   "name": "지능형로봇/인공지능",
-   "avgRS": 31,
+   "name": "반도체 장비",
+   "avgRS": 43,
    "stocks": [
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 9.2,
-     "value_eok": 1172.46
+     "code": "030530",
+     "name": "원익홀딩스",
+     "chg": 10.8,
+     "value_eok": 2877.0
     },
     {
-     "code": "388720",
-     "name": "유일로보틱스",
-     "chg": 5.7,
-     "value_eok": 13.91
+     "code": "090360",
+     "name": "로보스타",
+     "chg": 8.4,
+     "value_eok": 46.29
     },
     {
-     "code": "460940",
-     "name": "피앤에스로보틱스",
-     "chg": 5.2,
-     "value_eok": 31.8
+     "code": "084370",
+     "name": "유진테크",
+     "chg": 7.6,
+     "value_eok": 166.73
     }
    ]
   }
