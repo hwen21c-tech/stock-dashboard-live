@@ -1765,6 +1765,26 @@ const SCHEMA_SHORT_SCRIPT = {
       required: ['spoken'],
     },
     captionGuide: { type: 'string', description: '자막 스타일 권장 1줄 — 어떤 폰트·위치·강조가 맞는지와 이유' },
+    seriesBadge: { type: 'string', description: 'MP4 상단 칩용 시리즈 뱃지 (12자 이내 · 영문 2~3단어 대문자 또는 한글 8자)' },
+    ttsVoice: { type: 'string', description: '나레이션 톤 지시 1줄 (예: "차분한 남성 · 또박또박 · 숫자는 또렷하게")' },
+    hookAB: {
+      type: 'object',
+      description: '첫 3초 훅 A/B 2버전 — 같은 사실을 경고형·기회형 두 심리 축으로',
+      properties: {
+        warning: { type: 'string', description: 'A 경고형: 손해·실수·위험을 먼저 던지는 첫 문장 (20자 내외)' },
+        warningCaption: { type: 'string', description: 'A 경고형 화면 자막 (15~20자)' },
+        opportunity: { type: 'string', description: 'B 기회형: 이득·숫자·반전을 먼저 던지는 첫 문장 (20자 내외)' },
+        opportunityCaption: { type: 'string', description: 'B 기회형 화면 자막 (15~20자)' },
+      },
+      required: ['warning', 'opportunity'],
+    },
+    loopEnding: { type: 'string', description: '무한 루프 엔딩 문구 — 마지막 문장이 첫 훅으로 자연스럽게 이어지는 한 문장 (30자 내외)' },
+    commentQuestion: { type: 'string', description: '댓글 유도 질문 1개 — 이지선다/경험형으로 답하기 쉽게' },
+    pinnedComment: { type: 'string', description: '고정 댓글 문구 — 질문 재확인 + 추가 정보 1줄 + 저장 유도 (광고·링크 금지)' },
+    reelsCaption: { type: 'string', description: '인스타 릴스 캡션 2~3줄 (첫 줄이 후킹, 마지막에 저장 유도)' },
+    reelsHashtags: { type: 'array', description: '인스타 릴스 해시태그 8~12개 (# 없이)', items: { type: 'string' } },
+    clipCaption: { type: 'string', description: '네이버 클립용 캡션 한 줄 (40자 내외)' },
+    clipHashtags: { type: 'array', description: '네이버 클립 해시태그 5~8개 (# 없이)', items: { type: 'string' } },
     warnings: { type: 'array', description: '확인하지 못해 [확인 필요]로 남긴 값·사실', items: { type: 'string' } },
   },
   required: ['title', 'hook', 'hookCaption', 'beats', 'ending'],
@@ -2530,7 +2550,18 @@ function promptShortsScript(b) {
 6) 마지막 자막(captionGuide)은 어떤 자막 스타일이 맞는지 이유와 함께 1줄.
 7) 자료에 없는 수치·가격·고유명사·방송 시간을 새로 만들지 않는다. 모르면 "[확인 필요]"로 두고 warnings 에 적는다.
 8) 양식의 금지 규칙을 어기면 실패다.
-[출력] title · hook · beats · ending · captionGuide · warnings JSON.`,
+9) 첫 3초 훅 A/B 2버전(hookAB): 같은 사실을 두 심리 축으로 만든다.
+   - A 경고형(warning): 손해·실수·위험·놓치면 생기는 일을 먼저 던진다. 겁주기 과장 금지, 사실 기반.
+   - B 기회형(opportunity): 이득·숫자·반전·이 기회를 먼저 던진다. 낚시성 숫자 조작 금지.
+   각각 말할 문장(warning/opportunity, 20자 내외)과 화면 자막(warningCaption/opportunityCaption, 15~20자). 두 버전은 첫 문장만 다르고 본문은 같은 대본을 쓴다.
+10) 무한 루프 엔딩(loopEnding): 마지막 문장을 읽고 바로 첫 훅으로 돌아가도 말이 이어지게 쓴다. 억지 말장난·같은 문장 복사 금지. 엔딩의 spoken 은 이 루프 문구로 끝낸다.
+11) 댓글 유도(commentQuestion): 시청자가 3초에 답할 수 있는 이지선다·경험형 질문 1개. 논쟁·정답 맞히기 유도 금지.
+    고정 댓글(pinnedComment): 질문을 한 번 더 확인 + 자료에 있는 추가 정보 1줄 + 저장 유도. 링크·광고·연락처 금지.
+12) 배포 문구: reelsCaption(인스타 릴스 2~3줄, 첫 줄 후킹·마지막 저장 유도) + reelsHashtags(8~12개, # 없이, #shorts 포함),
+    clipCaption(네이버 클립 한 줄 40자 내외) + clipHashtags(5~8개, # 없이). 자료에 없는 브랜드·지역명을 해시태그로 만들지 않는다.
+13) seriesBadge: 이 시리즈를 한눈에 알아볼 MP4 상단 칩 (영문 2~3단어 대문자 또는 한글 8자 이내, 예: MARKET CLOSE·동탄 주말 코스).
+14) ttsVoice: 나레이션 톤 1줄 (예: "차분한 남성 · 또박또박 · 숫자는 또렷하게").
+[출력] title · hook · hookCaption · beats · ending · captionGuide · seriesBadge · ttsVoice · hookAB · loopEnding · commentQuestion · pinnedComment · reelsCaption · reelsHashtags · clipCaption · clipHashtags · warnings JSON.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -3136,15 +3167,34 @@ function normShortsScript(data) {
     caption: s(data && data.ending && data.ending.caption, 120),
   };
   const captionGuide = s(data && data.captionGuide, 300);
+  const seriesBadge = s(data && data.seriesBadge, 24);
+  const ttsVoice = s(data && data.ttsVoice, 80);
+  const abRaw = (data && data.hookAB) || {};
+  const hookAB = {
+    warning: s(abRaw.warning, 200),
+    warningCaption: s(abRaw.warningCaption, 120),
+    opportunity: s(abRaw.opportunity, 200),
+    opportunityCaption: s(abRaw.opportunityCaption, 120),
+  };
+  const loopEnding = s(data && data.loopEnding, 160);
+  const commentQuestion = s(data && data.commentQuestion, 200);
+  const pinnedComment = s(data && data.pinnedComment, 300);
+  const reelsCaption = s(data && data.reelsCaption, 400);
+  const reelsHashtags = arr(data && data.reelsHashtags, 14).map((x) => s(x, 30).replace(/^#/, '')).filter(Boolean);
+  const clipCaption = s(data && data.clipCaption, 120);
+  const clipHashtags = arr(data && data.clipHashtags, 10).map((x) => s(x, 30).replace(/^#/, '')).filter(Boolean);
   const warnings = arr(data && data.warnings, 10).map((x) => s(x, 200)).filter(Boolean);
   if (!hook) warnings.push('첫 3초 훅이 비어 왔습니다. 다시 눌러 주세요.');
   if (beats.length < 3) warnings.push('본문 컷이 3개 미만입니다 — 다시 생성하면 더 촘촘하게 나옵니다.');
+  if (!hookAB.warning || !hookAB.opportunity) warnings.push('첫 3초 A/B 훅이 비어 왔습니다 — MP4 JSON에는 A/B 모두 필요합니다.');
+  if (!loopEnding) warnings.push('무한 루프 엔딩 문구가 비어 왔습니다 — 다시 생성해 주세요.');
+  if (!pinnedComment) warnings.push('고정 댓글 문구가 비어 왔습니다.');
   const longCaps = beats.concat([{ caption: ending.caption }]).filter((x) => {
     const n = Array.from(String(x.caption || '')).length;
     return n > 24;
   }).length;
   if (longCaps) warnings.push('자막 ' + longCaps + '줄이 24자를 넘습니다 — 2차 검수로 15~20자에 맞춰 주세요.');
-  return { title, hook, hookCaption, beats, ending, captionGuide, warnings, beatsNum: beats.length };
+  return { title, hook, hookCaption, beats, ending, captionGuide, seriesBadge, ttsVoice, hookAB, loopEnding, commentQuestion, pinnedComment, reelsCaption, reelsHashtags, clipCaption, clipHashtags, warnings, beatsNum: beats.length };
 }
 
 /* ---------------------------------------------------------------- 핸들러 */
