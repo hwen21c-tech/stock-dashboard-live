@@ -1274,6 +1274,54 @@ const SEARCH_TOP_URL =
   '?tradeType=KRX&marketType=ALL&orderType=searchTop&startIdx=0&pageSize=30';
 const SEARCH_TOP_MAX = 30;
 
+/* 신형 목록 폴백 (2026-11-19)
+ *  통합 랭킹(stock.naver.com/api/domestic/market/stock/default)은 **모바일 UA 에 404** 를 돌려준다.
+ *  (실측: iPhone UA 404 / 데스크톱 Chrome UA 200 — API 폐쇄가 아니라 UA 문제)
+ *  이 파일은 lib/http.js 의 데스크톱 UA 를 쓰므로 정상 동작하지만, 통합 랭킹이 404·빈 목록으로
+ *  죽는 날에도 탭이 비지 않도록 m.stock 신형 목록을 KOSPI·KOSDAQ 합쳐 폴백으로 쓴다.
+ *  신형 목록에는 type(ST)/NXT 세션/open·high·low 가 없어 1차 경로를 대체하지는 않는다.
+ */
+const LIST_RANK_URL = 'https://m.stock.naver.com/api/stocks/';
+
+function normalizeListRankItem(d, market) {
+  const it = normalizeListItem(d, market);
+  if (!it || !it.code) return null;
+  it.kind = String((d && d.stockEndType) || '').toLowerCase() === 'stock' ? 'ST' : 'ETF';
+  it.source = 'naver-list';
+  return it;
+}
+
+async function fetchListRank(kind, size) {
+  const out = [];
+  for (const market of ['KOSPI', 'KOSDAQ']) {
+    try {
+      const data = await fetchJson(
+        LIST_RANK_URL + kind + '/' + market + '?page=1&pageSize=' + String(size),
+        { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT },
+      );
+      ((data && data.stocks) || []).forEach((d) => {
+        const it = normalizeListRankItem(d, market);
+        if (it) out.push(it);
+      });
+    } catch (e) {
+      /* 한 시장이 죽어도 나머지로 계속한다 */
+    }
+  }
+  if (!out.length) throw new Error(`신형 목록 ${kind} 비었습니다`);
+  /* 신형 목록에는 시·고·저가 없다 — 비중법사 몸통·위꼬리 판정이 빈 값으로 무너지지 않게
+   * polling 통합시세로 실제 OHLC 를 덮어쓴다(추정값 생성 금지). */
+  try {
+    const quotes = await pollQuotes(out.map((x) => x.code));
+    out.forEach((it) => {
+      const q = quotes[it.code];
+      if (q) mergeQuote(it, q);
+    });
+  } catch (e) {
+    /* OHLC 보강 실패는 치명적이지 않다 — 등락률·대금만으로도 후보를 만든다 */
+  }
+  return out;
+}
+
 async function fetchSearchTopKRX(preOpen) {
   if (preOpen) return [];
   try {
@@ -1296,8 +1344,36 @@ async function fetchSearchTopKRX(preOpen) {
     });
     return out.slice(0, SEARCH_TOP_MAX);
   } catch (e) {
+    return fetchSearchTopNewList();
+  }
+}
+
+/** 통합 검색순위가 죽었을 때 — 시장별 신형 검색순위를 순위 교차로 합친다. */
+async function fetchSearchTopNewList() {
+  let rows = [];
+  try {
+    rows = await fetchListRank('searchTop', SEARCH_TOP_MAX);
+  } catch (e) {
     return [];
   }
+  const kospi = rows.filter((x) => x.market === 'KOSPI');
+  const kosdaq = rows.filter((x) => x.market === 'KOSDAQ');
+  const merged = [];
+  for (let i = 0; i < Math.max(kospi.length, kosdaq.length); i += 1) {
+    if (kospi[i]) merged.push(kospi[i]);
+    if (kosdaq[i]) merged.push(kosdaq[i]);
+  }
+  return merged
+    .filter((x) => x && x.code && !isPreferredStock(x))
+    .slice(0, SEARCH_TOP_MAX)
+    .map((x, i) => ({
+      rank: i + 1,
+      code: x.code,
+      name: x.name || null,
+      changePct: x.changePct,
+      value: x.value,
+      market: x.market || null,
+    }));
 }
 
 /**
@@ -1702,6 +1778,19 @@ async function fetchDailyBars(code) {
 
 /** KRX 정규장 실시간 랭킹(상승률 · 거래대금) — 스팩·우선주·ETF 제외 */
 async function fetchKrxRank(orderType, pageSize) {
+  let rows;
+  try {
+    rows = await fetchKrxRankLegacy(orderType, pageSize);
+  } catch (e) {
+    rows = await fetchListRank(orderType, pageSize);   // 통합 랭킹 404·빈 목록 → 신형 목록 폴백
+  }
+  return rows
+    .filter((x) => x && x.kind === 'ST' && x.price !== null && x.price !== undefined)
+    .filter((x) => !x.halted && !isPreferredStock(x))
+    .filter((x) => !FUND_NAME_RE.test(String(x.name || '')));
+}
+
+async function fetchKrxRankLegacy(orderType, pageSize) {
   const url =
     KRX_RANK_URL +
     '?tradeType=KRX&marketType=ALL&orderType=' +
@@ -1710,11 +1799,7 @@ async function fetchKrxRank(orderType, pageSize) {
     String(pageSize);
   const data = await fetchJson(url, { headers: NXT_RANK_HEADERS, timeout: KRX_RANK_TIMEOUT });
   if (!Array.isArray(data) || !data.length) throw new Error(`KRX ${orderType} 목록이 비었습니다`);
-  return data
-    .map((d) => normalizeRankItem(d, '정규장'))
-    .filter((x) => x && x.kind === 'ST' && x.price !== null)
-    .filter((x) => !x.halted && !isPreferredStock(x))
-    .filter((x) => !FUND_NAME_RE.test(String(x.name || '')));
+  return data.map((d) => normalizeRankItem(d, '정규장'));
 }
 
 /** 오늘 봉 기준 60일·120일 전고점과 첫 돌파 여부 계산 */
