@@ -1717,6 +1717,59 @@ const SCHEMA_PROOF = {
   required: ['body', 'fixes'],
 };
 
+/* 🎬 4번 내 유튜버/쇼츠 양식 자동 분석 — 훅·템포·자막·말투 DNA만 뽑는다 */
+const SCHEMA_SHORTS_STYLE = {
+  type: 'object',
+  properties: {
+    styleName: { type: 'string', description: '채널·영상에서 확인되는 이름 (모르면 "내 쇼츠")' },
+    hook: { type: 'string', description: '첫 3초 훅 패턴 — 어떤 문장으로 시작하는지, 예시 패턴과 길이를 1~2문장' },
+    pacing: { type: 'string', description: '컷·템포 리듬 — 몇 초마다 전환하는지, 한 컷의 문장 길이를 1~2문장' },
+    captionRule: { type: 'string', description: '자막·기호 습관 — 한 줄 길이, 강조 방식, 이모지·숫자 표기 1~2문장' },
+    tone: { type: 'string', description: '말투/성우 톤 — 어미, 속도, 감정 높낮이를 1~2문장' },
+    avoid: {
+      type: 'array',
+      description: '이 채널이 지키는 금기·주의 2~4개 (예: 결말 스포 금지, 가격은 날짜와 함께)',
+      items: { type: 'string' },
+    },
+  },
+  required: ['styleName', 'hook', 'pacing', 'captionRule', 'tone'],
+};
+
+/* 🎬 쇼츠 대본 생성 — 3초 훅 · 컷별 대사·자막·화면 지시 */
+const SCHEMA_SHORT_SCRIPT = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '쇼츠 제목 (32자 이내, 클릭하고 싶은 한 줄)' },
+    hook: { type: 'string', description: '첫 3초에 실제로 말할 문장 (인사 없이 바로, 20자 내외)' },
+    hookCaption: { type: 'string', description: '첫 3초 화면에 띄울 자막 (공백 포함 15~20자)' },
+    beats: {
+      type: 'array',
+      description: '3초 훅 뒤 본문 컷 4~7개 — 시간 오름차순',
+      items: {
+        type: 'object',
+        properties: {
+          at: { type: 'string', description: '"0:03–0:09" 같은 초 구간 (겹치지 않게)' },
+          spoken: { type: 'string', description: '이 컷에서 실제로 말할 문장 (한 컷에 1~2문장)' },
+          caption: { type: 'string', description: '화면에 띄울 자막 (공백 포함 15~20자)' },
+          shot: { type: 'string', description: '화면 지시 — 무엇을 찍거나 보여줄지 한 줄' },
+        },
+        required: ['at', 'spoken', 'caption', 'shot'],
+      },
+    },
+    ending: {
+      type: 'object',
+      properties: {
+        spoken: { type: 'string', description: '마지막 3~5초에 말할 문장 (여운 + 저장 유도)' },
+        caption: { type: 'string', description: '마지막 자막 (15~20자)' },
+      },
+      required: ['spoken'],
+    },
+    captionGuide: { type: 'string', description: '자막 스타일 권장 1줄 — 어떤 폰트·위치·강조가 맞는지와 이유' },
+    warnings: { type: 'array', description: '확인하지 못해 [확인 필요]로 남긴 값·사실', items: { type: 'string' } },
+  },
+  required: ['title', 'hook', 'hookCaption', 'beats', 'ending'],
+};
+
 /* ---------------------------------------------------------------- 공통 규칙 */
 
 const HONESTY = [
@@ -2157,6 +2210,7 @@ function promptAnalyzeStyle(b) {
 }
 
 function promptProofread(b) {
+  if (String((b && b.mode) || '') === 'shorts') return promptProofreadShorts(b);
   const style = styleBlock(b.stylePreset);
   const note = s(b.experienceNote, 1200);
   const pick = Number(b.bloggerNo) >= 1 && Number(b.bloggerNo) <= 4 ? Number(b.bloggerNo) : 0;
@@ -2185,6 +2239,134 @@ function promptProofread(b) {
     .join('\n');
   return {
     system: `너는 한국어 블로그 원고를 마지막으로 검수하는 편집장이다. 사실은 그대로 두고 거짓 경험담·AI 문체·양식 누락·맞춤법만 고친다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_PROOF,
+    maxTokens: 4200,
+    temperature: 0.55,
+  };
+}
+
+/* ---------------------------------------------------------------- 🎬 쇼츠 4번 양식 분석 · 쇼츠 대본 · 쇼츠 2차 검수 */
+
+/** 쇼츠 양식(1·2·3번 프리셋 또는 4번 분석본)을 프롬프트 블록으로 바꾼다. */
+function shortsStyleBlock(st, no) {
+  if (!st || typeof st !== 'object') return '';
+  const name = s(st.name || st.styleName, 60);
+  if (!name) return '';
+  const caption = s(st.captionRule || st.caption, 320);
+  const avoid = arr(st.avoid, 6).map((x) => `- ${s(x, 160)}`).join('\n');
+  return [
+    `\n[쇼츠 양식 — 「${name}」 스타일${no ? ' (' + no + '번)' : ''} · 훅·리듬·자막·말투만 따른다]`,
+    st.who ? `- 이 채널에서 배울 점: ${s(st.who, 200)}` : '',
+    st.hook ? `- 3초 훅 패턴: ${s(st.hook, 320)}` : '',
+    st.pacing ? `- 컷·텀포 리듬: ${s(st.pacing, 320)}` : '',
+    caption ? `- 자막·기호 슬관: ${caption}` : '',
+    st.tone ? `- 말투/성우 톤: ${s(st.tone, 320)}` : '',
+    avoid ? `- 금지 규칙(어기면 실패):\n${avoid}` : '',
+    '- 저작권: 이 채널의 실제 대사·자막을 옮기지 않는다. 리듬과 구성만 내 주제로 다시 쓴다. 영상에 이 채널 이름을 쓰지 않는다.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function promptShortsScript(b) {
+  const themeName = s(b.themeName || b.theme, 40);
+  const duration = Math.min(90, Math.max(20, Number(b.durationSec) || 50));
+  const src = s(b.sourceMaterial, 6000);
+  const note = s(b.experienceNote, 1500);
+  const style = shortsStyleBlock(b.shortsStyle, Number(b.styleNo) || 1);
+  const user = [
+    themeName ? `테마: ${themeName}` : '',
+    `주제: ${s(b.topic, 160)}`,
+    style,
+    src ? `\n[참고 자료 — 사실 근거로만 인용. 내 경험처럼 쓰지 않는다]\n"""${src}"""` : '',
+    note ? `\n[내 경험 메모 — 1인칭 경험은 여기 있는 것만]\n"""${note}"""` : '\n[내 경험 메모 — 없음. 1인칭 경험담은 쓰지 않는다]',
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — ${duration}초 세로 쇼츠 대본]
+1) 첫 3초 훅: 인사·자기소개 없이 결론·숫자·반전 중 하나로 바로 시작한다. 위 양식의 훅 패턴을 그대로 따른다. hook 은 말할 문장, hookCaption 은 화면 자막(공백 포함 15~20자)이다.
+2) 본문은 4~7컷. 한 컷은 4~10초, 입으로 말하는 1~2문장만. 위 양식의 컷 리듬을 따른다.
+   spoken 은 반드시 ‘입으로 말하는 대사’다. "영상을 켠다·확인한다·관찰한다" 같은 지시문·설명문을 쓰지 않는다. 화면 설명은 shot 에만 쓴다.
+   말투는 뉴스 보도체가 아니라 시청자에게 말을 거는 구어체다("~해보세요", "이거 모르면", "3초만 보세요").
+3) 자막(caption)은 공백 포함 15~20자로 끊는다. 모바일에서 한 줄로 읽혀야 한다. 말을 그대로 받아쓰지 말고 핵심만 남긴다.
+4) 화면 지시(shot)는 실제로 찍을 수 있는 것으로 쓴다(예: 제품 클로즈업, 손으로 누르는 장면, 지도 한 장).
+5) 엔딩은 여운 한 줄 + 저장·공유 유도(노골적인 구독 부탁 금지).
+6) 마지막 자막(captionGuide)은 어떤 자막 스타일이 맞는지 이유와 함께 1줄.
+7) 자료에 없는 수치·가격·고유명사·방송 시간을 새로 만들지 않는다. 모르면 "[확인 필요]"로 두고 warnings 에 적는다.
+8) 양식의 금지 규칙을 어기면 실패다.
+[출력] title · hook · beats · ending · captionGuide · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한국어 유튜브 쇼츠 대본 작가다. 3초 안에 손가락을 멈추게 하고, 말과 자막을 따로 설계한다. 확인한 내용만 쓴다. ${HONESTY}`,
+    user,
+    schema: SCHEMA_SHORT_SCRIPT,
+    maxTokens: 2600,
+    temperature: 0.9,
+  };
+}
+
+function promptAnalyzeShortsStyle(b) {
+  const text = s(b.sourceText, 9000);
+  const user = [
+    b.title ? `영상 제목: ${s(b.title, 160)}` : '',
+    b.author ? `채널 이름(확인된 값): ${s(b.author, 60)}` : '',
+    b.themeName ? `테마: ${s(b.themeName, 40)}` : '',
+    `\n[분석할 자료 — 이 영상·채널의 자막(또는 사용자가 붙여넣은 대본). 문장을 베끼지 않고 ‘만드는 방식’만 뽑는다]\n"""${text}"""`,
+    `
+[해야 할 일 — 이 쇼츠의 양식 DNA 추출]
+1) styleName: 위에 채널 이름이 있으면 그 이름을 그대로. 없으면 자막에서 확인되는 이름, 그것도 없으면 정확히 "내 쇼츠". 영상 제목을 채널 이름으로 쓰지 않는다.
+2) hook: 첫 3초 훅 패턴 — 어떤 문장으로 시작하는지(질문·숫자·반전·명령 등), 평균 길이를 1~2문장으로.
+3) pacing: 컷·텀포 리듬 — 몇 초마다 전환하는지, 한 컷에 몇 문장을 말하는지 1~2문장.
+4) captionRule: 자막·기호 슬관 — 한 줄 길이, 강조 방식, 숫자·이모지 사용 1~2문장.
+5) tone: 말투/성우 톤 — 어미, 말 속도, 감정 높낮이 1~2문장.
+6) avoid: 이 채널이 지키는 금기·주의 2~4개.
+
+[저작권·정직 규칙 — 어기면 실패다]
+- 자막 문장을 그대로 옮기거나 인용하지 않는다. 숫자·고유명사·사연 내용은 결과에 쓰지 않는다. 오직 훅 패턴·리듬·자막 슬관·말투만.
+- 자료에 없는 슬관을 지어내지 않는다. 비슷한 예가 여러 번 보일 때만 적는다.
+- 결과는 ‘다른 사람이 자기 주제로 같은 양식대로 쓸 수 있는 규칙’이어야 한다.
+[출력] styleName · hook · pacing · captionRule · tone · avoid JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 유튜브 쇼츠의 구성·리듬을 분석하는 편집자다. 남의 대본에서 훅 패턴·컷 리듬·자막 슬관·말투만 뽑아 재사용 가능한 규칙으로 정리한다. 남의 문장을 베끼지 않는다. ${HONESTY}`,
+    user,
+    schema: SCHEMA_SHORTS_STYLE,
+    maxTokens: 1100,
+    temperature: 0.5,
+  };
+}
+
+function promptProofreadShorts(b) {
+  const style = shortsStyleBlock(b.shortsStyle, Number(b.styleNo) || 0);
+  const user = [
+    b.topic ? `주제: ${s(b.topic, 160)}` : '',
+    b.themeName ? `쇼츠 테마: ${s(b.themeName, 40)}` : '',
+    style,
+    `\n[검수할 쇼츠 대본 — 고치면 이 형식을 그대로 유지한다]\n"""${s(b.body, 16000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — 쇼츠 편집장 2차 검수. 아래 5가지만 고친다]
+① 첫 3초 훅이 스크롤을 멈출 만큼 날카로운가 — 아니면 결론·숫자·반전으로 다시 쓴다.
+② 자막 한 줄이 모바일 가독성(공백 포함 15~20자)인가 — 길면 끊고, 의미 없는 말은 지운다.
+③ 입으로 읽기 편한 구어체인가 — 문어체·번역체·AI 상투어를 고친다.
+④ 1~4번 양식의 리듬(컷 길이·문장 수·말투)이 살아 있는가 — 빠진 리듬을 되살린다.
+⑤ 과장·거짓 사실을 지운다 — 확인하지 않은 수치·가격·고유명사·방송 시간은 "[확인 필요]"로 바꾼다.
+
+[형식 유지 — 이기는 실패다]
+- 첫 줄 "🎬 제목", "테마: …" 줄, "[0:00–0:03] 훅" 같은 시간 구간 줄, "말:"·"자막:"·"화면:" 라벨, "[엔딩]", "자막 가이드:" 줄을 그대로 둔다.
+- 컷 수와 시간 구간을 임의로 합치거나 늘리지 않는다. 문장만 고친다.
+- 분량은 원문의 90~115%를 유지한다. 통째로 요약하지 않는다.
+- fixes 에는 실제로 고친 것을 2~3줄로. 안 고쳤으면 "고칠 곳이 없었습니다"라고 사실대로.
+[출력] body(교정한 대본 전체) · fixes(2~3줄) · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 한국어 쇼츠 대본을 마지막으로 검수하는 편집장이다. 훅 강도·자막 길이·구어체·양식 리듬·과장만 고친다. 사실은 새로 만들지 않는다. ${VOICE} ${HONESTY}`,
     user,
     schema: SCHEMA_PROOF,
     maxTokens: 4200,
@@ -2678,6 +2860,49 @@ function normProof(data, banPhrases) {
   };
 }
 
+function normShortsStyle(data) {
+  const styleName = s(data && data.styleName, 40) || '내 쇼츠';
+  const hook = s(data && data.hook, 320);
+  const pacing = s(data && data.pacing, 320);
+  const captionRule = s(data && (data.captionRule || data.caption), 320);
+  const tone = s(data && data.tone, 320);
+  const avoid = arr(data && data.avoid, 6).map((x) => s(x, 140)).filter(Boolean);
+  const warnings = [];
+  if (!hook) warnings.push('3초 훅 패턴을 찾지 못했습니다.');
+  if (!pacing) warnings.push('컷 리듬을 찾지 못했습니다.');
+  if (!captionRule) warnings.push('자막·기호 습관을 찾지 못했습니다.');
+  if (!tone) warnings.push('말투 특징을 찾지 못했습니다.');
+  return { styleName, hook, pacing, captionRule, tone, avoid, warnings };
+}
+
+function normShortsScript(data) {
+  const title = s(data && data.title, 80) || '쇼츠 대본';
+  const hook = s(data && data.hook, 200);
+  const hookCaption = s(data && data.hookCaption, 120);
+  const beats = arr(data && data.beats, 9)
+    .map((x) => ({
+      at: s(x && x.at, 24),
+      spoken: s(x && x.spoken, 400),
+      caption: s(x && x.caption, 120),
+      shot: s(x && x.shot, 200),
+    }))
+    .filter((x) => x.spoken || x.caption);
+  const ending = {
+    spoken: s(data && data.ending && data.ending.spoken, 300),
+    caption: s(data && data.ending && data.ending.caption, 120),
+  };
+  const captionGuide = s(data && data.captionGuide, 300);
+  const warnings = arr(data && data.warnings, 10).map((x) => s(x, 200)).filter(Boolean);
+  if (!hook) warnings.push('첫 3초 훅이 비어 왔습니다. 다시 눌러 주세요.');
+  if (beats.length < 3) warnings.push('본문 컷이 3개 미만입니다 — 다시 생성하면 더 촘촘하게 나옵니다.');
+  const longCaps = beats.concat([{ caption: ending.caption }]).filter((x) => {
+    const n = Array.from(String(x.caption || '')).length;
+    return n > 24;
+  }).length;
+  if (longCaps) warnings.push('자막 ' + longCaps + '줄이 24자를 넘습니다 — 2차 검수로 15~20자에 맞춰 주세요.');
+  return { title, hook, hookCaption, beats, ending, captionGuide, warnings, beatsNum: beats.length };
+}
+
 /* ---------------------------------------------------------------- 핸들러 */
 
 const GEN_ACTIONS = [
@@ -2692,6 +2917,8 @@ const GEN_ACTIONS = [
   'closing_box',
   'analyze_blogger_style',
   'proofread_draft',
+  'analyze_shorts_style',
+  'shorts_script',
 ];
 
 module.exports = async function handler(req, res) {
@@ -2873,6 +3100,73 @@ module.exports = async function handler(req, res) {
       srcMeta = { url: s(body.url, 600), finalUrl: '', converted: false, chars: srcText.length, title, pasted: true };
     }
     prompt = promptAnalyzeStyle({ ...body, sourceText: srcText, title, author: (srcMeta && srcMeta.author) || s(body.author, 40), banPhrases });
+  } else if (action === 'analyze_shorts_style') {
+    /* 4번 내 유튜버/쇼츠 — 유튜브 링크면 자막을 직접·공개 미러로 추출하고, 실패하면 정진하게 알리고 붙여넣기 폴백을 준다. */
+    let srcText = s(body.sourceText || body.pastedText, 9000);
+    let title = s(body.title, 160);
+    let author = s(body.author, 60);
+    if (srcText.trim().length < 200) {
+      const u = s(body.url, 300);
+      const vid = ytVideoId(u);
+      if (!vid) {
+        return send(res, 400, {
+          ok: false,
+          reason: 'missing_url',
+          message: '유튜브/쇼츠 링크(url) 또는 대본·자막 일부(sourceText)가 필요합니다.',
+          fallback: 'paste',
+        });
+      }
+      try {
+        const r = await ytTranscript(vid);
+        title = r.title || title;
+        author = r.author || author;
+        if (r.ok && s(r.text, 10)) {
+          srcText = r.text;
+          srcMeta = {
+            url: u,
+            videoId: vid,
+            title,
+            author,
+            chars: srcText.length,
+            auto: !!r.auto,
+            route: r.route,
+          };
+        } else {
+          return send(res, 200, {
+            ok: false,
+            reason: r.reason || 'no_captions',
+            message:
+              '이 영상의 자막을 읽지 못했습니다(' +
+              (r.reason === 'no_captions' ? '자막 없음·서버 IP 차단' : r.reason || 'not_found') +
+              '). 아래 [대본/자막 직접 붙여넣기]에 유튜브 화면의 자막을 복사해 붙여넣으면 같은 양식 분석을 합니다.',
+            videoId: vid,
+            title,
+            author,
+            url: 'https://www.youtube.com/watch?v=' + vid,
+            fallback: 'paste',
+            keyConfigured: true,
+            model: PRIMARY_MODEL,
+          });
+        }
+      } catch (err) {
+        return send(res, 200, {
+          ok: false,
+          reason: 'extract_failed',
+          message: '자막 추출 중 오류가 났습니다: ' + String((err && err.message) || err).slice(0, 140) + ' — 대본을 붙여넣어 주세요.',
+          videoId: vid,
+          url: 'https://www.youtube.com/watch?v=' + vid,
+          fallback: 'paste',
+          keyConfigured: true,
+          model: PRIMARY_MODEL,
+        });
+      }
+    } else {
+      srcMeta = { url: s(body.url, 300), title, author, chars: srcText.length, pasted: true };
+    }
+    prompt = promptAnalyzeShortsStyle({ ...body, sourceText: srcText, title, author, banPhrases });
+  } else if (action === 'shorts_script') {
+    if (!s(body.topic, 200)) return send(res, 400, { ok: false, reason: 'missing_topic', message: '쇼츠 주제(topic)가 필요합니다.' });
+    prompt = promptShortsScript({ ...body, banPhrases });
   } else {
     const draft = s(body.body, 20000);
     if (draft.length < 80) return send(res, 400, { ok: false, reason: 'missing_body', message: '쇼츠로 바꿀 블로그 본문이 필요합니다.' });
@@ -2935,6 +3229,8 @@ module.exports = async function handler(req, res) {
   else if (action === 'closing_box') result = normClosing(data);
   else if (action === 'proofread_draft') result = normProof(data, banPhrases);
   else if (action === 'analyze_blogger_style') result = normStyle(data);
+  else if (action === 'analyze_shorts_style') result = normShortsStyle(data);
+  else if (action === 'shorts_script') result = normShortsScript(data);
   else result = normShorts(data);
 
   if (result.banHits && result.banHits.length) {
@@ -2953,6 +3249,8 @@ module.exports = async function handler(req, res) {
     (action === 'seo_tags' && !((result.hashtags || []).length || (result.keywords || []).length)) ||
     (action === 'closing_box' && !s(result.question, 3)) ||
     (action === 'proofread_draft' && !s(result.body, 10)) ||
+    (action === 'analyze_shorts_style' && !s(result.hook, 3)) ||
+    (action === 'shorts_script' && !(result.beats || []).length) ||
     (action === 'analyze_blogger_style' && !(result.structure || []).length);
   if (truncated || emptyMain) {
     return send(res, 200, {
