@@ -2215,13 +2215,31 @@ def main():
                 st = open(STATIC_HTML, encoding="utf-8").read()
                 st2, a1 = patch_rn_live(st, rn_stocks, rn_counts)
                 st2, b1 = patch_jongbe_live(st2, jb_stocks)
+                # 11/18 — 정적 미러에도 비중법사·홍인기 탭이 이식됐다. 내장 DATA(엔진 블록의
+                #   const DATA 한 줄)와 라벨도 같이 갈아끼우지 않으면 정적 페어지만 옛 기준봉이 남는다.
+                st2, p_st = patch_inline_data(st2, js_hong, js_bij)
+                st2, nlab_st = patch_labels(st2, hong, bij)
                 if a1 and b1 and st2 != st:
                     open(STATIC_HTML, "w", encoding="utf-8").write(st2)
-                    log("  정적 미러(deploy_repo/index.html) RN존·종베 목록 동기화")
+                    log(f"  정적 미러(deploy_repo/index.html) RN존·종베·비중법사·홍인기 동기화 "
+                        f"(DATA {p_st} · 라벨 {nlab_st}곳)")
                 elif not (a1 and b1):
                     log(f"  ! 정적 미러 블록 미발견(rn={a1} jb={b1}) — 그대로 둠")
+                if p_st.get("hong") != 1 or p_st.get("bij") != 1:
+                    log(f"  ! 정적 미러 DATA 블록 미발견 {p_st} — 정적 탭은 옛 스냅샷으로 남습니다")
             except Exception as e:      # noqa: BLE001
                 log(f"  ! 정적 미러 동기화 실패: {e}")
+            # 깡토 모듈도 정적 미러용 사본(deploy_repo/live-kkangto.js)의 const DATA 를 같이 갱신
+            kk_deploy = os.path.join(os.path.dirname(ROOT), "deploy_repo", "live-kkangto.js")
+            if os.path.exists(kk_deploy):
+                try:
+                    ok_kk2 = patch_js_const(kk_deploy, "DATA", kk)
+                    if ok_kk2:
+                        log("  정적 미러 깡토 모듈(live-kkangto.js) DATA 동기화")
+                    else:
+                        log("  ! 정적 미러 live-kkangto.js 의 const DATA 를 찾지 못했습니다 — 그대로 둠")
+                except Exception as e:      # noqa: BLE001
+                    log(f"  ! 정적 미러 깡토 모듈 동기화 실패: {e}")
         if not rep["ok"]:
             log(json.dumps(rep, ensure_ascii=False)[:1200])
             return 1
