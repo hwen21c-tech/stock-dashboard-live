@@ -1728,6 +1728,7 @@
       <div class="sumfile" id="sumMediaBox" hidden></div>
       <div class="warnline" id="sumMediaWarn" hidden></div>
       <video id="sumMediaPrev" controls playsinline hidden style="width:100%;max-width:420px;border-radius:12px;margin-top:9px;background:#000"></video>
+      <audio id="sumMediaAudio" controls hidden style="width:100%;max-width:420px;margin-top:9px"></audio>
       <p class="hint" style="margin-top:7px">긴 영상은 4MB를 넘습니다. 꼭 필요한 구간만 잘라 올리거나, 소리만 뽑은 MP3로 올려 주세요.</p>
     </div>
   </div>
@@ -2220,8 +2221,9 @@
     if (!file) return;
     SUM.media = null;
     sumWarn('sumMediaWarn', '');
-    var prev = $('#sumMediaPrev');
+    var prev = $('#sumMediaPrev'), prevA = $('#sumMediaAudio');
     if (prev){ try { prev.pause(); } catch(e){} prev.hidden = true; prev.removeAttribute('src'); }
+    if (prevA){ try { prevA.pause(); } catch(e){} prevA.hidden = true; prevA.removeAttribute('src'); }
     var box = $('#sumMediaBox');
     if (box) box.hidden = true;
     if (file.size > SUM_FILE_MAX){
@@ -2240,7 +2242,8 @@
     var isAudio = /^audio\//.test(mime);
     var url = URL.createObjectURL(file);
     var dur = await sumProbeMedia(url, isAudio);
-    if (prev){ prev.src = url; prev.hidden = false; }
+    if (isAudio){ if (prevA){ prevA.src = url; prevA.hidden = false; } }
+    else if (prev){ prev.src = url; prev.hidden = false; }
     var data;
     try { data = await sumReadBase64(file); }
     catch(e){ sumWarn('sumMediaWarn', '⚠️ 파일을 읽지 못했습니다. 다시 골라 주세요.'); return; }
