@@ -283,10 +283,41 @@
     return (indices || [])
       .filter(function (i) { return num(i.price) !== null; })
       .map(function (i) {
+        /* 장전(PREOPEN) 미체결이면 지수 등락률이 0.00%로 내려온다.
+         *  → 상단 티커에 그려 둔 전일 확정 등락률을 그대로 써서 카드끼리 숫자가 어긋나지 않게 한다. */
+        var pct = preopenFlat(i) ? tickerPct(i.name) : num(i.changePct);
         return '<span style="color:#f1f5f9; font-weight:800;">' + esc(i.name) + '</span> ' +
-          '<span style="color:' + colorOf(i.changePct) + '; font-weight:800;">' + fmtNum(i.price, 2) + ' (' + fmtPct(i.changePct) + ')</span>';
+          '<span style="color:' + colorOf(pct) + '; font-weight:800;">' + fmtNum(i.price, 2) +
+          (pct === null ? '' : ' (' + fmtPct(pct) + ')') + '</span>';
       })
       .join(' · ');
+  }
+
+  /** 장전 미체결 지수 — change·changePct 0 · volume 0 */
+  function preopenFlat(i) {
+    if (!i) return false;
+    if (String(i.status || '').toUpperCase() !== 'PREOPEN') return false;
+    if (num(i.change) !== null && i.change !== 0) return false;
+    if (num(i.changePct) !== null && i.changePct !== 0) return false;
+    return true;
+  }
+
+  /** 상단 티커에 현재 그려져 있는 '이름 (x.xx%)' 의 등락률 */
+  function tickerPct(name) {
+    if (!HAS_DOM || !name) return null;
+    var items = document.querySelectorAll('.ticker-bar .ticker-item');
+    for (var i = 0; i < items.length; i += 1) {
+      var label = items[i].querySelector('.label');
+      var val = items[i].querySelector('.val');
+      if (!label || !val) continue;
+      var lt = String(label.textContent || '').replace(/\s+/g, '');
+      if (lt.indexOf(String(name)) < 0) continue;
+      /* 코스피/코스닥 이름이 선물·야간선물 타일에 걸리지 않게 */
+      if (name.indexOf('코스') === 0 && lt.indexOf('선물') >= 0) continue;
+      var m = /\(([+-]?\d+\.\d+)%\)/.exec(String(val.textContent || ''));
+      if (m) return Number(m[1]);
+    }
+    return null;
   }
 
   function futuresLine(futures) {

@@ -473,6 +473,20 @@ function normalizeListItem(d, market) {
   };
 }
 
+/**
+ * NXT 시간외(프리마켓·애프터마켓)에 '실제 체결'이 있었는지.
+ *  · 장전(PREOPEN)에는 체결이 0건인데도 네이버가 overMarketPriceInfo 를
+ *    overPrice=종가 · overVolume="-" · fluctuationsRatio=0.00 으로 채워 내려준다.
+ *    (2026-11-19 08:20 실측: 삼성전자 overVolume="-" · overPct=0.00)
+ *  · 이걸 프리마켓 체결로 읽으면 화면의 전일 확정 등락률이 0.00% 로 덮인다.
+ *  → 거래량이 있거나 등락률이 0이 아닐 때만 '체결 있음'으로 본다.
+ */
+function overTraded(q) {
+  if (!q || typeof q.overPct !== 'number' || q.overPct === null) return false;
+  if (typeof q.overVolume === 'number' && q.overVolume > 0) return true;
+  return q.overPct !== 0;
+}
+
 /** polling 결과를 목록 항목에 덮어쓴다 (통합 대금·시고저) */
 function mergeQuote(item, q) {
   if (!item || !q) return item;
@@ -520,7 +534,8 @@ function mapStaticThemes(map, premarket) {
       const q = map[s.code] || {};
       // 프리마켓(08:00~08:50)에는 정규장 등락률이 0.00%로 내려온다.
       //  실제 체결은 overMarketPriceInfo(NXT 프리마켓)에 있으므로 그 값을 live* 로 함께 내린다.
-      const hasOver = typeof q.overPct === 'number' && q.overPct !== null;
+      //  단, 체결 0건인 장전 응답(0.00%)은 프리마켓 값으로 쓰지 않는다 — 전일 확정 등락률이 지워진다.
+      const hasOver = overTraded(q);
       const livePct = premarket && hasOver ? q.overPct : null;
       const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
       return {
@@ -749,7 +764,7 @@ function mergeThemeQuotes(themes, map, premarket) {
     const stocks = (t.stocks || []).map((s) => {
       const q = map[s.code] || null;
       if (!q) return { ...s, tileName: s.name, missing: true };
-      const hasOver = typeof q.overPct === 'number' && q.overPct !== null;
+      const hasOver = overTraded(q);
       const livePct = premarket && hasOver ? q.overPct : null;
       const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
       return {
@@ -973,7 +988,7 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
   return (themes || []).map((t, i) => {
     const stocks = (t.stocks || []).map((s) => {
       const q = map[s.code] || null;
-      const hasOver = Boolean(q) && typeof q.overPct === 'number' && q.overPct !== null;
+      const hasOver = overTraded(q);
       const livePct = premarket && hasOver ? q.overPct : null;
       const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
       const prevClose = typeof s.price === 'number' ? s.price : null;
@@ -2450,7 +2465,12 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const high52 = high52Cand
+  /* 장전(평일 09:00 이전)에는 정규장이 아직 열리지 않아 '당일 52주 신고가'가 존재하지 않는다.
+   *  그래도 네이버 high52week 목록은 장전 잔여 응답(대금 0 · 0.00%)을 돌려주어
+   *  엉뚱한 종목(11/19 08:24 실측: '유진 챔피언중단기크레딧 X클래스' · 대금 0)이 카드에 올라왔다.
+   *  → 장전에는 값을 만들지 않고 null 로 내려 화면이 07:30 동기화 스냅샷을 그대로 유지하게 한다. */
+  const beforeOpen = !(p.wd === 'Sat' || p.wd === 'Sun') && p.minutes < 9 * 60;
+  const high52 = (!beforeOpen && high52Cand)
     ? finalizeHigh52(high52Cand, {
         KOSPI: (highKospiR.status === 'fulfilled'
           ? highKospiR.value.items.filter((i) => i.kind === 'stock' && !isPreferredStock(i)).length

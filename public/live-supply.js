@@ -147,6 +147,16 @@ function codes() {
   return out.slice(0, 40);
 }
 
+/* 장전(PREOPEN) 미체결 가드 — 0.00%로 전일 확정 등락률을 덮지 않는다 */
+function preopenHeld(d, s) {
+  if (String((d && d.marketStatus) || '').toUpperCase() !== 'PREOPEN') return false;
+  var vol = typeof s.volume === 'number' && isFinite(s.volume) ? s.volume : null;
+  if (vol !== null && vol > 0) return false;
+  if (typeof s.change === 'number' && s.change !== 0) return false;
+  if (typeof s.changePct === 'number' && s.changePct !== 0) return false;
+  return true;
+}
+
 function applyLive() {
   var list = codes();
   if (!list.length || !HAS_API) return Promise.resolve(false);
@@ -157,6 +167,7 @@ function applyLive() {
       S.liveAt = new Date().toLocaleTimeString('ko-KR', { hour12: false });
       (d.stocks || []).forEach(function (s) {
         if (!s || !s.code) return;
+        if (preopenHeld(d, s)) return;   // 장전 미체결 → 카드의 11/18 확정 종가·등락률 유지
         var el = document.querySelector('[data-sup-px="' + s.code + '"]');
         if (!el) return;
         el.textContent = nf(s.price) + '원 (' + signPct(s.changePct, 2) + ')';

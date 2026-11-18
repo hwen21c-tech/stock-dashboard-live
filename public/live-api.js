@@ -25,6 +25,35 @@
 
   function byId(id) { return document.getElementById(id); }
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+
+  /* ------------------------- 장전(PREOPEN) 미체결 가드 -------------------------
+   *  장이 열리기 전 네이버는 전 지수·종목을 '보합(0.00%) · 거래대금 -' 로 내려준다.
+   *  이 값으로 화면을 덮으면 07:30 동기화로 그려 둔 '전일(11/18) 확정' 등락률·대금이 0.00% 로 지워진다.
+   *  → 체결 근거(거래량·등락률)가 없는 장전 응답은 화면에 반영하지 않는다.
+   *    (정규장 안의 진짜 보합 0.00% 는 체결·거래량이 있으므로 그대로 반영된다)
+   */
+  function isPreopen(payload) {
+    return String((payload && payload.marketStatus) || '').toUpperCase() === 'PREOPEN';
+  }
+  function quoteTraded(q) {
+    if (!q) return false;
+    var vol = num(q.volume);
+    if (vol !== null && vol > 0) return true;
+    var chg = num(q.change);
+    if (chg !== null && chg !== 0) return true;
+    var pct = num(q.changePct);
+    if (pct !== null && pct !== 0) return true;
+    var over = num(q.overVolume);
+    if (over !== null && over > 0) return true;
+    return false;
+  }
+  /* '-' · '0' 같은 빈 값으로 옛 거래대금을 지우지 않게 */
+  function liveValueText(v) {
+    if (v === null || v === undefined) return null;
+    var t = String(v).trim();
+    if (!t || t === '-' || t === '—' || t === '0') return null;
+    return t;
+  }
   function money(n) {
     if (n === null) return '—';
     return Math.round(n).toLocaleString('ko-KR');
@@ -205,6 +234,7 @@
 
   function applyLive(payload) {
     var applied = 0;
+    var preopen = isPreopen(payload);
     var indices = payload.indices || [];
     /* 화면에 실제로 반영한 값을 남긴다 — '💾 오늘 저장' 이 옛 하드코딩 대신 이 값을 쓴다 */
     try {
@@ -212,8 +242,10 @@
         at: payload.generatedAtKst || nowText(),
         marketStatus: payload.marketStatus || null,
         indices: indices.map(function (i) {
-          return { key: i.key, price: num(i.price), changePct: num(i.changePct),
-                   status: i.status || null, valueText: i.valueText || null };
+          /* 장전 미체결 지수는 등락률을 비워 둔다 — 저장 기록에 0.00% 가 박히지 않게 */
+          return { key: i.key, price: num(i.price),
+                   changePct: preopen && !quoteTraded(i) ? null : num(i.changePct),
+                   status: i.status || null, valueText: liveValueText(i.valueText) };
         })
       };
     } catch (e) { /* noop */ }
@@ -223,6 +255,8 @@
       var price = num(idx.price);
       if (price === null) continue;
       var p = num(idx.changePct);
+      /* 장전 미체결이면 티커·모달의 전일 확정 등락률을 0.00% 로 덮지 않는다 */
+      if (preopen && !quoteTraded(idx)) continue;
       var target = null;
       if (idx.key === 'KOSPI') {
         target = findTicker(function (l) { return l.indexOf('코스피') >= 0 && l.indexOf('선물') < 0; });
@@ -306,16 +340,20 @@
 
     // 감시 종목(RN존 목록) 현재가·등락률·통합 거래대금
     var map = {};
+    var heldCodes = [];
     (payload.stocks || []).forEach(function (s) {
       if (!s || !s.code) return;
+      /* 장전 미체결 종목은 손대지 않는다 — RN존·종베·만쥬 카드의 11/18 확정값 유지 */
+      if (preopen && !quoteTraded(s)) { heldCodes.push(s.code); return; }
       map[s.code] = {
         price: num(s.price),
         changePct: num(s.changePct),
         // 카드의 거래대금은 통합(KRX+NXT·시간외 포함) 기준을 우선한다
-        valueText: s.valueIntegText || s.valueText || null,
+        valueText: liveValueText(s.valueIntegText) || liveValueText(s.valueText),
         valueBasis: s.valueBasis || null
       };
     });
+    state.preopenHeld = preopen ? heldCodes.length : 0;
     if (window.RnZone && typeof window.RnZone.refreshLivePrices === 'function' && Object.keys(map).length) {
       try { window.RnZone.refreshLivePrices(map); applied += 1; } catch (e) { /* noop */ }
     }
@@ -799,7 +837,18 @@
     });
     if (!candles.length) return null;
 
-    var price = json.current && num(json.current.price) !== null ? json.current.price : candles[candles.length - 1].close;
+    /* 장전(PREOPEN)에는 네이버가 '현재가 = 전일 종가 근사치 · 등락률 0.00%' 를 내려준다.
+     *  그 값을 그대로 쓰면 RN존 카드·칩의 11/18 확정 등락률이 0.00% 로 지워진다.
+     *  체결이 없는 장전에는 마지막 일봉(직전 거래일 확정 종가·등락률)을 쓴다 — 쌍이 서로 맞는다. */
+    var cur = json.current || {};
+    var curPct = num(cur.changePct);
+    var curChg = num(cur.change);
+    var noTrade = String(cur.marketStatus || '').toUpperCase() === 'PREOPEN' && !cur.liveBar &&
+      (curPct === null || curPct === 0) && (curChg === null || curChg === 0);
+    var lastCandle = candles[candles.length - 1];
+
+    var price = noTrade ? lastCandle.close
+      : (num(cur.price) !== null ? cur.price : lastCandle.close);
     price = Math.round(price);
     var rn = json.rn || {};
     var rnBand = rn.band !== undefined && num(rn.band) !== null ? rn.band : null;
@@ -809,7 +858,8 @@
     if (!(upper > lower)) upper = Math.ceil(price * 1.1);
     var buy1 = tickRound(lower * 1.04);
     var buy2 = tickRound(buy1 * 0.8);
-    var changePct = json.current && num(json.current.changePct) !== null ? Number(json.current.changePct.toFixed(2)) : Number(candles[candles.length - 1].ratio);
+    var changePct = noTrade ? lastCandle.ratio
+      : (curPct !== null ? Number(curPct.toFixed(2)) : Number(lastCandle.ratio));
 
     return {
       name: json.name || json.code,
@@ -2849,7 +2899,11 @@
 
     /* --- 카드3: NXT 검색 상위 --- */
     var nx = body.nxtLeaders || {};
-    var search = (nx.searchTop || []).slice(0, 5);
+    /* 장전에는 NXT 체결이 없는데도 검색 랭킹이 0.00%·대금 0 으로 내려온다.
+     *  체결 근거가 없는 행은 빼고 그린다 — 다 빼면 카드는 07:30 스냅샷 그대로 둔다. */
+    var search = (nx.searchTop || []).filter(function (it) {
+      return !isPreopen(body) || quoteTraded(it);
+    }).slice(0, 5);
     if (search.length) {
       var shtml = pmHeadHtml('🔍 실시간 검색 상위 (NXT 실측)', '#7dd3fc', stamp + ' 갱신',
         'rgba(56,189,248,0.2)', '#7dd3fc') +

@@ -79,6 +79,27 @@
   function num(v) {
     return typeof v === 'number' && isFinite(v) ? v : null;
   }
+
+  /* ---------------------- 장전(PREOPEN) 미체결 가드 ----------------------
+   *  장전에는 네이버가 전 종목을 '보합 0.00% · 대금 -' 로 내려준다.
+   *  그 값으로 화면을 덮으면 07:30 동기화로 그려 둔 전일(11/18) 확정 등락률·대금이 지워진다.
+   *  → 체결 근거(거래량·등락)가 없는 장전 응답은 반영하지 않는다.
+   */
+  function isPreopen(payload) {
+    return String((payload && payload.marketStatus) || '').toUpperCase() === 'PREOPEN';
+  }
+  function quoteTraded(q) {
+    if (!q) return false;
+    var vol = num(q.volume);
+    if (vol !== null && vol > 0) return true;
+    var chg = num(q.change);
+    if (chg !== null && chg !== 0) return true;
+    var pct = num(q.changePct);
+    if (pct !== null && pct !== 0) return true;
+    var over = num(q.overVolume);
+    if (over !== null && over > 0) return true;
+    return false;
+  }
   function fmtInt(n) {
     return num(n) === null ? '—' : Math.round(n).toLocaleString('ko-KR');
   }
@@ -632,6 +653,8 @@
     var applied = 0;
     var indices = payload.indices || [];
     indices.forEach(function (it) {
+      /* 장전 미체결 지수는 0.00% 로 덮지 않는다 */
+      if (isPreopen(payload) && !quoteTraded(it)) return;
       var price = num(it.price);
       if (price === null) return;
       var el = it.key === 'KOSPI' ? document.getElementById('afKospi')
@@ -821,7 +844,7 @@
       var code = el.getAttribute('data-pm-code');
       var name = el.getAttribute('data-pm-name') || '';
       var q = byCode[code];
-      if (!q) return;
+      if (!q || num(q.price) === null) return;
       var txt = pmQuoteText(name, q);
       // 대금까지 함께 보여주는 칸(data-pm-show="value")은 통합(KRX+NXT) 대금을 붙인다
       if (el.getAttribute('data-pm-show') === 'value') {
@@ -1328,9 +1351,13 @@
 
   function applyLive(payload) {
     if (!HAS_DOM || !payload || payload.ok !== true) return 0;
+    var preopen = isPreopen(payload);
     var byCode = {};
     (payload.stocks || []).forEach(function (s) {
-      if (s && s.code) byCode[s.code] = s;
+      if (!s || !s.code) return;
+      /* 장전 미체결 종목은 화면에서 건드리지 않는다(전일 확정값 유지) */
+      if (preopen && !quoteTraded(s)) return;
+      byCode[s.code] = s;
     });
     var stamp = stampOf(payload.generatedAt);
     var applied = 0;
@@ -1338,7 +1365,8 @@
     applied += applySupplyCards(byCode);
     applied += applyNxtRanking(byCode);
     applied += applyPremarket(byCode, stamp);
-    applied += renderAfCards(byCode);
+    /* 체결된 종목이 하나도 없다면 시세 카드를 다시 그리지 않는다 — '시세 대기'로 덮지 않게 */
+    if (Object.keys(byCode).length) applied += renderAfCards(byCode);
     stampBadges(payload, stamp);
     state.ok = applied > 0;
     return applied;
