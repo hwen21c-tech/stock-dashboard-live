@@ -3,50 +3,50 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-18 15:12:15",
- "updatedAt": "2026-11-18T15:12:00.941244+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-18 16:20:58",
+ "updatedAt": "2026-11-18T16:20:41.883877+09:00",
+ "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "277810",
   "125490",
   "108490",
-  "437730",
   "464080",
+  "437730",
   "460940",
-  "030530",
-  "089890",
-  "090360",
   "295310",
   "024850",
-  "144960"
+  "000150",
+  "030530",
+  "089890",
+  "090360"
  ],
  "themes": [
   {
    "rank": 1,
    "name": "로봇",
-   "avgRS": 58,
+   "avgRS": 74,
    "stocks": [
     {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 19.9,
-     "value_eok": 1844.3,
+     "chg": 20.1,
+     "value_eok": 1915.12,
      "verified": true
     },
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 14.0,
-     "value_eok": 87.71,
+     "chg": 13.7,
+     "value_eok": 98.44,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 13.5,
-     "value_eok": 1817.4,
+     "chg": 13.2,
+     "value_eok": 1841.98,
      "verified": true
     }
    ]
@@ -54,27 +54,27 @@
   {
    "rank": 2,
    "name": "피지컬 AI",
-   "avgRS": 58,
+   "avgRS": 74,
    "stocks": [
     {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 19.9,
-     "value_eok": 1844.3,
+     "chg": 20.1,
+     "value_eok": 1915.12,
      "verified": true
     },
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 14.0,
-     "value_eok": 87.71,
+     "chg": 13.7,
+     "value_eok": 98.44,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 13.5,
-     "value_eok": 1817.4,
+     "chg": 13.2,
+     "value_eok": 1841.98,
      "verified": true
     }
    ]
@@ -82,27 +82,27 @@
   {
    "rank": 3,
    "name": "자율주행차",
-   "avgRS": 77,
+   "avgRS": 81,
    "stocks": [
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 14.0,
-     "value_eok": 87.71,
-     "verified": true
-    },
-    {
-     "code": "437730",
-     "name": "삼현",
-     "chg": 11.0,
-     "value_eok": 1243.02,
+     "chg": 13.7,
+     "value_eok": 98.44,
      "verified": true
     },
     {
      "code": "464080",
      "name": "에스오에스랩",
-     "chg": 10.9,
-     "value_eok": 95.03,
+     "chg": 11.8,
+     "value_eok": 99.63,
+     "verified": true
+    },
+    {
+     "code": "437730",
+     "name": "삼현",
+     "chg": 10.6,
+     "value_eok": 1271.34,
      "verified": true
     }
    ]
@@ -110,76 +110,76 @@
   {
    "rank": 4,
    "name": "지능형로봇/인공지능",
-   "avgRS": 47,
+   "avgRS": 60,
    "stocks": [
     {
      "code": "460940",
      "name": "피앤에스로보틱스",
-     "chg": 15.0,
-     "value_eok": 185.98,
+     "chg": 15.6,
+     "value_eok": 191.46,
      "verified": true
     },
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 14.0,
-     "value_eok": 87.71
+     "chg": 13.7,
+     "value_eok": 98.44
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 13.5,
-     "value_eok": 1817.4
+     "chg": 13.2,
+     "value_eok": 1841.98
     }
    ]
   },
   {
    "rank": 5,
-   "name": "반도체 장비",
-   "avgRS": 64,
+   "name": "반도체 재료/부품",
+   "avgRS": 76,
    "stocks": [
     {
-     "code": "030530",
-     "name": "원익홀딩스",
-     "chg": 10.3,
-     "value_eok": 3280.45
+     "code": "295310",
+     "name": "에이치브이엠",
+     "chg": 14.4,
+     "value_eok": 292.08
     },
     {
-     "code": "089890",
-     "name": "코세스",
-     "chg": 9.8,
-     "value_eok": 220.18
+     "code": "024850",
+     "name": "HLB이노베이션",
+     "chg": 10.8,
+     "value_eok": 28.19
     },
     {
-     "code": "090360",
-     "name": "로보스타",
-     "chg": 9.5,
-     "value_eok": 58.69
+     "code": "000150",
+     "name": "두산",
+     "chg": 8.7,
+     "value_eok": 1983.08
     }
    ]
   },
   {
    "rank": 6,
-   "name": "반도체 재료/부품",
-   "avgRS": 93,
+   "name": "반도체 장비",
+   "avgRS": 69,
    "stocks": [
     {
-     "code": "295310",
-     "name": "에이치브이엠",
-     "chg": 14.7,
-     "value_eok": 286.74
+     "code": "030530",
+     "name": "원익홀딩스",
+     "chg": 10.5,
+     "value_eok": 3325.93
     },
     {
-     "code": "024850",
-     "name": "HLB이노베이션",
-     "chg": 10.6,
-     "value_eok": 27.82
+     "code": "089890",
+     "name": "코세스",
+     "chg": 9.9,
+     "value_eok": 227.8
     },
     {
-     "code": "144960",
-     "name": "뉴파워프라즈마",
-     "chg": 8.2,
-     "value_eok": 164.99
+     "code": "090360",
+     "name": "로보스타",
+     "chg": 9.3,
+     "value_eok": 59.93
     }
    ]
   }
