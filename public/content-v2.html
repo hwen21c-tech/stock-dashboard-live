@@ -4779,7 +4779,7 @@
           (m.at ? ' · ' + esc(m.at) : '');
       } else {
         stat.className = 'mystat bad';
-        stat.textContent = '아직 4번 양식이 없습니다 — 링크를 분석하거나 본문을 붙여넣어 주세요.';
+        stat.textContent = (document.getElementById('myBlogAnalyze') ? '아직 4번 양식이 없습니다 — 링크를 분석하거나 본문을 붙여넣어 주세요.' : '아직 4번 양식이 없습니다 — 내 글 본문을 붙여넣어 주세요.');
       }
     }
     if (note && !note.dataset.touched){
@@ -4801,7 +4801,9 @@
     if (!st){
       box.className = 'stnow off';
       box.innerHTML = (pick === 4)
-        ? '4번 양식이 아직 없습니다 — 아래에서 <b>링크 분석</b> 또는 <b>본문 붙여넣기</b>로 만들어 주세요.'
+        ? (document.getElementById('myBlogAnalyze')
+          ? '4번 양식이 아직 없습니다 — 아래에서 <b>링크 분석</b> 또는 <b>본문 붙여넣기</b>로 만들어 주세요.'
+          : '4번 양식이 아직 없습니다 — 아래에 <b>내 글 본문을 붙여넣어</b> 만들어 주세요. (정적: 링크 직접 열기 불가)')
         : '이 양식은 등록된 블로거 양식이 없습니다 — 기본 말투로 씁니다.';
       body.innerHTML = '';
       return;
