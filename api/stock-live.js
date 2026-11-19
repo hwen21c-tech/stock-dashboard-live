@@ -631,9 +631,8 @@ async function enrichWithKis(stocks, codes, opts = {}) {
     return { stocks, summary };
   }
 
-  const timedOut = Date.now() - started >= KIS_BUDGET_MS - 50;
   summary.quoted = Object.keys(fetched.quotes || {}).length;
-  summary.rateLimited = Boolean(fetched.rateLimited) || timedOut;
+  summary.rateLimited = Boolean(fetched.rateLimited);
   summary.errors.push(...(fetched.errors || []));
   summary.quotes = fetched.quotes || {};
 
@@ -951,9 +950,14 @@ module.exports = async function handler(req, res) {
   const futures = futuresR.status === 'fulfilled' ? futuresR.value.futures : [];
   const macro = macroR.status === 'fulfilled' ? macroR.value.macro : {};
 
-  // KIS 공식 시세 교차 보강 (?kis=0 으로 끄기, ?kis=force 로 장전 가드 무시)
+  // KIS 공식 시세 — 기본은 요청 종목 1개(?code=)에서만 쓴다.
+  //  · 실측(Vercel→KIS 왕복 ~700ms, 초당 20건 제한) 결과 13~40종목 배치에 기본 적용하면
+  //    시세 응답이 3초 이상 느려지고 EGW00201 이 잦아진다 → 배치는 ?kis=1 로 명시할 때만.
+  //  · ?kis=0 끄기 · ?kis=1 배치 교차보강 · ?kis=force 장전 가드 무시
+  const singleCode = /^\d{6}$/.test(String(q.code || ''));
+  const kisOptIn = q.kis === '1' || q.kis === 'force';
   let kisSummary = null;
-  if (q.kis !== '0') {
+  if (q.kis !== '0' && (singleCode || kisOptIn)) {
     const enriched = await enrichWithKis(stocks, codes, { force: q.kis === 'force' });
     stocks = enriched.stocks;
     kisSummary = enriched.summary;
