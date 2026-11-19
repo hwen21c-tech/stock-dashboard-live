@@ -482,9 +482,12 @@ async function handleAlerts(res, fresh) {
  *      ③ 둘 다 있으면 → KIS 우선. 단 괴리가 3%를 넘으면 네이버 유지(이상치 방어)
  *  · 통합(KRX+NXT)·시간외 대금은 KIS 'J'(KRX)로는 나오지 않으므로 네이버 값을 그대로 둔다.
  */
-const KIS_BUDGET_MS = 4500;
-const KIS_CONCURRENCY = 4;
+const KIS_BUDGET_MS = 3500;
+const KIS_CONCURRENCY = 3;
 const KIS_DIFF_GUARD_PCT = 3;
+// 한 번에 KIS로 묻는 종목 수 상한 — 전략핀·수급 화면은 40종목까지 보내는데,
+// 전부 KIS로 찌르면 초당 제한(EGW00201)에 걸리고 응답도 느려진다. 초과분은 네이버 값 유지.
+const KIS_MAX_CODES = 24;
 
 function withTimeout(promise, ms, label) {
   let timer = null;
@@ -582,13 +585,16 @@ function mergeKisQuote(st, kq, opts) {
 
 async function enrichWithKis(stocks, codes, opts = {}) {
   const started = Date.now();
+  const targets = codes.slice(0, KIS_MAX_CODES);
   const summary = {
     enabled: true,
     configured: kis.isConfigured(),
     tokenVia: null,
-    attempted: codes.length,
+    attempted: targets.length,
+    skipped: Math.max(0, codes.length - targets.length),
     quoted: 0,
     applied: 0,
+    rateLimited: false,
     elapsedMs: 0,
     errors: [],
     quotes: {},
@@ -614,7 +620,7 @@ async function enrichWithKis(stocks, codes, opts = {}) {
   let fetched;
   try {
     fetched = await withTimeout(
-      kis.fetchKisQuotes(codes, { concurrency: KIS_CONCURRENCY }),
+      kis.fetchKisQuotes(targets, { concurrency: KIS_CONCURRENCY }),
       KIS_BUDGET_MS,
       'kis-quotes',
     );
@@ -625,13 +631,15 @@ async function enrichWithKis(stocks, codes, opts = {}) {
     return { stocks, summary };
   }
 
+  const timedOut = Date.now() - started >= KIS_BUDGET_MS - 50;
   summary.quoted = Object.keys(fetched.quotes || {}).length;
+  summary.rateLimited = Boolean(fetched.rateLimited) || timedOut;
   summary.errors.push(...(fetched.errors || []));
   summary.quotes = fetched.quotes || {};
 
   // 네이버가 통째로 실패했을 때는 KIS 공식 시세만으로 명부를 세운다(빈 화면 방지)
   if (!stocks.length && summary.quoted > 0) {
-    const synth = codes
+    const synth = targets
       .map((c) => summary.quotes[c])
       .filter(Boolean)
       .map((kq) => ({
@@ -824,7 +832,8 @@ async function buildKisTestBody(q) {
 }
 
 async function handleKisTest(res, q, fresh) {
-  if (!fresh && kisTestCache.body && Date.now() - kisTestCache.at < KIS_TEST_TTL_MS) {
+  const bypass = q.raw === '1'; // raw 진단은 항상 새로 받는다
+  if (!fresh && !bypass && kisTestCache.body && Date.now() - kisTestCache.at < KIS_TEST_TTL_MS) {
     res.setHeader('X-Cache', 'HIT-memory');
     return sendJson(res, 200, { ...kisTestCache.body, cached: true }, 'no-store');
   }
@@ -979,8 +988,11 @@ module.exports = async function handler(req, res) {
       configured: kisSummary.configured,
       tokenVia: kisSummary.tokenVia,
       attempted: kisSummary.attempted,
+      skipped: kisSummary.skipped,
       quoted: kisSummary.quoted,
       applied: kisSummary.applied,
+      rateLimited: Boolean(kisSummary.rateLimited),
+      timeout: Boolean(kisSummary.timeout),
       elapsedMs: kisSummary.elapsedMs,
       error: kisSummary.error || null,
       errors: (kisSummary.errors || []).slice(0, 5),
