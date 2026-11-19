@@ -483,6 +483,7 @@ async function handleAlerts(res, fresh) {
  *  · 통합(KRX+NXT)·시간외 대금은 KIS 'J'(KRX)로는 나오지 않으므로 네이버 값을 그대로 둔다.
  */
 const KIS_BUDGET_MS = 3500;
+const KIS_PER_CALL_MS = 2200;
 const KIS_CONCURRENCY = 3;
 const KIS_DIFF_GUARD_PCT = 3;
 // 한 번에 KIS로 묻는 종목 수 상한 — 전략핀·수급 화면은 40종목까지 보내는데,
@@ -619,11 +620,12 @@ async function enrichWithKis(stocks, codes, opts = {}) {
 
   let fetched;
   try {
-    fetched = await withTimeout(
-      kis.fetchKisQuotes(targets, { concurrency: KIS_CONCURRENCY }),
-      KIS_BUDGET_MS,
-      'kis-quotes',
-    );
+    fetched = await kis.fetchKisQuotes(targets, {
+      concurrency: KIS_CONCURRENCY,
+      timeout: KIS_PER_CALL_MS,
+      deadline: started + KIS_BUDGET_MS,
+      waveMinMs: 900,
+    });
   } catch (e) {
     summary.errors.push({ stage: 'quote', code: (e && e.code) || null, message: String((e && e.message) || e) });
     summary.elapsedMs = Date.now() - started;
@@ -633,6 +635,7 @@ async function enrichWithKis(stocks, codes, opts = {}) {
 
   summary.quoted = Object.keys(fetched.quotes || {}).length;
   summary.rateLimited = Boolean(fetched.rateLimited);
+  summary.truncated = Boolean(fetched.truncated);
   summary.errors.push(...(fetched.errors || []));
   summary.quotes = fetched.quotes || {};
 
@@ -996,6 +999,7 @@ module.exports = async function handler(req, res) {
       quoted: kisSummary.quoted,
       applied: kisSummary.applied,
       rateLimited: Boolean(kisSummary.rateLimited),
+      truncated: Boolean(kisSummary.truncated),
       timeout: Boolean(kisSummary.timeout),
       elapsedMs: kisSummary.elapsedMs,
       error: kisSummary.error || null,
