@@ -3,8 +3,8 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-19 14:12:01",
- "updatedAt": "2026-11-19T14:11:43.104005+09:00",
+ "fetchedAt": "2026-11-19 15:14:04",
+ "updatedAt": "2026-11-19T15:13:47.348647+09:00",
  "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
@@ -15,14 +15,16 @@
   "123690",
   "003350",
   "214420",
-  "089890",
+  "109610",
+  "365330",
+  "008830",
+  "034120",
   "101730",
-  "462870",
   "112040",
-  "004170",
-  "008770",
-  "034230",
-  "032350"
+  "194480",
+  "156100",
+  "458870",
+  "041830"
  ],
  "themes": [
   {
@@ -34,21 +36,21 @@
      "code": "253450",
      "name": "스튜디오드래곤",
      "chg": 30.0,
-     "value_eok": 100.14,
+     "value_eok": 102.03,
      "verified": true
     },
     {
      "code": "035760",
      "name": "CJ ENM",
-     "chg": 23.4,
-     "value_eok": 547.47,
+     "chg": 23.1,
+     "value_eok": 621.04,
      "verified": true
     },
     {
      "code": "376300",
      "name": "디어유",
-     "chg": 15.8,
-     "value_eok": 141.4,
+     "chg": 16.6,
+     "value_eok": 151.44,
      "verified": true
     }
    ]
@@ -62,126 +64,126 @@
      "code": "123690",
      "name": "한국화장품",
      "chg": 30.0,
-     "value_eok": 94.53,
+     "value_eok": 95.46,
      "verified": true
     },
     {
      "code": "003350",
      "name": "한국화장품제조",
-     "chg": 18.8,
-     "value_eok": 506.12,
+     "chg": 17.0,
+     "value_eok": 534.7,
      "verified": true
     },
     {
      "code": "214420",
      "name": "토니모리",
-     "chg": 14.1,
-     "value_eok": 47.34,
+     "chg": 14.9,
+     "value_eok": 49.31,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "메타버스",
-   "avgRS": 64,
+   "name": "우크라이나 재건",
+   "avgRS": 36,
    "stocks": [
     {
-     "code": "035760",
-     "name": "CJ ENM",
-     "chg": 23.4,
-     "value_eok": 547.47,
+     "code": "109610",
+     "name": "에스와이",
+     "chg": 29.8,
+     "value_eok": 315.46,
      "verified": true
     },
     {
-     "code": "376300",
-     "name": "디어유",
-     "chg": 15.8,
-     "value_eok": 141.4,
+     "code": "365330",
+     "name": "에스와이스틸텍",
+     "chg": 22.7,
+     "value_eok": 176.41,
      "verified": true
     },
     {
-     "code": "089890",
-     "name": "코세스",
-     "chg": 7.3,
-     "value_eok": 226.71,
+     "code": "008830",
+     "name": "대동기어",
+     "chg": 9.6,
+     "value_eok": 218.91,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "모바일게임",
-   "avgRS": 18,
+   "name": "메타버스",
+   "avgRS": 46,
    "stocks": [
     {
-     "code": "101730",
-     "name": "위메이드맥스",
-     "chg": 29.9,
-     "value_eok": 118.52,
+     "code": "035760",
+     "name": "CJ ENM",
+     "chg": 23.1,
+     "value_eok": 621.04,
      "verified": true
     },
     {
-     "code": "462870",
-     "name": "시프트업",
-     "chg": 8.8,
-     "value_eok": 25.31
+     "code": "376300",
+     "name": "디어유",
+     "chg": 16.6,
+     "value_eok": 151.44
     },
     {
-     "code": "112040",
-     "name": "위메이드",
-     "chg": 7.7,
-     "value_eok": 144.59
+     "code": "034120",
+     "name": "SBS",
+     "chg": 8.1,
+     "value_eok": 43.51
     }
    ]
   },
   {
    "rank": 5,
-   "name": "면세점",
-   "avgRS": 46,
+   "name": "모바일게임",
+   "avgRS": 10,
    "stocks": [
     {
-     "code": "214420",
-     "name": "토니모리",
-     "chg": 14.1,
-     "value_eok": 47.34
+     "code": "101730",
+     "name": "위메이드맥스",
+     "chg": 29.9,
+     "value_eok": 119.0
     },
     {
-     "code": "004170",
-     "name": "신세계",
-     "chg": 10.7,
-     "value_eok": 397.82
-    },
-    {
-     "code": "008770",
-     "name": "호텔신라",
+     "code": "112040",
+     "name": "위메이드",
      "chg": 10.6,
-     "value_eok": 356.39
+     "value_eok": 157.54
+    },
+    {
+     "code": "194480",
+     "name": "데브시스터즈",
+     "chg": 10.1,
+     "value_eok": 15.43
     }
    ]
   },
   {
    "rank": 6,
-   "name": "호텔/리조트",
-   "avgRS": 39,
+   "name": "의료기기",
+   "avgRS": 48,
    "stocks": [
     {
-     "code": "008770",
-     "name": "호텔신라",
-     "chg": 10.6,
-     "value_eok": 356.39
+     "code": "156100",
+     "name": "엘앤케이바이오",
+     "chg": 21.4,
+     "value_eok": 25.31
     },
     {
-     "code": "034230",
-     "name": "파라다이스",
-     "chg": 10.3,
-     "value_eok": 486.51
+     "code": "458870",
+     "name": "씨어스",
+     "chg": 15.4,
+     "value_eok": 97.93
     },
     {
-     "code": "032350",
-     "name": "롯데관광개발",
-     "chg": 8.9,
-     "value_eok": 221.84
+     "code": "041830",
+     "name": "인바디",
+     "chg": 6.9,
+     "value_eok": 23.53
     }
    ]
   }
