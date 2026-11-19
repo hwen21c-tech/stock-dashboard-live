@@ -1746,6 +1746,10 @@
     mounted: { news: false, after: false, afterTop: false },
     sessionPhase: null,
     reqId: 0,
+    renderErrors: 0,   // 이번 갱신에서 예외가 난 렌더러 수(성공 배지와 분리해 표시)
+    pendingRest: 0,    // 지금 보는 탭을 먼저 그린 뒤 백그라운드로 채울 렌더 수
+    cacheHit: false,   // sessionStorage 캐시로 먼저 그렸는지
+    prevQuotes: {},    // ⑦ 반짝임 판정용 직전 시세(종목코드 → 가격·등락률)
     folds: {},          // 접힘 목록 사용자 상태(기본 접힘)
     afterMinValue: null, // 3번 탭 '시간외 대금 10억↑만 보기' 토글 상태(null=기본 ON)
     tv: null,            // 당일 거래대금 1분 버킷(종목코드 → [[분, 억], ...])
@@ -1783,6 +1787,100 @@
   }
   function norm(s) {
     return String(s || '').replace(/[★☆\s\u00a0]/g, '').replace(/[()]/g, '').toUpperCase();
+  }
+
+  /* ---------------- 장전(PREOPEN) 가드 — 이 IIFE 전용 사본 ----------------
+   *  이 파일 위쪽(지수·감시종목 레이어)에도 같은 이름의 함수가 있지만 다른 IIFE 라
+   *  여기서는 보이지 않는다. renderNxtTracks 가 그 이름을 그대로 써서 갱신마다
+   *  ReferenceError 가 났고, 그 예외가 폴링 catch 로 떨어져 화면에는
+   *  '⚠️ 1·3·5탭 API 연결 실패' 로 표시됐다(실제로는 200 OK 응답을 받고 있었다).
+   *  → 탭 레이어 안에 자체 정의해 스코프 사고로 탭 전체 렌더가 멈추지 않게 한다. */
+  function isPreopen(payload) {
+    return String((payload && payload.marketStatus) || '').toUpperCase() === 'PREOPEN';
+  }
+  function quoteTraded(q) {
+    if (!q) return false;
+    if (isNum(q.volume) && q.volume > 0) return true;
+    if (isNum(q.change) && q.change !== 0) return true;
+    if (isNum(q.changePct) && q.changePct !== 0) return true;
+    if (isNum(q.overVolume) && q.overVolume > 0) return true;
+    return false;
+  }
+
+  /* ---------------- ① sessionStorage 3분 초고속 캐시 ----------------
+   *  최근 실시간(/api/tabs-live) 응답만 sessionStorage 에 3분간 보관한다.
+   *  화면을 열면 캐시로 0.1초 안에 먼저 그리고(이전에 보던 날짜면 즉시 폐기),
+   *  백그라운드에서 최신 응답으로 교체한다. 3분이 지난 캐시는 쓰지 않는다. */
+  var CACHE_KEY = 'sd_tabs_live_cache_v1';
+  var CACHE_TTL = 3 * 60 * 1000;
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function kstDateKey(d) {
+    var t = d ? new Date(d.getTime()) : new Date();
+    var k = new Date(t.getTime() + (t.getTimezoneOffset() * 60000) + (9 * 3600000));
+    return k.getFullYear() + '-' + pad2(k.getMonth() + 1) + '-' + pad2(k.getDate());
+  }
+  function bodyDateKey(body) {
+    var label = String((body && body.generatedAtLabel) || '');
+    if (/^\d{4}-\d{2}-\d{2}/.test(label)) return label.slice(0, 10);
+    if (body && body.generatedAt) {
+      var d = new Date(body.generatedAt);
+      if (!isNaN(d.getTime())) return kstDateKey(d);
+    }
+    return null;
+    }
+  function saveCache(body) {
+    if (!body || body.ok !== true) return;
+    try {
+      var store = window.sessionStorage;
+      if (!store) return;
+      store.setItem(CACHE_KEY, JSON.stringify({ t: Date.now(), day: bodyDateKey(body), body: body }));
+    } catch (e) { /* 저장소 없음·용량 초과 */ }
+  }
+  function readCache() {
+    try {
+      var store = window.sessionStorage;
+      if (!store) return null;
+      var raw = store.getItem(CACHE_KEY);
+      if (!raw) return null;
+      var rec = JSON.parse(raw);
+      if (!rec || !rec.body || rec.body.ok !== true) return null;
+      var age = Date.now() - (rec.t || 0);
+      if (!(age >= 0 && age <= CACHE_TTL)) { store.removeItem(CACHE_KEY); return null; }
+      /* 옛 날짜 응답이 오늘 화면에 섞이지 않게 오늘(KST) 데이터만 복원한다 */
+      var day = rec.day || bodyDateKey(rec.body);
+      if (day !== kstDateKey()) { store.removeItem(CACHE_KEY); return null; }
+      return rec.body;
+    } catch (e) { return null; }
+  }
+
+  /* ---------------- ⑦ 바뀐 숫자만 0.5초 반짝임 ---------------- */
+  function flashEl(el, pct) {
+    if (!el || !el.classList) return;
+    try {
+      el.classList.remove('sd-num-flash', 'sd-num-up', 'sd-num-down');
+      void el.offsetWidth; /* 애니메이션 재시작 */
+      el.classList.add('sd-num-flash');
+      el.classList.add(isNum(pct) && pct < 0 ? 'sd-num-down' : 'sd-num-up');
+      if (el.__sdFlashTimer) clearTimeout(el.__sdFlashTimer);
+      el.__sdFlashTimer = setTimeout(function () {
+        try { el.classList.remove('sd-num-flash', 'sd-num-up', 'sd-num-down'); } catch (e) { /* noop */ }
+      }, 500);
+    } catch (e) { /* noop */ }
+  }
+
+  /* ---------------- 렌더 단계별 예외 격리 ----------------
+   *  한 렌더러가 예외를 던져도 나머지 탭 렌더가 멈추지 않게 한다.
+   *  (예전에는 예외 하나가 폴링 전체를 catch 로 떨어뜨려 'API 연결 실패' 로 보였다) */
+  function safe(label, fn) {
+    try {
+      var v = fn();
+      return isNum(v) ? v : 0;
+    } catch (e) {
+      state.renderErrors = (state.renderErrors || 0) + 1;
+      try { console.warn('[TabsLive] ' + label + ' 렌더 실패: ' + (e && e.message ? e.message : e)); } catch (e2) { /* noop */ }
+      return 0;
+    }
   }
 
   /* ------------------------------ 상태 배지 ------------------------------ */
@@ -1825,6 +1923,60 @@
       el.style.color = '#94a3b8';
       el.style.borderColor = 'rgba(148,163,184,0.35)';
     }
+  }
+
+  /* ---------------- ② 실시간 기준 시각 뱃지 (⏱ 10:35 실측 · 네이버) ----------------
+   *  화면에 지금 깔린 숫자가 몇 시 몇 분에 실측된 값인지, 어느 소스인지 명시한다.
+   *  KIS 는 응답 sources 에 실제로 있을 때만 적는다(없는데 적으면 가짜 표기가 된다). */
+  function stampLabel(body) {
+    var list = (body && body.sources) || [];
+    var hasNaver = false, hasKis = false, hasSe = false;
+    for (var i = 0; i < list.length; i += 1) {
+      var n = String((list[i] && list[i].name) || '').toLowerCase();
+      if (n.indexOf('naver') === 0 || n.indexOf('naver-') >= 0) hasNaver = true;
+      if (n.indexOf('kis') >= 0) hasKis = true;
+      if (n.indexOf('stockeasy') >= 0) hasSe = true;
+    }
+    if (body && body.themeSeIn) hasSe = true;
+    var parts = [];
+    if (hasKis) parts.push('KIS');
+    if (hasNaver) parts.push('네이버');
+    if (hasSe) parts.push('스탁이지');
+    return parts.length ? parts.join('/') : '실시간';
+  }
+
+  function setStamp(body, cached) {
+    var el = document.getElementById('tabsLiveStamp');
+    if (!el) return;
+    var hm = String((body && body.generatedAtKst) || '').slice(0, 5);
+    var txt = hm ? '⏱ ' + hm + ' 실측 · ' + stampLabel(body) : '⏱ 실측 시각 확인 중';
+    if (cached) txt += ' · 캐시';
+    if (el.textContent !== txt) el.textContent = txt;
+    el.title = (body && body.generatedAtLabel ? body.generatedAtLabel + ' KST 응답' : '') +
+      ' · ' + (body && body.themeSource === 'naver-theme' ? '네이버 테마 랭킹' : '테마 랭킹 확인 중');
+    el.setAttribute('data-ok', cached ? '0' : '1');
+    el.style.color = cached ? '#fbbf24' : '#34d399';
+    el.style.borderColor = cached ? 'rgba(245,158,11,0.45)' : 'rgba(16,185,129,0.4)';
+  }
+
+  /* ---------------- ③ 지연 시 '다시 불러오기' 스트립 ----------------
+   *  옛 종목·옛 테마를 대신 깔지 않고, 지연 사실과 재시도 버튼만 보여준다. */
+  function showRetry(reason) {
+    var box = document.getElementById('tabsLiveRetry');
+    if (!box) return;
+    var txt = box.querySelector('.tlr-txt');
+    if (txt) {
+      var msg = '⏱ 실시간 응답이 지연되고 있습니다' + (reason ? ' (' + reason + ')' : '') +
+        ' — 옛 종목을 대신 보여주지 않습니다.';
+      if (txt.textContent !== msg) txt.textContent = msg;
+    }
+    box.hidden = false;
+    box.setAttribute('data-reason', String(reason || ''));
+  }
+  function hideRetry() {
+    var box = document.getElementById('tabsLiveRetry');
+    if (!box) return;
+    if (!box.hidden) box.hidden = true;
   }
 
   /* --------------------- openDetail(...) onclick 재작성 --------------------- */
@@ -1901,7 +2053,11 @@
 
     var changeEl = tile.querySelector('.st-change');
     if (changeEl && isNum(pctVal)) {
-      changeEl.textContent = pctTxt(pctVal) + (live ? ' 프' : '');
+      var prevChange = changeEl.textContent;
+      var nextChange = pctTxt(pctVal) + (live ? ' 프' : '');
+      /* ⑦ 값이 실제로 바뀐 종목만 0.5초 반짝인다(화면 전체 깜박임 금지) */
+      if (prevChange && prevChange !== nextChange) flashEl(changeEl, pctVal);
+      changeEl.textContent = nextChange;
       changeEl.title = live ? 'NXT 프리마켓 체결가 기준 (전일 종가 대비)' : '';
       changeEl.style.color = colFor(pctVal);
       hits += 1;
@@ -1909,9 +2065,13 @@
 
     var ohlcEl = tile.querySelector('.st-ohlc');
     if (ohlcEl && isNum(priceVal)) {
+      var prevPriceEl = ohlcEl.querySelector('strong');
+      var prevPrice = prevPriceEl ? prevPriceEl.textContent : '';
       ohlcEl.innerHTML =
         (live ? '프' : '종') + ' <strong>' + esc(fmt(priceVal)) + '</strong> | 시 ' + esc(fmt(stock.open)) +
         ' 고 ' + esc(fmt(stock.high)) + ' 저 ' + esc(fmt(stock.low));
+      var nextPriceEl = ohlcEl.querySelector('strong');
+      if (prevPrice && nextPriceEl && prevPrice !== nextPriceEl.textContent) flashEl(nextPriceEl, pctVal);
       hits += 1;
     }
 
@@ -3703,6 +3863,31 @@
     );
   }
 
+  /* ⑦ 다시 그린 테마맵에서 '직전 응답과 값이 달라진 종목'만 반짝인다.
+   *  테마맵은 innerHTML 을 통째로 갈기 때문에, 종목코드 기준으로 직전 가격·등락률을
+   *  기억해 두고 이번 값과 다른 카드에만 하이라이트를 붙인다(차트 전체 깜박임 금지). */
+  function flashChangedTiles(grid, themes) {
+    var prev = state.prevQuotes || {};
+    var next = {};
+    (themes || []).forEach(function (t) {
+      (t.stocks || []).forEach(function (s) {
+        if (!s || !s.code) return;
+        var key = String(s.code);
+        var pct = isNum(s.livePct) ? s.livePct : (isNum(s.changePct) ? s.changePct : null);
+        var price = isNum(s.livePrice) ? s.livePrice : s.price;
+        var before = prev[key];
+        next[key] = { p: price, c: pct };
+        if (!before) return;                       /* 첫 렌더는 반짝이지 않는다 */
+        if (before.p === price && before.c === pct) return;
+        var tile = grid.querySelector('.stock-tile[data-code="' + key + '"]');
+        if (!tile) return;
+        flashEl(tile.querySelector('.st-change'), pct);
+        flashEl(tile.querySelector('.st-ohlc strong'), pct);
+      });
+    });
+    state.prevQuotes = next;
+  }
+
   function renderDynamicThemes(body, stamp) {
     var gridEl = document.querySelector('#tabOverview .theme-grid-8');
     var isPrevDay = body.themeSource === 'prev-day-dynamic';
@@ -3729,6 +3914,7 @@
     if (grid.getAttribute('data-sig') !== html) {
       grid.innerHTML = html;
       grid.setAttribute('data-sig', html);
+      flashChangedTiles(grid, themes);
     }
     grid.setAttribute('data-dynamic', '1');
     grid.setAttribute('data-theme-source', body.themeSource);
@@ -3772,53 +3958,96 @@
     sub.setAttribute('data-live', '1');
   }
 
+  /* 지금 화면에 띄우고 있는 탭 (④ 우선 로딩 판단) */
+  function currentView() {
+    try {
+      var btn = document.querySelector('.tab-btn.active');
+      return (btn && btn.getAttribute('data-view')) || 'overview';
+    } catch (e) { return 'overview'; }
+  }
+
   function apply(body) {
     var stamp = body.generatedAtKst || nowHms();
-    var applied = 0;
     state.sessionPhase = body.sessionPhase || null;
+    state.renderErrors = 0;
+    var view = currentView();
+    var applied = 0;
+
+    /* ④ 보고 있는 탭 우선 — 지금 탭의 렌더러를 먼저 돌려 즉시 그리고,
+     *    나머지 탭은 다음 프레임에 백그라운드로 채운다(체감 속도).
+     *    각 단계는 safe() 로 감싸 한 렌더러의 예외가 전체 탭을 멈추지 않게 한다. */
+    var steps = [];
+    function step(label, views, fn) { steps.push({ label: label, views: views, fn: fn }); }
+
+    /* ① 거래대금 1분 버킷은 테마 렌더보다 먼저 쌓아야 이번 값까지 순증에 들어간다. */
+    step('tv', ['overview'], function () { tvRecord(body.themes || []); return 1; });
 
     // 1번 탭 — NXT 실시간 주도주 트랙(고정 텍스트 → 실데이터)
-    applied += renderNxtTracks(body, stamp);
+    step('nxt', ['overview'], function () { return renderNxtTracks(body, stamp); });
 
     // 1번 탭 — 주도 테마맵 : 네이버 실시간 테마 랭킹(동적 Top 8)으로 통째로 다시 그린다.
     //  랭킹이 살아 있으면 고정 8대 테마(정적 HTML)로 되돌리지 않는다.
-    //  ⚡ 거래대금 1분 버킷을 먼저 쌓은 뒤 그려야 이번 값까지 순증에 들어간다.
-    var themes = body.themes || [];
-    tvRecord(themes);
-    var dynThemes = renderDynamicThemes(body, stamp);
-    if (dynThemes > 0) {
-      applied += dynThemes;
-    } else {
+    step('themes', ['overview'], function () {
+      var themes = body.themes || [];
+      var dynThemes = renderDynamicThemes(body, stamp);
+      if (dynThemes > 0) return dynThemes;
+      var n = 0;
       themes.forEach(function (t, i) {
         var block = findThemeBlock(t, i);
-        if (block) applied += applyTheme(t, block);
+        if (block) n += applyTheme(t, block);
       });
       if (themes.length) markThemeHead(stamp);
-    }
+      return n;
+    });
 
     // 1번 탭 — 👀 지금 봐야 할 섹터 & 종목 (테마맵 바로 아래 박스)
-    applied += renderWatchBox(body, stamp);
-
-    // 비중법사·홍인기 탭 — 장중 실시간 기준봉/타점 판정 패널
-    applied += renderStrategyLive(body, stamp);
+    step('watch', ['overview'], function () { return renderWatchBox(body, stamp); });
 
     // 1번 탭 — 52주 신고가 / 100억+ 상한가
-    var panels = overviewPanels();
-    applied += renderHigh52(panels.gold, body.high52, stamp);
-    applied += renderUpperLimit(panels.red, body.upperLimit, stamp);
+    step('high52', ['overview'], function () { return renderHigh52(overviewPanels().gold, body.high52, stamp); });
+    step('upper', ['overview'], function () { return renderUpperLimit(overviewPanels().red, body.upperLimit, stamp); });
 
     // 3·5번 탭 — 실시간 뉴스
-    applied += renderNews(body, stamp);
+    step('news', ['aftermarket', 'news'], function () { return renderNews(body, stamp); });
 
     // 3번 탭 — 시간외 체결 대금·등락 순위 (감시군 실시간 산출)
-    var afCount = renderAftermarket(body, stamp);
-    if (afCount > 0) {
-      applied += afCount;
-      state.mounted.afterTop = true;
-    }
+    step('after', ['aftermarket'], function () {
+      var afCount = renderAftermarket(body, stamp);
+      if (afCount > 0) state.mounted.afterTop = true;
+      return afCount;
+    });
 
-    // 주말 휴장 문구 정정
-    fixSessionWording(body.sessionPhase);
+    // 비중법사·홍인기 탭 — 장중 실시간 기준봉/타점 판정 패널
+    step('strategy', ['bijoong', 'honginki', 'kkangto', 'supply', 'manju', 'jongbe', 'rnzone', 'ipo'],
+      function () { return renderStrategyLive(body, stamp); });
+
+    // 주말 휴장 문구 정정 (모든 탭 공통)
+    step('wording', null, function () { fixSessionWording(body.sessionPhase); return 1; });
+
+    var rest = [];
+    for (var i = 0; i < steps.length; i += 1) {
+      var s = steps[i];
+      var isActive = view && s.views && s.views.indexOf(view) >= 0;
+      if (isActive || !s.views) {
+        applied += safe(s.label, s.fn);
+      } else {
+        rest.push(s);
+      }
+    }
+    state.pendingRest = rest.length;
+    if (rest.length) {
+      var runRest = function () {
+        for (var j = 0; j < rest.length; j += 1) {
+          applied += safe(rest[j].label, rest[j].fn);
+        }
+        state.pendingRest = 0;
+        state.applied = applied;
+      };
+      setTimeout(function () {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(runRest);
+        else runRest();
+      }, 0);
+    }
 
     state.applied = applied;
     return applied;
@@ -3853,16 +4082,24 @@
         var body = out.body;
         if (!body || body.ok !== true) {
           state.ok = false;
-          setBadge(false, '⚠️ 1·3·5탭 API 응답 없음 · 내장 데이터 유지');
-          console.warn('[TabsLive] API 실패 (HTTP ' + out.status + ') — 내장 데이터 유지');
+          var why = 'HTTP ' + out.status + ' · 응답 본문 없음';
+          setBadge(false, '⚠️ 실시간 지연 · ' + (state.lastBody ? (state.lastBody.generatedAtKst || '') + ' 값 유지' : '다시 불러오기 필요'));
+          showRetry(why);
+          console.warn('[TabsLive] API 실패 (' + why + ') — 옛 종목을 새 값으로 덮지 않는다');
           return;
         }
         var applied = apply(body);
         state.lastBody = body;
-        if (applied > 0) {
+        /* ④ 나머지 탭은 다음 프레임에 채우므로, 우선 탭만 그려졌어도 성공으로 본다. */
+        if (applied > 0 || state.pendingRest > 0) {
           state.ok = true;
+          state.cacheHit = false;
           state.lastAt = nowHms();
-          setBadge(true, '⚡ 1·3·5탭 LIVE ' + state.lastAt + ' 갱신');
+          saveCache(body);          /* ① 3분 캐시 저장 */
+          hideRetry();
+          setStamp(body);
+          setBadge(true, '⚡ 1·3·5탭 LIVE ' + state.lastAt + ' 갱신' +
+            (state.renderErrors ? ' · 렌더오류 ' + state.renderErrors : ''));
           console.log('[TabsLive] ' + body.generatedAtKst + ' ' + body.sessionPhase +
             ' 테마=' + (body.themes || []).length +
             ' 52주=' + (body.high52 ? (body.high52.byValue || []).length : 0) +
@@ -3872,7 +4109,8 @@
             ' errors=' + (body.errors || []).length);
         } else {
           state.ok = false;
-          setBadge(false, '⚠️ 1·3·5탭 갱신 항목 없음 · 내장 데이터 유지');
+          setBadge(false, '⚠️ 1·3·5탭 갱신 항목 없음');
+          showRetry('갱신 항목 없음');
         }
       })
       .catch(function (err) {
@@ -3880,13 +4118,30 @@
         state.polling = false;
         if (reqId !== state.reqId) return;
         state.ok = false;
-        var reason = err && err.name === 'AbortError' ? '응답 시간 초과' : (err && err.message ? err.message : String(err));
-        setBadge(false, '⚠️ 1·3·5탭 API 연결 실패 · 내장 데이터 유지');
+        var reason = err && err.name === 'AbortError' ? '응답 시간 초과(14초)' : (err && err.message ? err.message : String(err));
+        /* ③ 이미 그려 둔 값이 있으면 지우지 않고 '지연 + 재시도' 만 알린다. */
+        setBadge(false, state.lastBody
+          ? '⚠️ 실시간 지연 · ' + (state.lastBody.generatedAtKst || '') + ' 값 유지'
+          : '⚠️ 실시간 연결 실패');
+        showRetry(reason);
         console.warn('[TabsLive] 호출 실패: ' + reason);
       });
   }
 
   function start() {
+    /* ① 화면을 열자마자 3분 내 캐시로 먼저 그린다(0.1초 체감). 최신 응답은 곧바로 이어서 받는다. */
+    var cached = readCache();
+    if (cached) {
+      var n = apply(cached);
+      state.lastBody = cached;
+      state.cacheHit = true;
+      setStamp(cached, true);
+      setBadge(null, '⚡ 캐시 즉시 복원 ' + (cached.generatedAtKst || '') + ' · 최신 확인 중');
+      try {
+        console.log('[TabsLive] sessionStorage 캐시 복원 ' + (cached.generatedAtKst || '') +
+          ' (applied=' + n + ') → 최신 응답 확인');
+      } catch (e) { /* noop */ }
+    }
     poll(false);
     if (state.timer) clearInterval(state.timer);
     state.timer = setInterval(function () {
@@ -3916,11 +4171,55 @@
     return true;
   }
 
+  /* --------------- ⑤ 원클릭 즉시 새로고침 (KIS·네이버·스탁이지 재조회) ---------------
+   *  자동 주기(30초)를 기다리지 않고 지금 바로 다시 받아온다. 연타로 API 를 때리지 않게
+   *  10초 쿨다운을 두고 버튼에 남은 초를 보여준다(서버 API 한도 보호). */
+  var QUICK_COOLDOWN_MS = 10 * 1000;
+  var quickAt = 0;
+  var quickTick = null;
+
+  function quickButton() { return document.getElementById('sdQuickRefresh'); }
+
+  function quickRefresh() {
+    var btn = quickButton();
+    var now = Date.now();
+    var left = Math.ceil((quickAt + QUICK_COOLDOWN_MS - now) / 1000);
+    if (left > 0) {
+      if (btn) { btn.textContent = '⏳ ' + left + '초 후'; btn.classList.add('busy'); }
+      return false;
+    }
+    quickAt = now;
+    if (btn) { btn.textContent = '🔄 조회 중…'; btn.classList.add('busy'); }
+
+    /* tabs-live 는 캐시 우회(?fresh=1)로, 지수·감시종목·수급 카드는 각 레이어의 poll 로 다시 받는다. */
+    try { poll(true); } catch (e) { /* noop */ }
+    try { if (window.LiveAPI && typeof window.LiveAPI.poll === 'function') window.LiveAPI.poll(); } catch (e) { /* noop */ }
+    try { if (window.LiveExtra && typeof window.LiveExtra.poll === 'function') window.LiveExtra.poll(); } catch (e) { /* noop */ }
+    try { if (window.LiveExtra && typeof window.LiveExtra.loadTrend === 'function') window.LiveExtra.loadTrend(); } catch (e) { /* noop */ }
+
+    if (quickTick) clearInterval(quickTick);
+    quickTick = setInterval(function () {
+      var b = quickButton();
+      var l = Math.ceil((quickAt + QUICK_COOLDOWN_MS - Date.now()) / 1000);
+      if (l > 0) {
+        if (b) { b.textContent = '⏳ ' + l + '초 후'; b.classList.add('busy'); }
+      } else {
+        if (b) { b.textContent = '🔄 즉시 새로고침'; b.classList.remove('busy'); }
+        clearInterval(quickTick);
+        quickTick = null;
+      }
+    }, 1000);
+    return true;
+  }
+
   window.TabsLive = {
     poll: poll,
     start: start,
     apply: apply,
     refresh: function () { poll(true); },
+    quickRefresh: quickRefresh,
+    readCache: readCache,
+    clearCache: function () { try { window.sessionStorage.removeItem(CACHE_KEY); } catch (e) { /* noop */ } },
     state: state,
     _applyTheme: applyTheme,
     _renderWatchBox: renderWatchBox,

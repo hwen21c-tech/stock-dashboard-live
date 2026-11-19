@@ -1495,3 +1495,151 @@
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
+
+
+/* ============================================================================
+ * 11/19 동적 관제탑 9종 — ⑧ ★ 관심종목 상단 1줄 미니바 · ⑨ 폴드8 하단 퀵탭
+ * ----------------------------------------------------------------------------
+ *  ⑧ 어느 탭을 보고 있든 상단에 ★ 찜 종목의 현재가·등락률을 1줄로 고정 표시한다.
+ *     · 찜 종목이 없으면 바를 숨긴다(빈 껍데기 남기지 않음).
+ *     · 시세는 /api/stock-live?codes=… (60초) 로만 받고, 없으면 '—' 로 둔다(가짜 금지).
+ *     · 바를 누르면 기존 ★ 관심종목 서랍(StockWatch)이 열린다.
+ *  ⑨ 폴드8 외부 세로 화면(≤520px)에서 한 손 조작용 하단 퀵탭(테마·수급·만쥬·RN)을 띄운다.
+ *     · 데스크톱·가로 화면에서는 완전히 숨겨 레이아웃을 건드리지 않는다.
+ *     · body 에 padding-bottom 을 주어 본문을 가리지 않는다.
+ * ==========================================================================*/
+(function () {
+  'use strict';
+  if (typeof document === 'undefined') return;
+
+  var PIN_POLL_MS = 60000;
+  var PIN_LIMIT = 8;
+  var quotes = {};     /* code → /api/stock-live stock */
+  var pinAt = null;    /* 마지막 실측 시각(HH:MM) */
+  var pinCodes = '';   /* 마지막으로 시세를 요청한 종목코드 목록(찜 추가·클라우드 동기화 감지) */
+  var QUICK_ON = false;
+
+  function $(id) { return document.getElementById(id); }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmtPrice(n) { return isNum(n) ? Math.round(n).toLocaleString('ko-KR') : ''; }
+  function pctTxt(p) { return isNum(p) ? (p > 0 ? '+' : '') + p.toFixed(2) + '%' : ''; }
+  function colClass(p) { return !isNum(p) || p === 0 ? 'flat' : (p > 0 ? 'up' : 'down'); }
+
+  function watchItems() {
+    try {
+      if (window.StockWatch && typeof window.StockWatch.list === 'function') {
+        return (window.StockWatch.list() || []).filter(function (it) {
+          return it && it.code && /^\d{6}$/.test(String(it.code)) && it.name;
+        });
+      }
+    } catch (e) { /* noop */ }
+    return [];
+  }
+
+  /* ------------------------------ ⑧ 상단 찜바 ------------------------------ */
+
+  function renderPinBar() {
+    var bar = $('sdPinBar');
+    var list = $('sdPinList');
+    if (!bar || !list) return;
+    var items = watchItems();
+    if (!items.length) {
+      if (list.innerHTML) list.innerHTML = '';
+      if (!bar.hidden) bar.hidden = true;
+      return;
+    }
+    var html = items.slice(0, PIN_LIMIT).map(function (it) {
+      var q = quotes[String(it.code)] || null;
+      var price = q && isNum(q.price) ? q.price : null;
+      var pct = q && isNum(q.changePct) ? q.changePct : null;
+      var title = it.name + (pinAt ? ' · ' + pinAt + ' 실측 (네이버)' : ' · 시세 대기');
+      return '<span class="spb-chip" data-code="' + esc(it.code) + '" title="' + esc(title) + '"' +
+        ' onclick="if(window.StockWatch&&StockWatch.open){StockWatch.open();}">' +
+        '<b>' + esc(it.name) + '</b>' +
+        (price === null ? '<span style="color:#64748b">—</span>' : '<span>' + fmtPrice(price) + '</span>') +
+        (pct === null ? '' : '<span class="' + colClass(pct) + '">' + pctTxt(pct) + '</span>') +
+        '</span>';
+    }).join('');
+    if (list.innerHTML !== html) list.innerHTML = html;
+    if (bar.hidden) bar.hidden = false;
+
+    /* 찜 목록이 늦게 도착(클라우드 동기화·사용자 ★)하면 60초를 기다리지 않고 바로 시세를 받는다. */
+    var sig = items.slice(0, PIN_LIMIT).map(function (i) { return i.code; }).join(',');
+    if (sig !== pinCodes && !fetching) fetchPinQuotes();
+  }
+
+  var fetching = false;
+  function fetchPinQuotes() {
+    var items = watchItems();
+    if (!items.length) { pinCodes = ''; renderPinBar(); return; }
+    var codes = items.slice(0, PIN_LIMIT).map(function (i) { return i.code; });
+    pinCodes = codes.join(',');
+    if (fetching) return;
+    fetching = true;
+    fetch('/api/stock-live?codes=' + pinCodes, { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        if (!b || b.ok !== true || !Array.isArray(b.stocks)) return;
+        var map = {};
+        b.stocks.forEach(function (s) { if (s && s.code) map[String(s.code)] = s; });
+        quotes = map;
+        pinAt = String(b.generatedAtKst || '').slice(0, 5) || null;
+        fetching = false;
+        renderPinBar();
+      })
+      .catch(function () { fetching = false; /* 다음 주기에 재시도 — 화면은 직전 값 유지 */ });
+  }
+
+  /* ------------------------------ ⑨ 하단 퀵탭 ------------------------------ */
+
+  function activeView() {
+    try {
+      var b = document.querySelector('.tab-btn.active');
+      return (b && b.getAttribute('data-view')) || 'overview';
+    } catch (e) { return 'overview'; }
+  }
+
+  function applyQuickBar() {
+    var bar = $('sdQuickBar');
+    if (!bar) return;
+    var on = window.innerWidth <= 520;
+    if (on !== QUICK_ON) {
+      QUICK_ON = on;
+      if (on) bar.classList.add('on'); else bar.classList.remove('on');
+      if (document.body) {
+        if (on) document.body.classList.add('sd-quickbar-on');
+        else document.body.classList.remove('sd-quickbar-on');
+      }
+    }
+    if (!on) return;
+    var view = activeView();
+    var btns = bar.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i += 1) {
+      var act = btns[i].getAttribute('data-view') === view;
+      if (act !== btns[i].classList.contains('active')) {
+        if (act) btns[i].classList.add('active'); else btns[i].classList.remove('active');
+      }
+    }
+  }
+
+  function boot() {
+    renderPinBar();
+    fetchPinQuotes();
+    setInterval(fetchPinQuotes, PIN_POLL_MS);
+    setInterval(renderPinBar, 3000);          /* ★ 목록이 바뀌면 3초 안에 반영 */
+    applyQuickBar();
+    setInterval(applyQuickBar, 800);          /* 탭 전환·화면 크기 변화 동기화 */
+    window.addEventListener('resize', applyQuickBar);
+    window.addEventListener('orientationchange', function () { setTimeout(applyQuickBar, 250); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  window.SdPinBar = { render: renderPinBar, refresh: fetchPinQuotes, quotes: function () { return quotes; } };
+})();

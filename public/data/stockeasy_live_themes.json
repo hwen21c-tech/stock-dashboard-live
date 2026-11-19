@@ -3,183 +3,186 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-18 21:40:52",
- "updatedAt": "2026-11-18T21:40:45.980164+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-19 11:01:38",
+ "updatedAt": "2026-11-19T11:01:29.007598+09:00",
+ "updatedAgeMin": 0.2,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "277810",
-  "125490",
-  "108490",
-  "464080",
-  "437730",
-  "460940",
-  "295310",
-  "024850",
-  "000150",
-  "030530",
-  "089890",
-  "090360"
+  "253450",
+  "035760",
+  "376300",
+  "123690",
+  "003350",
+  "214420",
+  "034120",
+  "204620",
+  "008770",
+  "101730",
+  "112040",
+  "251270",
+  "089590",
+  "272450",
+  "298690"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "로봇",
-   "avgRS": 74,
+   "name": "K-POP 엔터",
+   "avgRS": 46,
    "stocks": [
     {
-     "code": "277810",
-     "name": "레인보우로보틱스",
-     "chg": 20.1,
-     "value_eok": 1915.12,
+     "code": "253450",
+     "name": "스튜디오드래곤",
+     "chg": 30.0,
+     "value_eok": 92.43,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 13.7,
-     "value_eok": 98.44,
+     "code": "035760",
+     "name": "CJ ENM",
+     "chg": 25.0,
+     "value_eok": 431.25,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 13.2,
-     "value_eok": 1841.98,
+     "code": "376300",
+     "name": "디어유",
+     "chg": 17.3,
+     "value_eok": 89.98,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "피지컬 AI",
-   "avgRS": 74,
+   "name": "화장품",
+   "avgRS": 13,
    "stocks": [
     {
-     "code": "277810",
-     "name": "레인보우로보틱스",
-     "chg": 20.1,
-     "value_eok": 1915.12,
+     "code": "123690",
+     "name": "한국화장품",
+     "chg": 30.0,
+     "value_eok": 92.52,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 13.7,
-     "value_eok": 98.44,
+     "code": "003350",
+     "name": "한국화장품제조",
+     "chg": 17.1,
+     "value_eok": 330.77,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 13.2,
-     "value_eok": 1841.98,
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 16.9,
+     "value_eok": 38.61,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "자율주행차",
-   "avgRS": 81,
+   "name": "메타버스",
+   "avgRS": 46,
    "stocks": [
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 13.7,
-     "value_eok": 98.44,
+     "code": "035760",
+     "name": "CJ ENM",
+     "chg": 25.0,
+     "value_eok": 431.25,
      "verified": true
     },
     {
-     "code": "464080",
-     "name": "에스오에스랩",
-     "chg": 11.8,
-     "value_eok": 99.63,
+     "code": "376300",
+     "name": "디어유",
+     "chg": 17.3,
+     "value_eok": 89.98,
      "verified": true
     },
     {
-     "code": "437730",
-     "name": "삼현",
-     "chg": 10.6,
-     "value_eok": 1271.34,
+     "code": "034120",
+     "name": "SBS",
+     "chg": 12.2,
+     "value_eok": 30.07,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "지능형로봇/인공지능",
-   "avgRS": 60,
+   "name": "면세점",
+   "avgRS": 39,
    "stocks": [
     {
-     "code": "460940",
-     "name": "피앤에스로보틱스",
-     "chg": 15.6,
-     "value_eok": 191.46,
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 16.9,
+     "value_eok": 38.61,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 13.7,
-     "value_eok": 98.44
+     "code": "204620",
+     "name": "글로벌텍스프리",
+     "chg": 12.1,
+     "value_eok": 48.27
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 13.2,
-     "value_eok": 1841.98
+     "code": "008770",
+     "name": "호텔신라",
+     "chg": 11.6,
+     "value_eok": 222.73
     }
    ]
   },
   {
    "rank": 5,
-   "name": "반도체 재료/부품",
-   "avgRS": 76,
+   "name": "게임",
+   "avgRS": 16,
    "stocks": [
     {
-     "code": "295310",
-     "name": "에이치브이엠",
-     "chg": 14.4,
-     "value_eok": 292.08
+     "code": "101730",
+     "name": "위메이드맥스",
+     "chg": 24.4,
+     "value_eok": 99.35
     },
     {
-     "code": "024850",
-     "name": "HLB이노베이션",
-     "chg": 10.8,
-     "value_eok": 28.19
+     "code": "112040",
+     "name": "위메이드",
+     "chg": 6.6,
+     "value_eok": 107.93
     },
     {
-     "code": "000150",
-     "name": "두산",
-     "chg": 8.7,
-     "value_eok": 1983.08
+     "code": "251270",
+     "name": "넷마블",
+     "chg": 5.8,
+     "value_eok": 36.38
     }
    ]
   },
   {
    "rank": 6,
-   "name": "반도체 장비",
-   "avgRS": 69,
+   "name": "항공",
+   "avgRS": 87,
    "stocks": [
     {
-     "code": "030530",
-     "name": "원익홀딩스",
-     "chg": 10.5,
-     "value_eok": 3325.93
+     "code": "089590",
+     "name": "제주항공",
+     "chg": 18.4,
+     "value_eok": 323.21
     },
     {
-     "code": "089890",
-     "name": "코세스",
-     "chg": 9.9,
-     "value_eok": 227.8
+     "code": "272450",
+     "name": "진에어",
+     "chg": 8.6,
+     "value_eok": 68.7
     },
     {
-     "code": "090360",
-     "name": "로보스타",
-     "chg": 9.3,
-     "value_eok": 59.93
+     "code": "298690",
+     "name": "에어부산",
+     "chg": 6.3,
+     "value_eok": 11.24
     }
    ]
   }
