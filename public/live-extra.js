@@ -804,10 +804,34 @@
     };
   }
 
+  /* 📅 장 시간 예외표 — 수능일 등으로 정규장이 순연되는 날. 없으면 09:00~15:30.
+     (11/19 이전에는 sessionText 가 09:00~15:30 을 하드코딩해 수능일 상단 문구가 하루 종일 틀렸다) */
+  var SESSION_EXCEPTIONS = {
+    '2026-11-19': { open: 10 * 60, close: 16 * 60 + 30, note: '수능일 10:00~16:30' }
+  };
+
+  function sessionOf(t) {
+    var key = t.y + '-' + ('0' + t.m).slice(-2) + '-' + ('0' + t.d).slice(-2);
+    return SESSION_EXCEPTIONS[key] || null;
+  }
+
+  function hhmmOf(mins) {
+    return ('0' + Math.floor(mins / 60)).slice(-2) + ':' + ('0' + (mins % 60)).slice(-2);
+  }
+
   function sessionText(date) {
     var t = kstClock(date);
     var mins = t.hh * 60 + t.mm;
     if (t.wd === 'Sat' || t.wd === 'Sun') return '주말 휴장 · 직전 거래일 종가 기준';
+    var ex = sessionOf(t);
+    if (ex) {
+      /* 순연 개장일: 프리마켓(NXT)은 운영되지 않으므로 그 문구를 쓰지 않는다 */
+      if (mins < ex.open - 60) return '장 개시 전 · ' + ex.note + ' · 직전 거래일 종가 기준';
+      if (mins < ex.open) return ex.note + ' 개장 대기 (' + hhmmOf(ex.open) + ')';
+      if (mins < ex.close) return '정규장 진행 중 (' + hhmmOf(ex.open) + '~' + hhmmOf(ex.close) + ') · ' + ex.note;
+      if (mins < 20 * 60) return ex.note + ' 마감 · 시간외·NXT 애프터마켓 (' + hhmmOf(ex.close) + '~20:00)';
+      return '장 마감 · 시간외 종료';
+    }
     if (mins < 8 * 60) return '장 개시 전 · 직전 거래일 종가 기준';
     if (mins < 8 * 60 + 50) return 'NXT 프리마켓 진행 중 (08:00~08:50) · 프리마켓 체결 반영';
     if (mins < 9 * 60) return '프리마켓 종료 · 정규장 개시 대기 (08:50~09:00)';
