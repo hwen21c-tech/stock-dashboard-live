@@ -8264,6 +8264,11 @@
     L.push('🎬 ' + (d.title || '쇼츠 대본'));
     L.push('테마: ' + shHeaderLine());
     L.push('');
+    if ((d.titleOptions || []).length){
+      L.push('[제목 3안]');
+      d.titleOptions.forEach(function(t){ L.push('· ' + t.type + ': ' + t.text); });
+      L.push('');
+    }
     L.push('[0:00–0:03] 훅');
     L.push('말: ' + (d.hook || ''));
     L.push('자막: ' + (d.hookCaption || '핵심 단어 3~5개'));
@@ -10390,6 +10395,7 @@
       V2.oneShot = { topic: topic, data: d, spec: spec, model: (j && j.model) || AI.model };
       if (st) st.textContent = 'v3 · ' + V2.oneShot.model;
       var titles = (state.titles || []).slice(0, 3);
+      if (!titles.length) titles = (d.titleOptions || []).map(function(t){ return { tag: t.type || '제목', text: t.text || '' }; }).filter(function(t){ return t.text; });
       var h = '<div class="osgrid"><div class="osbox">';
       h += '<h4>① 제목 3안 — 클릭률 순서로 고르세요</h4><div class="ostit">';
       if (titles.length){
