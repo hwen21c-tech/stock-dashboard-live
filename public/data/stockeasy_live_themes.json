@@ -3,187 +3,160 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-20 00:14:29",
- "updatedAt": "2026-11-20T00:14:02.382832+09:00",
- "updatedAgeMin": 0.5,
+ "fetchedAt": "2026-11-20 08:56:40",
+ "updatedAt": "2026-11-20T08:56:03.009561+09:00",
+ "updatedAgeMin": 0.6,
  "stale": false,
- "themeCount": 6,
+ "themeCount": 5,
  "codes": [
+  "439090",
+  "114840",
+  "237880",
   "253450",
-  "035760",
+  "473980",
   "376300",
-  "123690",
-  "214420",
-  "003350",
-  "083450",
-  "095610",
-  "319660",
-  "034120",
-  "109610",
-  "365330",
-  "008830",
-  "101730",
-  "194480",
-  "462870"
+  "373220",
+  "137400",
+  "416180",
+  "110990",
+  "005930",
+  "489790",
+  "007810",
+  "356860"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "K-POP 엔터",
-   "avgRS": 79,
+   "name": "화장품",
+   "avgRS": 42,
    "stocks": [
     {
-     "code": "253450",
-     "name": "스튜디오드래곤",
-     "chg": 30.0,
-     "value_eok": 103.74,
+     "code": "439090",
+     "name": "마녀공장",
+     "chg": 14.7,
+     "value_eok": 317.75,
      "verified": true
     },
     {
-     "code": "035760",
-     "name": "CJ ENM",
-     "chg": 28.1,
-     "value_eok": 735.59,
+     "code": "114840",
+     "name": "아이패밀리에스씨",
+     "chg": 2.6,
+     "value_eok": 2.72,
      "verified": true
     },
     {
-     "code": "376300",
-     "name": "디어유",
-     "chg": 16.3,
-     "value_eok": 160.81,
+     "code": "237880",
+     "name": "클리오",
+     "chg": 2.1,
+     "value_eok": 22.41,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "화장품",
-   "avgRS": 29,
+   "name": "K-POP 엔터",
+   "avgRS": 63,
    "stocks": [
     {
-     "code": "123690",
-     "name": "한국화장품",
-     "chg": 30.0,
-     "value_eok": 95.74,
+     "code": "253450",
+     "name": "스튜디오드래곤",
+     "chg": 8.1,
+     "value_eok": 660.47,
      "verified": true
     },
     {
-     "code": "214420",
-     "name": "토니모리",
-     "chg": 15.9,
-     "value_eok": 51.37,
+     "code": "473980",
+     "name": "노머스",
+     "chg": 0.2,
+     "value_eok": 69.84,
      "verified": true
     },
     {
-     "code": "003350",
-     "name": "한국화장품제조",
-     "chg": 15.7,
-     "value_eok": 565.42,
+     "code": "376300",
+     "name": "디어유",
+     "chg": -1.9,
+     "value_eok": 44.86,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "반도체 장비",
-   "avgRS": 89,
+   "name": "ESS",
+   "avgRS": 25,
    "stocks": [
     {
-     "code": "083450",
-     "name": "GST",
-     "chg": 18.5,
-     "value_eok": 270.49,
+     "code": "373220",
+     "name": "LG에너지솔루션",
+     "chg": -2.8,
+     "value_eok": 43.27,
      "verified": true
     },
     {
-     "code": "095610",
-     "name": "테스",
-     "chg": 16.3,
-     "value_eok": 368.85,
+     "code": "137400",
+     "name": "피엔티",
+     "chg": -4.0,
+     "value_eok": 2.72,
      "verified": true
     },
     {
-     "code": "319660",
-     "name": "피에스케이",
-     "chg": 12.3,
-     "value_eok": 306.4,
+     "code": "416180",
+     "name": "신성에스티",
+     "chg": -4.8,
+     "value_eok": 1.03,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "메타버스",
-   "avgRS": 66,
+   "name": "HBM",
+   "avgRS": 60,
    "stocks": [
     {
-     "code": "035760",
-     "name": "CJ ENM",
-     "chg": 28.1,
-     "value_eok": 735.59,
+     "code": "110990",
+     "name": "디아이티",
+     "chg": -3.7,
+     "value_eok": 1.28,
      "verified": true
     },
     {
-     "code": "376300",
-     "name": "디어유",
-     "chg": 16.3,
-     "value_eok": 160.81
+     "code": "005930",
+     "name": "삼성전자",
+     "chg": -4.5,
+     "value_eok": 4979.6
     },
     {
-     "code": "034120",
-     "name": "SBS",
-     "chg": 8.9,
-     "value_eok": 46.88
+     "code": "489790",
+     "name": "한화비전",
+     "chg": -5.1,
+     "value_eok": 13.73
     }
    ]
   },
   {
    "rank": 5,
-   "name": "우크라이나 재건",
-   "avgRS": 62,
+   "name": "CXL",
+   "avgRS": 94,
    "stocks": [
     {
-     "code": "109610",
-     "name": "에스와이",
-     "chg": 29.8,
-     "value_eok": 350.15
+     "code": "005930",
+     "name": "삼성전자",
+     "chg": -4.5,
+     "value_eok": 4979.6
     },
     {
-     "code": "365330",
-     "name": "에스와이스틸텍",
-     "chg": 18.5,
-     "value_eok": 217.27
+     "code": "007810",
+     "name": "코리아써키트",
+     "chg": -4.5,
+     "value_eok": 301.38
     },
     {
-     "code": "008830",
-     "name": "대동기어",
-     "chg": 8.1,
-     "value_eok": 245.82
-    }
-   ]
-  },
-  {
-   "rank": 6,
-   "name": "모바일게임",
-   "avgRS": 26,
-   "stocks": [
-    {
-     "code": "101730",
-     "name": "위메이드맥스",
-     "chg": 29.9,
-     "value_eok": 119.09
-    },
-    {
-     "code": "194480",
-     "name": "데브시스터즈",
-     "chg": 12.2,
-     "value_eok": 17.1
-    },
-    {
-     "code": "462870",
-     "name": "시프트업",
-     "chg": 10.9,
-     "value_eok": 44.64
+     "code": "356860",
+     "name": "티엘비",
+     "chg": -5.2,
+     "value_eok": 103.46
     }
    ]
   }
