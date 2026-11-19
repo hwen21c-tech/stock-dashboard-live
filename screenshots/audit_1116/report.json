@@ -1,0 +1,233 @@
+{
+ "base": "http://127.0.0.1:8803/",
+ "viewports": {
+  "400x860": {
+   "overview": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "bijoong": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 1,
+    "dead": [],
+    "wrongTab": [],
+    "errors": []
+   },
+   "honginki": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "supply": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "aftermarket": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "analysis": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 0,
+    "dead": [],
+    "wrongTab": [],
+    "errors": []
+   },
+   "news": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "rnzone": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 0,
+    "dead": [],
+    "wrongTab": [],
+    "errors": []
+   },
+   "manju": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   },
+   "jongbe": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 0,
+    "dead": [],
+    "wrongTab": [],
+    "errors": []
+   },
+   "calendar": {
+    "overflow": false,
+    "overflowDetail": null,
+    "clicks": 8,
+    "dead": [],
+    "wrongTab": [],
+    "errors": [
+     {
+      "type": "http",
+      "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+     },
+     {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+     }
+    ]
+   }
+  }
+ },
+ "console": [
+  {
+   "vp": "400x860",
+   "logs": [
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+     "type": "http",
+     "text": "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+    },
+    {
+     "type": "error",
+     "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+   ]
+  }
+ ],
+ "summary": {
+  "overflowCount": 0,
+  "deadClicks": 0,
+  "wrongTab": 0,
+  "consoleErrors": 7,
+  "httpErrors": 1
+ },
+ "httpErrors": [
+  "404 http://127.0.0.1:8803/api/stock-chart?q=%EB%8F%99%EC%9B%90%ED%8C%8C%EC%B8%A0%20(0162D0)&count=250"
+ ],
+ "deadClicks": [],
+ "wrongTabs": []
+}

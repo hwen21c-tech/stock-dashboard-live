@@ -1,0 +1,403 @@
+{
+ "ok": true,
+ "viewports": [
+  {
+   "viewport": "400x860",
+   "tab_adjacent": true,
+   "kk_state": {
+    "cards": 11,
+    "shown": 11,
+    "hidden": 0,
+    "modal": null,
+    "live": true,
+    "liveAt": "15시 55분 19초",
+    "sections": {
+     "near": 7,
+     "breakout": 4
+    },
+    "calc": {
+     "seed": 10000000,
+     "maxPer": 2500000,
+     "unit": 500000,
+     "units": 3
+    },
+    "errors": []
+   },
+   "kk_dom": {
+    "cards": 11,
+    "withPin": 11,
+    "canv": 11,
+    "drawn": 11,
+    "near": 7,
+    "brk": 4,
+    "scrollW": 400,
+    "innerW": 400
+   },
+   "calc": {
+    "max": "2,500,000원",
+    "unit": "500,000원",
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "calc_weak": {
+    "entry": "1,000,000원",
+    "units": "2유닛"
+   },
+   "calc_plus": {
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "modal": {
+    "open": true,
+    "drawn": true,
+    "legend": "■ 전고점(매수 타점) 216,000■ −8% 손절 198,700■ +24% 1/3 익절 268,000■ 60일선(잔량 2/3 이탈 감시) 189,567",
+    "title": "📈 셀트리온 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)"
+   },
+   "search": {
+    "searched": {
+     "code": "005930",
+     "name": "삼성전자",
+     "basis": 288000,
+     "dist": 46.34146341463415
+    },
+    "open": "on"
+   },
+   "excluded": true,
+   "pinned_keep": {
+    "off": false,
+    "pin": true,
+    "flag": true
+   },
+   "supply": {
+    "cards": 23,
+    "withPin": 23,
+    "groups": [
+     6,
+     6,
+     5,
+     6
+    ],
+    "basis": "📋 거래소 확정 수급 기준일 2026-11-13(금) — 외인·기관 순매수 금액은 그날 종가 × 순매수 주수입니다(장중 실시간 아님). · 생",
+    "heads": [
+     "🌏 외국인 주도 순매수 (확정 대기)",
+     "🏢 기관 주도 순매수 (확정 대기)",
+     "🚨 외국인 집중 순매도 팩트 (확정 대기)",
+     "🏛️ 외인·기관 동반 순매수 (확정 대기)"
+    ]
+   },
+   "supply_pin": {
+    "pinned": true,
+    "flag": true,
+    "label": "📌 고정됨📌 핀 해제"
+   },
+   "briefjump": {
+    "chips": {
+     "n": 14,
+     "times": [
+      "07:30",
+      "08:50",
+      "10:00",
+      "11:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:30",
+      "19:00",
+      "19:30",
+      "20:00",
+      "22:00",
+      "23:59"
+     ]
+    },
+    "jump": {
+     "jump": {
+      "last": "15:00",
+      "hasCard": true,
+      "cards": 8
+     },
+     "modal": "flex"
+    }
+   },
+   "rn_gap": {
+    "cards": 12,
+    "withGap": 12,
+    "sample": "지지 1,100,000 (-1.79%)·저항 1,200,000 (+7.14%)RN 100,000단위"
+   },
+   "overflow": {
+    "sw": 400,
+    "iw": 400
+   },
+   "errors": [],
+   "ok": true
+  },
+  {
+   "viewport": "884x960",
+   "tab_adjacent": true,
+   "kk_state": {
+    "cards": 11,
+    "shown": 11,
+    "hidden": 0,
+    "modal": null,
+    "live": true,
+    "liveAt": "15시 55분 46초",
+    "sections": {
+     "near": 7,
+     "breakout": 4
+    },
+    "calc": {
+     "seed": 10000000,
+     "maxPer": 2500000,
+     "unit": 500000,
+     "units": 3
+    },
+    "errors": []
+   },
+   "kk_dom": {
+    "cards": 11,
+    "withPin": 11,
+    "canv": 11,
+    "drawn": 11,
+    "near": 7,
+    "brk": 4,
+    "scrollW": 884,
+    "innerW": 884
+   },
+   "calc": {
+    "max": "2,500,000원",
+    "unit": "500,000원",
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "calc_weak": {
+    "entry": "1,000,000원",
+    "units": "2유닛"
+   },
+   "calc_plus": {
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "modal": {
+    "open": true,
+    "drawn": true,
+    "legend": "■ 전고점(매수 타점) 216,000■ −8% 손절 198,700■ +24% 1/3 익절 268,000■ 60일선(잔량 2/3 이탈 감시) 189,567",
+    "title": "📈 셀트리온 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)"
+   },
+   "search": {
+    "searched": {
+     "code": "005930",
+     "name": "삼성전자",
+     "basis": 288000,
+     "dist": 46.34146341463415
+    },
+    "open": "on"
+   },
+   "excluded": true,
+   "pinned_keep": {
+    "off": false,
+    "pin": true,
+    "flag": true
+   },
+   "supply": {
+    "cards": 23,
+    "withPin": 23,
+    "groups": [
+     6,
+     6,
+     5,
+     6
+    ],
+    "basis": "📋 거래소 확정 수급 기준일 2026-11-13(금) — 외인·기관 순매수 금액은 그날 종가 × 순매수 주수입니다(장중 실시간 아님). · 생",
+    "heads": [
+     "🌏 외국인 주도 순매수 (확정 대기)",
+     "🏢 기관 주도 순매수 (확정 대기)",
+     "🚨 외국인 집중 순매도 팩트 (확정 대기)",
+     "🏛️ 외인·기관 동반 순매수 (확정 대기)"
+    ]
+   },
+   "supply_pin": {
+    "pinned": true,
+    "flag": true,
+    "label": "📌 고정됨📌 핀 해제"
+   },
+   "briefjump": {
+    "chips": {
+     "n": 14,
+     "times": [
+      "07:30",
+      "08:50",
+      "10:00",
+      "11:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:30",
+      "19:00",
+      "19:30",
+      "20:00",
+      "22:00",
+      "23:59"
+     ]
+    },
+    "jump": {
+     "jump": {
+      "last": "15:00",
+      "hasCard": true,
+      "cards": 8
+     },
+     "modal": "flex"
+    }
+   },
+   "rn_gap": {
+    "cards": 12,
+    "withGap": 12,
+    "sample": "지지 1,100,000 (-1.79%)·저항 1,200,000 (+7.14%)RN 100,000단위"
+   },
+   "overflow": {
+    "sw": 884,
+    "iw": 884
+   },
+   "errors": [],
+   "ok": true
+  },
+  {
+   "viewport": "1100x800",
+   "tab_adjacent": true,
+   "kk_state": {
+    "cards": 11,
+    "shown": 11,
+    "hidden": 0,
+    "modal": null,
+    "live": true,
+    "liveAt": "15시 56분 16초",
+    "sections": {
+     "near": 7,
+     "breakout": 4
+    },
+    "calc": {
+     "seed": 10000000,
+     "maxPer": 2500000,
+     "unit": 500000,
+     "units": 3
+    },
+    "errors": []
+   },
+   "kk_dom": {
+    "cards": 11,
+    "withPin": 11,
+    "canv": 11,
+    "drawn": 11,
+    "near": 7,
+    "brk": 4,
+    "scrollW": 1100,
+    "innerW": 1100
+   },
+   "calc": {
+    "max": "2,500,000원",
+    "unit": "500,000원",
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "calc_weak": {
+    "entry": "1,000,000원",
+    "units": "2유닛"
+   },
+   "calc_plus": {
+    "entry": "1,500,000원",
+    "units": "3유닛"
+   },
+   "modal": {
+    "open": true,
+    "drawn": true,
+    "legend": "■ 전고점(매수 타점) 216,000■ −8% 손절 198,700■ +24% 1/3 익절 268,000■ 60일선(잔량 2/3 이탈 감시) 189,567",
+    "title": "📈 셀트리온 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)"
+   },
+   "search": {
+    "searched": {
+     "code": "005930",
+     "name": "삼성전자",
+     "basis": 288000,
+     "dist": 46.34146341463415
+    },
+    "open": "on"
+   },
+   "excluded": true,
+   "pinned_keep": {
+    "off": false,
+    "pin": true,
+    "flag": true
+   },
+   "supply": {
+    "cards": 23,
+    "withPin": 23,
+    "groups": [
+     6,
+     6,
+     5,
+     6
+    ],
+    "basis": "📋 거래소 확정 수급 기준일 2026-11-13(금) — 외인·기관 순매수 금액은 그날 종가 × 순매수 주수입니다(장중 실시간 아님). · 생",
+    "heads": [
+     "🌏 외국인 주도 순매수 (확정 대기)",
+     "🏢 기관 주도 순매수 (확정 대기)",
+     "🚨 외국인 집중 순매도 팩트 (확정 대기)",
+     "🏛️ 외인·기관 동반 순매수 (확정 대기)"
+    ]
+   },
+   "supply_pin": {
+    "pinned": true,
+    "flag": true,
+    "label": "📌 고정됨📌 핀 해제"
+   },
+   "briefjump": {
+    "chips": {
+     "n": 14,
+     "times": [
+      "07:30",
+      "08:50",
+      "10:00",
+      "11:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:30",
+      "19:00",
+      "19:30",
+      "20:00",
+      "22:00",
+      "23:59"
+     ]
+    },
+    "jump": {
+     "jump": {
+      "last": "15:00",
+      "hasCard": true,
+      "cards": 8
+     },
+     "modal": "flex"
+    }
+   },
+   "rn_gap": {
+    "cards": 12,
+    "withGap": 12,
+    "sample": "지지 1,100,000 (-1.79%)·저항 1,200,000 (+7.14%)RN 100,000단위"
+   },
+   "overflow": {
+    "sw": 1100,
+    "iw": 1100
+   },
+   "errors": [],
+   "ok": true
+  }
+ ],
+ "supply_pin_persist": {
+  "pinned": 1,
+  "xcards": 0,
+  "list": [
+   "010140"
+  ]
+ },
+ "fails": []
+}
