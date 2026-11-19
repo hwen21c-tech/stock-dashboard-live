@@ -3,54 +3,54 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-19 12:07:41",
- "updatedAt": "2026-11-19T12:07:34.730998+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-19 13:10:57",
+ "updatedAt": "2026-11-19T13:10:56.341005+09:00",
+ "updatedAgeMin": 0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "253450",
   "035760",
-  "376300",
+  "473980",
   "123690",
   "003350",
-  "200130",
+  "214420",
+  "376300",
   "034120",
+  "101730",
+  "462870",
+  "112040",
+  "008770",
+  "204620",
   "089590",
   "091810",
-  "298690",
-  "101730",
-  "194480",
-  "112040",
-  "214420",
-  "008770",
-  "204620"
+  "298690"
  ],
  "themes": [
   {
    "rank": 1,
    "name": "K-POP 엔터",
-   "avgRS": 46,
+   "avgRS": 40,
    "stocks": [
     {
      "code": "253450",
      "name": "스튜디오드래곤",
      "chg": 30.0,
-     "value_eok": 97.4,
+     "value_eok": 98.56,
      "verified": true
     },
     {
      "code": "035760",
      "name": "CJ ENM",
-     "chg": 23.6,
-     "value_eok": 479.03,
+     "chg": 23.4,
+     "value_eok": 516.56,
      "verified": true
     },
     {
-     "code": "376300",
-     "name": "디어유",
-     "chg": 17.1,
-     "value_eok": 124.01,
+     "code": "473980",
+     "name": "노머스",
+     "chg": 17.5,
+     "value_eok": 53.68,
      "verified": true
     }
    ]
@@ -58,27 +58,27 @@
   {
    "rank": 2,
    "name": "화장품",
-   "avgRS": 15,
+   "avgRS": 13,
    "stocks": [
     {
      "code": "123690",
      "name": "한국화장품",
      "chg": 30.0,
-     "value_eok": 93.67,
+     "value_eok": 94.36,
      "verified": true
     },
     {
      "code": "003350",
      "name": "한국화장품제조",
-     "chg": 18.6,
-     "value_eok": 367.94,
+     "chg": 16.9,
+     "value_eok": 447.78,
      "verified": true
     },
     {
-     "code": "200130",
-     "name": "콜마비앤에이치",
-     "chg": 17.4,
-     "value_eok": 29.41,
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 13.2,
+     "value_eok": 45.37,
      "verified": true
     }
    ]
@@ -91,99 +91,99 @@
     {
      "code": "035760",
      "name": "CJ ENM",
-     "chg": 23.6,
-     "value_eok": 479.03,
+     "chg": 23.4,
+     "value_eok": 516.56,
      "verified": true
     },
     {
      "code": "376300",
      "name": "디어유",
-     "chg": 17.1,
-     "value_eok": 124.01,
+     "chg": 16.0,
+     "value_eok": 134.07,
      "verified": true
     },
     {
      "code": "034120",
      "name": "SBS",
-     "chg": 9.2,
-     "value_eok": 32.58,
+     "chg": 12.2,
+     "value_eok": 36.67,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "항공",
-   "avgRS": 59,
-   "stocks": [
-    {
-     "code": "089590",
-     "name": "제주항공",
-     "chg": 21.2,
-     "value_eok": 582.18,
-     "verified": true
-    },
-    {
-     "code": "091810",
-     "name": "트리니티항공",
-     "chg": 13.8,
-     "value_eok": 13.19
-    },
-    {
-     "code": "298690",
-     "name": "에어부산",
-     "chg": 5.7,
-     "value_eok": 18.74
-    }
-   ]
-  },
-  {
-   "rank": 5,
    "name": "모바일게임",
-   "avgRS": 10,
+   "avgRS": 18,
    "stocks": [
     {
      "code": "101730",
      "name": "위메이드맥스",
      "chg": 29.9,
-     "value_eok": 117.84
+     "value_eok": 118.36,
+     "verified": true
     },
     {
-     "code": "194480",
-     "name": "데브시스터즈",
-     "chg": 6.4,
-     "value_eok": 11.39
+     "code": "462870",
+     "name": "시프트업",
+     "chg": 7.6,
+     "value_eok": 17.48
     },
     {
      "code": "112040",
      "name": "위메이드",
-     "chg": 6.1,
-     "value_eok": 129.37
+     "chg": 7.2,
+     "value_eok": 136.71
     }
    ]
   },
   {
-   "rank": 6,
+   "rank": 5,
    "name": "면세점",
    "avgRS": 39,
    "stocks": [
     {
      "code": "214420",
      "name": "토니모리",
-     "chg": 15.7,
-     "value_eok": 42.1
+     "chg": 13.2,
+     "value_eok": 45.37
     },
     {
      "code": "008770",
      "name": "호텔신라",
-     "chg": 9.9,
-     "value_eok": 303.77
+     "chg": 11.2,
+     "value_eok": 330.9
     },
     {
      "code": "204620",
      "name": "글로벌텍스프리",
-     "chg": 9.1,
-     "value_eok": 66.57
+     "chg": 10.1,
+     "value_eok": 74.31
+    }
+   ]
+  },
+  {
+   "rank": 6,
+   "name": "항공",
+   "avgRS": 59,
+   "stocks": [
+    {
+     "code": "089590",
+     "name": "제주항공",
+     "chg": 15.7,
+     "value_eok": 656.9
+    },
+    {
+     "code": "091810",
+     "name": "트리니티항공",
+     "chg": 12.3,
+     "value_eok": 14.41
+    },
+    {
+     "code": "298690",
+     "name": "에어부산",
+     "chg": 6.0,
+     "value_eok": 20.83
     }
    ]
   }
