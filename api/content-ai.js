@@ -1464,22 +1464,27 @@ const SCHEMA_BLOG = {
   properties: {
     titles: {
       type: 'array',
-      description: '제목 3종 — 궁금증형 / 숫자비교형 / 솔직후기형 순서, 각 32자 이내',
+      description: '제목 3종 — 호기심형 / 숫자 직격형 / 비교형 순서, 각 32자 이내',
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['궁금증형', '숫자비교형', '솔직후기형'] },
+          type: { type: 'string', enum: ['호기심형', '숫자 직격형', '비교형'] },
           text: { type: 'string' },
         },
         required: ['type', 'text'],
       },
+    },
+    seoKeywords: {
+      type: 'array',
+      description: '네이버 검색으로 실제 유입될 검색어 5~7개 (띄어쓰기 포함 한국어 명사구, # 없이) — 본문에 실제로 배치한 표현 그대로',
+      items: { type: 'string' },
     },
     gaps: {
       type: 'array',
       description: '경쟁 인기 글이 비워 둔 빈틈 2개 — 각 1~2문장',
       items: { type: 'string' },
     },
-    body: { type: 'string', description: '완성된 마크다운 본문 (표·도입 3줄 훅·[📸 사진: 묘사 | search: 영문검색어] 2~3곳·솔직한 단점 포함)' },
+    body: { type: 'string', description: '완성된 마크다운 본문 (표·도입 3줄 훅·[📸 사진: 묘사 | search: 영문검색어] 2~3곳·솔직한 단점·검색어 5~7개 자연 배치·끝에 해시태그 한 줄 포함)' },
     warnings: {
       type: 'array',
       description: '내가 확인하지 못해 [확인 필요]로 남긴 값·사실 목록',
@@ -1767,6 +1772,9 @@ const SCHEMA_SHORT_SCRIPT = {
     captionGuide: { type: 'string', description: '자막 스타일 권장 1줄 — 어떤 폰트·위치·강조가 맞는지와 이유' },
     seriesBadge: { type: 'string', description: 'MP4 상단 칩용 시리즈 뱃지 (12자 이내 · 영문 2~3단어 대문자 또는 한글 8자)' },
     ttsVoice: { type: 'string', description: '나레이션 톤 지시 1줄 (예: "차분한 남성 · 또박또박 · 숫자는 또렷하게")' },
+    hookTitle: { type: 'string', description: '첫 1.5초 화면 절반을 채우는 대형 훅 타이틀 (12자 이내 — 숫자·질문·반전 중 하나)' },
+    highlightWords: { type: 'array', description: '카라오케 자막에서 노랗게 강조할 핵심 단어 3~6개 (숫자·고유명사 위주, 조사 없이)', items: { type: 'string' } },
+    bgmMood: { type: 'string', description: 'BGM 분위기 한 단어 — news | calm | tension | upbeat 중 하나' },
     hookAB: {
       type: 'object',
       description: '첫 3초 훅 A/B 2버전 — 같은 사실을 경고형·기회형 두 심리 축으로',
@@ -2142,9 +2150,17 @@ function promptBlog(b) {
 5) 솔직한 단점을 최소 1줄 쓴다. ("아쉬운 점:" 으로 시작)
 6) 분량 900~1300자. 이 길이를 넘기면 출력이 잘려 실패한다 — 짧고 밀도 있게.
 7) 확인 못 한 값은 "[확인 필요]"로 남긴다. (지어내면 안 된다)
-8) 제목 3종은 각각 32자 이내 — 네이버 모바일 검색 결과에서 잘리지 않게.
+8) 제목 3종은 각각 32자 이내 — 네이버 모바일 검색 결과에서 잘리지 않게. 세 유형을 반드시 서로 다른 각도로 쓴다.
+   - 호기심형: 궁금증을 남기는 질문·반전 (예: "왜 이 시간엔 아무도 안 알려줄까")
+   - 숫자 직격형: 가장 센 숫자 1개를 앞세운다 (예: "3곳 비교 12,000원 차이")
+   - 비교형: A vs B 구도를 제목에 드러낸다 (예: "주말 vs 평일, 2만원 차이")
 9) gaps 에는 "같은 주제 인기 글들이 비워 둔 지점" 2개를, 각각 왜 비었는지 + 내가 무엇으로 채울지 1~2문장으로.
-[출력] titles(3개) · gaps(2개) · body(마크다운) · warnings(확인 필요 목록) 만 JSON 으로.`,
+10) 네이버 검색 유입(SEO): seoKeywords 5~7개를 먼저 정하고, 그 표현을 본문에 자연스럽게 배치한다.
+   - 도입 첫 3줄 안에 1개, 소제목 2~3개에 각 1개(가능하면 그대로), 마지막 문단에 1개.
+   - 태그를 나열하듯 끼워 넣지 않는다. 문장이 어색해지면 그 검색어는 버리고 다른 표현을 쓴다.
+   - 본문 맨 끝에 "#검색어1 #검색어2 …" 형태로 5~7개 해시태그 줄을 한 줄 넣는다(공백 없는 형태).
+   - 그날 급등 테마·종목이 [참고 자료]에 있으면 그 이름을 검색어로 먼저 쓴다. 자료에 없는 테마·종목명을 만들지 않는다.
+[출력] titles(3개) · seoKeywords(5~7개) · gaps(2개) · body(마크다운) · warnings(확인 필요 목록) 만 JSON 으로.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -2527,6 +2543,16 @@ function shortsStyleBlock(st, no) {
 
 function promptShortsScript(b) {
   const themeName = s(b.themeName || b.theme, 40);
+  /* v3(구어체·대형 훅·카라오케·숫자 변환) 옵션 — 사용자가 끄면 예전 대본 그대로 */
+  const v3 = (b.v3 === true || b.v3 === '1' || b.casual === true);
+  const v3Num = b.numNormalize !== false;
+  const v3Block = v3 ? `
+[V3 연출 — 이번 대본은 "진짜 유튜버" 구어체로 쓴다]
+a) 말투: "~했습니다" 대신 "~했죠", "~인데요", "이거 모르면", "잠깐만요"처럼 말을 거는 구어체. 한 문장은 20자 안팎으로 끊고, 접속사는 입에 붙는 것만 쓴다(근데, 그래서, 그런데).
+b) hookTitle: 첫 1.5초 화면 절반을 채우는 대형 타이틀, 12자 이내. 질문·숫자·반전 중 하나로. hook 문장을 그대로 줄이지 말고 화면용으로 다시 쓴다.
+c) highlightWords: 카라오케 자막에서 노랗게 칠할 단어 3~6개. 숫자·고유명사 위주, 조사 없이.
+d) bgmMood: news | calm | tension | upbeat 중 하나.${v3Num ? `
+e) 숫자: spoken 안의 숫자는 자막과 똑같이 숫자로 쓴다(예: "5,090", "3,400억"). 읽는 소리 변환은 합성 엔진이 알아서 하므로 한글로 풀어 쓰지 않는다.` : ''}` : '';
   const duration = Math.min(90, Math.max(20, Number(b.durationSec) || 50));
   const src = s(b.sourceMaterial, 6000);
   const note = s(b.experienceNote, 1500);
@@ -2561,7 +2587,8 @@ function promptShortsScript(b) {
     clipCaption(네이버 클립 한 줄 40자 내외) + clipHashtags(5~8개, # 없이). 자료에 없는 브랜드·지역명을 해시태그로 만들지 않는다.
 13) seriesBadge: 이 시리즈를 한눈에 알아볼 MP4 상단 칩 (영문 2~3단어 대문자 또는 한글 8자 이내, 예: MARKET CLOSE·동탄 주말 코스).
 14) ttsVoice: 나레이션 톤 1줄 (예: "차분한 남성 · 또박또박 · 숫자는 또렷하게").
-[출력] title · hook · hookCaption · beats · ending · captionGuide · seriesBadge · ttsVoice · hookAB · loopEnding · commentQuestion · pinnedComment · reelsCaption · reelsHashtags · clipCaption · clipHashtags · warnings JSON.`,
+${v3Block}
+[출력] title · hook · hookCaption · hookTitle · highlightWords · bgmMood · beats · ending · captionGuide · seriesBadge · ttsVoice · hookAB · loopEnding · commentQuestion · pinnedComment · reelsCaption · reelsHashtags · clipCaption · clipHashtags · warnings JSON.`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -2901,13 +2928,14 @@ function normBlog(data, banPhrases) {
     .map((t) => (typeof t === 'string' ? { type: '제목', text: t } : { type: s(t && t.type, 20) || '제목', text: s(t && t.text, 80) }))
     .filter((t) => t.text);
   const gaps = arr(data.gaps, 3).map((g) => (typeof g === 'string' ? g : JSON.stringify(g))).map((g) => s(g, 300)).filter(Boolean);
+  const seoKeywords = arr(data.seoKeywords, 8).map((k) => s(k, 40).replace(/^#/, '').trim()).filter(Boolean);
   const body = s(data.body, 20000);
   const warnings = arr(data.warnings, 10).map((w) => s(w, 200)).filter(Boolean);
   const banHits = scanBans(body, banPhrases);
   if (!body) warnings.push('본문이 비어 있습니다. 다시 생성해 주세요.');
   const photoSlots = (body.match(/\[(?:📸|📷)\s*사진[^\]]*\]/g) || []).length;
   const myPhotoSlots = (body.match(/\[(?:📸|📷)\s*내 사진\s*\d+[^\]]*\]/g) || []).length;
-  return { titles, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length, photoSlots, myPhotoSlots };
+  return { titles, seoKeywords, gaps, body, warnings, banHits, needsCheck: (body.match(/\[확인 필요\]/g) || []).length, photoSlots, myPhotoSlots };
 }
 
 function scanBans(text, banPhrases) {
@@ -3169,6 +3197,9 @@ function normShortsScript(data) {
   const captionGuide = s(data && data.captionGuide, 300);
   const seriesBadge = s(data && data.seriesBadge, 24);
   const ttsVoice = s(data && data.ttsVoice, 80);
+  const hookTitle = s(data && data.hookTitle, 40);
+  const highlightWords = arr(data && data.highlightWords, 8).map((x) => s(x, 24).replace(/^#/, '')).filter(Boolean);
+  const bgmMood = s(data && data.bgmMood, 20);
   const abRaw = (data && data.hookAB) || {};
   const hookAB = {
     warning: s(abRaw.warning, 200),
@@ -3194,7 +3225,7 @@ function normShortsScript(data) {
     return n > 24;
   }).length;
   if (longCaps) warnings.push('자막 ' + longCaps + '줄이 24자를 넘습니다 — 2차 검수로 15~20자에 맞춰 주세요.');
-  return { title, hook, hookCaption, beats, ending, captionGuide, seriesBadge, ttsVoice, hookAB, loopEnding, commentQuestion, pinnedComment, reelsCaption, reelsHashtags, clipCaption, clipHashtags, warnings, beatsNum: beats.length };
+  return { title, hook, hookCaption, hooks: { title: hookTitle, words: highlightWords, bgm: bgmMood }, hookTitle, highlightWords, bgmMood, beats, ending, captionGuide, seriesBadge, ttsVoice, hookAB, loopEnding, commentQuestion, pinnedComment, reelsCaption, reelsHashtags, clipCaption, clipHashtags, warnings, beatsNum: beats.length };
 }
 
 /* ---------------------------------------------------------------- 핸들러 */
