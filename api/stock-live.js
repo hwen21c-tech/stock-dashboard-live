@@ -744,10 +744,11 @@ async function buildKisTestBody(q) {
   const code = /^\d{6}$/.test(String(q.code || '')) ? String(q.code) : '005930';
   body.code = code;
   try {
-    const kq = await withTimeout(kis.fetchKisQuote(code), 9000, 'kis-quote');
+    const kq = await withTimeout(kis.fetchKisQuote(code, { raw: q.raw === '1' }), 9000, 'kis-quote');
     body.quote = {
       code: kq.code,
       name: kq.name,
+      sector: kq.sector,
       price: kq.price,
       change: kq.change,
       changePct: kq.changePct,
@@ -765,6 +766,7 @@ async function buildKisTestBody(q) {
       asOf: kq.fetchedAt,
       source: 'kis',
     };
+    if (q.raw === '1') body.rawQuote = kq.raw || null;
     body.price = kq.price;
     body.changePct = kq.changePct;
     body.tradeAmount = kq.tradeAmount;
@@ -801,7 +803,8 @@ async function buildKisTestBody(q) {
         ok: true,
         confirmedDate: inv.confirmedDate,
         isTodayConfirmed: inv.isTodayConfirmed,
-        latest: inv.latest,
+        latest: inv.latestConfirmed || inv.latest,
+        todayRow: inv.latest,
         recent: inv.recent,
         source: 'kis',
       };
