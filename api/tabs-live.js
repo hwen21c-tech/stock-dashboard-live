@@ -1460,6 +1460,11 @@ function collectHigh52Candidates(lists) {
   lists.forEach((l) => {
     (l.items || []).forEach((it) => {
       if (it.kind !== 'stock') return; // ETF·ETN·리츠 등 제외
+      /* 장전(PREOPEN) 응답 — '오늘 신고가'가 아직 없는 시간대
+       *  (11/19 08:24·09:24 실측: '유진 챔피언중단기크레딧 X클래스' 10,035원 · 대금 0 · 0.00%)
+       *  체결 근거(대금·등락)가 없는 행은 신고가 후보로 쓰지 않는다. */
+      if (String(it.marketStatus || '').toUpperCase() === 'PREOPEN') return;
+      if (!((it.value || 0) > 0) && !(it.changePct || 0)) return;
       if (isPreferredStock(it)) {
         // 우선주(한진칼우 등)도 제외 — 이름·코드로만 판별하고 보통주는 건드리지 않는다
         if (!preferred.some((p) => p.code === it.code)) {
