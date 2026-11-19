@@ -862,6 +862,138 @@ async function handleKisTest(res, q, fresh) {
   }
 }
 
+/* ------------------- 종목별 최신 뉴스 (?code=005930&news=1) ------------------- */
+/**
+ * 관제탑 종목 모달 하단의 '📰 관련 최신 뉴스' 전용 라우트.
+ *  · Vercel Hobby 함수 12개 한도가 꽉 차 있어 새 api/*.js 를 만들지 않고 여기에 news=1 로 붙인다.
+ *  · 소스: 네이버 증권 모바일 종목 뉴스 API (m.stock.naver.com/api/news/stock/{code})
+ *    → 기사마다 {total, items:[…]} 그룹으로 내려오므로 items 를 펼쳐 최신순으로 정렬한다.
+ *  · 제목·시각·언론사·링크만 그대로 옮긴다. 없는 뉴스는 만들지 않는다(news: [] + message).
+ */
+const NEWS_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
+const NEWS_TTL_MS = 60000;
+const NEWS_MAX = 5;
+const newsCache = new Map();
+
+function decodeNewsEntities(s) {
+  return String(s == null ? '' : s)
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 'YYYYMMDDHHMM' → { date:'YYYY-MM-DD', time:'HH:MM', isToday } (KST 기준) */
+function parseNewsStamp(raw) {
+  const m = String(raw || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (!m) return { date: null, time: null, isToday: false };
+  const date = `${m[1]}-${m[2]}-${m[3]}`;
+  const time = `${m[4]}:${m[5]}`;
+  const now = new Date(Date.now() + 9 * 3600 * 1000); // KST
+  const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  return { date, time, isToday: date === today };
+}
+
+async function fetchStockNews(code) {
+  const url = `https://m.stock.naver.com/api/news/stock/${code}?pageSize=20&page=1`;
+  const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: 6000 });
+  const groups = Array.isArray(data) ? data : data && data.items ? [data] : [];
+  const flat = [];
+  for (const g of groups) {
+    for (const it of (g && g.items) || []) {
+      if (it && it.title) flat.push(it);
+    }
+  }
+  const seen = new Set();
+  const rows = [];
+  for (const it of flat) {
+    const key = String(it.id || `${it.officeId}-${it.articleId}` || it.title);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const stamp = parseNewsStamp(it.datetime);
+    rows.push({
+      title: decodeNewsEntities(it.titleFull || it.title),
+      press: it.officeName || null,
+      datetime: String(it.datetime || ''),
+      date: stamp.date,
+      time: stamp.time,
+      isToday: stamp.isToday,
+      url:
+        it.mobileNewsUrl ||
+        (it.officeId && it.articleId ? `https://n.news.naver.com/mnews/article/${it.officeId}/${it.articleId}` : null),
+      source: 'naver-stock-news',
+    });
+  }
+  rows.sort((a, b) => String(b.datetime).localeCompare(String(a.datetime)));
+  const todayRows = rows.filter((r) => r.isToday);
+  return {
+    code,
+    news: (todayRows.length ? todayRows : rows).slice(0, NEWS_MAX),
+    todayCount: todayRows.length,
+    total: rows.length,
+    basis: todayRows.length ? '당일 뉴스' : '최근 뉴스(당일 없음)',
+    source: 'naver-stock-news',
+  };
+}
+
+async function handleStockNews(res, q, fresh) {
+  const code = String(q.code || '').trim();
+  const generatedAtKst = kstLabel(new Date());
+  if (!/^\d{6}$/.test(code)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, reason: 'bad_code', message: 'code=6자리 종목코드가 필요합니다.', news: [], generatedAtKst },
+      'no-store',
+    );
+  }
+  const key = `news:${code}`;
+  if (!fresh) {
+    const hit = newsCache.get(key);
+    if (hit && Date.now() - hit.at < NEWS_TTL_MS) {
+      res.setHeader('X-Cache', 'HIT-memory');
+      return sendJson(res, 200, { ...hit.value, cached: true }, NEWS_CACHE_CONTROL);
+    }
+  }
+  try {
+    const out = await fetchStockNews(code);
+    const body = {
+      ok: true,
+      mode: 'stock-news',
+      ...out,
+      message: out.news.length ? null : '최근 관련 속보 없음',
+      generatedAt: new Date().toISOString(),
+      generatedAtKst,
+    };
+    newsCache.set(key, { at: Date.now(), value: body });
+    if (newsCache.size > 200) {
+      const oldest = newsCache.keys().next();
+      if (!oldest.done) newsCache.delete(oldest.value);
+    }
+    res.setHeader('X-Cache', 'MISS');
+    return sendJson(res, 200, body, NEWS_CACHE_CONTROL);
+  } catch (e) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false,
+        mode: 'stock-news',
+        code,
+        news: [],
+        message: '뉴스 조회 실패',
+        error: String((e && e.message) || e),
+        generatedAtKst,
+      },
+      'no-store',
+    );
+  }
+}
+
 /* ------------------------------ handler ------------------------------ */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -879,6 +1011,9 @@ module.exports = async function handler(req, res) {
 
   // ?kis_test=1 — KIS(한국투자증권) 공식 API 연동 진단 (토큰·시세·수급)
   if (q.kis_test === '1') return handleKisTest(res, q, fresh);
+
+  // ?code=005930&news=1 — 종목 모달용 최신 뉴스 (새 함수 파일을 만들지 않기 위한 내부 라우트)
+  if (q.news === '1' || q.news === 'true') return handleStockNews(res, q, fresh);
 
   const codeList = (q.codes || q.code || '')
     .split(',')
