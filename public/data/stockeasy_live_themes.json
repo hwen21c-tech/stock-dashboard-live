@@ -3,9 +3,9 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-19 11:49:12",
- "updatedAt": "2026-11-19T11:49:00.528643+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-19 12:07:41",
+ "updatedAt": "2026-11-19T12:07:34.730998+09:00",
+ "updatedAgeMin": 0.1,
  "stale": false,
  "themeCount": 6,
  "codes": [
@@ -18,13 +18,13 @@
   "034120",
   "089590",
   "091810",
-  "272450",
+  "298690",
+  "101730",
+  "194480",
+  "112040",
   "214420",
   "008770",
-  "204620",
-  "101730",
-  "112040",
-  "194480"
+  "204620"
  ],
  "themes": [
   {
@@ -36,21 +36,21 @@
      "code": "253450",
      "name": "스튜디오드래곤",
      "chg": 30.0,
-     "value_eok": 96.84,
+     "value_eok": 97.4,
      "verified": true
     },
     {
      "code": "035760",
      "name": "CJ ENM",
-     "chg": 24.3,
-     "value_eok": 469.11,
+     "chg": 23.6,
+     "value_eok": 479.03,
      "verified": true
     },
     {
      "code": "376300",
      "name": "디어유",
-     "chg": 16.6,
-     "value_eok": 120.08,
+     "chg": 17.1,
+     "value_eok": 124.01,
      "verified": true
     }
    ]
@@ -64,21 +64,21 @@
      "code": "123690",
      "name": "한국화장품",
      "chg": 30.0,
-     "value_eok": 93.51,
+     "value_eok": 93.67,
      "verified": true
     },
     {
      "code": "003350",
      "name": "한국화장품제조",
-     "chg": 17.0,
-     "value_eok": 360.39,
+     "chg": 18.6,
+     "value_eok": 367.94,
      "verified": true
     },
     {
      "code": "200130",
      "name": "콜마비앤에이치",
-     "chg": 16.6,
-     "value_eok": 24.7,
+     "chg": 17.4,
+     "value_eok": 29.41,
      "verified": true
     }
    ]
@@ -91,22 +91,22 @@
     {
      "code": "035760",
      "name": "CJ ENM",
-     "chg": 24.3,
-     "value_eok": 469.11,
+     "chg": 23.6,
+     "value_eok": 479.03,
      "verified": true
     },
     {
      "code": "376300",
      "name": "디어유",
-     "chg": 16.6,
-     "value_eok": 120.08,
+     "chg": 17.1,
+     "value_eok": 124.01,
      "verified": true
     },
     {
      "code": "034120",
      "name": "SBS",
-     "chg": 10.9,
-     "value_eok": 31.98,
+     "chg": 9.2,
+     "value_eok": 32.58,
      "verified": true
     }
    ]
@@ -114,56 +114,31 @@
   {
    "rank": 4,
    "name": "항공",
-   "avgRS": 61,
+   "avgRS": 59,
    "stocks": [
     {
      "code": "089590",
      "name": "제주항공",
-     "chg": 23.6,
-     "value_eok": 532.98,
+     "chg": 21.2,
+     "value_eok": 582.18,
      "verified": true
     },
     {
      "code": "091810",
      "name": "트리니티항공",
-     "chg": 15.7,
-     "value_eok": 12.47
+     "chg": 13.8,
+     "value_eok": 13.19
     },
     {
-     "code": "272450",
-     "name": "진에어",
-     "chg": 6.9,
-     "value_eok": 104.39
+     "code": "298690",
+     "name": "에어부산",
+     "chg": 5.7,
+     "value_eok": 18.74
     }
    ]
   },
   {
    "rank": 5,
-   "name": "면세점",
-   "avgRS": 39,
-   "stocks": [
-    {
-     "code": "214420",
-     "name": "토니모리",
-     "chg": 16.2,
-     "value_eok": 41.35
-    },
-    {
-     "code": "008770",
-     "name": "호텔신라",
-     "chg": 10.0,
-     "value_eok": 285.78
-    },
-    {
-     "code": "204620",
-     "name": "글로벌텍스프리",
-     "chg": 9.5,
-     "value_eok": 63.48
-    }
-   ]
-  },
-  {
-   "rank": 6,
    "name": "모바일게임",
    "avgRS": 10,
    "stocks": [
@@ -171,19 +146,44 @@
      "code": "101730",
      "name": "위메이드맥스",
      "chg": 29.9,
-     "value_eok": 117.5
+     "value_eok": 117.84
+    },
+    {
+     "code": "194480",
+     "name": "데브시스터즈",
+     "chg": 6.4,
+     "value_eok": 11.39
     },
     {
      "code": "112040",
      "name": "위메이드",
      "chg": 6.1,
-     "value_eok": 127.65
+     "value_eok": 129.37
+    }
+   ]
+  },
+  {
+   "rank": 6,
+   "name": "면세점",
+   "avgRS": 39,
+   "stocks": [
+    {
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 15.7,
+     "value_eok": 42.1
     },
     {
-     "code": "194480",
-     "name": "데브시스터즈",
-     "chg": 5.9,
-     "value_eok": 10.96
+     "code": "008770",
+     "name": "호텔신라",
+     "chg": 9.9,
+     "value_eok": 303.77
+    },
+    {
+     "code": "204620",
+     "name": "글로벌텍스프리",
+     "chg": 9.1,
+     "value_eok": 66.57
     }
    ]
   }
