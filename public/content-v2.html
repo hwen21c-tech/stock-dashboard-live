@@ -10401,7 +10401,8 @@
       if (titles.length){
         titles.forEach(function (t) { h += '<div class="t"><span class="tag">' + esc(t.tag) + '</span>' + esc(t.text) + '</div>'; });
       } else {
-        h += '<div class="t">' + esc(d.title || topic) + '</div>';
+        h += '<div class="t">' + esc(d.title || topic) + '</div>' +
+          '<div class="t" style="color:#fbbf24">모델이 제목 3안을 비워 왔습니다 — 한 번 더 생성하면 채워집니다.</div>';
       }
       h += '</div><h4 style="margin-top:10px">② 첫 1.5초 대형 훅 타이틀</h4><div class="ostit"><b>' + esc(d.hookTitle || d.hookCaption || '(모델이 비워 둠)') + '</b>';
       var words = d.highlightWords || [];
