@@ -58,12 +58,12 @@
   };
 
   // 3번 탭 강세주 카드 (정적 카드 → 실시간 카드로 대체). note 는 수치 없는 테마 설명만.
+  /* ⚠️ 11/19 수리 — strong 목록에 11/13 스냅샷 종목(금호건설·가온칩스·DSC인베스트먼트)이 박혀 있어
+   *  /api/tabs-live 응답 전·실패 시 "가온칩스 +29.92% 상한가"가 그대로 노출됐다.
+   *  고정 종목을 두지 않고, 실시간 상한가·강세 데이터가 올 때만 그린다(없으면 로딩 안내). */
+  var AF_EMPTY_TXT = '⏳ 실시간 상한가·강세주를 집계 중입니다. /api/tabs-live 15초 갱신 — 응답이 없으면 옛 종목을 대신 보여주지 않습니다.';
   var AF_CARDS = {
-    strong: [
-      { code: '002990', name: '금호건설', tag: '건설·인프라', note: '대형 공공 인프라 수주 공시 모멘텀. 상한가 잔량은 실시간 등락률로 확인.' },
-      { code: '399720', name: '가온칩스', tag: '시스템반도체', note: '2나노 AI 디자인하우스 수주 부각. 상한가 여부는 실시간 등락률 기준.' },
-      { code: '241520', name: 'DSC인베스트먼트', tag: '창투사', note: 'AI 벤처 투자 회수 사이클 기대. 상한가 여부는 실시간 등락률 기준.' }
-    ],
+    strong: [],
     leader: [
       { code: '263860', name: '지니언스', tag: 'AI 보안', note: 'EDR·제로트러스트 수요 부각. 대금과 등락률은 실시간 통합대금 기준.' },
       { code: '007810', name: '코리아써키트', tag: 'CXL/PCB', note: 'CXL 기판·FC-BGA 모멘텀. 대금과 등락률은 실시간 통합대금 기준.' },
@@ -1033,7 +1033,9 @@
     [['afStrongLive', AF_CARDS.strong], ['afLeaderLive', AF_CARDS.leader]].forEach(function (pair) {
       var host = document.getElementById(pair[0]);
       if (!host) return;
-      var html = pair[1].map(function (def) { return afCardHtml(def, byCode[def.code]); }).join('');
+      var html = pair[1].length
+        ? pair[1].map(function (def) { return afCardHtml(def, byCode[def.code]); }).join('')
+        : '<div style="font-size:10.5px; color:#94a3b8; line-height:1.55; padding:6px 2px;">' + esc(AF_EMPTY_TXT) + '</div>';
       if (host.getAttribute('data-sig') !== html) {
         host.innerHTML = html;
         host.setAttribute('data-sig', html);
