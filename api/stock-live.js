@@ -21,6 +21,9 @@ const {
   getQuery,
 } = require('../lib/http');
 
+// 한국투자증권(KIS) 공식 오픈API — 실패하면 조용히 네이버 단독으로 돌아가야 하므로 절대 throw 하지 않는다.
+const kis = require('../lib/kis');
+
 const CACHE_CONTROL = 'public, s-maxage=10, stale-while-revalidate=20';
 
 // 기본 관제탑 종목 (사용자가 자주 보는 축)
@@ -470,6 +473,380 @@ async function handleAlerts(res, fresh) {
   }
 }
 
+/* ------------------------- 한국투자증권(KIS) 공식 시세 ------------------------- */
+/**
+ * 네이버 시세에 KIS 공식 시세(FHKST01010100)를 교차 보강한다.
+ *  · 표시값 판단 규칙(브리프: "KIS 우선, 실패 시 네이버 폴백, 장전 0% 가드 유지")
+ *      ① 네이버에 시세가 없으면 → KIS 값 사용
+ *      ② KIS에 당일 체결 근거(거래량·대금 > 0)가 없으면 → 네이버 값 유지(장전 0.00% 덮어쓰기 금지)
+ *      ③ 둘 다 있으면 → KIS 우선. 단 괴리가 3%를 넘으면 네이버 유지(이상치 방어)
+ *  · 통합(KRX+NXT)·시간외 대금은 KIS 'J'(KRX)로는 나오지 않으므로 네이버 값을 그대로 둔다.
+ */
+const KIS_BUDGET_MS = 4500;
+const KIS_CONCURRENCY = 4;
+const KIS_DIFF_GUARD_PCT = 3;
+
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function mergeKisQuote(st, kq, opts) {
+  const out = { ...st };
+  out.kis = {
+    price: kq.price,
+    change: kq.change,
+    changePct: kq.changePct,
+    prevClose: kq.prevClose,
+    open: kq.open,
+    high: kq.high,
+    low: kq.low,
+    volume: kq.volume,
+    tradeAmount: kq.tradeAmount,
+    tradeAmountText: formatKoreanMoney(kq.tradeAmount),
+    hasTrade: kq.hasTrade,
+    marketDiv: kq.marketDiv || 'J',
+    tempStop: kq.tempStop,
+    vi: kq.vi,
+    marketWarn: kq.marketWarn,
+    w52High: kq.w52High,
+    w52Low: kq.w52Low,
+    asOf: kq.fetchedAt || null,
+    source: 'kis',
+  };
+
+  const naverOk = typeof st.price === 'number' && st.price > 0;
+  const kisOk = typeof kq.price === 'number' && kq.price > 0;
+  const naverTraded = typeof st.volume === 'number' && st.volume > 0;
+  let use = false;
+  let reason = null;
+
+  if (!kisOk) {
+    reason = 'kis-no-price';
+  } else if (opts && opts.force) {
+    use = true;
+    reason = 'forced';
+  } else if (!naverOk) {
+    use = true;
+    reason = 'naver-missing';
+  } else if (!kq.hasTrade && !naverTraded) {
+    use = false;
+    reason = 'preopen-no-trade-both';
+  } else if (!kq.hasTrade) {
+    use = false;
+    reason = 'preopen-guard'; // 장전·휴장: KIS 0.00%로 확정값을 덮지 않는다
+  } else if (naverOk && Math.abs(kq.price - st.price) / st.price * 100 > KIS_DIFF_GUARD_PCT) {
+    use = false;
+    reason = `diff>${KIS_DIFF_GUARD_PCT}%`;
+  } else {
+    use = true;
+    reason = 'kis-primary';
+  }
+
+  out.kisDecision = reason;
+  out.priceSource = use ? 'kis' : 'naver-polling';
+  if (naverOk) {
+    out.kisDiffPct = kq.price ? Number((((st.price - kq.price) / kq.price) * 100).toFixed(2)) : null;
+  }
+
+  if (!use) return out;
+
+  // 수치만 KIS 공식값으로 교체하고, NXT 통합 대금·시장상태 같은 네이버 전용 필드는 보존
+  out.price = kq.price;
+  out.change = kq.change;
+  out.changePct = kq.changePct;
+  out.prevClose = kq.prevClose;
+  out.open = kq.open;
+  out.high = kq.high;
+  out.low = kq.low;
+  out.volume = kq.volume;
+  out.source = 'kis';
+  out.changeBasis = 'kis-official(FHKST01010100) · 전일 종가 기준';
+  if (!out.name && kq.name) out.name = kq.name;
+  if (typeof st.value !== 'number' && typeof kq.tradeAmount === 'number') {
+    out.value = kq.tradeAmount;
+    out.valueText = formatKoreanMoney(kq.tradeAmount);
+    out.valueRegular = kq.tradeAmount;
+    out.valueRegularText = formatKoreanMoney(kq.tradeAmount);
+    out.valueBasis = '정규장(KIS)';
+  }
+  return out;
+}
+
+async function enrichWithKis(stocks, codes, opts = {}) {
+  const started = Date.now();
+  const summary = {
+    enabled: true,
+    configured: kis.isConfigured(),
+    tokenVia: null,
+    attempted: codes.length,
+    quoted: 0,
+    applied: 0,
+    elapsedMs: 0,
+    errors: [],
+    quotes: {},
+  };
+
+  if (!summary.configured) {
+    summary.enabled = false;
+    summary.error = 'KIS_APP_KEY/KIS_APP_SECRET 미설정 — 네이버 단독 모드';
+    return { stocks, summary };
+  }
+
+  try {
+    const token = await withTimeout(kis.getKisToken(), KIS_BUDGET_MS, 'kis-token');
+    summary.tokenVia = token.via;
+  } catch (e) {
+    summary.enabled = false;
+    summary.error = `토큰 실패: ${e && e.message}`;
+    summary.errors.push({ stage: 'token', code: (e && e.code) || null, message: String((e && e.message) || e) });
+    summary.elapsedMs = Date.now() - started;
+    return { stocks, summary };
+  }
+
+  let fetched;
+  try {
+    fetched = await withTimeout(
+      kis.fetchKisQuotes(codes, { concurrency: KIS_CONCURRENCY }),
+      KIS_BUDGET_MS,
+      'kis-quotes',
+    );
+  } catch (e) {
+    summary.errors.push({ stage: 'quote', code: (e && e.code) || null, message: String((e && e.message) || e) });
+    summary.elapsedMs = Date.now() - started;
+    summary.timeout = true;
+    return { stocks, summary };
+  }
+
+  summary.quoted = Object.keys(fetched.quotes || {}).length;
+  summary.errors.push(...(fetched.errors || []));
+  summary.quotes = fetched.quotes || {};
+
+  // 네이버가 통째로 실패했을 때는 KIS 공식 시세만으로 명부를 세운다(빈 화면 방지)
+  if (!stocks.length && summary.quoted > 0) {
+    const synth = codes
+      .map((c) => summary.quotes[c])
+      .filter(Boolean)
+      .map((kq) => ({
+        code: kq.code,
+        name: kq.name,
+        market: null,
+        price: kq.price,
+        change: kq.change,
+        changePct: kq.changePct,
+        open: kq.open,
+        high: kq.high,
+        low: kq.low,
+        prevClose: kq.prevClose,
+        volume: kq.volume,
+        value: kq.tradeAmount,
+        valueText: formatKoreanMoney(kq.tradeAmount),
+        valueRegular: kq.tradeAmount,
+        valueInteg: null,
+        valueBasis: '정규장(KIS)',
+        tradedAt: null,
+        changeBasis: 'kis-official(FHKST01010100)',
+        kisDecision: 'kis-only-fallback',
+        priceSource: 'kis',
+        source: 'kis',
+        kis: {
+          price: kq.price,
+          changePct: kq.changePct,
+          tradeAmount: kq.tradeAmount,
+          hasTrade: kq.hasTrade,
+          marketDiv: kq.marketDiv || 'J',
+          asOf: kq.fetchedAt || null,
+          source: 'kis',
+        },
+      }));
+    summary.applied = synth.length;
+    summary.fallback = 'kis-only';
+    summary.elapsedMs = Date.now() - started;
+    return { stocks: synth, summary };
+  }
+
+  const merged = stocks.map((st) => {
+    const kq = summary.quotes[st.code];
+    if (!kq) return st;
+    const next = mergeKisQuote(st, kq, opts);
+    if (next.source === 'kis') summary.applied += 1;
+    return next;
+  });
+
+  summary.elapsedMs = Date.now() - started;
+  return { stocks: merged, summary };
+}
+
+/* --------------------------- ?kis_test=1 진단 --------------------------- */
+const kisTestCache = { at: 0, body: null };
+const KIS_TEST_TTL_MS = 15000;
+
+async function buildKisTestBody(q) {
+  const started = Date.now();
+  const body = {
+    ok: false,
+    mode: 'kis-test',
+    generatedAt: new Date().toISOString(),
+    generatedAtKst: kstLabel(new Date()),
+    configured: kis.isConfigured(),
+    tokenOk: false,
+    token: null,
+    price: null,
+    changePct: null,
+    tradeAmount: null,
+    source: null,
+    quote: null,
+    investor: null,
+    naverCrossCheck: null,
+    errors: [],
+    elapsedMs: 0,
+  };
+
+  const health = kis.kisHealth();
+  body.baseUrlHost = health.baseUrlHost;
+  body.appKeyKid = health.appKeyKid;
+  body.elapsedBase = health.lastTokenError || null;
+
+  if (!body.configured) {
+    body.errors.push({ stage: 'config', message: 'KIS_APP_KEY / KIS_APP_SECRET 환경변수가 없습니다.' });
+    body.elapsedMs = Date.now() - started;
+    return body;
+  }
+
+  // ① 토큰
+  try {
+    const t = await withTimeout(kis.getKisToken(), 9000, 'kis-token');
+    body.tokenOk = true;
+    body.token = {
+      ok: true,
+      via: t.via, // memory | supabase | issued ...
+      issuedAt: t.issuedAt ? new Date(t.issuedAt).toISOString() : null,
+      issuedAtKst: t.issuedAt ? kstLabel(t.issuedAt) : null,
+      expiresAt: new Date(t.expiresAt).toISOString(),
+      expiresAtKst: kstLabel(t.expiresAt),
+      minutesLeft: Math.round((t.expiresAt - Date.now()) / 60000),
+    };
+  } catch (e) {
+    body.token = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e) };
+    body.errors.push({ stage: 'token', code: (e && e.code) || null, message: String((e && e.message) || e) });
+    body.elapsedMs = Date.now() - started;
+    return body;
+  }
+
+  // ② 삼성전자 공식 시세 (요청 종목이 있으면 그 종목 우선)
+  const code = /^\d{6}$/.test(String(q.code || '')) ? String(q.code) : '005930';
+  body.code = code;
+  try {
+    const kq = await withTimeout(kis.fetchKisQuote(code), 9000, 'kis-quote');
+    body.quote = {
+      code: kq.code,
+      name: kq.name,
+      price: kq.price,
+      change: kq.change,
+      changePct: kq.changePct,
+      prevClose: kq.prevClose,
+      open: kq.open,
+      high: kq.high,
+      low: kq.low,
+      volume: kq.volume,
+      tradeAmount: kq.tradeAmount,
+      tradeAmountText: formatKoreanMoney(kq.tradeAmount),
+      hasTrade: kq.hasTrade,
+      marketDiv: kq.marketDiv,
+      tempStop: kq.tempStop,
+      vi: kq.vi,
+      asOf: kq.fetchedAt,
+      source: 'kis',
+    };
+    body.price = kq.price;
+    body.changePct = kq.changePct;
+    body.tradeAmount = kq.tradeAmount;
+    body.source = 'kis';
+  } catch (e) {
+    body.errors.push({ stage: 'quote', code: (e && e.code) || null, msgCd: (e && e.msgCd) || null, message: String((e && e.message) || e) });
+  }
+
+  // ③ 네이버 교차 확인 (같은 종목)
+  try {
+    const rows = await fetchStocks([code]);
+    const nv = rows && rows[0] ? rows[0] : null;
+    if (nv) {
+      const diffPct =
+        body.price && nv.price ? Number((((nv.price - body.price) / body.price) * 100).toFixed(2)) : null;
+      body.naverCrossCheck = {
+        price: nv.price,
+        changePct: nv.changePct,
+        volume: nv.volume,
+        diffPctVsKis: diffPct,
+        agreeWithin1Pct: diffPct === null ? null : Math.abs(diffPct) <= 1,
+        source: nv.source,
+      };
+    }
+  } catch (e) {
+    body.naverCrossCheck = { ok: false, message: String((e && e.message) || e) };
+  }
+
+  // ④ 수급(FHKST01010900) — 당일치는 장 종료 후 확정
+  if (q.investor !== '0') {
+    try {
+      const inv = await withTimeout(kis.fetchKisInvestor(code, {}), 9000, 'kis-investor');
+      body.investor = {
+        ok: true,
+        confirmedDate: inv.confirmedDate,
+        isTodayConfirmed: inv.isTodayConfirmed,
+        latest: inv.latest,
+        recent: inv.recent,
+        source: 'kis',
+      };
+    } catch (e) {
+      body.investor = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e) };
+      body.errors.push({ stage: 'investor', code: (e && e.code) || null, message: String((e && e.message) || e) });
+    }
+  }
+
+  body.ok = Boolean(body.tokenOk && body.quote && body.quote.price);
+  body.hint =
+    'KIS 공식 API 진단입니다. 토큰은 재사용 캐시(메모리→Supabase 공용)를 먼저 보고, 없을 때만 1분 1회 제한 안에서 발급합니다. ' +
+    '당일 수급 확정치는 장 종료 후에만 나오므로 confirmedDate 를 반드시 함께 보세요.';
+  body.elapsedMs = Date.now() - started;
+  return body;
+}
+
+async function handleKisTest(res, q, fresh) {
+  if (!fresh && kisTestCache.body && Date.now() - kisTestCache.at < KIS_TEST_TTL_MS) {
+    res.setHeader('X-Cache', 'HIT-memory');
+    return sendJson(res, 200, { ...kisTestCache.body, cached: true }, 'no-store');
+  }
+  try {
+    const body = await buildKisTestBody(q || {});
+    kisTestCache.at = Date.now();
+    kisTestCache.body = body;
+    res.setHeader('X-Cache', 'MISS');
+    return sendJson(res, 200, body, 'no-store');
+  } catch (e) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false,
+        mode: 'kis-test',
+        configured: kis.isConfigured(),
+        tokenOk: false,
+        errors: [{ stage: 'unexpected', message: String((e && e.message) || e) }],
+        generatedAt: new Date().toISOString(),
+      },
+      'no-store',
+    );
+  }
+}
+
 /* ------------------------------ handler ------------------------------ */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -484,7 +861,11 @@ module.exports = async function handler(req, res) {
 
   // ?mode=alerts — 공식 시장경보 목록 (서버리스 함수 수를 늘리지 않기 위한 내부 라우트)
   if (q.mode === 'alerts') return handleAlerts(res, fresh);
-  const codeList = (q.codes || '')
+
+  // ?kis_test=1 — KIS(한국투자증권) 공식 API 연동 진단 (토큰·시세·수급)
+  if (q.kis_test === '1') return handleKisTest(res, q, fresh);
+
+  const codeList = (q.codes || q.code || '')
     .split(',')
     .map((s) => s.trim())
     .filter((s) => /^\d{6}$/.test(s));
@@ -553,9 +934,25 @@ module.exports = async function handler(req, res) {
   if (fxError) errors.push(`fx: ${fxError}`);
 
   const indices = indicesR.status === 'fulfilled' ? indicesR.value : [];
-  const stocks = stocksR.status === 'fulfilled' ? stocksR.value : [];
+  let stocks = stocksR.status === 'fulfilled' ? stocksR.value : [];
   const futures = futuresR.status === 'fulfilled' ? futuresR.value.futures : [];
   const macro = macroR.status === 'fulfilled' ? macroR.value.macro : {};
+
+  // KIS 공식 시세 교차 보강 (?kis=0 으로 끄기, ?kis=force 로 장전 가드 무시)
+  let kisSummary = null;
+  if (q.kis !== '0') {
+    const enriched = await enrichWithKis(stocks, codes, { force: q.kis === 'force' });
+    stocks = enriched.stocks;
+    kisSummary = enriched.summary;
+    if (kisSummary && kisSummary.applied > 0) {
+      sources.push({ name: 'kis-official', ok: true, count: kisSummary.applied });
+    }
+  }
+
+  const stockRows = stocks.map((s) => {
+    const known = DEFAULT_STOCKS.find((d) => d.code === s.code);
+    return known ? { ...s, label: known.name } : s;
+  });
 
   const body = {
     ok: indices.length > 0 || stocks.length > 0,
@@ -567,13 +964,33 @@ module.exports = async function handler(req, res) {
     fx,
     futures,
     macro,
-    stocks: stocks.map((s) => {
-      const known = DEFAULT_STOCKS.find((d) => d.code === s.code);
-      return known ? { ...s, label: known.name } : s;
-    }),
+    stocks: stockRows,
     sources,
     errors,
   };
+
+  if (kisSummary) {
+    body.kis = {
+      enabled: kisSummary.enabled,
+      configured: kisSummary.configured,
+      tokenVia: kisSummary.tokenVia,
+      attempted: kisSummary.attempted,
+      quoted: kisSummary.quoted,
+      applied: kisSummary.applied,
+      elapsedMs: kisSummary.elapsedMs,
+      error: kisSummary.error || null,
+      errors: (kisSummary.errors || []).slice(0, 5),
+      errorCount: (kisSummary.errors || []).length,
+    };
+  }
+
+  // ?code=005930 처럼 단일 종목을 직접 물을 때 그 종목을 최상위에 그대로 꺼내 준다
+  if (/^\d{6}$/.test(String(q.code || ''))) {
+    const one = stockRows.find((s) => s.code === q.code) || null;
+    body.stock = one;
+    body.kisQuote = (kisSummary && kisSummary.quotes && kisSummary.quotes[q.code]) || null;
+    body.source = one ? one.source : null;
+  }
 
   if (!body.ok) {
     return sendJson(
