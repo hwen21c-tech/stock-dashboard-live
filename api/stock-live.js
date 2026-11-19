@@ -710,6 +710,7 @@ async function buildKisTestBody(q) {
   };
 
   const health = kis.kisHealth();
+  body.libVersion = kis.LIB_VERSION;
   body.baseUrlHost = health.baseUrlHost;
   body.appKeyKid = health.appKeyKid;
   body.elapsedBase = health.lastTokenError || null;
