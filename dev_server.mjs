@@ -30,6 +30,7 @@ const api = {
   '/api/stock-trend': require('./api/stock-trend.js'),
   '/api/tts': require('./api/tts.js'),
   '/api/content-studio': require('./api/content-studio.js'),
+  '/api/picks-search': require('./api/picks-search.js'),
 };
 
 const MIME = {
