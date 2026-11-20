@@ -23,6 +23,17 @@
   var root = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
   var HAS_DOM = typeof document !== 'undefined';
 
+  /* 통합 대금 표기 — '612억(NXT 457억)' (NXT 체결 없으면 '612억') · 값이 없으면 null.
+     API 의 valueDispText(통합+NXT 병기) → valueIntegText(통합) → valueText 순으로 고른다. */
+  function vText(o) {
+    if (!o) return null;
+    var v = o.valueDispText || o.valueIntegText || o.valueText;
+    if (v === null || v === undefined) return null;
+    var t = String(v).trim();
+    if (!t || t === '-' || t === '—' || t === '0') return null;
+    return t;
+  }
+
   var LIVE_URL = '/api/stock-live';
   var POLL_MS = 20000;      // 지수·수급카드·NXT 랭킹 폴링 주기
   var CHIP_MS = 15000;      // 신호등 칩 재계산 주기(로컬 계산만, 네트워크 없음)
@@ -200,7 +211,7 @@
       buy1: buy1,
       band: band,
       last: last,
-      valueText: s.valueText || null,
+      valueText: vText(s),
       touchedLower: Boolean(last && num(last.low) !== null && last.low <= lower + band && price >= lower - band),
       brokeLower: price < lower - band,
       touchedUpper: Boolean(last && num(last.high) !== null && last.high >= upper - band && price < upper),
@@ -289,7 +300,7 @@
       add({
         code: confirmed.code, name: confirmed.name, color: 'purple', view: 'overview',
         tag: '[100억+ 진성 상한가]',
-        body: fmtPct(confirmed.changePct) + ' · 통합대금 ' + (confirmed.valueText || '—'),
+        body: fmtPct(confirmed.changePct) + ' · 통합대금 ' + (vText(confirmed) || '—'),
         detail: '상승률 +25% 이상 & 거래대금 100억 이상 확정 상한가 (1번 탭 실시간 기준)',
         basis: '1번 탭 실시간'
       });
@@ -297,7 +308,7 @@
       add({
         code: near.code, name: near.name, color: 'purple', view: 'overview',
         tag: '[상한가 임박]',
-        body: fmtPct(near.changePct) + ' · 통합대금 ' + (near.valueText || '—'),
+        body: fmtPct(near.changePct) + ' · 통합대금 ' + (vText(near) || '—'),
         detail: '상한가 임박 기준(+25% 돌파·100억+) 통과 (1번 탭 실시간 기준)',
         basis: '1번 탭 실시간'
       });
@@ -306,7 +317,7 @@
       add({
         code: h52.code, name: h52.name, color: 'purple', view: 'overview',
         tag: '[52주 신고가 대금주]',
-        body: fmtPct(h52.changePct) + ' · 통합대금 ' + (h52.valueText || '—'),
+        body: fmtPct(h52.changePct) + ' · 통합대금 ' + (vText(h52) || '—'),
         detail: '52주 신고가 목록 중 거래대금 1위 (1번 탭 실시간 기준)',
         basis: '1번 탭 실시간'
       });
@@ -336,7 +347,7 @@
         add({
           code: n.code, name: n.name, color: 'yellow', view: 'rnzone',
           tag: '[RN존 통합대금 최대]',
-          body: '통합대금 ' + n.valueText + ' · ' + fmtInt(n.price) + '원' + pctPhrase(n.changePct) + ' · RN ' + fmtInt(n.lower) + '~' + fmtInt(n.upper),
+          body: '통합대금 ' + (vText(n) || n.valueText) + ' · ' + fmtInt(n.price) + '원' + pctPhrase(n.changePct) + ' · RN ' + fmtInt(n.lower) + '~' + fmtInt(n.upper),
           detail: 'KRX+NXT 통합 거래대금 기준 RN존 11종목 중 최대',
           basis: '실시간 시세'
         });
@@ -369,7 +380,8 @@
   /* '6조 1,185억' 같은 표기 → 비교용 숫자(원) */
   function parseValueText(text) {
     if (!text) return 0;
-    var t = String(text).replace(/\s+/g, '');
+    /* '612억(NXT 457억)' 처럼 괄호로 병기된 NXT 금액은 합산하지 않는다 — 앞 숫자(통합)만 읽는다 */
+    var t = String(text).split('(')[0].replace(/\s+/g, '');
     var jo = t.match(/(-?[\d,]+(?:\.\d+)?)조/);
     var eok = t.match(/(-?[\d,]+(?:\.\d+)?)억/);
     var man = t.match(/(-?[\d,]+(?:\.\d+)?)만/);
@@ -692,7 +704,7 @@
       var cell = formatPriceCell(q.price, q.changePct);
       if (!cell) return;
       // '대금 2,203억' 같은 정적 대금 배지도 실시간 통합대금으로 맞춘다
-      var volText = q.valueIntegText || q.valueText || null;
+      var volText = vText(q);
       if (volText) {
         Array.prototype.forEach.call(nameEl.parentNode.parentNode.querySelectorAll('.s-badge'), function (b) {
           if (/^대금\s*[\d,]+\s*억/.test((b.textContent || '').trim())) {
@@ -737,8 +749,8 @@
           if (priceEl) { priceEl.textContent = fmtInt(q.price) + '원'; priceEl.style.color = cell.color; }
           if (pctEl) { pctEl.textContent = fmtPct(q.changePct); pctEl.style.color = cell.color; }
           if (stateEl) stateEl.textContent = nxtState(q.changePct);
-          var vText = q.valueIntegText || q.valueText || null;
-          if (valueEl) valueEl.textContent = vText || '—';
+          var vTxtVal = vText(q);
+          if (valueEl) valueEl.textContent = vTxtVal || '—';
           card.setAttribute('data-live', '1');
           applied += 1;
         }
@@ -872,7 +884,7 @@
       var txt = pmQuoteText(name, q);
       // 대금까지 함께 보여주는 칸(data-pm-show="value")은 통합(KRX+NXT) 대금을 붙인다
       if (el.getAttribute('data-pm-show') === 'value') {
-        var vtxt = q.valueIntegText || q.valueText || null;
+        var vtxt = vText(q);
         if (vtxt) txt += ' · ' + vtxt;
       }
       if (el.textContent !== txt) el.textContent = txt;
@@ -1032,7 +1044,7 @@
     var pct = num(q.changePct);
     var color = colorOf(pct);
     var cell = formatPriceCell(price, pct);
-    var vol = q.valueIntegText || q.valueText || '—';
+    var vol = vText(q) || '—';
     var limit = pct !== null && pct >= 29.5;
     var stateTag = limit ? '<span style="font-size:9.5px; font-weight:800; background:#7f1d1d; color:#fecaca; padding:1px 5px; border-radius:3px;">상한가</span>' : '';
     var nameClean = esc(def.name);

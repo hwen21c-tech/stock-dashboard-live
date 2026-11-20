@@ -15145,7 +15145,9 @@ function openDetail(title, v1, v2, desc, label1, label2) {
                     changed++;
                 }
                 if (typeof p.changePct === 'number' && isFinite(p.changePct)) x.changeRatio = Number(p.changePct.toFixed(2));
-                if (p.valueText) x.valueText = p.valueText;
+                /* 거래대금 — 통합(KRX+NXT) 표기 '612억(NXT 457억)' 를 그대로 쓰고, 숫자도 같이 남긴다 */
+                if (p.valueDispText || p.valueText) x.valueText = p.valueDispText || p.valueText;
+                if (typeof p.valueEok === 'number' && isFinite(p.valueEok)) x.valueEok = p.valueEok;
             });
             if (changed > 0) {
                 try { renderStockList(); } catch(e) {}
@@ -15672,7 +15674,9 @@ function openDetail(title, v1, v2, desc, label1, label2) {
         if (!q) return;
         if (typeof q.price === 'number' && q.price > 0) { s.price = q.price; changed++; }
         if (typeof q.changePct === 'number' && isFinite(q.changePct)) s.changeRatio = Number(q.changePct.toFixed(2));
-        if (q.valueText) s.valueText = q.valueText;
+        /* 거래대금 — 통합(KRX+NXT) 표기 그대로 */
+        if (q.valueDispText || q.valueText) s.valueText = q.valueDispText || q.valueText;
+        if (typeof q.valueEok === 'number' && isFinite(q.valueEok)) s.valueEok = q.valueEok;
         if (i === currentIdx) selectedChanged = true;
       });
       if (changed > 0) {
@@ -18650,7 +18654,7 @@ window.__HONGINKI.ready = true;
     var price = null, pct = null, valTxt = null, source = 'snap';
     if (q && typeof q.price === 'number' && q.price > 0) {
       price = q.price;
-      valTxt = q.valueIntegText || q.valueText || null;
+      valTxt = q.valueDispText || q.valueIntegText || q.valueText || null;
       source = 'live';
     } else {
       price = card.close;
@@ -18814,7 +18818,7 @@ window.__HONGINKI.ready = true;
     if (live.ok && live.map && live.map[c.code]) {
       var q = live.map[c.code];
       var st = liveStateOf(c, q.price);
-      el.textContent = '⚡ 지금 ' + nf(q.price) + '원 (' + sign(st.diff.toFixed(2)) + '% · ' + st.text + ') · 대금 ' + (q.valueIntegText || q.valueText || '—');
+      el.textContent = '⚡ 지금 ' + nf(q.price) + '원 (' + sign(st.diff.toFixed(2)) + '% · ' + st.text + ') · 대금 ' + (q.valueDispText || q.valueIntegText || q.valueText || '—');
       el.className = 'm-status ok';
     } else {
       el.textContent = '⚪ 실시간 시세 미수신 — 11/13 종가 스냅샷 기준으로 표시 중입니다.';

@@ -54,6 +54,13 @@
     if (!t || t === '-' || t === '—' || t === '0') return null;
     return t;
   }
+
+  /* 통합 대금 표기 — '589억(NXT 445억)' (NXT 없으면 '589억'). 값이 없으면 null.
+     · API 의 valueDispText(통합+NXT 병기) → valueIntegText(통합) → valueText 순으로 고른다. */
+  function vText(o) {
+    if (!o) return null;
+    return liveValueText(o.valueDispText) || liveValueText(o.valueIntegText) || liveValueText(o.valueText);
+  }
   function money(n) {
     if (n === null) return '—';
     return Math.round(n).toLocaleString('ko-KR');
@@ -349,7 +356,9 @@
         price: num(s.price),
         changePct: num(s.changePct),
         // 카드의 거래대금은 통합(KRX+NXT·시간외 포함) 기준을 우선한다
-        valueText: liveValueText(s.valueIntegText) || liveValueText(s.valueText),
+        valueText: vText(s),
+        valueEok: isNum(s.value) ? s.value / 1e8 : null,
+        valueNxtText: liveValueText(s.valueNxtText),
         valueBasis: s.valueBasis || null
       };
     });
@@ -488,8 +497,8 @@
         c.priceEl.style.color = pct === null || pct === 0 ? '#e2e8f0' : (pct > 0 ? '#f43f5e' : '#38bdf8');
         hits += 1;
       }
-      if (c.valueEl && q.valueText && document.body.contains(c.valueEl)) {
-        c.valueEl.textContent = q.valueText;
+      if (c.valueEl && (q.valueText || vText(q)) && document.body.contains(c.valueEl)) {
+        c.valueEl.textContent = q.valueText || vText(q);
         hits += 1;
       }
     });
@@ -938,7 +947,7 @@
           .then(function (j) {
             if (!j || j.ok !== true) return;
             var map = {};
-            (j.stocks || []).forEach(function (s) { if (s && s.code) map[s.code] = { price: num(s.price), changePct: num(s.changePct), valueText: s.valueIntegText || s.valueText || null }; });
+            (j.stocks || []).forEach(function (s) { if (s && s.code) map[s.code] = { price: num(s.price), changePct: num(s.changePct), valueText: vText(s) }; });
             if (Object.keys(map).length && typeof window.RnZone.refreshLivePrices === 'function') window.RnZone.refreshLivePrices(map);
           })
           .catch(function () { /* 대금은 없어도 조회 결과는 그대로 유지 */ });
@@ -1433,7 +1442,7 @@
         '📊 ' + (i.name || i.key) + (i.status === 'CLOSE' ? ' (종가)' : ''),
         '<span>' + esc(num(i.price, 2, 2)) + '</span>',
         i.changePct,
-        (i.valueText ? '거래대금 ' + esc(i.valueText) : '') +
+        (vText(i) ? '거래대금 ' + esc(vText(i)) : '') +
           (typeof i.change === 'number' ? (i.valueText ? ' · ' : '') + esc(num(i.change, 2)) + 'p' : '')
       ));
     });
@@ -1471,7 +1480,7 @@
           '<div style="text-align:right; white-space:nowrap;">' +
             '<span style="font-size:11.5px; font-weight:800; color:' + col(s.changePct) + ';">' + esc(num(s.price, 2)) + '</span> ' +
             '<span style="font-size:10.5px; font-weight:800; color:' + col(s.changePct) + ';">' + esc(pct(s.changePct)) + '</span>' +
-            '<span style="font-size:9.5px; color:#64748b; margin-left:6px;">' + esc(s.valueText || '—') + '</span>' +
+            '<span style="font-size:9.5px; color:#64748b; margin-left:6px;">' + esc(vText(s) || '—') + '</span>' +
           '</div>' +
         '</div>';
     }).join('');
@@ -2076,13 +2085,13 @@
     }
 
     var volEl = tile.querySelector('.st-vol');
-    if (volEl && stock.valueText) {
+    if (volEl && vText(stock)) {
       var g = isNum(stock.value) && stock.code ? tvGain(stock.code, tvEok(stock.value), state.tvNowMin) : null;
       volEl.className = 'st-vol' + (g && g.level !== 'low' ? ' tv-' + g.level : '');
-      volEl.innerHTML = esc(stock.valueText) +
+      volEl.innerHTML = esc(vText(stock)) +
         (g ? '<span class="tv-gain">' + esc(tvGainText(g)) + '</span>' : '') +
         (g && g.level === 'hot' ? '<span class="tv-badge">🔥 급증</span>' : '');
-      volEl.title = '거래대금 ' + stock.valueText + ' (' + (stock.valueBasis || '통합') + ')' +
+      volEl.title = '거래대금 ' + vText(stock) + ' (' + (stock.valueBasis || '통합') + ')' +
         (g ? ' · 5분·15분 전 대비 순증' : '');
       hits += 1;
     }
@@ -2094,7 +2103,7 @@
         tile,
         shownName,
         pctTxt(pctVal),
-        '대금 ' + (stock.valueText || '—') + ' | 현재가 ' + fmt(priceVal) + '원'
+        '대금 ' + (vText(stock) || '—') + ' | 현재가 ' + fmt(priceVal) + '원'
       );
     }
 
@@ -2170,10 +2179,10 @@
     var neg = isNum(s.changePct) && s.changePct < 0;
     var reason = highTxt
       ? (neg
-        ? '당일 고가 ' + highTxt + '으로 52주 신고가를 터치한 뒤 종가 기준 ' + pctTxt(s.changePct) + '로 밀림 · 거래대금 ' + (s.valueText || '—')
-        : '당일 고가 ' + highTxt + '으로 52주 신고가 경신 · 거래대금 ' + (s.valueText || '—') + ' 유입 (네이버 증권 52주 신고가 목록)')
-      : '당일 52주 신고가 목록 편입 · 거래대금 ' + (s.valueText || '—');
-    var metaTxt = '대금 ' + (s.valueText || '—') + (highTxt ? ' | 고가 ' + highTxt : '') +
+        ? '당일 고가 ' + highTxt + '으로 52주 신고가를 터치한 뒤 종가 기준 ' + pctTxt(s.changePct) + '로 밀림 · 거래대금 ' + (vText(s) || '—')
+        : '당일 고가 ' + highTxt + '으로 52주 신고가 경신 · 거래대금 ' + (vText(s) || '—') + ' 유입 (네이버 증권 52주 신고가 목록)')
+      : '당일 52주 신고가 목록 편입 · 거래대금 ' + (vText(s) || '—');
+    var metaTxt = '대금 ' + (vText(s) || '—') + (highTxt ? ' | 고가 ' + highTxt : '') +
       ' (52주 신고가' + (neg ? ' 터치 후 하락' : '') + ')';
     return '' +
       '<div class="reason-item" data-live="1" onclick="' +
@@ -2234,13 +2243,13 @@
     var changeCol = isUpper ? '#f43f5e' : (kind === 'near' ? '#fbbf24' : '#fde047');
     var border = kind === 'watch' ? '#fbbf24' : '#f43f5e';
     var bg = kind === 'watch' ? 'rgba(251,191,36,0.05)' : 'rgba(244,63,94,0.06)';
-    var metaTxt = '거래대금 ' + (s.valueText || '—') + ' | 현재가 ' + fmt(s.price) + '원' +
+    var metaTxt = '거래대금 ' + (vText(s) || '—') + ' | 현재가 ' + fmt(s.price) + '원' +
       (isNum(s.high) ? ' | 고가 ' + fmt(s.high) + '원' : '');
     var reason = isUpper
-      ? '당일 거래대금 ' + (s.valueText || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' 상한가 안착.'
+      ? '당일 거래대금 ' + (vText(s) || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' 상한가 안착.'
       : (kind === 'near'
-        ? '당일 거래대금 ' + (s.valueText || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' — +25% 상한가 임박 기준을 돌파한 상태입니다.'
-        : '당일 거래대금 ' + (s.valueText || '—') + ' 유입 · 25% 돌파까지 ' +
+        ? '당일 거래대금 ' + (vText(s) || '—') + ' 유입되며 ' + pctTxt(s.changePct) + ' — +25% 상한가 임박 기준을 돌파한 상태입니다.'
+        : '당일 거래대금 ' + (vText(s) || '—') + ' 유입 · 25% 돌파까지 ' +
           (gap !== null && gap > 0 ? '+' + gap.toFixed(2) + '%p 남음' : '—'));
 
     return '' +
@@ -2281,7 +2290,7 @@
     if (excluded.length) {
       note += '※ 거래대금 100억 미만 소형주 ' + excluded.length + '종목은 진성 기준에서 제외: ' +
         excluded.map(function (s) {
-          return esc(s.name) + '(' + esc(pctTxt(s.changePct)) + ', ' + esc(s.valueText || '—') + ')';
+          return esc(s.name) + '(' + esc(pctTxt(s.changePct)) + ', ' + esc(vText(s) || '—') + ')';
         }).join(', ') + '. 장중 100억 돌파 시 즉시 자동 편입됩니다.<br>';
     }
     note += '※ 거래대금은 통합(KRX+NXT·시간외 포함) 기준입니다.';
@@ -2370,7 +2379,7 @@
       var liveTxt = live
         ? '<span style="color:' + pctColor + ';font-weight:900;font-variant-numeric:tabular-nums;">' +
             (pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(2) + '%') + '</span>' +
-          (live.valueText ? ' <span style="color:#94a3b8;font-weight:700;">' + esc(live.valueText) + '</span>' : '')
+          (vText(live) ? ' <span style="color:#94a3b8;font-weight:700;">' + esc(vText(live)) + '</span>' : '')
         : '<span style="color:#64748b;font-weight:700;">시세 대기</span>';
       var preBadge = s.preRun
         ? '<span title="기사가 나온 시점에 이미 +15% 이상 오른 종목 — 뉴스가 가격을 끌어올린 것이 아니라 이미 반영됐거나 뒤늦은 기사일 수 있습니다."' +
@@ -2378,7 +2387,7 @@
         : '';
       var tip = '종목코드 ' + code + ' · ' +
         (inPlace ? '누르면 이 자리에서 실시간 차트 팝업(탭 이동 없음)' : '누르면 RN존 실전 차트로 이동') +
-        (live ? ' · ' + (live.valueBasis || '통합') + ' 거래대금 ' + (live.valueText || '—') : ' · 실시간 시세 미수신');
+        (live ? ' · ' + (live.valueBasis || '통합') + ' 거래대금 ' + (vText(live) || '—') : ' · 실시간 시세 미수신');
       var openJs = inPlace
         ? 'event.stopPropagation();' + inPlaceOpenJs(s.name, code,
             live && isNum(live.price) ? fmt(live.price) + '원' : '',
@@ -2873,7 +2882,7 @@
       'title="NXT 체결 기준 · 눌러서 이 자리에서 실시간 차트 팝업(탭 이동 없음)" onclick="' + esc(onclick) + '">' +
       '• <strong style="color:#fff;">' + esc(it.name) + '</strong> ' +
       '<span style="color:' + colFor(pct) + '; font-weight:800;">' + esc(fmt(it.price)) + '원 ' + esc(pctTxt(pct)) + '</span>' +
-      ' <span style="color:#94a3b8;">· ' + esc(it.valueText || '—') + '</span>' +
+      ' <span style="color:#94a3b8;">· ' + esc(vText(it) || '—') + '</span>' +
       (it.upperLimit ? ' <span style="font-size:9px; color:#fca5a5; font-weight:800;">상한가</span>' : '') +
       ' <span style="font-size:9px; color:#64748b;">' + esc(it.market || '') + '</span>' +
       '</div>';
@@ -2922,7 +2931,7 @@
       isNum(it.price) ? fmt(it.price) + '원' : '', pct === null ? '' : pctTxt(pct));
     var txt = String(it.name || '') + (isNum(it.price) ? ' ' + fmt(it.price) + '원' : '') +
       (pct === null ? '' : ' (' + pctTxt(pct) + ')') +
-      (showValue && it.valueText ? ' · ' + it.valueText + (it.valueBasis ? ' (' + it.valueBasis + ')' : '') : '');
+      (showValue && vText(it) ? ' · ' + vText(it) + (it.valueBasis ? ' (' + it.valueBasis + ')' : '') : '');
     return '<span class="pm-q" data-pm-code="' + esc(it.code || '') + '" data-pm-name="' + esc(it.name || '') + '"' +
       (showValue ? ' data-pm-show="value"' : '') +
       ' style="color:' + colFor(pct) + '; font-weight:800; cursor:pointer;"' +
@@ -3306,7 +3315,7 @@
             ' · 60일 전고점 ' + slCheck(checks.break60) + ' ' + slWon(r.hi60) +
             ' · 위꼬리 ' + slCheck(checks.upper) + ' ' + (isNum(r.upper) ? r.upper.toFixed(1) + '%' : '—') +
             '<br>20일평균 대비 ' + (isNum(r.volX) ? r.volX.toFixed(2) + '배' : '—') +
-            ' · 대금 ' + (r.valueText || slEok(r.valueEok)) + ' (' + esc(r.valueBasis || '통합') + ')' +
+            ' · 대금 ' + (vText(r) || slEok(r.valueEok)) + ' (' + esc(r.valueBasis || '통합') + ')' +
             (r.valueRank ? ' · 대금 순위 ' + r.valueRank + '위' : ''),
             true
           ),
@@ -3614,10 +3623,10 @@
 
   /* 거래대금 span — 순증 텍스트 + 신호등 클래스. 순증이 없으면 원래 표기 그대로. */
   function volHtml(stock) {
-    var text = esc((stock && stock.valueText) || '—');
+    var text = esc(vText(stock) || '—');
     if (!stock || !stock.code || !isNum(stock.value)) return '<span class="st-vol">' + text + '</span>';
     var g = tvGain(stock.code, tvEok(stock.value), state.tvNowMin);
-    var tip = '거래대금 ' + ((stock && stock.valueText) || '—') + ' (' + ((stock && stock.valueBasis) || '통합') + ')';
+    var tip = '거래대금 ' + (vText(stock) || '—') + ' (' + ((stock && stock.valueBasis) || '통합') + ')';
     if (g && g.level !== 'low') {
       tip += ' · 5분·15분 전 대비 순증 — ' + (g.level === 'hot' ? '급증(5분 +30억↑ / 15분 +100억↑)' : '유입(5분 +10억↑ / 15분 +30억↑)');
     }
@@ -3665,7 +3674,7 @@
       pct: isNum(pct) ? pct : null,
       price: isNum(s.livePrice) ? s.livePrice : s.price,
       valueEok: eok,
-      valueText: s.valueText || '—',
+      valueText: vText(s) || '—',
       searchRank: rank,
       themeName: s.themeNameRef || '',
       role: s.role || '',
@@ -3790,7 +3799,7 @@
     var click = buildOnclick(
       s.name + ' (' + s.code + ')',
       slPct(pct),
-      '대금 ' + (s.valueText || '—') + ' | 현재가 ' + fmt(price) + '원',
+      '대금 ' + (vText(s) || '—') + ' | 현재가 ' + fmt(price) + '원',
       '네이버 실시간 테마 랭킹 · ' + (s.themeNameRef || '') + (role ? ' · ' + roleTxt : '') +
         ' (일봉·차트는 /api/stock-chart 실데이터)'
     );

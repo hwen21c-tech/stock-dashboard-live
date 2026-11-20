@@ -375,6 +375,49 @@ function signedValue(v, negative) {
   return negative ? -Math.abs(n) : n;
 }
 
+/**
+ * 통합 거래대금 표기 — `589억(NXT 445억)` / NXT 체결이 없으면 `589억`.
+ *  · 앞 숫자 = 통합(KRX+NXT) 전체, 괄호 = 그중 NXT(넥스트레이드) 체결분.
+ *  · 폴드8 400px 카드에서도 줄이 깨지지 않도록 괄호·라벨만 붙인 간결 표기다.
+ *  · 마녀공장 2026-11-20 09:20 실측: KRX 144억 + NXT 445억 = 통합 589억.
+ */
+function valueLabelText(total, nxt) {
+  const t = formatKoreanMoney(total);
+  if (!t) return null;
+  if (typeof nxt === 'number' && nxt > 0) {
+    const n = formatKoreanMoney(nxt);
+    if (n) return t + '(NXT ' + n + ')';
+  }
+  return t;
+}
+
+/**
+ * 통합·NXT·정규장 대금 3종을 한 곳에서 계산한다(모순 방지 포함).
+ *  · kind='regular' : 최상위 accumulatedTradingValueRaw = KRX 정규장 대금
+ *  · integratedPriceInfo.accumulatedTradingValueRaw = 통합(KRX+NXT)
+ *  · overMarketPriceInfo.accumulatedTradingValueRaw = NXT 체결 대금
+ *  · KRX 단독이 통합보다 큰 순간 응답(체결 시차)이 오면 통합을 KRX 로 올리고 NXT 는 0으로 둔다.
+ */
+function tradingValues(regular, nxtRaw, integ) {
+  const valueRegular = typeof regular === 'number' ? regular : null;
+  const valueInteg = typeof integ === 'number' ? integ : null;
+  const valueTotal =
+    valueInteg !== null && valueRegular !== null
+      ? Math.max(valueInteg, valueRegular)
+      : valueInteg !== null
+        ? valueInteg
+        : valueRegular;
+  let valueNxt =
+    typeof nxtRaw === 'number'
+      ? nxtRaw
+      : valueInteg !== null && valueRegular !== null
+        ? valueInteg - valueRegular
+        : null;
+  if (typeof valueNxt !== 'number' || !(valueNxt > 0)) valueNxt = 0;
+  if (valueTotal !== null && valueNxt >= valueTotal) valueNxt = 0; // 통합보다 큰 NXT = 응답 모순
+  return { valueRegular, valueTotal, valueNxt, valueInteg };
+}
+
 /** polling(개별 종목) 응답 1건 → 표준 시세 */
 function normalizeQuote(d) {
   if (!d) return null;
@@ -390,7 +433,11 @@ function normalizeQuote(d) {
   const valueRegular = parseNum(d.accumulatedTradingValueRaw);
   const valueAfter = over ? parseNum(over.accumulatedTradingValueRaw) : null;
   const valueInteg = integ ? parseNum(integ.accumulatedTradingValueRaw) : null;
-  const value = valueInteg !== null ? valueInteg : valueRegular;
+  /* 표시·판정 기준은 통합(KRX+NXT) — NXT 체결분까지 포함해야 마녀공장처럼 NXT 로 돈이 몬 종목이
+   *  KRX 단독 대금 때문에 아래 순위로 밀리지 않는다. */
+  const tv = tradingValues(valueRegular, valueAfter, valueInteg);
+  const value = tv.valueTotal;
+  const valueNxt = tv.valueNxt;
 
   // 시간외(NXT 애프터마켓 · 시간외 단일가) 체결가·등락률 — 전일 종가 대비
   const overSign = (over && over.compareToPreviousPrice && over.compareToPreviousPrice.name) || null;
@@ -420,7 +467,12 @@ function normalizeQuote(d) {
     low,
     volume,
     value,
-    valueText: formatKoreanMoney(value),
+    valueText: formatKoreanMoney(value),           // 통합 대금 숫자만 (기존 계약 유지)
+    valueTotal: tv.valueTotal,
+    valueTotalText: formatKoreanMoney(tv.valueTotal),
+    valueNxt: valueNxt || null,
+    valueNxtText: valueNxt > 0 ? formatKoreanMoney(valueNxt) : null,
+    valueDispText: valueLabelText(tv.valueTotal, valueNxt),  // '589억(NXT 445억)'
     valueRegular,
     valueRegularText: formatKoreanMoney(valueRegular),
     valueAfter,
@@ -487,7 +539,7 @@ function overTraded(q) {
   return q.overPct !== 0;
 }
 
-/** polling 결과를 목록 항목에 덮어쓴다 (통합 대금·시고저) */
+/** polling 결과를 목록 항목에 덮어쓴다 (통합 대금·NXT 대금·시고저) */
 function mergeQuote(item, q) {
   if (!item || !q) return item;
   if (q.high !== null && q.high !== undefined) item.high = q.high;
@@ -499,6 +551,13 @@ function mergeQuote(item, q) {
     item.value = q.value; // 표시·판정 기준: 통합(없으면 정규장)
     item.valueText = q.valueText || item.valueText;
     item.valueBasis = q.valueBasis || item.valueBasis;
+    // NXT 병기 표기용 3종 — 화면은 valueDispText 를 쓴다
+    item.valueTotal = q.valueTotal !== null && q.valueTotal !== undefined ? q.valueTotal : q.value;
+    item.valueTotalText = q.valueTotalText || q.valueText;
+    item.valueNxt = q.valueNxt || 0;
+    item.valueNxtText = q.valueNxtText || null;
+    if (q.valueDispText) item.valueDispText = q.valueDispText;
+    if (q.valueRegular !== null && q.valueRegular !== undefined) item.valueRegularKrx = q.valueRegular;
   }
   if (q.upperLimit) item.upperLimit = true;
   if (q.price !== null && q.price !== undefined) item.price = q.price;
@@ -761,7 +820,7 @@ async function buildDynamicThemes() {
 /** 테마 카드 종목에 polling 시세(시·고·저·통합 거래대금)를 덮는다 */
 function mergeThemeQuotes(themes, map, premarket) {
   return (themes || []).map((t) => {
-    const stocks = (t.stocks || []).map((s) => {
+    const merged = (t.stocks || []).map((s) => {
       const q = map[s.code] || null;
       if (!q) return { ...s, tileName: s.name, missing: true };
       const hasOver = overTraded(q);
@@ -778,9 +837,14 @@ function mergeThemeQuotes(themes, map, premarket) {
         missing: false,
       };
     });
+    /* 🔁 노출 4종목 재선정 — 테마 구성종목 목록에는 KRX 정규장 대금만 실려 오므로,
+     *  통합(KRX+NXT) 시세가 붙은 뒤 다시 고른다. 이걸 빼면 마녀공장(NXT 445억, 통합 589억)이
+     *  한국화장품(KRX 236억) 아래로 밀려 '대금 대장'을 놓친다(2026-11-20 00:13 실사례). */
+    const stocks = merged.length ? pickThemeStocks(merged) : merged;
     const priced = stocks.filter((s) => !s.missing && s.price !== null);
     const pcts = priced.map((s) => s.changePct).filter((v) => typeof v === 'number');
     const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
+    const top4Pcts = stocks.slice(0, THEME_STOCK_TOP).map((x) => x.changePct).filter((v) => typeof v === 'number');
     return {
       ...t,
       stocks,
@@ -788,6 +852,10 @@ function mergeThemeQuotes(themes, map, premarket) {
       avgPctCalc: pcts.length
         ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2))
         : null,
+      top4Avg: top4Pcts.length
+        ? Number((top4Pcts.reduce((a, b) => a + b, 0) / top4Pcts.length).toFixed(2))
+        : t.top4Avg,
+      top4Sum: sumValue,
       sumValue,
       sumValueText: formatKoreanMoney(sumValue),
     };
@@ -1489,8 +1557,18 @@ function collectHigh52Candidates(lists) {
 
 function finalizeHigh52(cand, counts) {
   if (!cand) return null;
-  const { base, byValue, byPct, preferred } = cand;
+  const { base, preferred } = cand;
   const excludedPreferred = preferred || [];
+  /* 정렬 기준은 '통합(KRX+NXT) 거래대금' — 시세가 붙은 뒤(mergeQuote) 다시 자른다 */
+  const byValue = base
+    .slice()
+    .filter((it) => typeof it.value === 'number' && it.value > 0)
+    .sort((a, b) => (b.value || 0) - (a.value || 0) || (b.changePct || 0) - (a.changePct || 0))
+    .slice(0, HIGH52_LIMIT);
+  const byPct = base
+    .slice()
+    .sort((a, b) => (b.changePct || 0) - (a.changePct || 0) || (b.value || 0) - (a.value || 0))
+    .slice(0, HIGH52_LIMIT);
   return {
     byValue,
     byPct,
@@ -1651,11 +1729,16 @@ function buildAftermarket(map, overSession, universe) {
       divergencePct,
       overValue: q.overValue,
       overValueText: q.valueAfterText,
+      overValueDispText: q.valueAfterText ? 'NXT ' + q.valueAfterText : null,
       overVolume: q.overVolume,
       overTradedAt: q.overTradedAt,
       overSessionType: q.overSessionType || null,
       value: q.value,
       valueText: q.valueText,
+      valueTotalText: q.valueTotalText || q.valueText,
+      valueNxt: q.valueNxt || 0,
+      valueNxtText: q.valueNxtText || null,
+      valueDispText: q.valueDispText || q.valueText,
       // 통합 대금 중 시간외 비중 (%) — 통합 값이 있을 때만 계산
       afterSharePct: integ && integ > 0 ? Number(((q.overValue / integ) * 100).toFixed(1)) : null,
       upperLimit: Boolean(q.upperLimit),
@@ -2448,9 +2531,12 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  /* ---- 목록 항목의 통합 거래대금·시고저를 polling 으로 보강 ---- */
+  /* ---- 목록 항목의 통합 거래대금·시고저를 polling 으로 보강 ----
+   *  · 52주 신고가 목록은 KRX 정규장 대금만 실려 오므로, 순위를 정하기 전에 전 후보에 시세를 붙인다
+   *    (상위 5개만 먼저 자르면 NXT 로 대금이 몬 종목이 대금주 순위에서 빠진다). */
   let enriched = 0;
   const targets = []
+    .concat(high52Cand ? high52Cand.base : [])
     .concat(high52Cand ? high52Cand.byValue : [])
     .concat(high52Cand ? high52Cand.byPct : [])
     .concat(upperCand ? upperCand.c25 : [])

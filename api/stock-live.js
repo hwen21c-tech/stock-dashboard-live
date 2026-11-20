@@ -105,6 +105,20 @@ async function fetchIndices() {
 }
 
 /* --------------------------- 국내 종목 현재가 --------------------------- */
+/**
+ * 통합 거래대금 표기 — `589억(NXT 445억)` / NXT 체결이 없으면 `589억`.
+ *  (2026-11-20 09:20 마녀공장 실측: KRX 144억 + NXT 445억 = 통합 589억)
+ */
+function valueLabelText(total, nxt) {
+  const t = formatKoreanMoney(total);
+  if (!t) return null;
+  if (typeof nxt === 'number' && nxt > 0) {
+    const n = formatKoreanMoney(nxt);
+    if (n) return t + '(NXT ' + n + ')';
+  }
+  return t;
+}
+
 function parseStock(d) {
   const price = parseNum(d.closePriceRaw) ?? parseNum(d.closePrice);
   const change = parseNum(d.compareToPreviousClosePriceRaw) ?? parseNum(d.compareToPreviousClosePrice);
@@ -115,6 +129,14 @@ function parseStock(d) {
   const over = d.overMarketPriceInfo || null;
   const valueInteg = integ ? parseNum(integ.accumulatedTradingValueRaw) : null;
   const valueAfter = over ? parseNum(over.accumulatedTradingValueRaw) : null;
+  /* 통합 = integratedPriceInfo · KRX 정규장 = 최상위 · NXT = overMarketPriceInfo (실측 3분할)
+   *  · KRX 단독이 통합보다 큰 순간 응답(체결 시차)이 오면 통합을 KRX 로 올리고 NXT 는 0으로 둔다 */
+  const valueTotal =
+    valueInteg !== null && valueRaw !== null ? Math.max(valueInteg, valueRaw) : valueInteg !== null ? valueInteg : valueRaw;
+  let valueNxt =
+    valueAfter !== null ? valueAfter : valueInteg !== null && valueRaw !== null ? valueInteg - valueRaw : null;
+  if (typeof valueNxt !== 'number' || !(valueNxt > 0)) valueNxt = 0;
+  if (valueTotal !== null && valueNxt >= valueTotal) valueNxt = 0;
   const sign = d.compareToPreviousPrice && d.compareToPreviousPrice.name; // RISING / FALLING / UNCHANGED
   return {
     code: d.itemCode,
@@ -130,6 +152,12 @@ function parseStock(d) {
     volume: parseNum(d.accumulatedTradingVolumeRaw) ?? parseNum(d.accumulatedTradingVolume),
     value: valueRaw,
     valueText: formatKoreanMoney(valueRaw) || d.accumulatedTradingValue || null,
+    valueTotal,
+    valueTotalText: formatKoreanMoney(valueTotal),
+    valueNxt: valueNxt || null,
+    valueNxtText: valueNxt > 0 ? formatKoreanMoney(valueNxt) : null,
+    /* 화면 표기용 — '589억(NXT 445억)' / NXT 없으면 '589억' (통합 기준) */
+    valueDispText: valueLabelText(valueTotal, valueNxt),
     valueRegular: valueRaw,
     valueRegularText: formatKoreanMoney(valueRaw) || d.accumulatedTradingValue || null,
     valueInteg,
@@ -579,6 +607,11 @@ function mergeKisQuote(st, kq, opts) {
     out.valueText = formatKoreanMoney(kq.tradeAmount);
     out.valueRegular = kq.tradeAmount;
     out.valueRegularText = formatKoreanMoney(kq.tradeAmount);
+    out.valueTotal = kq.tradeAmount;
+    out.valueTotalText = formatKoreanMoney(kq.tradeAmount);
+    out.valueNxt = 0;
+    out.valueNxtText = null;
+    out.valueDispText = valueLabelText(kq.tradeAmount, 0);
     out.valueBasis = '정규장(KIS)';
   }
   return out;
@@ -660,6 +693,11 @@ async function enrichWithKis(stocks, codes, opts = {}) {
         valueText: formatKoreanMoney(kq.tradeAmount),
         valueRegular: kq.tradeAmount,
         valueInteg: null,
+        valueTotal: kq.tradeAmount,
+        valueTotalText: formatKoreanMoney(kq.tradeAmount),
+        valueNxt: 0,
+        valueNxtText: null,
+        valueDispText: valueLabelText(kq.tradeAmount, 0),
         valueBasis: '정규장(KIS)',
         tradedAt: null,
         changeBasis: 'kis-official(FHKST01010100)',
