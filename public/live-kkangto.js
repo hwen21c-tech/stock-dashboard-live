@@ -335,7 +335,7 @@ function cardHtml(c) {
     levelsHtml(c) +
     '<div class="kk-meta">' +
       (c.capEok ? '<span>시총 ' + (c.capEok >= 10000 ? (Math.round(c.capEok / 1000) / 10) + '조' : nf(c.capEok) + '억') + '</span>' : '') +
-      '<span>대금 ' + nf(c.valueEok) + '억</span>' +
+      '<span title="기준일 정규장(KRX) 확정 거래대금 — 실시간 값이 아닙니다">대금 ' + nf(c.valueEok) + '억</span>' +
       (c.pct != null ? '<span>당일 ' + signPct(c.pct, 2) + '</span>' : '') +
       (c.chg5 != null ? '<span>5일 ' + signPct(c.chg5, 1) + '</span>' : '') +
       (c.upper != null && c.upper >= 3 ? '<span style="color:#fda4af">윗꼬리 ' + signPct(c.upper, 1) + '</span>' : '') +
@@ -885,7 +885,7 @@ function getStocks() {
     var p = planOf(c);
     return {
       code: c.code, name: c.name, price: c.close, changeRatio: c.pct,
-      valueText: c.valueEok ? nf(c.valueEok) + '억' : '', basis: p.base, stop: p.stop, tp: p.tp, ma60: p.ma60,
+      valueText: c.valueEok ? nf(c.valueEok) + '억' : '',   /* 기준일 정규장(KRX) 확정 — 실시간 아님 */ basis: p.base, stop: p.stop, tp: p.tp, ma60: p.ma60,
       candles: (c.candles || []).slice(-60)
     };
   });
