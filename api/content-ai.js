@@ -2569,10 +2569,13 @@ e) 숫자: spoken 안의 숫자는 자막과 똑같이 숫자로 쓴다(예: "5,
   const src = s(b.sourceMaterial, 6000);
   const note = s(b.experienceNote, 1500);
   const style = shortsStyleBlock(b.shortsStyle, Number(b.styleNo) || 1);
+  /* 🐶🐰🐧 분야 흥행 공식 — 클라이언트가 만든 구조 지침(있을 때만) */
+  const formula = s(b.formulaBlock, 1600);
   const user = [
     themeName ? `테마: ${themeName}` : '',
     `주제: ${s(b.topic, 160)}`,
     style,
+    formula ? `\n${formula}` : '',
     src ? `\n[참고 자료 — 사실 근거로만 인용. 내 경험처럼 쓰지 않는다]\n"""${src}"""` : '',
     note ? `\n[내 경험 메모 — 1인칭 경험은 여기 있는 것만]\n"""${note}"""` : '\n[내 경험 메모 — 없음. 1인칭 경험담은 쓰지 않는다]',
     banLine(b.banPhrases),
