@@ -2955,7 +2955,9 @@
       isNum(it.price) ? fmt(it.price) + '원' : '', pct === null ? '' : pctTxt(pct));
     var txt = String(it.name || '') + (isNum(it.price) ? ' ' + fmt(it.price) + '원' : '') +
       (pct === null ? '' : ' (' + pctTxt(pct) + ')') +
-      (showValue && vText(it) ? ' · ' + vText(it) + (it.valueBasis ? ' (' + it.valueBasis + ')' : '') : '');
+      (showValue && vText(it)
+        ? ' · ' + vText(it) + (it.valueBasis && String(vText(it)).indexOf('(NXT') < 0 ? ' (' + it.valueBasis + ')' : '')
+        : '');   /* NXT 병기 표기에는 '(통합(KRX+NXT))' 접미사를 겹쳐 쓰지 않는다 */
     return '<span class="pm-q" data-pm-code="' + esc(it.code || '') + '" data-pm-name="' + esc(it.name || '') + '"' +
       (showValue ? ' data-pm-show="value"' : '') +
       ' style="color:' + colFor(pct) + '; font-weight:800; cursor:pointer;"' +

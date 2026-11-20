@@ -1998,6 +1998,8 @@ function judgeMover(q, bars, valueRank) {
     volX,
     valueEok,
     valueText: q.valueText || null,
+    valueDispText: q.valueDispText || q.valueText || null,
+    valueNxtText: q.valueNxtText || null,
     valueBasis: q.valueBasis || null,
     valueRank: valueRank || null,
     hi60: h60.hi,
@@ -2261,6 +2263,8 @@ async function buildStrategyLive(map) {
           volume: pq.volume !== null && pq.volume !== undefined ? pq.volume : c.q.volume,
           value: typeof pq.value === 'number' ? pq.value : c.q.value,
           valueText: pq.valueText || c.q.valueText,
+          valueDispText: pq.valueDispText || pq.valueText || c.q.valueText,
+          valueNxtText: pq.valueNxtText || null,
           valueBasis: pq.valueBasis || c.q.valueBasis,
           prevClose:
             pq.price !== null && pq.change !== null && pq.price !== undefined && pq.change !== undefined
@@ -2521,6 +2525,8 @@ module.exports = async function handler(req, res) {
           changePct: pct,
           value: typeof q.value === 'number' ? q.value : null,
           valueText: q.valueText || null,
+          valueDispText: q.valueDispText || q.valueText || null,   // '1조 4,159억(NXT 8,227억)'
+          valueNxtText: q.valueNxtText || null,
           valueBasis: q.valueBasis || null,
           upperLimit: Boolean(q.upperLimit),
           tradedAt: q.overTradedAt || q.tradedAt || null,
