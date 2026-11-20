@@ -3,187 +3,187 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-20 10:17:50",
- "updatedAt": "2026-11-20T10:17:45.579197+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-20 11:16:34",
+ "updatedAt": "2026-11-20T11:16:06.473879+09:00",
+ "updatedAgeMin": 0.5,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "439090",
-  "123690",
-  "214420",
   "180640",
   "128940",
   "008930",
-  "067630",
-  "376900",
-  "491000",
+  "439090",
+  "123690",
+  "214420",
   "204620",
   "069960",
-  "196170",
-  "000250",
+  "067630",
+  "240550",
+  "491000",
+  "041510",
   "253450",
-  "035900",
-  "041510"
+  "473980",
+  "196170",
+  "000250"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "화장품",
-   "avgRS": 39,
-   "stocks": [
-    {
-     "code": "439090",
-     "name": "마녀공장",
-     "chg": 15.3,
-     "value_eok": 742.84,
-     "verified": true
-    },
-    {
-     "code": "123690",
-     "name": "한국화장품",
-     "chg": 7.4,
-     "value_eok": 323.14,
-     "verified": true
-    },
-    {
-     "code": "214420",
-     "name": "토니모리",
-     "chg": 1.7,
-     "value_eok": 29.82,
-     "verified": true
-    }
-   ]
-  },
-  {
-   "rank": 2,
    "name": "밸류업",
    "avgRS": 88,
    "stocks": [
     {
      "code": "180640",
      "name": "한진칼",
-     "chg": 8.8,
-     "value_eok": 1531.21,
+     "chg": 13.0,
+     "value_eok": 1860.71,
      "verified": true
     },
     {
      "code": "128940",
      "name": "한미약품",
-     "chg": 4.7,
-     "value_eok": 224.25,
+     "chg": 9.9,
+     "value_eok": 572.68,
      "verified": true
     },
     {
      "code": "008930",
      "name": "한미사이언스",
-     "chg": 3.1,
-     "value_eok": 23.7,
+     "chg": 5.3,
+     "value_eok": 48.6,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 2,
+   "name": "화장품",
+   "avgRS": 39,
+   "stocks": [
+    {
+     "code": "439090",
+     "name": "마녀공장",
+     "chg": 14.9,
+     "value_eok": 791.11,
+     "verified": true
+    },
+    {
+     "code": "123690",
+     "name": "한국화장품",
+     "chg": 9.4,
+     "value_eok": 345.51,
+     "verified": true
+    },
+    {
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 4.3,
+     "value_eok": 33.39,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "의료기기",
-   "avgRS": 12,
-   "stocks": [
-    {
-     "code": "067630",
-     "name": "HLB생명과학",
-     "chg": 13.6,
-     "value_eok": 30.29,
-     "verified": true
-    },
-    {
-     "code": "376900",
-     "name": "로킷헬스케어",
-     "chg": 2.1,
-     "value_eok": 18.71,
-     "verified": true
-    },
-    {
-     "code": "491000",
-     "name": "리브스메드",
-     "chg": 1.2,
-     "value_eok": 40.33,
-     "verified": true
-    }
-   ]
-  },
-  {
-   "rank": 4,
    "name": "면세점",
    "avgRS": 59,
    "stocks": [
     {
      "code": "204620",
      "name": "글로벌텍스프리",
-     "chg": 8.5,
-     "value_eok": 63.05,
+     "chg": 12.0,
+     "value_eok": 135.78,
+     "verified": true
+    },
+    {
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 4.3,
+     "value_eok": 33.39,
      "verified": true
     },
     {
      "code": "069960",
      "name": "현대백화점",
-     "chg": 3.0,
-     "value_eok": 66.93
+     "chg": 2.8,
+     "value_eok": 88.31,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 4,
+   "name": "의료기기",
+   "avgRS": 15,
+   "stocks": [
+    {
+     "code": "067630",
+     "name": "HLB생명과학",
+     "chg": 10.5,
+     "value_eok": 41.17,
+     "verified": true
     },
     {
-     "code": "214420",
-     "name": "토니모리",
-     "chg": 1.7,
-     "value_eok": 29.82
+     "code": "240550",
+     "name": "동방메디컬",
+     "chg": 5.7,
+     "value_eok": 11.5
+    },
+    {
+     "code": "491000",
+     "name": "리브스메드",
+     "chg": 4.9,
+     "value_eok": 63.69
     }
    ]
   },
   {
    "rank": 5,
+   "name": "K-POP 엔터",
+   "avgRS": 68,
+   "stocks": [
+    {
+     "code": "041510",
+     "name": "에스엠",
+     "chg": 5.9,
+     "value_eok": 445.71
+    },
+    {
+     "code": "253450",
+     "name": "스튜디오드래곤",
+     "chg": 4.2,
+     "value_eok": 1076.87
+    },
+    {
+     "code": "473980",
+     "name": "노머스",
+     "chg": 3.6,
+     "value_eok": 96.84
+    }
+   ]
+  },
+  {
+   "rank": 6,
    "name": "바이오시밀러",
    "avgRS": 55,
    "stocks": [
     {
      "code": "128940",
      "name": "한미약품",
-     "chg": 4.7,
-     "value_eok": 224.25
+     "chg": 9.9,
+     "value_eok": 572.68
     },
     {
      "code": "196170",
      "name": "알테오젠",
-     "chg": 2.4,
-     "value_eok": 872.66
+     "chg": 3.6,
+     "value_eok": 1207.28
     },
     {
      "code": "000250",
      "name": "삼천당제약",
-     "chg": 1.6,
-     "value_eok": 152.99
-    }
-   ]
-  },
-  {
-   "rank": 6,
-   "name": "K-POP 엔터",
-   "avgRS": 79,
-   "stocks": [
-    {
-     "code": "253450",
-     "name": "스튜디오드래곤",
-     "chg": 3.1,
-     "value_eok": 1019.05
-    },
-    {
-     "code": "035900",
-     "name": "JYP Ent.",
-     "chg": 1.9,
-     "value_eok": 545.41
-    },
-    {
-     "code": "041510",
-     "name": "에스엠",
-     "chg": 1.5,
-     "value_eok": 247.01
+     "chg": 2.0,
+     "value_eok": 206.3
     }
    ]
   }
