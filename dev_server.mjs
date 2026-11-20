@@ -22,7 +22,7 @@ const api = {
   '/api/tabs-live': require('./api/tabs-live.js'),
   '/api/live-briefing': require('./api/live-briefing.js'),
   '/api/stock-chart': require('./api/stock-chart.js'),
-  '/api/deals-shopping': require('./api/deals-shopping.js'),
+  '/api/deals-shopping': require('./lib/deals-shopping-legacy.js'),
   '/api/dart-live': require('./api/dart-live.js'),
   '/api/index-chart': require('./api/index-chart.js'),
   '/api/macro-live': require('./api/macro-live.js'),

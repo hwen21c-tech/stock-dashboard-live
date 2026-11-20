@@ -16,7 +16,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 JS = ["api/stock-live.js", "api/tabs-live.js", "api/live-briefing.js", "api/dart-live.js", "api/stock-chart.js",
-      "api/deals-shopping.js", "lib/http.js", "lib/news-impact.js", "public/live-api.js", "public/deals-shopping.js",
+      "api/picks-search.js", "lib/deals-shopping-legacy.js", "lib/http.js", "lib/news-impact.js", "public/live-api.js", "public/deals-shopping.js",
       "public/live-extra.js", "public/live-calendar.js", "public/live-dart.js", "public/live-macro.js",
       "api/index-chart.js", "api/macro-live.js", "api/econ-calendar.js", "api/stock-trend.js", "dev_server.mjs",
       "api/content-studio.js", "public/content-engine.js", "public/overheat-badge.js", "public/ebook/sw.js",
