@@ -12829,7 +12829,7 @@ var CSVoice = (function () {
   }
   function cvBreadthLoad(force){
     if (V2.breadth && !force && (Date.now() - V2.breadth.at) < 120000) return Promise.resolve(V2.breadth);
-    return v2Json([v2Api('/api/breadth')]).then(function(j){
+    return v2Json([v2Api('/api/breadth'), v2Api('/api/macro-live?mode=breadth')]).then(function(j){
       if (j && j.ok && j.markets) V2.breadth = { at: Date.now(), data: j };
       return V2.breadth || null;
     }).catch(function(){ return null; }).then(function(r){

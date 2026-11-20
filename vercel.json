@@ -80,6 +80,7 @@
     { "source": "/index.html", "has": [{ "type": "host", "value": "yeonolang-ebook.vercel.app" }], "destination": "/ebook.html", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/api/breadth", "destination": "/api/macro-live?mode=breadth" },
     { "source": "/pokemon", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/:path*", "destination": "/:path*" },

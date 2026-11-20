@@ -21,6 +21,7 @@
  */
 
 const { NAVER_HEADERS, fetchJson, parseNum, kstLabel, sendJson, getQuery } = require('../lib/http');
+const breadthHandler = require('../lib/breadth');
 
 const CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
 const YAHOO_TIMEOUT = 7000;
@@ -130,6 +131,10 @@ module.exports = async function handler(req, res) {
   }
   const started = Date.now();
   const q = getQuery(req);
+
+  // 2026-11-21: Vercel Hobby 12함수 한도 대응 — /api/breadth 는 vercel.json rewrite 로
+  //   이 함수의 mode=breadth 로 들어온다(기존 경로·응답 그대로 유지).
+  if (q.mode === 'breadth') return breadthHandler(req, res);
 
   const defs = YAHOO_MACRO.map((d) => ({ ...d, kind: 'yahoo' })).concat(
     BONDS.map((d) => ({ ...d, kind: 'naver-bond' })),
