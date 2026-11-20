@@ -3,26 +3,27 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-20 15:30:48",
- "updatedAt": "2026-11-20T15:30:40.035236+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-20 16:37:06",
+ "updatedAt": "2026-11-20T16:36:46.669144+09:00",
+ "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "064550",
   "128940",
-  "096530",
+  "302440",
   "439090",
   "214420",
-  "265740",
+  "114840",
+  "180640",
+  "008930",
   "067630",
   "240550",
   "491000",
-  "180640",
-  "008930",
-  "195940",
   "456160",
-  "394800"
+  "195940",
+  "096530",
+  "006280"
  ],
  "themes": [
   {
@@ -33,22 +34,22 @@
     {
      "code": "064550",
      "name": "바이오니아",
-     "chg": 20.4,
+     "chg": 20.1,
      "value_eok": 541.22,
      "verified": true
     },
     {
      "code": "128940",
      "name": "한미약품",
-     "chg": 6.3,
+     "chg": 6.5,
      "value_eok": 1242.11,
      "verified": true
     },
     {
-     "code": "096530",
-     "name": "씨젠",
+     "code": "302440",
+     "name": "SK바이오사이언스",
      "chg": 0.8,
-     "value_eok": 76.42,
+     "value_eok": 37.84,
      "verified": true
     }
    ]
@@ -56,61 +57,33 @@
   {
    "rank": 2,
    "name": "화장품",
-   "avgRS": 59,
+   "avgRS": 46,
    "stocks": [
     {
      "code": "439090",
      "name": "마녀공장",
-     "chg": 19.3,
-     "value_eok": 1450.85,
+     "chg": 18.7,
+     "value_eok": 1455.68,
      "verified": true
     },
     {
      "code": "214420",
      "name": "토니모리",
-     "chg": 3.3,
-     "value_eok": 48.46,
+     "chg": 3.0,
+     "value_eok": 48.68,
      "verified": true
     },
     {
-     "code": "265740",
-     "name": "엔에프씨",
-     "chg": 2.5,
-     "value_eok": 12.34,
+     "code": "114840",
+     "name": "아이패밀리에스씨",
+     "chg": 3.0,
+     "value_eok": 12.4,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "의료기기",
-   "avgRS": 23,
-   "stocks": [
-    {
-     "code": "067630",
-     "name": "HLB생명과학",
-     "chg": 17.1,
-     "value_eok": 182.95,
-     "verified": true
-    },
-    {
-     "code": "240550",
-     "name": "동방메디컬",
-     "chg": 4.0,
-     "value_eok": 19.43,
-     "verified": true
-    },
-    {
-     "code": "491000",
-     "name": "리브스메드",
-     "chg": 2.7,
-     "value_eok": 151.73,
-     "verified": true
-    }
-   ]
-  },
-  {
-   "rank": 4,
    "name": "밸류업",
    "avgRS": 91,
    "stocks": [
@@ -124,14 +97,42 @@
     {
      "code": "128940",
      "name": "한미약품",
-     "chg": 6.3,
-     "value_eok": 1242.11
+     "chg": 6.5,
+     "value_eok": 1242.11,
+     "verified": true
     },
     {
      "code": "008930",
      "name": "한미사이언스",
-     "chg": 1.2,
-     "value_eok": 122.05
+     "chg": 1.0,
+     "value_eok": 122.05,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 4,
+   "name": "의료기기",
+   "avgRS": 23,
+   "stocks": [
+    {
+     "code": "067630",
+     "name": "HLB생명과학",
+     "chg": 16.0,
+     "value_eok": 183.62,
+     "verified": true
+    },
+    {
+     "code": "240550",
+     "name": "동방메디컬",
+     "chg": 4.0,
+     "value_eok": 19.53
+    },
+    {
+     "code": "491000",
+     "name": "리브스메드",
+     "chg": 2.5,
+     "value_eok": 152.12
     }
    ]
   },
@@ -143,45 +144,45 @@
     {
      "code": "128940",
      "name": "한미약품",
-     "chg": 6.3,
+     "chg": 6.5,
      "value_eok": 1242.11
-    },
-    {
-     "code": "195940",
-     "name": "HK이노엔",
-     "chg": 3.5,
-     "value_eok": 118.92
     },
     {
      "code": "456160",
      "name": "지투지바이오",
-     "chg": 3.4,
-     "value_eok": 221.59
+     "chg": 2.7,
+     "value_eok": 222.38
+    },
+    {
+     "code": "195940",
+     "name": "HK이노엔",
+     "chg": 2.7,
+     "value_eok": 119.81
     }
    ]
   },
   {
    "rank": 6,
    "name": "유전자 치료제/분석",
-   "avgRS": 47,
+   "avgRS": 54,
    "stocks": [
     {
      "code": "064550",
      "name": "바이오니아",
-     "chg": 20.4,
+     "chg": 20.1,
      "value_eok": 541.22
     },
     {
      "code": "096530",
      "name": "씨젠",
-     "chg": 0.8,
-     "value_eok": 76.42
+     "chg": 0.2,
+     "value_eok": 81.29
     },
     {
-     "code": "394800",
-     "name": "쓰리빌리언",
+     "code": "006280",
+     "name": "녹십자",
      "chg": -1.5,
-     "value_eok": 53.74
+     "value_eok": 33.58
     }
    ]
   }
