@@ -357,7 +357,7 @@
         changePct: num(s.changePct),
         // 카드의 거래대금은 통합(KRX+NXT·시간외 포함) 기준을 우선한다
         valueText: vText(s),
-        valueEok: isNum(s.value) ? s.value / 1e8 : null,
+        valueEok: num(s.value) === null ? null : s.value / 1e8,   // IIFE1 헬퍼는 num() (isNum 은 4번째 IIFE 전용)
         valueNxtText: liveValueText(s.valueNxtText),
         valueBasis: s.valueBasis || null
       };
