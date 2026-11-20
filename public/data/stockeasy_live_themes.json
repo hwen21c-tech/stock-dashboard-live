@@ -3,162 +3,161 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-20 13:23:41",
- "updatedAt": "2026-11-20T13:23:38.801752+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-20 14:07:30",
+ "updatedAt": "2026-11-20T14:07:02.744730+09:00",
+ "updatedAgeMin": 0.5,
  "stale": false,
  "themeCount": 6,
  "codes": [
+  "439090",
+  "123690",
+  "214420",
   "067630",
   "491000",
   "240550",
-  "180640",
-  "128940",
-  "008930",
-  "439090",
-  "123690",
-  "114840",
   "064550",
+  "128940",
   "302440",
   "456160",
   "195940",
+  "180640",
+  "008930",
   "204620",
-  "214420",
   "069960"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "의료기기",
-   "avgRS": 15,
+   "name": "화장품",
+   "avgRS": 39,
    "stocks": [
     {
-     "code": "067630",
-     "name": "HLB생명과학",
-     "chg": 23.4,
-     "value_eok": 95.22,
+     "code": "439090",
+     "name": "마녀공장",
+     "chg": 20.0,
+     "value_eok": 1007.26,
      "verified": true
     },
     {
-     "code": "491000",
-     "name": "리브스메드",
-     "chg": 5.6,
-     "value_eok": 108.24,
+     "code": "123690",
+     "name": "한국화장품",
+     "chg": 4.0,
+     "value_eok": 408.54,
      "verified": true
     },
     {
-     "code": "240550",
-     "name": "동방메디컬",
-     "chg": 4.8,
-     "value_eok": 15.85,
+     "code": "214420",
+     "name": "토니모리",
+     "chg": 3.6,
+     "value_eok": 42.2,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "밸류업",
-   "avgRS": 88,
+   "name": "의료기기",
+   "avgRS": 15,
    "stocks": [
     {
-     "code": "180640",
-     "name": "한진칼",
-     "chg": 11.1,
-     "value_eok": 2219.67,
+     "code": "067630",
+     "name": "HLB생명과학",
+     "chg": 26.5,
+     "value_eok": 142.37,
      "verified": true
     },
     {
-     "code": "128940",
-     "name": "한미약품",
-     "chg": 7.0,
-     "value_eok": 936.8,
+     "code": "491000",
+     "name": "리브스메드",
+     "chg": 4.5,
+     "value_eok": 121.94,
      "verified": true
     },
     {
-     "code": "008930",
-     "name": "한미사이언스",
-     "chg": 1.9,
-     "value_eok": 78.05,
+     "code": "240550",
+     "name": "동방메디컬",
+     "chg": 4.0,
+     "value_eok": 17.04,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "화장품",
-   "avgRS": 42,
-   "stocks": [
-    {
-     "code": "439090",
-     "name": "마녀공장",
-     "chg": 14.5,
-     "value_eok": 939.6,
-     "verified": true
-    },
-    {
-     "code": "123690",
-     "name": "한국화장품",
-     "chg": 3.6,
-     "value_eok": 395.43,
-     "verified": true
-    },
-    {
-     "code": "114840",
-     "name": "아이패밀리에스씨",
-     "chg": 2.2,
-     "value_eok": 10.8,
-     "verified": true
-    }
-   ]
-  },
-  {
-   "rank": 4,
    "name": "백신·진단·방역",
    "avgRS": 48,
    "stocks": [
     {
      "code": "064550",
      "name": "바이오니아",
-     "chg": 13.4,
-     "value_eok": 259.06,
+     "chg": 19.9,
+     "value_eok": 396.74,
      "verified": true
     },
     {
      "code": "128940",
      "name": "한미약품",
      "chg": 7.0,
-     "value_eok": 936.8
+     "value_eok": 1036.14,
+     "verified": true
     },
     {
      "code": "302440",
      "name": "SK바이오사이언스",
-     "chg": 0.8,
-     "value_eok": 22.33
+     "chg": 0.4,
+     "value_eok": 25.45,
+     "verified": true
+    }
+   ]
+  },
+  {
+   "rank": 4,
+   "name": "비만치료제",
+   "avgRS": 51,
+   "stocks": [
+    {
+     "code": "456160",
+     "name": "지투지바이오",
+     "chg": 7.5,
+     "value_eok": 157.3,
+     "verified": true
+    },
+    {
+     "code": "128940",
+     "name": "한미약품",
+     "chg": 7.0,
+     "value_eok": 1036.14
+    },
+    {
+     "code": "195940",
+     "name": "HK이노엔",
+     "chg": 5.3,
+     "value_eok": 86.68
     }
    ]
   },
   {
    "rank": 5,
-   "name": "비만치료제",
-   "avgRS": 51,
+   "name": "밸류업",
+   "avgRS": 88,
    "stocks": [
+    {
+     "code": "180640",
+     "name": "한진칼",
+     "chg": 9.5,
+     "value_eok": 2346.35
+    },
     {
      "code": "128940",
      "name": "한미약품",
      "chg": 7.0,
-     "value_eok": 936.8
+     "value_eok": 1036.14
     },
     {
-     "code": "456160",
-     "name": "지투지바이오",
-     "chg": 5.2,
-     "value_eok": 81.62
-    },
-    {
-     "code": "195940",
-     "name": "HK이노엔",
-     "chg": 4.9,
-     "value_eok": 68.21
+     "code": "008930",
+     "name": "한미사이언스",
+     "chg": 1.4,
+     "value_eok": 91.83
     }
    ]
   },
@@ -170,20 +169,20 @@
     {
      "code": "204620",
      "name": "글로벌텍스프리",
-     "chg": 14.9,
-     "value_eok": 234.95
+     "chg": 13.1,
+     "value_eok": 262.65
     },
     {
      "code": "214420",
      "name": "토니모리",
-     "chg": 2.2,
-     "value_eok": 40.15
+     "chg": 3.6,
+     "value_eok": 42.2
     },
     {
      "code": "069960",
      "name": "현대백화점",
-     "chg": 2.1,
-     "value_eok": 137.92
+     "chg": 0.9,
+     "value_eok": 154.45
     }
    ]
   }
