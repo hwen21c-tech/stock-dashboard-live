@@ -1386,6 +1386,18 @@
   'use strict';
 
   var API_URL = '/api/live-briefing';
+  /* 통합 대금 표기 — '612억(NXT 457억)' (NXT 없으면 '612억') · 값이 없으면 null.
+     · API 의 valueDispText(통합+NXT 병기) → valueIntegText(통합) → valueText 순으로 고른다.
+     · 이 파일은 IIFE 가 여러 개라 렌더 블록마다 같은 도우미를 둔다(스코프 분리). */
+  function vText(o) {
+    if (!o) return null;
+    var v = o.valueDispText || o.valueIntegText || o.valueText;
+    if (v === null || v === undefined) return null;
+    var t = String(v).trim();
+    if (!t || t === '-' || t === '—' || t === '0') return null;
+    return t;
+  }
+
   var state = {
     deepHtml: null,
     loading: false,
@@ -1722,6 +1734,18 @@
   'use strict';
 
   var TABS_URL = '/api/tabs-live';
+  /* 통합 대금 표기 — '612억(NXT 457억)' (NXT 없으면 '612억') · 값이 없으면 null.
+     · API 의 valueDispText(통합+NXT 병기) → valueIntegText(통합) → valueText 순으로 고른다.
+     · 이 파일은 IIFE 가 여러 개라 렌더 블록마다 같은 도우미를 둔다(스코프 분리). */
+  function vText(o) {
+    if (!o) return null;
+    var v = o.valueDispText || o.valueIntegText || o.valueText;
+    if (v === null || v === undefined) return null;
+    var t = String(v).trim();
+    if (!t || t === '-' || t === '—' || t === '0') return null;
+    return t;
+  }
+
   var CHART_API_URL = '/api/stock-chart';
   var POLL_MS = 30000;
   var AFTER_MIN_VALUE = 10 * 1e8; // 3번 탭 '거돈대금 10억↑만 보기' 기준(10억 원)
