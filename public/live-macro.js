@@ -392,7 +392,8 @@
     }
     var sub = document.getElementById('analysisTimelineSub');
     if (sub && tdLabel) {
-      var stxt = '직전 거래일(' + tdLabel + ') 정시 브리핑 전문 스냅샷 · 위의 ⚡ 지금 이 순간 카드가 실시간 값입니다 · 카드 터치 시 전문 팝업';
+      var basisWord = (td === t.date) ? '오늘(' : '직전 거래일(';
+      var stxt = basisWord + tdLabel + ') 정시 브리핑 전문 스냅샷 · 위의 ⚡ 지금 이 순간 카드가 실시간 값입니다 · 카드 터치 시 전문 팝업';
       if (sub.textContent !== stxt) {
         sub.textContent = stxt;
         applied += 1;
@@ -406,7 +407,13 @@
       var rtitle = isWeekend ? '⏳ 다음 정규 브리핑 안내' : '⏳ 오늘 남은 정규 브리핑 안내';
       var rtext = isWeekend
         ? '오늘(' + mdLabel(t.date) + ')은 주말 휴장입니다. 다음 정규 브리핑은 직전 거래일 종가·주말 뉴스를 정리한 뒤 평일 장전(07:30)부터 타임라인에 자동 등록됩니다.'
-        : '오늘(' + mdLabel(t.date) + ') 정규 브리핑은 16:00 장마감 총평 · 17:30/19:00/20:00 애프터마켓 결산 · 22:00/23:59 야간선물 순서로 해당 시각에 타임라인에 자동 등록됩니다.';
+        : (function () {
+            var slotList = ['07:30','08:50','10:00','11:00','13:00','14:00','15:00','16:00','17:30','19:00','19:30','20:00','22:00','23:59'];
+            var nowHM = (t.hh < 10 ? '0' : '') + t.hh + ':' + (t.mm < 10 ? '0' : '') + t.mm;
+            var rest = slotList.filter(function (s) { return s > nowHM; });
+            if (!rest.length) return '오늘(' + mdLabel(t.date) + ') 정규 브리핑은 모두 마감됐습니다. 다음 정규 브리핑은 다음 평일 07:30 장전부터 타임라인에 자동 등록됩니다.';
+            return '오늘(' + mdLabel(t.date) + ') 남은 정규 브리핑은 ' + rest.join(' · ') + ' 순서로 해당 시각에 타임라인에 자동 등록됩니다.';
+          })();
       if (rt.textContent !== rtitle) { rt.textContent = rtitle; applied += 1; }
       if (rx.textContent !== rtext) { rx.textContent = rtext; applied += 1; }
     }
