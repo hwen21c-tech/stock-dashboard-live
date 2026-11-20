@@ -3668,7 +3668,10 @@
    *  · 강세 테마·거래대금·실시간 검색순위를 한 줄에 모아, 직장인이 잠깐 봐도
    *    '지금 강한 섹터'와 '그 안에서 대금·검색이 붙는 종목'을 바로 집게 한다.
    *  · 값은 /api/tabs-live 의 themes(top4 평균·합산 대금·검색 뱃지)만 쓴다 — 추정 없음.
+   *  · 종목 1·2·3위 후보는 **통합 거래대금 100억↑만** (2026-11-20 사용자 확정).
+   *    등락률만 높은 초소형주(예: 대금 2억 +30%)가 log 대금 점수 때문에 1위로 올라오는 것을 막는다.
    * ==========================================================================*/
+  var WATCH_MIN_EOK = 100;   // 100억 미만 잡주 제외 하한(억 단위)
   function watchScoreTheme(t) {
     var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : t.avgPct);
     var sumEok = isNum(t.sumValue) ? t.sumValue / 1e8 : 0;
@@ -3758,6 +3761,7 @@
       (t.stocks || []).forEach(function (s) {
         if (!s || !s.code) return;
         var row = watchScoreStock(s, sc);
+        if (!(row.valueEok >= WATCH_MIN_EOK)) return;   // 통합 거래대금 100억 미만 제외
         row.searchRank = rankOf[s.code] || null;
         row.themeName = t.name || '';
         stocks.push(row);
@@ -3785,7 +3789,7 @@
       '<div class="watch-col"><div class="watch-col-head">🔥 지금 봐야 할 섹터 <span>1 · 2 · 3위</span></div>' +
         (leftHtml || '<div class="watch-empty">실시간 테마 데이터 없음</div>') + '</div>' +
       '<div class="watch-col"><div class="watch-col-head">🎯 지금 봐야 할 종목 <span>1 · 2 · 3위</span></div>' +
-        (rightHtml || '<div class="watch-empty">실시간 종목 데이터 없음</div>') + '</div>';
+        (rightHtml || '<div class="watch-empty">대금 100억↑ 종목 없음</div>') + '</div>';
 
     if (host.getAttribute('data-sig') !== html) {
       host.innerHTML = html;
@@ -3796,7 +3800,7 @@
     if (box) {
       var sub = box.querySelector('.watch-sub');
       if (sub) {
-        var txt = '강세 테마 + 거래대금 + 실시간 검색 종합 · ⚡ ' + stamp + ' 갱신';
+        var txt = '강세 테마 + 거래대금 + 실시간 검색 종합 · 대금 100억↑ · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== txt) sub.textContent = txt;
       }
       box.setAttribute('data-live', '1');
