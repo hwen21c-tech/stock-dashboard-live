@@ -237,6 +237,19 @@ python3 scripts/rescan_strategies.py --check          # 네트워크 없이 현�
 - 종목명 검색: `ac.finance.naver.com/ac` → `m.stock.naver.com/front-api/search` → 내장 별칭표
 - 쇼핑: `openapi.naver.com/v1/search/shop.json` (**NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 필요**)
 
+## API 함수 수 제한 (Vercel Hobby 12개)
+
+**`api/` 안의 `.js` 파일은 12개를 넘길 수 없다.** 넘기면 Vercel이 빌드를 `Deployment has failed`로 실패시키고 라이브는 옛 버전에 머문다
+(2026-11-20 20:12 ~ 11-21 08:08 실제 발생 — `api/breadth.js` 13번째 파일 때문).
+
+현재 12개: `content-ai` · `dart-live` · `econ-calendar` · `index-chart` · `live-briefing` · `macro-live` · `picks-search` · `stock-chart` · `stock-live` · `stock-trend` · `tabs-live` · `tts`
+
+새 엔드포인트가 필요하면 **새 파일을 만들지 말고** 기존 함수에 `?mode=` 분기를 붙이고 `vercel.json` `rewrites` 로 옛 경로를 살린다.
+
+- 예) 시장 폭(상승/하락 종목 수)은 `lib/breadth.js` 수집 모듈 + `api/macro-live.js` 의 `mode=breadth` 분기가 담당하고,
+  `vercel.json` 이 `GET /api/breadth` → `/api/macro-live?mode=breadth` 로 rewrite 한다(경로·응답 그대로 유지).
+- 배포 전 확인: `python3 scripts/check_api_count.py` (함수 수 + rewrite 목적지 존재 검사)
+
 ## 로컬 실행 · 검증
 
 ```bash
@@ -245,6 +258,7 @@ node test_local.mjs           # 실제 네이버·야후 응답으로 110개 항
 node test_e2e_extra.mjs       # 헤드리스 E2E: 1·2·3·6·8·9번 탭 + 폴드8(884px) 넘침 + 콘솔·HTTP 오류 0
 node dev_server.mjs           # http://localhost:8787 (public/ 정적 + /api/* 핸들러 그대로)
 python3 scripts/check_js.py   # node 가 없을 때의 동일 범위 검사(esprima) — 인라인 <script>·DIV 균형 포함
+python3 scripts/check_api_count.py  # api/ 함수 12개 한도 + rewrite 목적지 검사
 python3 scripts/dev_server.py # node 없이 로컬 미리보기(정적 + /api/* 는 라이브 Vercel 프록시)
 ```
 
