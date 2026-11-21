@@ -1614,6 +1614,18 @@ const SCHEMA_REWRITE = {
   required: ['body'],
 };
 
+const SCHEMA_NAVER = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '네이버 블로그용 제목 — 28자 이내, 검색어를 앞쪽에' },
+    body: { type: 'string', description: '네이버 블로그용으로 다시 쓴 완성 본문 (마크다운 · 링크·사진 태그 없이)' },
+    tags: { type: 'array', description: '네이버 검색 유입용 해시태그 10개 (# 없이)', items: { type: 'string' } },
+    changed: { type: 'array', description: '원문과 실제로 다르게 쓴 점 2~4개', items: { type: 'string' } },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['title', 'body'],
+};
+
 const SCHEMA_HUMANIZE = {
   type: 'object',
   properties: {
@@ -2345,6 +2357,39 @@ function promptRewrite(b) {
   };
 }
 
+/* 네이버 블로그용 요약본 — 티스토리 원고를 '결이 다른 글'로 다시 쓴다.
+   같은 글을 두 채널에 그대로 올리면 중복 문서로 노출이 떨어질 수 있어
+   도입부·소제목 구성·문장 길이를 실제로 바꾸고, 분량은 55~75%로 줄인다. */
+function promptNaverNote(b) {
+  const user = [
+    b.topic ? `글 주제: ${s(b.topic, 200)}` : '',
+    `\n[티스토리 원고 — 이 글을 네이버용 요약본으로 다시 쓴다]\n"""${s(b.body, 14000)}"""`,
+    banLine(b.banPhrases),
+    `
+[해야 할 일 — 🟢 네이버용 톤 변환]
+같은 소재를 네이버 블로그에 올릴 '결이 다른 요약본'으로 다시 쓴다. 원문을 그대로 옮기면 두 채널 모두 노출이 떨어질 수 있으니 문장·도입부·소제목 구성을 실제로 바꾼다.
+1) 첫 문단: 인사 + 왜 이 글을 쓰는지 1~2문장. "오늘은 ~를 짧게 정리해 볼게요"처럼 말하듯 시작한다. 원문 첫 문단을 그대로 쓰지 않는다.
+2) 소제목: 원문 소제목을 복사하지 말고 4~6개로 새로 묶는다. 질문형이나 말하듯("그래서 얼마나 빠졌는데?")으로 달고, 순서도 읽기 좋게 다시 짠다.
+3) 분량: 원문의 55~75%. 한 문단은 2~4문장, 한 문장은 40자 안팎으로 끊는다. "~습니다"와 "~요/~더라고요"를 섞는다.
+4) 숫자·날짜·업체명·종목명·[확인 필요]는 절대 바꾸거나 새로 만들지 않는다. 원문에 없는 사실·사례·수치를 추가하면 실패다.
+5) 1인칭 경험(가봤다·써봤다·내돈내산)은 원문에 있을 때만 남기고 새로 만들지 않는다.
+6) "[📸 사진: ...]" 태그와 링크·제휴 고지 줄은 넣지 않는다(네이버에는 사진을 직접 올리고, 링크는 앱이 따로 붙인다).
+7) 맨 끝에 "한 줄 요약" 한 문장을 둔다.
+8) tags 에는 네이버 검색 유입용 해시태그 10개를 # 없이 넣는다(지역·대상·상황 키워드 포함).
+9) 마크다운 본문만 출력한다. 머리말·설명·인사 없이.
+[출력] title · body · tags · changed · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: `너는 같은 소재를 채널에 맞게 다시 쓰는 한국어 블로그 작가다. 네이버 블로그 독자에게 말 걸듯 친근한 구어체로, 원문의 사실은 그대로 두고 구성과 문장만 새로 짠다. ${VOICE} ${HONESTY}`,
+    user,
+    schema: SCHEMA_NAVER,
+    maxTokens: 3600,
+    temperature: 0.8,
+  };
+}
+
 const AI_TICS = [
   '~에 대해 알아보겠습니다', '알아보겠습니다', '결론적으로', '다양한 측면에서', '여러 측면에서',
   '살펴보겠습니다', '살펴보도록 하겠습니다', '정리해 보겠습니다', '정리해보자면', '무엇보다도',
@@ -3063,6 +3108,29 @@ function normRewrite(data, banPhrases) {
   };
 }
 
+function normNaverNote(data, banPhrases) {
+  const body = s(data && data.body, 24000);
+  const title = s(data && data.title, 120);
+  const tags = arr(data && data.tags, 14).map((x) => s(x, 30).replace(/^#/, '')).filter(Boolean);
+  const changed = arr(data && data.changed, 6).map((x) => s(x, 140)).filter(Boolean);
+  const warnings = arr(data && data.warnings, 8).map((x) => s(x, 200)).filter(Boolean);
+  const banHits = scanBans(body, banPhrases);
+  if (!body) warnings.push('본문이 비어 있습니다. 다시 시도해 주세요.');
+  if (!tags.length) warnings.push('해시태그가 비어 왔습니다 — [🏷️ 태그 10개 복사]로 채울 수 있습니다.');
+  return {
+    title,
+    body,
+    tags,
+    changed,
+    warnings,
+    banHits,
+    chars: body.length,
+    needsCheck: (body.match(/\[확인 필요\]/g) || []).length,
+    headings: (body.match(/^##\s+/gm) || []).length,
+    linkLines: (body.match(/https?:\/\//g) || []).length,
+  };
+}
+
 function normHumanize(data, banPhrases) {
   const body = s(data && data.body, 24000);
   const removed = arr(data && data.removed, 12).map((x) => s(x, 80)).filter(Boolean);
@@ -3261,6 +3329,7 @@ const GEN_ACTIONS = [
   'youtube_analyze',
   'blog_to_shorts',
   'rewrite_tone',
+  'naver_note',
   'humanize',
   'multi_use',
   'seo_tags',
@@ -3401,6 +3470,12 @@ module.exports = async function handler(req, res) {
       return send(res, 400, { ok: false, reason: 'unknown_tone', message: 'tone 은 honest / expert / warm 중 하나입니다.' });
     }
     prompt = promptRewrite({ ...body, banPhrases, body: draft, tone });
+  } else if (action === 'naver_note') {
+    const draft = s(body.body, 16000);
+    if (draft.length < 120) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '네이버용으로 바꿀 완성 본문이 필요합니다(120자 이상).' });
+    }
+    prompt = promptNaverNote({ ...body, banPhrases, body: draft });
   } else if (action === 'humanize') {
     const draft = s(body.body, 16000);
     if (draft.length < 80) {
@@ -3723,6 +3798,7 @@ module.exports = async function handler(req, res) {
   else if (action === 'video_plan') result = normVideo(data, arr(body.clips, 6));
   else if (action === 'youtube_analyze') result = normYt(data);
   else if (action === 'rewrite_tone') result = normRewrite(data, banPhrases);
+  else if (action === 'naver_note') result = normNaverNote(data, banPhrases);
   else if (action === 'humanize') result = normHumanize(data, banPhrases);
   else if (action === 'multi_use') result = normMulti(data, banPhrases);
   else if (action === 'seo_tags') result = normSeo(data);
@@ -3745,6 +3821,7 @@ module.exports = async function handler(req, res) {
     (action === 'blog_to_shorts' && !(result.scenes || []).length) ||
     (action === 'youtube_analyze' && !((result.shorts || {}).scenes || []).length) ||
     (action === 'rewrite_tone' && !s(result.body, 10)) ||
+    (action === 'naver_note' && !s(result.body, 10)) ||
     (action === 'humanize' && !s(result.body, 10)) ||
     (action === 'multi_use' && !(((result.insta || {}).lines) || []).length) ||
     (action === 'seo_tags' && !((result.hashtags || []).length || (result.keywords || []).length)) ||
