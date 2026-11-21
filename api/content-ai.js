@@ -2076,6 +2076,7 @@ function styleBlock(st) {
   const struct = arr(st.structure, 12).map((x) => `- ${s(x, 90)}`).join('\n');
   const symbols = arr(st.symbols, 10).map((x) => `- ${s(x, 130)}`).join('\n');
   const rules = arr(st.rules, 8).map((x) => `- ${s(x, 160)}`).join('\n');
+  const blocks = arr(st.blocks, 12).map((x) => `- ${s(x, 240)}`).join('\n');
   return [
     `\n[블로그 양식 — 「${name}」 스타일 · 구조·호흡·기호·말투만 따른다]`,
     st.who ? `- 이 글이 왜 읽히는가: ${s(st.who, 200)}` : '',
@@ -2084,6 +2085,7 @@ function styleBlock(st) {
     symbols ? `- 쓰는 기호·박스(본문에 실제로 넣는다):\n${symbols}` : '',
     st.voice ? `- 말투 DNA: ${s(st.voice, 320)}` : '',
     rules ? `- 지킬 규칙:\n${rules}` : '',
+    blocks ? `- 반드시 넣는 블록(아래 문구로 시작하는 '독립된 한 줄'로 쓴다 — 그 줄이 서식 박스로 바뀐다):\n${blocks}` : '',
     '- 저작권: 이 사람의 실제 문장을 옮기지 않는다. 뼈대·호흡·기호·말투만 내 글로 다시 쓴다. 글에 이 사람 이름·블로그 이름을 쓰지 않는다.',
   ]
     .filter(Boolean)
