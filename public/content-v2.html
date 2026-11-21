@@ -12844,6 +12844,18 @@ var CSVoice = (function () {
     if (i > -1) t = t.slice(0, i).replace(/\n*---\s*$/, '\n');
     /* 베껴 온 면책 문구도 걷어낸다(아래에서 딱 한 번 붙는다) */
     t = t.split('\n').filter(function(line){ return String(line).trim() !== NAVER_DISCLAIMER; }).join('\n');
+    /* 소제목이 하나도 없이 "1. … 2. …" 로만 오면 번호 줄을 소제목으로 승격(2개 이상일 때만) */
+    if (!/^#{2,4}\s+/m.test(t)){
+      var numLines = t.split('\n').filter(function(line){ return /^\d+\.\s+\S/.test(String(line).trim()); });
+      if (numLines.length >= 2){
+        t = t.split('\n').map(function(line){
+          var s = String(line).trim();
+          return /^\d+\.\s+\S/.test(s) ? '## ' + s : line;
+        }).join('\n');
+      }
+    }
+    /* 시그니처 예시 줄은 소제목으로 고정(모델이 ## 를 빼고 보내는 일이 있다) */
+    t = t.replace(/^[ \t>*]*(?:\*\*)?💡\s*예를 들면 이런 상황이에요(?:\*\*)?[ \t]*$/gm, '## 💡 예를 들면 이런 상황이에요');
     var lines = t.split('\n');
     while (lines.length && !String(lines[lines.length - 1]).trim()) lines.pop();
     while (lines.length && /^(#[^\s#]+\s*)+$/.test(String(lines[lines.length - 1]).trim())) lines.pop();
