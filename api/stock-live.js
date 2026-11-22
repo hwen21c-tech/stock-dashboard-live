@@ -1154,7 +1154,7 @@ function themeSignal(ctx) {
     return {
       key: 'green',
       label: '🟢 주요 주도테마',
-      note: '관제탑 직전 거래일 주도 테마 ' + prev + '위 · 노출 종목',
+      note: '직전 거래일 주도 테마 Top8 ' + prev + '위 · 노출 종목',
       basis: 'prev-day-top8',
     };
   }
