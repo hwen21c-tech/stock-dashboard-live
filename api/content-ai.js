@@ -4022,7 +4022,7 @@ function lbPrompt(f, phaseLabel, p, nowLabel) {
    ====================================================================== */
 
 const SI_DEADLINE_MS = 22000;
-const SI_MAX_LINES = 3;
+const SI_MAX_LINES = 4;
 
 function siStr(v, max) {
   const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
@@ -4094,6 +4094,24 @@ function siSanitizeFacts(raw) {
       지정: siStr(al['지정'], 16),
       거래정지: al['거래정지'] === true ? true : al['거래정지'] === false ? false : null,
     },
+    특징주: list(f['특징주'], 4)
+      .map((x) => ({
+        날짜: siStr(x && x['날짜'], 10),
+        제목: siStr(x && x['제목'], 70),
+        등락률: siNum(x && x['등락률']),
+        거래대금억: siNum(x && x['거래대금억']),
+        현재대비: siNum(x && x['현재대비']),
+      }))
+      .filter((x) => x['제목']),
+    과거파동: list(f['과거파동'], 2)
+      .map((x) => ({
+        시작: siStr(x && x['시작'], 10),
+        고점: siStr(x && x['고점'], 10),
+        상승률: siNum(x && x['상승률']),
+        최대거래대금억: siNum(x && x['최대거래대금억']),
+        고점대비현재: siNum(x && x['고점대비현재']),
+      }))
+      .filter((x) => x['고점']),
     상태: siStr(f['상태'], 30),
   };
 }
@@ -4131,6 +4149,25 @@ function siRuleLines(f) {
     .join(' / ');
   if (whyLine) lines.push(whyLine + (same === true ? ' — 같은 방향' : same === false ? ' — 이 종목만 반대 방향' : '') + ' (사실 대조)' );
 
+  /* 과거 이력 — [특징주] 재료일과 큰 파동을 '그때 대비 지금'으로만 사실 표기 */
+  const pastBits = [];
+  const cat = (f['특징주'] || [])[0];
+  if (cat && cat['제목']) {
+    pastBits.push(
+      '과거 [특징주] ' + (cat['날짜'] || '') + ' "\'' + cat['제목'] + '\'"' +
+        (cat['등락률'] != null ? ' (그날 ' + lbPct(cat['등락률']) + ')' : ''),
+    );
+  }
+  const wave = (f['과거파동'] || [])[0];
+  if (wave && wave['고점대비현재'] != null) {
+    pastBits.push(
+      (wave['시작'] || '') + '~' + (wave['고점'] || '') + ' ' +
+        (wave['상승률'] != null ? lbPct(wave['상승률']) + ' ' : '') +
+        '파동 고점 대비 지금 ' + lbPct(wave['고점대비현재']),
+    );
+  }
+  if (pastBits.length) lines.push(pastBits.join(' · ') + ' (과거 실측 대비)');
+
   const news = (f['뉴스'] || [])[0];
   const tail = [];
   if (news) tail.push('최근 재료: ' + news['제목']);
@@ -4157,7 +4194,8 @@ function siPrompt(f) {
       '\n\n위 FACTS 만 근거로 아래 3줄을 써라(쓸 수 없는 줄은 빼고 2줄만 써도 된다).\n' +
       '· 1줄: 지금 이 종목이 어디에 있는지 — 가격·등락률·시가 위/아래·거래대금 중 FACTS 에 있는 값.\n' +
       '· 2줄: 왜 그렇게 움직였는지 — FACTS 의 미장(선물·SOX 등)·소속 테마 방향·최근 뉴스·공시 중에서 골라 연결. 인과를 단정하지 말고 "~여파로 보입니다/~와 같은 방향입니다" 로.\n' +
-      '· 3줄: 지금 확인할 것 한 가지 — "확인:" 으로 시작해 FACTS 의 공시·경보·52주 위치·거래대금 중에서 하나만.',
+      '· 3줄: 지금 확인할 것 한 가지 — "확인:" 으로 시작해 FACTS 의 공시·경보·52주 위치·거래대금 중에서 하나만.\n' +
+      '· 4줄(FACTS 의 특징주·과거파동이 있을 때만): 과거 어떤 재료([특징주] 제목)로 움직였고 그 뒤 파동이 어느 정도였는지, 그때 고점·재료일 대비 지금 주가 자리가 높은지 낮은지를 FACTS 수치로 비교하고, 지금 소속 테마·미장 방향에서 그 재료가 다시 먹힐 자리인지 관심도를 "~로 보입니다" 로만 적어라. 과거 재료를 지금 재료인 것처럼 쓰지 마라.',
     temperature: 0.3,
     maxTokens: 500,
     fastFirst: true,

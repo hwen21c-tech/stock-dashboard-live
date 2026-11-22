@@ -13,6 +13,8 @@
 const {
   NAVER_HEADERS,
   fetchJson,
+  fetchBuffer,
+  decodeEucKr,
   parseNum,
   parseKoreanMoney,
   formatKoreanMoney,
@@ -1486,6 +1488,880 @@ async function handleStockTheme(res, q, fresh) {
   return sendJson(res, 200, body, THEME_CACHE_CONTROL);
 }
 
+/* ==========================================================================
+ * 🗺️ 테마 히트맵 (?mode=theme_map) · 테마 구성종목 주요순 (?mode=theme_members)
+ * 🔎 테마 이름 찾기 (?mode=theme_search)
+ * --------------------------------------------------------------------------
+ *  · 구성종목·테마 평균은 네이버 증권 테마 상세 실측(/api/stocks/theme/{no})을 그대로 쓴다.
+ *    - groupInfo.changeRate = 테마 전체 구성 평균 등락률(네이버 계산값)
+ *    - stocks[].accumulatedTradingValue = 그 종목 거래대금(단위 백만원) → /100 하면 '억'
+ *  · 값을 만들지 않는다 — 실패한 테마는 목록에서 빼고 errors 에 남긴다.
+ *  · Vercel Hobby 함수 12개 한도 때문에 새 api/*.js 를 만들지 않고 이 파일의 mode 로 붙인다.
+ * ========================================================================== */
+const THEME_MAP_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=180';
+const THEME_MAP_TTL_MS = 60000;
+const themeMapCache = new Map();
+
+/* 오늘의 테마맵에 세울 대표 테마 — 네이버 테마 번호는 scripts/build_theme_membership.py 산출물 기준.
+ *  (화면에 보이는 이름표는 label, 실제 테마명은 네이버 groupInfo.name 을 그대로 쓴다) */
+const THEME_MAP_PICK = [
+  { no: 155, label: '반도체' },
+  { no: 12, label: '반도체 장비' },
+  { no: 307, label: '시스템반도체' },
+  { no: 64, label: '2차전지' },
+  { no: 446, label: '2차전지 소재' },
+  { no: 241, label: '바이오시밀러' },
+  { no: 172, label: '제약' },
+  { no: 175, label: '의료기기' },
+  { no: 110, label: '화장품' },
+  { no: 144, label: '방산' },
+  { no: 30, label: '조선' },
+  { no: 123, label: '전력설비' },
+  { no: 205, label: '원전' },
+  { no: 505, label: '로봇' },
+  { no: 587, label: '피지컬AI' },
+  { no: 42, label: '게임' },
+  { no: 128, label: '엔터' },
+  { no: 571, label: '밸류업' },
+  { no: 159, label: '자동차' },
+  { no: 200, label: '우주항공' },
+  { no: 165, label: '은행' },
+  { no: 151, label: '증권' },
+  { no: 136, label: '유통' },
+  { no: 191, label: '태양광' },
+];
+
+/** 동시 실행 수를 제한한 map — 네이버 응답을 한꺼번에 수십 개 때리지 않는다 */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= items.length) return;
+      try {
+        out[i] = await fn(items[i], i);
+      } catch (e) {
+        out[i] = { __error: String((e && e.message) || e) };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}
+
+/** 테마 상세 → { no, name, changeRate, riseCount, fallCount, stockCount, description, stocks[] } */
+async function fetchThemeDetail(no) {
+  const d = await fetchJson(`${THEME_DETAIL_URL}${no}?page=1&pageSize=100`, {
+    headers: NAVER_HEADERS,
+    timeout: 7000,
+  });
+  const g = (d && d.groupInfo) || {};
+  const stocks = ((d && d.stocks) || [])
+    .map((s) => {
+      const valueMil = parseNum(s.accumulatedTradingValue); // 백만원 단위
+      return {
+        code: s.itemCode || null,
+        name: s.stockName || null,
+        price: parseNum(s.closePrice),
+        changePct: parseNum(s.fluctuationsRatio),
+        valueEok: valueMil == null ? null : Math.round(valueMil) / 100, // 백만원 → 억
+        market: (s.stockExchangeType && s.stockExchangeType.name) || null,
+        tradedAt: s.localTradedAt || null,
+      };
+    })
+    .filter((s) => s.code && s.name);
+  return {
+    no: parseNum(g.no) || Number(no),
+    name: String(g.name || '').trim() || null,
+    changeRate: parseNum(g.changeRate),
+    riseCount: parseNum(g.riseCount),
+    fallCount: parseNum(g.fallCount),
+    stockCount: parseNum(g.totalCount) || stocks.length,
+    description: (d && d.themeDescription) || null,
+    marketStatus: (d && d.marketStatus) || null,
+    stocks,
+  };
+}
+
+/** 테마 묶음 요약 — 거래대금 많은 종목부터, 타일에는 8개까지만 싣는다 */
+function summarizeTheme(detail, label) {
+  const stocks = detail.stocks.slice();
+  const withValue = stocks.filter((s) => s.valueEok != null);
+  const valueSum = withValue.reduce((a, s) => a + s.valueEok, 0);
+  const quoted = stocks.filter((s) => s.changePct != null);
+  const byValue = stocks
+    .slice()
+    .sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
+  const pcts = quoted.map((s) => s.changePct).sort((a, b) => b - a);
+  const top4 = pcts.slice(0, 4);
+  return {
+    no: detail.no,
+    name: detail.name,
+    label: label || detail.name,
+    avgPct: detail.changeRate != null ? detail.changeRate : quoted.length
+      ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2))
+      : null,
+    top4Avg: top4.length ? Number((top4.reduce((a, b) => a + b, 0) / top4.length).toFixed(2)) : null,
+    valueEok: withValue.length ? Math.round(valueSum) : null,
+    valueCount: withValue.length,
+    riseCount: detail.riseCount,
+    fallCount: detail.fallCount,
+    stockCount: detail.stockCount,
+    membersShown: byValue.length,
+    stocks: byValue.slice(0, 8).map((s) => ({
+      code: s.code,
+      name: s.name,
+      changePct: s.changePct,
+      valueEok: s.valueEok == null ? null : Math.round(s.valueEok),
+      price: s.price,
+    })),
+  };
+}
+
+async function handleThemeMap(res, fresh) {
+  const generatedAtKst = kstLabel(new Date());
+  const key = 'theme-map';
+  if (!fresh) {
+    const hit = themeMapCache.get(key);
+    if (hit && Date.now() - hit.at < THEME_MAP_TTL_MS) {
+      res.setHeader('X-Cache', 'HIT-memory');
+      return sendJson(res, 200, { ...hit.value, cached: true }, THEME_MAP_CACHE_CONTROL);
+    }
+  }
+  const errors = [];
+  const settled = await mapLimit(THEME_MAP_PICK, 6, (p) => fetchThemeDetail(p.no));
+  const tiles = [];
+  let tradeDate = null;
+  let marketStatus = null;
+  settled.forEach((r, i) => {
+    const pick = THEME_MAP_PICK[i];
+    if (!r || r.__error) {
+      errors.push(`${pick.label}(${pick.no}): ${(r && r.__error) || '빈 응답'}`);
+      return;
+    }
+    if (!r.name || !r.stocks.length) {
+      errors.push(`${pick.label}(${pick.no}): 구성종목 없음`);
+      return;
+    }
+    if (!tradeDate) {
+      const withAt = r.stocks.find((s) => s.tradedAt);
+      if (withAt) tradeDate = String(withAt.tradedAt).slice(0, 10);
+    }
+    if (!marketStatus && r.marketStatus) marketStatus = r.marketStatus;
+    tiles.push(summarizeTheme(r, pick.label));
+  });
+  tiles.sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
+
+  const body = {
+    ok: tiles.length > 0,
+    mode: 'theme-map',
+    marketStatus,
+    tradeDate,
+    asOf: generatedAtKst,
+    basisLabel: tradeDate
+      ? `직전 거래일(${tradeDate}) 네이버 테마 실측 · 타일 크기=구성 합산 거래대금`
+      : '네이버 테마 실측',
+    themeTotal: THEME_MAP_PICK.length,
+    tiles,
+    errors,
+    generatedAt: new Date().toISOString(),
+    generatedAtKst,
+  };
+  if (tiles.length) {
+    themeMapCache.set(key, { at: Date.now(), value: body });
+    if (themeMapCache.size > 40) {
+      const oldest = themeMapCache.keys().next();
+      if (!oldest.done) themeMapCache.delete(oldest.value);
+    }
+  }
+  res.setHeader('X-Cache', 'MISS');
+  return sendJson(res, 200, body, THEME_MAP_CACHE_CONTROL);
+}
+
+/** ?mode=theme_members&no=155 — 그 테마 구성종목 전부를 거래대금 주요순으로 */
+async function handleThemeMembers(res, q, fresh) {
+  const generatedAtKst = kstLabel(new Date());
+  const no = parseNum(q.no);
+  if (!no) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, mode: 'theme-members', reason: 'bad_no', message: 'no=테마번호가 필요합니다.', stocks: [], generatedAtKst },
+      'no-store',
+    );
+  }
+  const key = `theme-members:${no}`;
+  if (!fresh) {
+    const hit = themeMapCache.get(key);
+    if (hit && Date.now() - hit.at < THEME_MAP_TTL_MS) {
+      res.setHeader('X-Cache', 'HIT-memory');
+      return sendJson(res, 200, { ...hit.value, cached: true }, THEME_MAP_CACHE_CONTROL);
+    }
+  }
+  try {
+    const detail = await fetchThemeDetail(no);
+    const stocks = detail.stocks
+      .slice()
+      .sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0) || (b.changePct || 0) - (a.changePct || 0));
+    const body = {
+      ok: true,
+      mode: 'theme-members',
+      theme: {
+        no: detail.no,
+        name: detail.name,
+        changeRate: detail.changeRate,
+        riseCount: detail.riseCount,
+        fallCount: detail.fallCount,
+        stockCount: detail.stockCount,
+        description: detail.description,
+      },
+      stocks: stocks.map((s) => ({
+        code: s.code,
+        name: s.name,
+        market: s.market,
+        price: s.price,
+        changePct: s.changePct,
+        valueEok: s.valueEok == null ? null : Math.round(s.valueEok),
+      })),
+      basisLabel: '네이버 테마 구성종목 실측 · 거래대금 내림차순',
+      marketStatus: detail.marketStatus,
+      generatedAt: new Date().toISOString(),
+      generatedAtKst,
+    };
+    themeMapCache.set(key, { at: Date.now(), value: body });
+    if (themeMapCache.size > 120) {
+      const oldest = themeMapCache.keys().next();
+      if (!oldest.done) themeMapCache.delete(oldest.value);
+    }
+    res.setHeader('X-Cache', 'MISS');
+    return sendJson(res, 200, body, THEME_MAP_CACHE_CONTROL);
+  } catch (e) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false,
+        mode: 'theme-members',
+        no,
+        stocks: [],
+        message: '테마 구성종목을 받지 못했습니다.',
+        error: String((e && e.message) || e),
+        generatedAtKst,
+      },
+      'no-store',
+    );
+  }
+}
+
+/** 테마 이름 정규화 — 괄호·공백·기호를 지워 비교한다 */
+function themeNameKey(name) {
+  return String(name || '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, '')
+    .replace(/[·・,\-_/]/g, '')
+    .toLowerCase();
+}
+
+/** ?mode=theme_search&q=반도체 — 테마 이름으로 테마번호 찾기 */
+function handleThemeSearch(res, q) {
+  const generatedAtKst = kstLabel(new Date());
+  const raw = String(q.q || '').replace(/^\s+|\s+$/g, '');
+  if (!raw) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, mode: 'theme-search', reason: 'bad_query', message: 'q=테마 이름이 필요합니다.', themes: [], generatedAtKst },
+      'no-store',
+    );
+  }
+  const list = (THEME_MEMBER && Array.isArray(THEME_MEMBER.themes) ? THEME_MEMBER.themes : []).filter(
+    (t) => t && t.no && t.name,
+  );
+  const key = themeNameKey(raw);
+  const scored = [];
+  list.forEach((t) => {
+    const k = themeNameKey(t.name);
+    if (!k) return;
+    let score = 0;
+    if (k === key) score = 100;
+    else if (k.indexOf(key) === 0) score = 80;
+    else if (k.indexOf(key) > -1) score = 60;
+    else if (key.length >= 3 && key.indexOf(k) > -1) score = 40;
+    if (!score) return;
+    scored.push({
+      no: t.no,
+      name: t.name,
+      stockCount: t.stockCount || null,
+      score,
+    });
+  });
+  scored.sort((a, b) => b.score - a.score || (b.stockCount || 0) - (a.stockCount || 0));
+  const themes = scored.slice(0, 8);
+  return sendJson(
+    res,
+    200,
+    {
+      ok: themes.length > 0,
+      mode: 'theme-search',
+      query: raw,
+      themes,
+      membershipAsOf: (THEME_MEMBER && THEME_MEMBER.updatedAt) || null,
+      message: themes.length ? null : '그 이름과 맞는 테마를 찾지 못했습니다.',
+      generatedAtKst,
+    },
+    'public, s-maxage=600, stale-while-revalidate=1800',
+  );
+}
+
+/* ==========================================================================
+ * 📰 [특징주] 기사 이력 + 🌊 260일 과거 파동 (?mode=history_catalyst&code=005930)
+ * --------------------------------------------------------------------------
+ *  · 일별 시세·거래대금: 다음 금융 일별 API(정규장 기준 accTradePrice) 실측.
+ *      - 실패하면 네이버 일봉(fchart)으로 대체하고 거래대금은 '종가×거래량' 근사로 표시한다(근사임을 밝힌다).
+ *  · [특징주] 기사: 구글뉴스 RSS 검색(제목·날짜·언론사·링크). 제목이 '특징주'로 시작하고
+ *      첫 구절(주어)에 이 종목 이름이 있는 기사만 남긴다 — 다른 종목 기사를 이 종목 것으로 붙이지 않는다.
+ *  · 기사 날짜는 KST 기준 날짜로 바꾼 뒤 그날(없으면 가장 가까운 거래일 ±5일) 일봉과 짝지어
+ *      그날 등락률·거래대금·그날 종가 대비 현재 위치를 계산한다.
+ *  · 과거 파동: 260일 안에서 '거래대금이 가장 크게 터진 상승 구간'을 계산해 최대 2개.
+ *  · 없는 기사·없는 파동을 만들지 않는다. 못 받은 값은 null 로 두고 note 에 밝힌다.
+ * ========================================================================== */
+const HC_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=900';
+const HC_TTL_MS = 300000;
+const hcCache = new Map();
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** KST 기준 YYYYMMDD (offsetDays 만큼 이동) */
+function kstYmd(offsetDays) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000 + (offsetDays || 0) * 86400000);
+  return `${now.getUTCFullYear()}${pad2(now.getUTCMonth() + 1)}${pad2(now.getUTCDate())}`;
+}
+
+function ymdDash(ymd) {
+  const s = String(ymd || '');
+  return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
+}
+
+/** 다음 금융 일별 시세 — { date, o,h,l,c, value, vol } (최근 260거래일) */
+async function fetchDaumDays(code, want) {
+  const n = want || 260;
+  const pages = [1, 2, 3];
+  const results = await mapLimit(pages, 3, async (page) => {
+    const url = `https://finance.daum.net/api/quote/A${code}/days?perPage=100&page=${page}`;
+    return fetchJson(url, {
+      headers: {
+        'User-Agent': NAVER_HEADERS['User-Agent'],
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+        Referer: `https://finance.daum.net/quotes/A${code}`,
+      },
+      timeout: 8000,
+    });
+  });
+  const rows = [];
+  results.forEach((r) => {
+    if (!r || r.__error) return;
+    ((r && r.data) || []).forEach((x) => {
+      const date = String(x && x.date ? x.date : '').slice(0, 10).replace(/-/g, '');
+      const c = parseNum(x && x.tradePrice);
+      if (!/^\d{8}$/.test(date) || c == null) return;
+      rows.push({
+        date,
+        o: parseNum(x.openingPrice),
+        h: parseNum(x.highPrice),
+        l: parseNum(x.lowPrice),
+        c,
+        value: parseNum(x.accTradePrice), // 정규장 거래대금(원)
+        vol: parseNum(x.accTradeVolume),
+      });
+    });
+  });
+  const seen = new Set();
+  const uniq = [];
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  rows.forEach((r) => {
+    if (seen.has(r.date)) return;
+    seen.add(r.date);
+    uniq.push(r);
+  });
+  const sliced = uniq.slice(-n);
+  return {
+    rows: sliced,
+    source: 'daum-finance-day',
+    valueBasis: '정규장 거래대금',
+  };
+}
+
+/** 네이버 일별 시세 — 공식 종가·등락률·거래량 (최근 300거래일에서 want개) */
+async function fetchNaverDays(code, want) {
+  const n = want || 260;
+  const settled = await mapLimit([1, 2, 3, 4, 5], 5, (page) =>
+    fetchJson(`https://m.stock.naver.com/api/stock/${code}/price?pageSize=60&page=${page}`, {
+      headers: NAVER_HEADERS,
+      timeout: 7000,
+    }),
+  );
+  const rows = [];
+  const seen = new Set();
+  settled.forEach((r) => {
+    if (!Array.isArray(r)) return;
+    r.forEach((x) => {
+      const date = String((x && x.localTradedAt) || '').slice(0, 10).replace(/-/g, '');
+      const c = parseNum(x && x.closePrice);
+      if (!/^\d{8}$/.test(date) || c == null || seen.has(date)) return;
+      seen.add(date);
+      rows.push({
+        date,
+        o: parseNum(x.openPrice),
+        h: parseNum(x.highPrice),
+        l: parseNum(x.lowPrice),
+        c,
+        changePct: parseNum(x.fluctuationsRatio), // 네이버 공식 일별 등락률
+        vol: parseNum(x.accumulatedTradingVolume),
+        value: null, // 거래대금은 다음 금융 일별에서 날짜로 붙인다
+      });
+    });
+  });
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return { rows: rows.slice(-n), source: 'naver-mobile-day' };
+}
+
+function decodeXmlEntities(s) {
+  return String(s == null ? '' : s)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function rssTag(body, name) {
+  const m = new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i').exec(body);
+  return m ? decodeXmlEntities(m[1]) : null;
+}
+
+/** 구글뉴스 RSS 검색 — { items:[{title, press, link, date, time}] } */
+async function fetchGoogleNews(query) {
+  const url =
+    'https://news.google.com/rss/search?q=' +
+    encodeURIComponent(query) +
+    '&hl=ko&gl=KR&ceid=KR:ko';
+  const buf = await fetchBuffer(url, {
+    headers: {
+      'User-Agent': NAVER_HEADERS['User-Agent'],
+      Accept: 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'ko-KR,ko;q=0.9',
+    },
+    timeout: 9000,
+  });
+  const xml = buf.toString('utf8');
+  const items = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const body = m[1];
+    const rawTitle = rssTag(body, 'title');
+    if (!rawTitle) continue;
+    const link = rssTag(body, 'link');
+    const pub = rssTag(body, 'pubDate');
+    const src = rssTag(body, 'source');
+    const t = pub ? Date.parse(pub) : NaN;
+    let date = null;
+    let time = null;
+    if (isFinite(t)) {
+      const k = new Date(t + 9 * 3600 * 1000);
+      date = `${k.getUTCFullYear()}${pad2(k.getUTCMonth() + 1)}${pad2(k.getUTCDate())}`;
+      time = `${pad2(k.getUTCHours())}:${pad2(k.getUTCMinutes())}`;
+    }
+    /* 제목 끝 ' - 언론사' 를 떼고 언론사는 따로 둔다 */
+    let title = rawTitle;
+    let press = src || null;
+    const cut = rawTitle.lastIndexOf(' - ');
+    if (cut > 8) {
+      if (!press) press = rawTitle.slice(cut + 3).trim();
+      title = rawTitle.slice(0, cut).trim();
+    }
+    items.push({ title, press, link, date, time, raw: rawTitle });
+  }
+  return { items, source: 'google-news-rss', query };
+}
+
+/** '[특징주]' 기사인지 + 주어가 이 종목인지 — 다른 종목 기사는 버린다 */
+function catalystIsAbout(title, name) {
+  const t = String(title || '');
+  if (t.indexOf('특징주') < 0) return false;
+  const m = /^[\s[<(]*(?:\d{1,2}\s*일\s*)?특징주[\s\])>]*[:,\-·]?\s*/i.exec(t);
+  const rest = m ? t.slice(m[0].length) : t.replace(/[\s\S]*?특징주[\s\])>]*[:,\-·]?\s*/i, '');
+  const head = rest.split(/[,·∙…]|\.\.\./)[0] || '';
+  const nm = String(name || '').trim();
+  if (!nm || nm.length < 2) return false;
+  return head.indexOf(nm) > -1;
+}
+
+/** 260일 안에서 '거래대금이 크게 터진 상승 파동' 최대 2개를 실측 계산 */
+function findWaves(rows, maxWaves) {
+  const limit = maxWaves || 2;
+  if (!rows || rows.length < 40) return { waves: [], criteria: null };
+  const n = rows.length;
+  const cands = [];
+  for (let i = 5; i < n - 2; i += 1) {
+    const c = rows[i].c;
+    if (!(c >= rows[i - 1].c && c >= rows[i - 2].c && c >= rows[i + 1].c && c >= rows[i + 2].c)) continue;
+    let lo = Infinity;
+    let loI = i;
+    for (let j = Math.max(0, i - 20); j <= i; j += 1) {
+      if (rows[j].c < lo) {
+        lo = rows[j].c;
+        loI = j;
+      }
+    }
+    if (!(lo > 0)) continue;
+    const gain = (c / lo - 1) * 100;
+    if (gain < 8) continue;
+    let vmax = 0;
+    let vI = loI;
+    for (let j = loI; j <= i; j += 1) {
+      if ((rows[j].value || 0) > vmax) {
+        vmax = rows[j].value || 0;
+        vI = j;
+      }
+    }
+    cands.push({ loI, peakI: i, gain, vmax, vI });
+  }
+  cands.sort((a, b) => b.vmax - a.vmax || b.gain - a.gain);
+  const picked = [];
+  cands.forEach((c) => {
+    if (picked.length >= limit) return;
+    const clash = picked.some((p) => !(c.peakI < p.loI - 5 || c.loI > p.peakI + 5));
+    if (clash) return;
+    picked.push(c);
+  });
+  picked.sort((a, b) => b.peakI - a.peakI);
+  const now = rows[n - 1];
+  const waves = picked.map((p) => {
+    const start = rows[p.loI];
+    const peak = rows[p.peakI];
+    const vDay = rows[p.vI];
+    return {
+      startDate: ymdDash(start.date),
+      peakDate: ymdDash(peak.date),
+      peakYmd: peak.date,
+      startYmd: start.date,
+      lowClose: Math.round(start.c),
+      peakClose: Math.round(peak.c),
+      gainPct: Number(p.gain.toFixed(2)),
+      tradingDays: p.peakI - p.loI,
+      days: Math.round((p.peakI - p.loI + 1)),
+      peakValueEok: Math.round((p.vmax || 0) / 1e8),
+      peakValueDate: ymdDash(vDay.date),
+      nowVsPeakPct: Number((((now.c / peak.c) - 1) * 100).toFixed(2)),
+    };
+  });
+  const strong = cands.filter((c) => c.gain >= 12).length;
+  return {
+    waves,
+    criteria: `최근 ${rows.length}거래일 일봉 실측 · 20일 저점→고점 상승 ${strong ? '12%' : '8%'} 이상 구간 중 그 안에서 하루 거래대금이 가장 컸던 순`,
+  };
+}
+
+/** [특징주] 이력 + 파동 응답 만들기 */
+async function handleHistoryCatalyst(res, q, fresh) {
+  const generatedAtKst = kstLabel(new Date());
+  const code = String(q.code || '').trim();
+  if (!/^\d{6}$/.test(code)) {
+    return sendJson(
+      res,
+      400,
+      {
+        ok: false,
+        mode: 'history-catalyst',
+        reason: 'bad_code',
+        message: 'code=6자리 종목코드가 필요합니다.',
+        items: [],
+        waves: [],
+        generatedAtKst,
+      },
+      'no-store',
+    );
+  }
+  const key = `hc:${code}`;
+  if (!fresh) {
+    const hit = hcCache.get(key);
+    if (hit && Date.now() - hit.at < HC_TTL_MS) {
+      res.setHeader('X-Cache', 'HIT-memory');
+      return sendJson(res, 200, { ...hit.value, cached: true }, HC_CACHE_CONTROL);
+    }
+  }
+
+  const errors = [];
+  const notes = [];
+
+  /* 1) 종목 이름 — 클라이언트가 안 주면 시세에서 읽는다 */
+  let name = String(q.name || '').trim() || null;
+  if (!name) {
+    try {
+      const rows = await fetchStocks([code]);
+      if (rows && rows[0] && rows[0].name) name = rows[0].name;
+    } catch (e) {
+      errors.push('종목명: ' + String((e && e.message) || e));
+    }
+  }
+
+  /* 2) 일별 시세 + 거래대금
+   *  · 종가·등락률은 네이버 일봉(체커의 52주 위치 카드와 같은 소스)을 쓴다.
+   *  · 거래대금은 다음 금융 일별 API 의 정규장 accTradePrice 를 날짜로 짝지어 붙인다.
+   *  · 한쪽이 막히면 남은 쪽으로만 채우고, 근사치면 근사치라고 적는다. */
+  const settledSeries = await Promise.allSettled([fetchNaverDays(code, 260), fetchDaumDays(code, 260)]);
+  const nvR = settledSeries[0];
+  const dmR = settledSeries[1];
+  let rows = [];
+  let priceBasis = null;
+  let valueBasis = null;
+  const sourceParts = [];
+  if (nvR.status === 'fulfilled' && nvR.value.rows.length) {
+    rows = nvR.value.rows;
+    priceBasis = '네이버 일별 종가·공식 등락률';
+    sourceParts.push('naver-mobile-day');
+  } else if (nvR.status === 'rejected') {
+    errors.push('네이버 일봉: ' + String((nvR.reason && nvR.reason.message) || nvR.reason));
+  }
+  if (dmR.status === 'fulfilled' && dmR.value.rows.length) {
+    const vmap = new Map(dmR.value.rows.map((r) => [r.date, r.value]));
+    if (rows.length) {
+      rows.forEach((r) => {
+        if (r.value == null) {
+          const v = vmap.get(r.date);
+          if (v != null) r.value = v;
+        }
+      });
+      valueBasis = '정규장 거래대금(다음 금융)';
+    } else {
+      rows = dmR.value.rows;
+      priceBasis = '다음 금융 일별 종가';
+      valueBasis = '정규장 거래대금(다음 금융)';
+    }
+    sourceParts.push('daum-finance-day');
+  } else if (dmR.status === 'rejected') {
+    errors.push('다음 일별: ' + String((dmR.reason && dmR.reason.message) || dmR.reason));
+  }
+  if (rows.length && valueBasis == null) {
+    rows.forEach((r) => {
+      if (r.value == null && r.c != null && r.vol != null) r.value = r.c * r.vol;
+    });
+    valueBasis = '종가×거래량 근사';
+    notes.push('정규장 일별 거래대금을 받지 못해 종가×거래량으로 근사했습니다(정확한 거래대금 아님).');
+  }
+  const series = { rows, source: sourceParts.join('+') || null, priceBasis, valueBasis };
+  const byDate = new Map();
+  rows.forEach((r, i) => byDate.set(r.date, i));
+  rows.forEach((r, i) => {
+    if (r.changePct == null) {
+      r.changePct = i > 0 && rows[i - 1].c > 0 ? Number((((r.c / rows[i - 1].c) - 1) * 100).toFixed(2)) : null;
+    }
+  });
+
+  /* 3) [특징주] 기사 — 최근 + 1년 창 두 번 검색해서 합친다 */
+  let articles = [];
+  let newsSource = null;
+  let newsQueries = [];
+  if (name && name.length >= 2) {
+    const today = kstYmd(0);
+    const yearAgo = kstYmd(-365);
+    const recentCut = kstYmd(-30);
+    const queries = [`"특징주" ${name}`, `"특징주" ${name} after:${ymdDash(yearAgo)} before:${ymdDash(recentCut)}`];
+    newsQueries = queries;
+    const settled = await mapLimit(queries, 2, (query) => fetchGoogleNews(query));
+    const seen = new Set();
+    settled.forEach((r) => {
+      if (!r || r.__error) {
+        errors.push('구글뉴스: ' + ((r && r.__error) || '빈 응답'));
+        return;
+      }
+      newsSource = r.source;
+      (r.items || []).forEach((it) => {
+        if (!it.date || !it.title) return;
+        if (!catalystIsAbout(it.title, name)) return;
+        const k = it.date + '|' + it.title.replace(/\s+/g, '');
+        if (seen.has(k)) return;
+        seen.add(k);
+        articles.push(it);
+      });
+    });
+    /* 구글뉴스가 막힌 환경(데이터센터 IP 차단 등) — 네이버 종목뉴스 최근 20건에서 [특징주]만 골라 대신 쓴다 */
+    if (!newsSource) {
+      try {
+        const out = await fetchStockNews(code, 20);
+        let added = 0;
+        (out.news || []).forEach((it) => {
+          const ymd = String((it && it.datetime) || '').slice(0, 8);
+          if (!/^\d{8}$/.test(ymd)) return;
+          if (!catalystIsAbout(it.title, name)) return;
+          articles.push({
+            title: it.title,
+            press: it.press || null,
+            link: it.url || null,
+            date: ymd,
+            time: it.time || null,
+          });
+          added += 1;
+        });
+        if (added) {
+          newsSource = 'naver-stock-news';
+          notes.push('구글뉴스 검색이 막혀 네이버 종목뉴스 최근 20건에서 [특징주] 기사만 골랐습니다 — 과거 이력은 일부만 보입니다.');
+        }
+      } catch (e) {
+        errors.push('네이버 종목뉴스: ' + String((e && e.message) || e));
+      }
+    }
+    articles.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    /* 같은 날 여러 매체가 쏟아지므로 하루 2건까지만 — 최근 3건 + 과거 5건으로 시간 폭을 넓힌다 */
+    const recentCutYmd = kstYmd(-30);
+    const perDay = new Map();
+    const recentPick = [];
+    const olderPick = [];
+    articles.forEach((a) => {
+      const c = perDay.get(a.date) || 0;
+      if (c >= 2) return;
+      perDay.set(a.date, c + 1);
+      if (a.date >= recentCutYmd) {
+        if (recentPick.length < 3) recentPick.push(a);
+      } else if (olderPick.length < 5) {
+        olderPick.push(a);
+      }
+    });
+    articles = recentPick.concat(olderPick).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  } else {
+    notes.push('종목 이름을 확인하지 못해 [특징주] 기사 검색을 건너뛰었습니다.');
+  }
+
+  /* 4) 기사 ↔ 거래일 매칭 (같은 날 → 없으면 앞뒤 5일 안 가장 가까운 거래일) */
+  function matchIndex(ymd) {
+    if (!/^\d{8}$/.test(ymd || '')) return null;
+    if (byDate.has(ymd)) return { i: byDate.get(ymd), match: 'same' };
+    const target = Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8));
+    let best = null;
+    for (let i = 0; i < rows.length; i += 1) {
+      const d = Math.abs(
+        Date.UTC(+rows[i].date.slice(0, 4), +rows[i].date.slice(4, 6) - 1, +rows[i].date.slice(6, 8)) - target,
+      );
+      if (best == null || d < best.d) best = { i, d };
+    }
+    if (!best || best.d > 5 * 86400000) return null;
+    return { i: best.i, match: rows[best.i].date < ymd ? 'prev' : 'next' };
+  }
+
+  const nowPrice = parseNum(q.price);
+  const lastClose = rows.length ? rows[rows.length - 1].c : null;
+  const curPrice = nowPrice != null ? nowPrice : lastClose;
+
+  const items = [];
+  articles.forEach((a) => {
+    if (items.length >= 8) return;
+    const mt = matchIndex(a.date);
+    const row = mt ? rows[mt.i] : null;
+    const item = {
+      date: ymdDash(a.date),
+      time: a.time || null,
+      title: a.title,
+      press: a.press || null,
+      url: a.link || null,
+      tradeDate: row ? ymdDash(row.date) : null,
+      match: mt ? mt.match : null,
+      matchedNote:
+        mt && mt.match === 'same'
+          ? '기사일 그날'
+          : mt && mt.match === 'prev'
+            ? '기사일이 휴장 — 직전 거래일'
+            : mt
+              ? '기사일이 휴장 — 직후 거래일'
+              : '거래일 매칭 실패',
+      changePct: row ? row.changePct : null,
+      valueEok: row && row.value != null ? Math.round(row.value / 1e8) : null,
+      close: row ? Math.round(row.c) : null,
+      nowVsClosePct:
+        row && curPrice != null ? Number((((curPrice / row.c) - 1) * 100).toFixed(2)) : null,
+    };
+    /* 재료가 나온 뒤 5·10거래일 — '몇 주 동안 강했나'를 실측으로 */
+    if (mt) {
+      const i5 = mt.i + 5;
+      const i10 = mt.i + 10;
+      item.fwd5Pct =
+        i5 < rows.length && rows[mt.i].c > 0
+          ? Number((((rows[i5].c / rows[mt.i].c) - 1) * 100).toFixed(2))
+          : null;
+      item.fwd10Pct =
+        i10 < rows.length && rows[mt.i].c > 0
+          ? Number((((rows[i10].c / rows[mt.i].c) - 1) * 100).toFixed(2))
+          : null;
+    }
+    items.push(item);
+  });
+
+  /* 5) 과거 파동 */
+  const waveOut = findWaves(rows, 2);
+
+  const body = {
+    ok: true,
+    mode: 'history-catalyst',
+    code,
+    name,
+    series: {
+      count: rows.length,
+      from: rows.length ? ymdDash(rows[0].date) : null,
+      to: rows.length ? ymdDash(rows[rows.length - 1].date) : null,
+      source: series.source,
+      priceBasis: series.priceBasis,
+      valueBasis: series.valueBasis,
+    },
+    now: {
+      price: curPrice == null ? null : Math.round(curPrice),
+      lastClose: lastClose == null ? null : Math.round(lastClose),
+      priceFrom: nowPrice != null ? 'client-live' : 'last-candle',
+      valueEok:
+        rows.length && rows[rows.length - 1].value != null
+          ? Math.round(rows[rows.length - 1].value / 1e8)
+          : null,
+      date: rows.length ? ymdDash(rows[rows.length - 1].date) : null,
+    },
+    catalyst: {
+      source: newsSource,
+      queries: newsQueries,
+      found: articles.length,
+      items,
+    },
+    waves: waveOut.waves,
+    waveCriteria: waveOut.criteria,
+    notes,
+    errors,
+    message: items.length
+      ? null
+      : name
+        ? `'${name}' 이름으로 [특징주] 기사를 찾지 못했습니다(구글뉴스 검색 기준).`
+        : '종목명을 확인하지 못해 기사 이력을 만들지 않았습니다.',
+    generatedAt: new Date().toISOString(),
+    generatedAtKst,
+  };
+
+  if (body.ok) {
+    hcCache.set(key, { at: Date.now(), value: body });
+    if (hcCache.size > 120) {
+      const oldest = hcCache.keys().next();
+      if (!oldest.done) hcCache.delete(oldest.value);
+    }
+  }
+  res.setHeader('X-Cache', 'MISS');
+  return sendJson(res, 200, body, HC_CACHE_CONTROL);
+}
+
 /* ------------------------------ handler ------------------------------ */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -1509,6 +2385,18 @@ module.exports = async function handler(req, res) {
 
   // ?mode=theme&code=005930 — 체커용 소속 테마·테마 신호등·최근/과거 재료 (새 함수 파일 없이 내부 라우트)
   if (q.mode === 'theme') return handleStockTheme(res, q, fresh);
+
+  // ?mode=theme_map — 체커 상단 테마 히트맵 (대표 테마 24개 · 구성종목 실측)
+  if (q.mode === 'theme_map') return handleThemeMap(res, fresh);
+
+  // ?mode=theme_members&no=155 — 테마 구성종목을 거래대금 주요순으로
+  if (q.mode === 'theme_members') return handleThemeMembers(res, q, fresh);
+
+  // ?mode=theme_search&q=반도체 — 테마 이름으로 테마번호 찾기
+  if (q.mode === 'theme_search') return handleThemeSearch(res, q);
+
+  // ?mode=history_catalyst&code=005930 — [특징주] 기사 이력 + 260일 과거 파동
+  if (q.mode === 'history_catalyst') return handleHistoryCatalyst(res, q, fresh);
 
   const rawQueries = String(q.codes || q.code || '')
     .split(',')
