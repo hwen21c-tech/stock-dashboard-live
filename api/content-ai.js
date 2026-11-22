@@ -4496,14 +4496,21 @@ function brQueryEn(q) {
     for (let i = 0; i < keys.length; i++) if (low.indexOf(keys[i]) >= 0) { hit = true; break; }
     if (hit && out.indexOf(en) < 0) out.push(en);
   });
-  const words = String(q || '').match(/[A-Za-z][A-Za-z0-9\-\/]{2,}/g) || [];
-  words.slice(0, 4).forEach((w) => {
+  const core = out.slice(0, 5).join(' ').trim();
+  // 사전에 이미 들어 있는 영문 낱말(dqdv·sei 같은 표기)은 빼고, 질문에만 있는 고유명사·약어만 보탠다.
+  const wordOut = [];
+  (String(q || '').match(/[A-Za-z][A-Za-z0-9\-\/]{2,}/g) || []).slice(0, 4).forEach((w) => {
     const lw = w.toLowerCase();
     if (out.join(' ').toLowerCase().indexOf(lw) >= 0) return;
-    out.push(w);
+    if (BR_TERMS.some((row) => row[0].indexOf(lw) >= 0)) return;
+    if (wordOut.indexOf(w) >= 0) return;
+    wordOut.push(w);
   });
-  const joined = out.slice(0, 5).join(' ').trim();
-  return joined || 'lithium-ion battery electrode';
+  const all = (core + ' ' + wordOut.join(' ')).trim();
+  return {
+    core: core || 'lithium-ion battery electrode',
+    all: all || 'lithium-ion battery electrode',
+  };
 }
 
 async function brFetchJson(url) {
@@ -4546,33 +4553,45 @@ function brCleanPaper(p) {
   };
 }
 
-async function brOpenAlex(qEn) {
-  const from = new Date(Date.now() - 3 * 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const url =
-    'https://api.openalex.org/works?search=' +
-    encodeURIComponent(qEn) +
-    '&filter=' +
-    encodeURIComponent('type:article|review,from_publication_date:' + from) +
-    '&per-page=12&select=doi,display_name,publication_year,primary_location,authorships,cited_by_count,abstract_inverted_index&mailto=' +
-    encodeURIComponent(BR_MAILTO);
-  const j = await brFetchJson(url);
-  const list = (j && j.results) || [];
-  return list
-    .map((w) => {
-      const src = (w.primary_location && w.primary_location.source) || {};
-      return brCleanPaper({
-        title: w.display_name,
-        year: w.publication_year,
-        journal: src.display_name,
-        authors: (w.authorships || []).map((a) => (a && a.author && a.author.display_name) || ''),
-        doi: w.doi,
-        cited: w.cited_by_count,
-        abstract: brAbstract(w.abstract_inverted_index),
-      });
-    })
-    .filter(Boolean);
-}
+async function brOpenAlex(qEn, qCore) {
+  const from = new Date(Date.now() - 4 * 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const sel = '&per-page=14&select=doi,display_name,publication_year,primary_location,authorships,cited_by_count,abstract_inverted_index&mailto=' + encodeURIComponent(BR_MAILTO);
+  const common = ',type:article|review,from_publication_date:' + from;
+  const map = (list) => (list || []).map((w) => {
+    const src = (w.primary_location && w.primary_location.source) || {};
+    return brCleanPaper({
+      title: w.display_name,
+      year: w.publication_year,
+      journal: src.display_name,
+      authors: (w.authorships || []).map((a) => (a && a.author && a.author.display_name) || ''),
+      doi: w.doi,
+      cited: w.cited_by_count,
+      abstract: brAbstract(w.abstract_inverted_index),
+    });
+  }).filter(Boolean);
+  const taa = async (q) => map(((await brFetchJson(
+    'https://api.openalex.org/works?filter=' +
+      encodeURIComponent('title_and_abstract.search:' + q + common) + sel
+  )) || {}).results);
 
+  // 1) 제목·초록 검색(관련도가 훨씬 정확) — 질문 전체 → 핵심어 순으로 좁혀 본다.
+  let out = [];
+  try { out = await taa(qEn); } catch (e) { /* 아래 단계로 */ }
+  if (out.length < 3 && qCore && qCore !== qEn) {
+    try { out = out.concat(await taa(qCore)); } catch (e) { /* 아래 단계로 */ }
+  }
+  // 2) 그래도 적으면 전체 텍스트 검색으로 넓힌다(중복은 brRank 에서 제거).
+  if (out.length < 3) {
+    try {
+      const broad = await brFetchJson(
+        'https://api.openalex.org/works?search=' + encodeURIComponent(qEn) +
+        '&filter=' + encodeURIComponent('type:article|review,from_publication_date:' + from) + sel
+      );
+      out = out.concat(map((broad || {}).results));
+    } catch (e) { /* 좁은 결과만 쓴다 */ }
+  }
+  return out;
+}
 async function brCrossref(q) {
   const url =
     'https://api.crossref.org/works?query=' +
@@ -4596,24 +4615,26 @@ async function brCrossref(q) {
     .filter(Boolean);
 }
 
-/* 최신순 → 초록 있는 것 → 피인용 순. 중복(같은 DOI·제목) 제거. */
+/* 검색 API 의 '관련도' 상위 8편 안에서 최신순으로 5편을 고른다(관련도와 최신성의 균형).
+ *  중복(같은 DOI·제목)은 먼저 제거한다. */
 function brRank(list) {
   const seen = {};
-  const out = [];
+  const uniq = [];
   (list || []).forEach((p) => {
     const key = (p.doi || p.title || '').toLowerCase().replace(/\s+/g, ' ').trim();
     if (!key || seen[key]) return;
     seen[key] = 1;
-    out.push(p);
+    uniq.push(p);
   });
-  out.sort((a, b) => {
+  const shortlist = uniq.slice(0, 8);
+  shortlist.sort((a, b) => {
     if ((b.year || 0) !== (a.year || 0)) return (b.year || 0) - (a.year || 0);
     const aa = a.abstract ? 1 : 0;
     const ba = b.abstract ? 1 : 0;
     if (ba !== aa) return ba - aa;
     return (b.cited || 0) - (a.cited || 0);
   });
-  return out.slice(0, BR_MAX_PAPERS);
+  return shortlist.slice(0, BR_MAX_PAPERS);
 }
 
 function brPrompt(q, notes, papers) {
@@ -4658,7 +4679,8 @@ async function handleBatteryResearch(res, body, keyConfigured) {
     return send(res, 400, { ok: false, reason: 'missing_query', message: '질문(q)이 필요합니다.' });
   }
   const lite = !!(body && body.lite);
-  const qEn = brQueryEn(q);
+  const qq = brQueryEn(q);
+  const qEn = qq.all, qCore = qq.core;
   const now = new Date();
   const p = lbKst(now);
   const nowLabel = `${p.y}-${lbPad(p.m)}-${lbPad(p.d)}(${LB_WEEKDAY_KO[p.wd] || ''}) ${lbPad(p.hh)}:${lbPad(p.mi)} KST`;
@@ -4667,7 +4689,7 @@ async function handleBatteryResearch(res, body, keyConfigured) {
   let source = null;
   const errors = [];
   try {
-    papers = await brOpenAlex(qEn);
+    papers = await brOpenAlex(qEn, qCore);
     if (papers.length) source = 'openalex';
   } catch (err) {
     errors.push({ source: 'openalex', message: String((err && err.message) || err).slice(0, 160) });
@@ -4687,6 +4709,7 @@ async function handleBatteryResearch(res, body, keyConfigured) {
     action: 'battery_research',
     query: q,
     queryEn: qEn,
+    queryCore: qCore,
     source,
     papers,
     generatedAtKst: nowLabel,
