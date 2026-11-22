@@ -936,7 +936,7 @@ function parseNewsStamp(raw) {
   return { date, time, isToday: date === today };
 }
 
-async function fetchStockNews(code) {
+async function fetchStockNews(code, limit) {
   const url = `https://m.stock.naver.com/api/news/stock/${code}?pageSize=20&page=1`;
   const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: 6000 });
   const groups = Array.isArray(data) ? data : data && data.items ? [data] : [];
@@ -970,7 +970,7 @@ async function fetchStockNews(code) {
   const todayRows = rows.filter((r) => r.isToday);
   return {
     code,
-    news: (todayRows.length ? todayRows : rows).slice(0, NEWS_MAX),
+    news: (todayRows.length ? todayRows : rows).slice(0, limit || NEWS_MAX),
     todayCount: todayRows.length,
     total: rows.length,
     basis: todayRows.length ? '당일 뉴스' : '최근 뉴스(당일 없음)',
@@ -1032,6 +1032,405 @@ async function handleStockNews(res, q, fresh) {
   }
 }
 
+/* ==========================================================================
+ * 종목 소속 테마 · 오늘 테마 신호등 · 최근/과거 재료  (?mode=theme&code=005930)
+ * --------------------------------------------------------------------------
+ *  · 종목→테마 역색인은 public/data/theme-membership.json (scripts/build_theme_membership.py 가 생성).
+ *    네이버는 '테마→구성종목'만 주므로, 전체 테마를 한 번 훑어 역색인을 만들어 둔다(구성은 자주 안 바뀜).
+ *  · 오늘의 테마 순위·등락률은 네이버 테마 랭킹 실측(전체 N개)을 그대로 읽어 계산한다(값을 만들지 않음).
+ *  · 신호등 규칙(화면에도 같은 문구를 적는다)
+ *      · 관제탑 직전 거래일 주도 테마 Top8 에 든 테마면 그 순위로 판정(관제탑 데이터와 대조).
+ *      🟢 주요 주도테마 : 순위 10위 이내이면서 (테마 평균 +1% 이상 또는 테마 상위4 평균 +3% 이상)
+ *      🟡 순환·관심 테마 : 순위 30위 이내이거나 테마 평균 +1% 이상 또는 상위4 평균 0% 이상
+ *      ⚪ 비주류·개별주 : 그 밖
+ *  · 테마 점수(0~100) = 순위 백분위 40% + 테마 강도(상위4 평균 등락률) 60% — 구성값도 함께 내려준다.
+ *  · 장전(PREOPEN)·주말처럼 랭킹이 전부 0.00% 면 직전 거래일 주도 테마 파일로 판정하고 basis 에 밝힌다.
+ *  · 재료는 네이버 종목뉴스 실측만 쓴다(제목·언론사·시각·링크). 지어낸 해석은 넣지 않는다.
+ *  · 캐시: 인스턴스 메모리 90초 + CDN public, s-maxage=120, stale-while-revalidate=300
+ * ========================================================================== */
+const THEME_CACHE_CONTROL = 'public, s-maxage=120, stale-while-revalidate=300';
+const THEME_LIST_URL = 'https://m.stock.naver.com/api/stocks/theme';
+const THEME_DETAIL_URL = 'https://m.stock.naver.com/api/stocks/theme/';
+const THEME_EXCLUDE_RE = /(스팩|SPAC|우선주|ETF|ETN|리츠|인버스|레버리지)/i;
+const THEME_RANK_TTL_MS = 180000;
+const themeCache = new Map();
+
+/* 종목→테마 색인 (배포 산출물 public/data 에 포함) */
+let THEME_MEMBER = null;
+try {
+  THEME_MEMBER = require('../public/data/theme-membership.json');
+} catch (e) {
+  THEME_MEMBER = null;
+}
+/* 직전 거래일 장마감 기준 주도 테마 Top 8 (장전·주말 폴백) */
+let THEME_PREV = null;
+try {
+  THEME_PREV = require('../public/data/last-dynamic-themes.json');
+} catch (e) {
+  THEME_PREV = null;
+}
+
+let THEME_RANK_MEM = { at: 0, rows: null, total: 0, marketStatus: null };
+
+/** 네이버 테마 랭킹 전체(약 265개) — 100개씩 3페이지. 3분 메모리 캐시. */
+async function fetchThemeRanking(fresh) {
+  if (!fresh && THEME_RANK_MEM.rows && Date.now() - THEME_RANK_MEM.at < THEME_RANK_TTL_MS) {
+    return { ...THEME_RANK_MEM, cached: true };
+  }
+  const groups = [];
+  let total = 0;
+  let marketStatus = null;
+  for (let page = 1; page <= 3; page += 1) {
+    const d = await fetchJson(`${THEME_LIST_URL}?page=${page}&pageSize=100`, {
+      headers: NAVER_HEADERS,
+      timeout: 6000,
+    });
+    const g = (d && d.groups) || [];
+    if (d && d.marketStatus) marketStatus = d.marketStatus;
+    const t = parseNum(d && d.totalCount);
+    if (t) total = t;
+    groups.push(...g);
+    if (!g.length || groups.length >= total) break;
+  }
+  const rows = groups
+    .map((g) => {
+      const cnt = parseNum(g.totalCount) || 0;
+      const rise = parseNum(g.riseCount) || 0;
+      return {
+        no: parseNum(g.no),
+        name: String(g.name || '').replace(/\s+/g, ' ').trim(),
+        changeRate: parseNum(g.changeRate),
+        riseCount: rise,
+        fallCount: parseNum(g.fallCount) || 0,
+        totalCount: cnt,
+        riseRatio: cnt ? Number(((rise / cnt) * 100).toFixed(1)) : null,
+      };
+    })
+    .filter((g) => g.no && g.name && !THEME_EXCLUDE_RE.test(g.name) && typeof g.changeRate === 'number')
+    .sort((a, b) => b.changeRate - a.changeRate || (b.riseRatio || 0) - (a.riseRatio || 0));
+  rows.forEach((r, i) => {
+    r.rank = i + 1;
+  });
+  THEME_RANK_MEM = { at: Date.now(), rows, total: rows.length, marketStatus };
+  return { ...THEME_RANK_MEM, cached: false };
+}
+
+function themeKey(name) {
+  return String(name || '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/(테마|관련|수혜|급등|신규)/g, '')
+    .replace(/[\s·\-_/]/g, '')
+    .toLowerCase();
+}
+
+/* 테마 상위 4종목 평균 등락률 — 네이버 테마 상세의 종목별 등락률(fluctuationsRatio) 실측.
+ *  관제탑 주도테마맵이 쓰는 '노출 상위 4종목 평균'과 같은 재료를, 이 종목의 테마에 대해서만 계산한다. */
+function themeTop4Avg(detail) {
+  const stocks = (detail && detail.stocks) || [];
+  const pcts = stocks
+    .map((s) => parseNum(s && s.fluctuationsRatio))
+    .filter((v) => typeof v === 'number')
+    .sort((a, b) => b - a)
+    .slice(0, 4);
+  if (!pcts.length) return null;
+  return Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2));
+}
+
+/**
+ * 테마 신호등 — 화면에 같은 규칙 문구를 적는다.
+ *  · 관제탑 직전 거래일 주도 테마 Top8에 든 테마면 그 순위로 판정(관제탑 데이터와 대조).
+ *  · 아니면 네이버 테마 랭킹 실측(전체 N개) 순위 + 테마 상위4 평균으로 판정.
+ *      🟢 주요 주도테마 : 순위 10위 이내이면서 (테마 평균 +1% 이상 또는 상위4 평균 +3% 이상)
+ *      🟡 순환·관심 테마 : 순위 30위 이내이거나 테마 평균 +1% 이상 또는 상위4 평균 0% 이상
+ *      ⚪ 비주류·개별주 : 그 밖
+ */
+function themeSignal(ctx) {
+  const rank = Number(ctx.rank) || null;
+  const total = Number(ctx.total) || null;
+  const c = Number(ctx.changeRate);
+  const t4 = Number(ctx.top4Avg);
+  const prev = Number(ctx.prevTopRank) || null;
+  if (ctx.prevExposed && prev) {
+    return {
+      key: 'green',
+      label: '🟢 주요 주도테마',
+      note: '관제탑 직전 거래일 주도 테마 ' + prev + '위 · 노출 종목',
+      basis: 'prev-day-top8',
+    };
+  }
+  if (rank && rank <= 10 && ((isFinite(c) && c >= 1) || (isFinite(t4) && t4 >= 3))) {
+    return { key: 'green', label: '🟢 주요 주도테마', note: '테마 순위 ' + rank + '/' + total + '위', basis: 'live-rank' };
+  }
+  if ((rank && rank <= 30) || (isFinite(c) && c >= 1) || (isFinite(t4) && t4 >= 0)) {
+    return {
+      key: 'yellow',
+      label: '🟡 순환·관심 테마',
+      note: rank ? '테마 순위 ' + rank + '/' + total + '위' : '테마 상위4 평균 기준',
+      basis: 'live-rank',
+    };
+  }
+  if (rank) return { key: 'gray', label: '⚪ 비주류·개별주', note: '테마 순위 ' + rank + '/' + total + '위', basis: 'live-rank' };
+  return { key: 'none', label: '⚪ 확인 불가', note: '테마 순위를 받지 못했습니다', basis: 'none' };
+}
+
+/** 테마 점수(0~100) = 순위 백분위 40% + 테마 강도(상위4 평균 등락률) 60% */
+function themeScore(ctx) {
+  const rank = Number(ctx.rank) || null;
+  const total = Number(ctx.total) || null;
+  const prev = Number(ctx.prevTopRank) || null;
+  let rankScore = null;
+  if (rank && total > 1) rankScore = Math.round((1 - (rank - 1) / (total - 1)) * 100);
+  else if (prev) rankScore = Math.round((1 - (prev - 1) / 7) * 100);
+  const useTop4 = isFinite(Number(ctx.top4Avg));
+  const strength = useTop4 ? Number(ctx.top4Avg) : Number(ctx.changeRate);
+  const strengthScore = isFinite(strength) ? Math.round(Math.max(0, Math.min(100, 50 + strength * 5))) : null;
+  if (rankScore == null || strengthScore == null) return null;
+  return {
+    score: Math.round(rankScore * 0.4 + strengthScore * 0.6),
+    rankScore,
+    strengthScore,
+    strengthBasis: useTop4 ? 'top4Avg' : 'changeRate',
+  };
+}
+
+async function handleStockTheme(res, q, fresh) {
+  const code = String(q.code || '').trim();
+  const generatedAtKst = kstLabel(new Date());
+  if (!/^\d{6}$/.test(code)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, reason: 'bad_code', mode: 'stock-theme', message: 'code=6자리 종목코드가 필요합니다.', generatedAtKst },
+      'no-store',
+    );
+  }
+  const key = `theme:${code}`;
+  if (!fresh) {
+    const hit = themeCache.get(key);
+    if (hit && Date.now() - hit.at < 90000) {
+      res.setHeader('X-Cache', 'HIT-memory');
+      return sendJson(res, 200, { ...hit.value, cached: true }, THEME_CACHE_CONTROL);
+    }
+  }
+  if (!THEME_MEMBER || !THEME_MEMBER.byCode) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false,
+        reason: 'no_membership',
+        mode: 'stock-theme',
+        code,
+        message: '테마 색인(data/theme-membership.json)이 없어 소속 테마를 확인할 수 없습니다.',
+        generatedAtKst,
+      },
+      'no-store',
+    );
+  }
+
+  const errors = [];
+  const owned = Array.isArray(THEME_MEMBER.byCode[code]) ? THEME_MEMBER.byCode[code] : [];
+
+  let ranking = null;
+  try {
+    ranking = await fetchThemeRanking(fresh);
+  } catch (e) {
+    errors.push('테마 랭킹: ' + String((e && e.message) || e));
+  }
+
+  /* 장전·주말처럼 오늘 랭킹이 전부 0.00% 인지 — 그때는 직전 거래일 주도 테마로 판정 */
+  const allZero = !ranking || !ranking.rows.length || ranking.rows.every((r) => !r.changeRate);
+  const prevTop =
+    THEME_PREV && Array.isArray(THEME_PREV.themes)
+      ? THEME_PREV.themes
+          .filter((t) => t && t.name)
+          .map((t, i) => ({
+            rank: t.rank || i + 1,
+            name: t.name,
+            top4Avg: t.top4Avg == null ? null : t.top4Avg,
+            stocks: (t.stocks || []).map((x) => ({ code: String(x.code || ''), name: x.name || null })),
+          }))
+      : [];
+
+  const byNo = new Map();
+  if (ranking) ranking.rows.forEach((r) => byNo.set(String(r.no), r));
+
+  const themes = owned.map((t) => {
+    const live = byNo.get(String(t.no)) || null;
+    const prev = prevTop.find((p) => themeKey(p.name) === themeKey(t.name)) || null;
+    const prevExposed = Boolean(prev && (prev.stocks || []).some((x) => String(x.code) === code));
+    return {
+      no: t.no,
+      name: t.name,
+      rank: live ? live.rank : null,
+      total: ranking ? ranking.rows.length : null,
+      changeRate: live ? live.changeRate : null,
+      riseCount: live ? live.riseCount : null,
+      fallCount: live ? live.fallCount : null,
+      stockCount: live ? live.totalCount : null,
+      riseRatio: live ? live.riseRatio : null,
+      prevTopRank: prev ? prev.rank : null,
+      prevTopAvg: prev ? prev.top4Avg : null,
+      prevExposed,
+    };
+  });
+  /* 대표 테마 후보: 관제탑 직전 거래일 Top8 에 든 테마 → 그다음 오늘 순위가 높은 테마 */
+  const order = (t) => [t.prevExposed ? 0 : t.prevTopRank ? 1 : 2, t.prevTopRank || 99, t.rank || 9999];
+  const ranked = themes.slice().sort((a, b) => {
+    const A = order(a);
+    const B = order(b);
+    for (let i = 0; i < A.length; i += 1) {
+      if (A[i] !== B[i]) return A[i] - B[i];
+    }
+    return 0;
+  });
+  const shown = ranked.slice(0, 6);
+  const primary = shown[0] || null;
+
+  /* 대표 테마 상세 — 테마 설명 · 이 종목이 그 테마에 들어온 이유 · 상위4 평균 등락률(실측) */
+  let description = null;
+  let stockNote = null;
+  let top4Avg = null;
+  let top4 = [];
+  if (primary) {
+    try {
+      const d = await fetchJson(`${THEME_DETAIL_URL}${primary.no}?page=1&pageSize=100`, {
+        headers: NAVER_HEADERS,
+        timeout: 6000,
+      });
+      description = (d && d.themeDescription) || null;
+      const map = (d && d.themeItemInfoMap) || {};
+      stockNote = map[code] || null;
+      top4Avg = themeTop4Avg(d);
+      top4 = ((d && d.stocks) || [])
+        .map((s) => ({
+          code: s.itemCode || null,
+          name: s.stockName || null,
+          changePct: parseNum(s.fluctuationsRatio),
+          value: parseNum(s.accumulatedTradingValue),
+        }))
+        .filter((s) => s.code && typeof s.changePct === 'number')
+        .sort((a, b) => b.changePct - a.changePct)
+        .slice(0, 4);
+    } catch (e) {
+      errors.push('테마 상세: ' + String((e && e.message) || e));
+    }
+    if (top4Avg == null) top4Avg = primary.prevTopAvg;
+    primary.top4Avg = top4Avg == null ? null : top4Avg;
+  }
+
+  const signal = primary
+    ? themeSignal({
+        rank: primary.rank,
+        total: primary.total,
+        changeRate: primary.changeRate == null ? null : primary.changeRate,
+        top4Avg,
+        prevTopRank: primary.prevTopRank,
+        prevExposed: primary.prevExposed,
+      })
+    : { key: 'gray', label: '⚪ 비주류·개별주', note: '등록된 테마 구성종목에 없음', basis: 'none' };
+  const score = primary
+    ? themeScore({
+        rank: primary.rank,
+        total: primary.total,
+        changeRate: primary.changeRate,
+        top4Avg,
+        prevTopRank: primary.prevTopRank,
+      })
+    : null;
+
+  /* 이 종목의 오늘 등락률(체커가 시세 카드에서 받은 값)과 테마 방향을 비교 — 판정이 아니라 사실 표시 */
+  const stockPct = parseNum(q.pct);
+  let align = null;
+  if (stockPct != null && primary) {
+    const pctTxt = (stockPct > 0 ? '+' : '') + stockPct.toFixed(2) + '%';
+    const themeStrong = signal.key === 'green' || (isFinite(Number(top4Avg)) && Number(top4Avg) >= 0.5);
+    const themeTxt = isFinite(Number(top4Avg)) ? '테마 상위4 평균 ' + (Number(top4Avg) > 0 ? '+' : '') + Number(top4Avg).toFixed(2) + '%' : null;
+    if (themeStrong && stockPct < -1) {
+      align = {
+        key: 'against',
+        text: (themeTxt ? themeTxt + '인데 ' : '테마는 강세인데 ') + '이 종목은 ' + pctTxt + ' 역행 — 테마를 따라가지 못했습니다',
+      };
+    } else if (signal.key === 'gray' && stockPct > 3) {
+      align = { key: 'solo', text: '테마는 비주류인데 이 종목만 ' + pctTxt + ' — 개별 재료·수급으로 봐야 합니다' };
+    } else if (themeStrong && stockPct > 1) {
+      align = { key: 'with', text: (themeTxt || '테마 강세') + ' · 이 종목 ' + pctTxt + ' — 같은 방향' };
+    }
+  }
+
+  /* 재료 — 네이버 종목뉴스 실측 20건에서 최근/과거를 나눈다(해석·추정 없음) */
+  let recent = [];
+  let past = [];
+  let newsMeta = null;
+  try {
+    const out = await fetchStockNews(code, 20);
+    const all = out.news || [];
+    const ageDays = (n) => {
+      const raw = String((n && n.datetime) || '');
+      const iso = raw.replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:00+09:00');
+      const t = Date.parse(iso);
+      return isFinite(t) ? (Date.now() - t) / 86400000 : null;
+    };
+    recent = all.slice(0, 3);
+    past = all
+      .slice(3)
+      .filter((n) => {
+        const d = ageDays(n);
+        return d == null || d >= 1.5;
+      })
+      .slice(0, 3);
+    newsMeta = {
+      total: out.total || all.length,
+      todayCount: out.todayCount || 0,
+      basis: out.basis || null,
+      source: 'naver-stock-news',
+    };
+  } catch (e) {
+    errors.push('종목 뉴스: ' + String((e && e.message) || e));
+  }
+
+  const body = {
+    ok: true,
+    mode: 'stock-theme',
+    code,
+    marketStatus: ranking ? ranking.marketStatus : null,
+    basisLabel:
+      allZero && prevTop.length
+        ? `직전 거래일(${THEME_PREV.shortLabel || THEME_PREV.basisLong || '직전'}) 주도 테마 기준`
+        : `네이버 테마 랭킹 실측 · 전체 ${ranking ? ranking.rows.length : 0}개 테마`,
+    basis: allZero && prevTop.length ? 'prev-day-dynamic' : 'naver-theme-rank',
+    themeTotal: ranking ? ranking.rows.length : null,
+    themeCountOwned: owned.length,
+    primary,
+    themes: shown,
+    signal,
+    score,
+    stockPct: stockPct == null ? null : stockPct,
+    align,
+    top4,
+    description,
+    stockNote,
+    prevDayTop: prevTop.slice(0, 8),
+    prevDayLabel: THEME_PREV ? THEME_PREV.shortLabel || null : null,
+    leading: ranking
+      ? ranking.rows.slice(0, 5).map((r) => ({ rank: r.rank, name: r.name, changeRate: r.changeRate }))
+      : prevTop.slice(0, 5),
+    news: { recent, past, ...(newsMeta || {}) },
+    membershipAsOf: THEME_MEMBER.updatedAt || null,
+    errors,
+    generatedAt: new Date().toISOString(),
+    generatedAtKst,
+  };
+
+  themeCache.set(key, { at: Date.now(), value: body });
+  if (themeCache.size > 200) {
+    const oldest = themeCache.keys().next();
+    if (!oldest.done) themeCache.delete(oldest.value);
+  }
+  res.setHeader('X-Cache', 'MISS');
+  return sendJson(res, 200, body, THEME_CACHE_CONTROL);
+}
+
 /* ------------------------------ handler ------------------------------ */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -1052,6 +1451,9 @@ module.exports = async function handler(req, res) {
 
   // ?code=005930&news=1 — 종목 모달용 최신 뉴스 (새 함수 파일을 만들지 않기 위한 내부 라우트)
   if (q.news === '1' || q.news === 'true') return handleStockNews(res, q, fresh);
+
+  // ?mode=theme&code=005930 — 체커용 소속 테마·테마 신호등·최근/과거 재료 (새 함수 파일 없이 내부 라우트)
+  if (q.mode === 'theme') return handleStockTheme(res, q, fresh);
 
   const codeList = (q.codes || q.code || '')
     .split(',')
