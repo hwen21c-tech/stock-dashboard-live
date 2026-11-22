@@ -3,7 +3,7 @@
  * ----------------------------------------------------------------------------
  *  · /api/dart-live 가 ok:true 면 관심 종목·위험 키워드 공시를 실시간으로 그린다.
  *  · ok:false (DART_API_KEY_NOT_SET · 키 오류 · DART 장애) 면 화면을 지우지 않고
- *    기존 정적 스캔 결과를 그대로 두고, 왜 실시간이 아닌지만 배지로 밝힌다.
+ *    '실시간 조회에 실패했다'는 사실만 그대로 밝힌다(옛 정적 스캔 문구는 쓰지 않는다).
  *  · 접수일·공시명·종목코드는 DART 응답 그대로 쓰고, 유형은 공시명 키워드 분류값이다.
  * ==========================================================================*/
 (function () {
@@ -140,18 +140,26 @@
   function applyFallback(body) {
     var reason = (body && body.reason) || 'UNKNOWN';
     var msg = reason === 'DART_API_KEY_NOT_SET'
-      ? 'DART_API_KEY 미설정 — 정적 스캔 결과 유지'
+      ? 'DART_API_KEY 미설정 — 실시간 조회 불가'
       : reason === 'DART_KEY_INVALID'
-        ? 'DART 키 오류 — 정적 스캔 결과 유지'
-        : 'DART 조회 실패 — 정적 스캔 결과 유지';
+        ? 'DART 키 오류 — 실시간 조회 불가'
+        : '실시간 DART 공시 조회 실패';
     setStateNote('[' + msg + ']', '#fbbf24');
+    var b = bannerEls();
+    if (b.body) {
+      var btxt = '실시간 DART 공시 조회에 실패했습니다 — 잠시 후 다시 시도하세요. (' + esc(msg) + ')';
+      if (b.body.innerHTML !== btxt) b.body.innerHTML = btxt;
+      b.body.setAttribute('data-live', '1');
+    }
     var m = modalEls();
     if (m.host) {
+      var keyIssue = (reason === 'DART_API_KEY_NOT_SET' || reason === 'DART_KEY_INVALID');
       var html = '<div style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.35); border-radius:8px;' +
         ' padding:9px 11px; margin-bottom:12px; font-size:11px; color:#fde68a; line-height:1.5;">' +
-        '⚠️ DART 실시간 조회 불가: ' + esc(body && body.message ? body.message : msg) +
-        '<br>아래 10종목 판정은 <strong>정적 스캔 결과</strong>이며 실시간 공시 조회가 아닙니다.' +
-        '<br><span style="color:#94a3b8; font-size:10px;">해결: Vercel 프로젝트 → Settings → Environment Variables → DART_API_KEY 추가 후 재배포.</span>' +
+        '⚠️ 실시간 DART 공시 조회에 실패했습니다 — 잠시 후 다시 시도하세요.' +
+        '<br><span style="color:#94a3b8; font-size:10px;">원인: ' + esc(body && body.message ? body.message : msg) +
+        ' · 3분마다 자동으로 다시 조회합니다.</span>' +
+        (keyIssue ? '<br><span style="color:#94a3b8; font-size:10px;">해결: Vercel 프로젝트 → Settings → Environment Variables → DART_API_KEY 추가 후 재배포.</span>' : '') +
         '</div>';
       if (m.host.getAttribute('data-sig') !== html) {
         m.host.innerHTML = html;
