@@ -348,9 +348,22 @@ async function resolveCorpCode(apiKey, stockCode, name, fresh) {
   return hit;
 }
 
+/* 정기보고서·IR 안내처럼 모든 상장사가 내는 '절차 공시' — 신호로 삼지 않는다 */
+const ROUTINE_RULES = ['분기보고서', '반기보고서', '사업보고서', '감사보고서', '기업설명회', 'IR개최', '소유상황보고서', '주식등의대량보유'];
+
+function isRoutineReport(reportNm) {
+  const nm = String(reportNm || '');
+  return ROUTINE_RULES.some((kw) => nm.indexOf(kw) >= 0);
+}
+
+/**
+ * 종목 공시 신호
+ *  · red   = 위험 키워드(유증·CB·감자·횡령·소송 등)
+ *  · yellow= 주목(수주·최대주주·실적 등) 또는 절차 공시가 아닌 일반 공시
+ *  · green = 위험이 없고, 있다면 정기보고서·IR 같은 절차 공시뿐
+ */
 function stockSignalOf(items) {
   const risk = items.filter((i) => i.kind === 'risk');
-  const other = items.filter((i) => i.kind !== 'risk');
   if (risk.length) {
     return {
       key: 'red',
@@ -358,14 +371,22 @@ function stockSignalOf(items) {
       note: `${risk[0].kindLabel} 등 위험 키워드 공시 ${risk.length}건`,
     };
   }
-  if (other.length) {
+  const notable = items.filter((i) => i.kind === 'watch' || !isRoutineReport(i.reportNm));
+  if (notable.length) {
     return {
       key: 'yellow',
       label: '🟡 최근 공시 확인 필요',
-      note: `${other[0].kindLabel} 등 공시 ${other.length}건 — 위험 키워드는 없음`,
+      note: `${notable[0].kindLabel} 등 공시 ${notable.length}건 — 위험 키워드는 없음`,
     };
   }
-  return { key: 'green', label: '🟢 최근 공시 이상 없음', note: '조회 기간 안에 공시가 없습니다' };
+  if (items.length) {
+    return {
+      key: 'green',
+      label: '🟢 공시·경보 이상 없음',
+      note: `정기보고서·IR 안내 ${items.length}건뿐 — 위험·주목 키워드 없음`,
+    };
+  }
+  return { key: 'green', label: '🟢 공시·경보 이상 없음', note: '조회 기간 안에 이 회사 공시가 없습니다' };
 }
 
 async function handleStockDart(res, q, fresh) {
@@ -649,6 +670,7 @@ module.exports.classifyReport = classifyReport;
 // 테스트용: 회사 후보 파싱·신호 판정은 실데이터로 검증할 수 있게 내보낸다.
 module.exports._parseCorpCandidates = parseCorpCandidates;
 module.exports._stockSignalOf = stockSignalOf;
+module.exports._isRoutineReport = isRoutineReport;
 module.exports.normalizeRow = normalizeRow;
 module.exports.pickItems = pickItems;
 module.exports.INTEREST = INTEREST;
