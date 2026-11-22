@@ -1113,7 +1113,8 @@
       bits.push('과거 ' + w.startDate + '~' + w.peakDate + ' ' + pct(w.gainPct) + ' 파동 → 그 고점 대비 지금 ' + pct(w.nowVsPeakPct));
     }
     if (it && it.title){
-      bits.push('당시 [특징주] “' + it.title + '”');
+      var t = String(it.title).replace(/^\s*\[[^\]]*특징주[^\]]*\]\s*/, '').replace(/^특징주[,\s]*/, '');
+      bits.push('당시 [특징주] “' + t + '”');
     }
     if (!bits.length) return null;
     return '과거 비교 — ' + bits.join(' · ');
