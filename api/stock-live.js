@@ -2179,23 +2179,39 @@ async function handleHistoryCatalyst(res, q, fresh) {
     const recentCut = kstYmd(-30);
     const queries = [`"특징주" ${name}`, `"특징주" ${name} after:${ymdDash(yearAgo)} before:${ymdDash(recentCut)}`];
     newsQueries = queries;
-    const settled = await mapLimit(queries, 2, (query) => fetchGoogleNews(query));
     const seen = new Set();
-    settled.forEach((r) => {
-      if (!r || r.__error) {
-        errors.push('구글뉴스: ' + ((r && r.__error) || '빈 응답'));
-        return;
-      }
-      newsSource = r.source;
-      (r.items || []).forEach((it) => {
+    const absorb = (items) => {
+      let added = 0;
+      (items || []).forEach((it) => {
         if (!it.date || !it.title) return;
         if (!catalystIsAbout(it.title, name)) return;
         const k = it.date + '|' + it.title.replace(/\s+/g, '');
         if (seen.has(k)) return;
         seen.add(k);
         articles.push(it);
+        added += 1;
       });
+      return added;
+    };
+    const settled = await mapLimit(queries, 2, (query) => fetchGoogleNews(query));
+    settled.forEach((r) => {
+      if (!r || r.__error) {
+        errors.push('구글뉴스: ' + ((r && r.__error) || '빈 응답'));
+        return;
+      }
+      newsSource = r.source;
+      absorb(r.items);
     });
+    /* 구글 응답은 요청마다 조각이 달라 0건이 나올 수 있다 — 같은 검색어로 한 번 더 확인한다 */
+    if (newsSource && !articles.length) {
+      try {
+        const retry = await fetchGoogleNews(`특징주 ${name}`);
+        newsQueries = newsQueries.concat(['특징주 ' + name]);
+        absorb(retry.items);
+      } catch (e) {
+        errors.push('구글뉴스 재시도: ' + String((e && e.message) || e));
+      }
+    }
     /* 구글뉴스가 막힌 환경(데이터센터 IP 차단 등) — 네이버 종목뉴스 최근 20건에서 [특징주]만 골라 대신 쓴다 */
     if (!newsSource) {
       try {
@@ -2351,7 +2367,8 @@ async function handleHistoryCatalyst(res, q, fresh) {
     generatedAtKst,
   };
 
-  if (body.ok) {
+  var hcHasItems = !!(body.catalyst && body.catalyst.items && body.catalyst.items.length);
+  if (body.ok && hcHasItems) {
     hcCache.set(key, { at: Date.now(), value: body });
     if (hcCache.size > 120) {
       const oldest = hcCache.keys().next();
@@ -2359,7 +2376,8 @@ async function handleHistoryCatalyst(res, q, fresh) {
     }
   }
   res.setHeader('X-Cache', 'MISS');
-  return sendJson(res, 200, body, HC_CACHE_CONTROL);
+  /* 기사 0건은 일시적일 수 있어 오래 캐시하지 않는다(다음 조회에서 다시 확인) */
+  return sendJson(res, 200, body, hcHasItems ? HC_CACHE_CONTROL : 'public, s-maxage=20, stale-while-revalidate=60');
 }
 
 /* ------------------------------ handler ------------------------------ */

@@ -4410,6 +4410,359 @@ async function handleLiveBriefing(res, body, keyConfigured) {
   });
 }
 
+/* ====================== 🔋 이차전지 논문 리서치 (battery_research) ======================
+ * POST /api/content-ai  { action:'battery_research', q:'질문', notes?:'대백과 발췌', lite?:true }
+ *
+ *   사용자(이차전지 셀 개발·음극/극판 R&D)의 질문에 대해
+ *     1) OpenAlex(실패 시 CrossRef)에서 **실제로 존재하는 논문 메타데이터**(제목·저자·저널·연도·DOI·초록)를 받아오고
+ *     2) 그 논문들과 사용자의 「이차전지 실무 대백과」 발췌(notes) 안에서만 Gemini 가 해석을 쓴다.
+ *   원칙
+ *     - 논문·DOI·수치는 받아온 메타데이터에 있는 것만 쓴다. 없으면 '찾지 못함'으로 남긴다(지어내지 않는다).
+ *     - Gemini 키가 없거나 실패해도 논문 목록은 200 으로 돌려준다(빈 화면 금지).
+ *     - lite:true 는 Gemini 없이 논문 목록만(카드 첫 화면용).
+ */
+
+const BR_MAX_PAPERS = 5;
+const BR_HTTP_TIMEOUT_MS = 9000;
+const BR_AI_DEADLINE_MS = 32000;
+const BR_UA = 'yeonolang-office/1.0 (battery research helper; +https://github.com/hwen21c-tech)';
+const BR_MAILTO = 'hwen21c@gmail.com';
+
+/* 한국어 질문 → OpenAlex/CrossRef 검색어(영문). 사전에 없는 말은 영문 낱말만 그대로 쓴다. */
+const BR_TERMS = [
+  [['dq/dv', 'dqdv', '디큐디브이', '미분용량', '미분 용량', 'ica', 'dva'], 'differential capacity dQ/dV'],
+  [['sei', '에스이아이', '고체전해질계면', '계면막', 'cei'], 'solid electrolyte interphase SEI'],
+  [['실리콘', 'siox', '규소'], 'silicon anode'],
+  [['음극'], 'anode'],
+  [['양극'], 'cathode'],
+  [['팽창', '부피팽창'], 'volume expansion'],
+  [['열화', '퇴화', '수명저하', '노화'], 'capacity fading degradation'],
+  [['석출', '리튬석출', '덴드라이트', '플레이팅'], 'lithium plating'],
+  [['전고체', '고체전해질'], 'solid-state electrolyte'],
+  [['전해액', '액체전해질', '첨가제'], 'electrolyte additive'],
+  [['극판', '전극판', '합제'], 'electrode'],
+  [['압연', '캘린더', '합제밀도'], 'calendering electrode density'],
+  [['바인더', '접착력', '필테스트'], 'binder adhesion'],
+  [['도전재', 'cnt', '탄소나노튜브'], 'conductive carbon additive'],
+  [['니켈', '하이니켈', 'ncm', 'ncma', '양극재'], 'Ni-rich NCM cathode'],
+  [['lfp', '인산철'], 'LFP cathode'],
+  [['흑연'], 'graphite anode'],
+  [['코인셀', '코인 셀', '하프셀'], 'coin cell half cell'],
+  [['파우치'], 'pouch cell'],
+  [['충방전', '사이클', '수명'], 'cycling performance'],
+  [['에너지밀도'], 'energy density'],
+  [['급속충전', '고속충전'], 'fast charging'],
+  [['열폭주'], 'thermal runaway'],
+  [['n/p', 'n/p비', '로딩'], 'N/P ratio electrode loading'],
+  [['집전체', '구리박', '포일'], 'current collector'],
+  [['슬러리', '분산', '점도'], 'electrode slurry dispersion'],
+  [['수분', 'kf'], 'moisture'],
+  [['공극', '기공', 'porosity'], 'electrode porosity'],
+  [['eis', '임피던스', '저항'], 'electrochemical impedance spectroscopy'],
+  [['저온'], 'low temperature performance'],
+  [['열안정', 'dsc', 'arc'], 'thermal stability'],
+];
+
+const BR_SCHEMA = {
+  type: 'object',
+  properties: {
+    headline: { type: 'string', description: '한 줄 결론 (40자 내외)' },
+    principle: { type: 'array', description: '핵심 원리 2~4줄 — 전기화학·소재 원리', items: { type: 'string' } },
+    practice: { type: 'array', description: '실무 해석·확인 포인트 2~4줄 (셀 개발·극판 공정 관점)', items: { type: 'string' } },
+    paperNotes: {
+      type: 'array',
+      description: '받아온 논문별 한 줄 요약 — DOI 는 목록에 있는 값 그대로',
+      items: {
+        type: 'object',
+        properties: {
+          doi: { type: 'string', description: '논문 목록의 DOI (https://doi.org/…)' },
+          line: { type: 'string', description: '이 논문이 말하는 바 한 줄 (60자 내외)' },
+        },
+        required: ['doi', 'line'],
+      },
+    },
+    cautions: { type: 'array', description: '확인하지 못한 것·주의 (없으면 빈 배열)', items: { type: 'string' } },
+  },
+  required: ['headline'],
+};
+
+function brQueryEn(q) {
+  const low = String(q || '').toLowerCase();
+  const out = [];
+  BR_TERMS.forEach((row) => {
+    const keys = row[0];
+    const en = row[1];
+    let hit = false;
+    for (let i = 0; i < keys.length; i++) if (low.indexOf(keys[i]) >= 0) { hit = true; break; }
+    if (hit && out.indexOf(en) < 0) out.push(en);
+  });
+  const words = String(q || '').match(/[A-Za-z][A-Za-z0-9\-\/]{2,}/g) || [];
+  words.slice(0, 4).forEach((w) => {
+    const lw = w.toLowerCase();
+    if (out.join(' ').toLowerCase().indexOf(lw) >= 0) return;
+    out.push(w);
+  });
+  const joined = out.slice(0, 5).join(' ').trim();
+  return joined || 'lithium-ion battery electrode';
+}
+
+async function brFetchJson(url) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, BR_HTTP_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': BR_UA, Accept: 'application/json' },
+      signal: ctrl.signal,
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+function brAbstract(inv) {
+  if (!inv || typeof inv !== 'object') return '';
+  const arr = [];
+  Object.keys(inv).forEach((w) => {
+    const ps = inv[w] || [];
+    for (let i = 0; i < ps.length; i++) if (ps[i] >= 0 && ps[i] < 4000) arr[ps[i]] = w;
+  });
+  return arr.filter(Boolean).join(' ').replace(/\s+/g, ' ').slice(0, 900);
+}
+
+function brCleanPaper(p) {
+  const title = s(p && p.title, 300).replace(/\s+/g, ' ');
+  if (!title) return null;
+  const doi = s(p.doi, 300);
+  return {
+    title,
+    year: Number(p.year) || null,
+    journal: s(p.journal, 140) || null,
+    authors: (Array.isArray(p.authors) ? p.authors : []).map((a) => s(a, 60)).filter(Boolean).slice(0, 3),
+    doi: /^https?:\/\/doi\.org\//.test(doi) ? doi : doi ? 'https://doi.org/' + doi.replace(/^doi:\s*/i, '') : null,
+    cited: Number(p.cited) || 0,
+    abstract: s(p.abstract, 900) || null,
+  };
+}
+
+async function brOpenAlex(qEn) {
+  const from = new Date(Date.now() - 3 * 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const url =
+    'https://api.openalex.org/works?search=' +
+    encodeURIComponent(qEn) +
+    '&filter=' +
+    encodeURIComponent('type:article|review,from_publication_date:' + from) +
+    '&per-page=12&select=doi,display_name,publication_year,primary_location,authorships,cited_by_count,abstract_inverted_index&mailto=' +
+    encodeURIComponent(BR_MAILTO);
+  const j = await brFetchJson(url);
+  const list = (j && j.results) || [];
+  return list
+    .map((w) => {
+      const src = (w.primary_location && w.primary_location.source) || {};
+      return brCleanPaper({
+        title: w.display_name,
+        year: w.publication_year,
+        journal: src.display_name,
+        authors: (w.authorships || []).map((a) => (a && a.author && a.author.display_name) || ''),
+        doi: w.doi,
+        cited: w.cited_by_count,
+        abstract: brAbstract(w.abstract_inverted_index),
+      });
+    })
+    .filter(Boolean);
+}
+
+async function brCrossref(q) {
+  const url =
+    'https://api.crossref.org/works?query=' +
+    encodeURIComponent(q) +
+    '&rows=10&sort=relevance&select=DOI,title,author,container-title,issued,abstract,is-referenced-by-count,type';
+  const j = await brFetchJson(url);
+  const items = (j && j.message && j.message.items) || [];
+  return items
+    .map((it) => {
+      const dp = (it.issued && it.issued['date-parts'] && it.issued['date-parts'][0]) || [];
+      return brCleanPaper({
+        title: (it.title || [])[0],
+        year: dp[0],
+        journal: (it['container-title'] || [])[0],
+        authors: (it.author || []).map((a) => [a.given, a.family].filter(Boolean).join(' ')),
+        doi: it.DOI,
+        cited: it['is-referenced-by-count'],
+        abstract: String(it.abstract || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '),
+      });
+    })
+    .filter(Boolean);
+}
+
+/* 최신순 → 초록 있는 것 → 피인용 순. 중복(같은 DOI·제목) 제거. */
+function brRank(list) {
+  const seen = {};
+  const out = [];
+  (list || []).forEach((p) => {
+    const key = (p.doi || p.title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key || seen[key]) return;
+    seen[key] = 1;
+    out.push(p);
+  });
+  out.sort((a, b) => {
+    if ((b.year || 0) !== (a.year || 0)) return (b.year || 0) - (a.year || 0);
+    const aa = a.abstract ? 1 : 0;
+    const ba = b.abstract ? 1 : 0;
+    if (ba !== aa) return ba - aa;
+    return (b.cited || 0) - (a.cited || 0);
+  });
+  return out.slice(0, BR_MAX_PAPERS);
+}
+
+function brPrompt(q, notes, papers) {
+  const meta = papers.map((p, i) => ({
+    n: i + 1,
+    title: p.title,
+    year: p.year,
+    journal: p.journal,
+    authors: p.authors,
+    doi: p.doi,
+    cited: p.cited,
+    abstract: p.abstract ? p.abstract.slice(0, 700) : null,
+  }));
+  const noteBlock = s(notes, 2600);
+  return {
+    system:
+      '너는 이차전지 셀 개발·전극(음극·극판) 연구자를 돕는 배터리 리서치 어시스턴트다. 규칙: ' +
+      '(1) 아래 [논문 목록]은 OpenAlex/CrossRef에서 방금 받아온 실제 논문 메타데이터다. 논문의 주장·수치는 이 목록에 적힌 것만 인용하고, ' +
+      '목록에 없는 논문·저자·DOI·수치를 절대 만들지 않는다. (2) [대백과 발췌]는 사용자가 직접 정리한 사내 실무 기준이다. 충돌하면 대백과를 우선하고, ' +
+      '논문이 대백과와 다르면 그 차이를 밝힌다. (3) 일반 전기화학·소재 원리 설명은 네 지식으로 보강해도 되지만, 논문 근거인 것처럼 쓰지 않는다. ' +
+      '(4) 투자·주가·매매 이야기는 하지 않는다. (5) 한국어로, 현장에서 바로 쓸 수 있는 말로 쓴다. (6) 모르는 것은 cautions 에 적는다.',
+    user:
+      '[질문]\n' + s(q, 400) +
+      '\n\n[논문 목록 — 실제 API 응답]\n' + JSON.stringify(meta) +
+      (noteBlock ? '\n\n[대백과 발췌]\n' + noteBlock : '') +
+      '\n\n위 자료로 답해라.\n' +
+      '· headline: 질문에 대한 한 줄 결론.\n' +
+      '· principle: 핵심 원리 2~4줄 (왜 그렇게 되는지).\n' +
+      '· practice: 실무 해석 2~4줄 — 셀 설계·극판 공정·측정에서 무엇을 확인할지.\n' +
+      '· paperNotes: 목록의 논문마다 doi 를 그대로 쓰고 한 줄 요약. 목록에 없는 doi 는 쓰지 마라.\n' +
+      '· cautions: 근거가 약한 부분·추가로 확인할 것.' +
+      (papers.length ? '' : '\n· 논문 목록이 비었다 — "관련 논문을 찾지 못했습니다"를 headline 이나 cautions 에 정확히 적고, 원리·실무만 답해라.'),
+    temperature: 0.25,
+    maxTokens: 1600,
+    schema: BR_SCHEMA,
+  };
+}
+
+async function handleBatteryResearch(res, body, keyConfigured) {
+  const q = s(body && body.q, 400);
+  if (!q) {
+    return send(res, 400, { ok: false, reason: 'missing_query', message: '질문(q)이 필요합니다.' });
+  }
+  const lite = !!(body && body.lite);
+  const qEn = brQueryEn(q);
+  const now = new Date();
+  const p = lbKst(now);
+  const nowLabel = `${p.y}-${lbPad(p.m)}-${lbPad(p.d)}(${LB_WEEKDAY_KO[p.wd] || ''}) ${lbPad(p.hh)}:${lbPad(p.mi)} KST`;
+
+  let papers = [];
+  let source = null;
+  const errors = [];
+  try {
+    papers = await brOpenAlex(qEn);
+    if (papers.length) source = 'openalex';
+  } catch (err) {
+    errors.push({ source: 'openalex', message: String((err && err.message) || err).slice(0, 160) });
+  }
+  if (!papers.length) {
+    try {
+      papers = await brCrossref(qEn);
+      if (papers.length) source = 'crossref';
+    } catch (err) {
+      errors.push({ source: 'crossref', message: String((err && err.message) || err).slice(0, 160) });
+    }
+  }
+  papers = brRank(papers);
+
+  const base = {
+    ok: true,
+    action: 'battery_research',
+    query: q,
+    queryEn: qEn,
+    source,
+    papers,
+    generatedAtKst: nowLabel,
+    keyConfigured,
+    errors,
+  };
+
+  if (lite) {
+    return send(res, 200, { ...base, answer: null, ai: { used: false, model: null, note: '논문 목록만 조회(lite)' } });
+  }
+
+  if (!keyConfigured || process.env.DISABLE_GEMINI === '1' || !papers.length) {
+    return send(res, 200, {
+      ...base,
+      answer: null,
+      ai: {
+        used: false,
+        model: null,
+        note: !keyConfigured
+          ? 'Gemini 키가 없어 논문 목록만 보여 줍니다.'
+          : !papers.length
+            ? '관련 논문을 찾지 못해 논문 해석은 만들지 않았습니다.'
+            : 'Gemini 호출이 꺼져 있어 논문 목록만 보여 줍니다.',
+      },
+    });
+  }
+
+  try {
+    const out = await generate(brPrompt(q, body && body.notes, papers), Date.now() + BR_AI_DEADLINE_MS);
+    const parsed = extractJson(out && out.text);
+    if (!parsed || !s(parsed.headline, 300)) {
+      return send(res, 200, {
+        ...base,
+        answer: null,
+        model: out && out.model,
+        ai: { used: false, model: out && out.model, note: 'AI 응답 형식이 깨져 논문 목록만 보여 줍니다.' },
+      });
+    }
+    const allowDoi = {};
+    papers.forEach((x) => { if (x.doi) allowDoi[x.doi.toLowerCase()] = x.doi; });
+    const notes = arr(parsed.paperNotes, 8)
+      .map((x) => ({ doi: s(x && x.doi, 300), line: s(x && x.line, 240) }))
+      .filter((x) => x.line && allowDoi[x.doi.toLowerCase()] || (x.line && !x.doi))
+      .map((x) => ({ doi: allowDoi[x.doi.toLowerCase()] || null, line: x.line }));
+    const answer = {
+      headline: s(parsed.headline, 300),
+      principle: arr(parsed.principle, 6).map((x) => s(x, 300)).filter(Boolean),
+      practice: arr(parsed.practice, 6).map((x) => s(x, 300)).filter(Boolean),
+      paperNotes: notes,
+      cautions: arr(parsed.cautions, 6).map((x) => s(x, 300)).filter(Boolean),
+    };
+    return send(res, 200, {
+      ...base,
+      answer,
+      model: out.model || null,
+      ai: { used: true, model: out.model || null, note: null },
+      elapsedMs: Date.now() - now.getTime(),
+    });
+  } catch (err) {
+    const code = err && err.code;
+    return send(res, 200, {
+      ...base,
+      answer: null,
+      ai: {
+        used: false,
+        model: null,
+        note:
+          code === 'quota_exceeded'
+            ? 'Gemini 하루 한도를 다 써서 논문 목록만 보여 줍니다.'
+            : 'Gemini 응답이 지연·실패해 논문 목록만 보여 줍니다.',
+      },
+      aiError: { code: code || null, message: String((err && err.message) || err).slice(0, 200) },
+    });
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -4436,6 +4789,13 @@ module.exports = async function handler(req, res) {
       model: PRIMARY_MODEL,
       fallbacks: FALLBACK_MODELS,
       actions: GEN_ACTIONS,
+      battery_research: {
+        action: 'battery_research',
+        how:
+          "POST { action:'battery_research', q:'질문', notes:'대백과 발췌(선택)', lite:true|false } " +
+          "→ { ok, queryEn, source:'openalex'|'crossref', papers:[{title,year,journal,authors,doi,cited,abstract}], answer:{headline,principle[],practice[],paperNotes[],cautions[]}, ai }",
+        note: '논문은 OpenAlex → CrossRef 순으로 실제 조회한다. 논문·DOI를 지어내지 않는다.',
+      },
       youtube: {
         action: 'youtube_transcript',
         how: "POST { action:'youtube_transcript', url:'https://youtu.be/…' } → { ok, title, author, lengthSec, langLabel, auto, route, text, errors[] }",
@@ -4491,6 +4851,10 @@ module.exports = async function handler(req, res) {
   // 🧠 종목 1초 해석 — 체커가 보낸 실측 사실만으로 2~3줄. 키가 없어도 규칙 요약을 200 으로 돌려준다.
   if (reqMode === 'stock_insight' || action === 'stock_insight') {
     return handleStockInsight(res, body, keyConfigured);
+  }
+  // 🔋 이차전지 논문 리서치 — OpenAlex/CrossRef 실논문 메타데이터 + 대백과 발췌로만 해석한다.
+  if (reqMode === 'battery_research' || action === 'battery_research') {
+    return handleBatteryResearch(res, body, keyConfigured);
   }
   // 🌐 공식 페이지 사진 — Gemini 키와 무관하게 먼저 처리한다(키 없이도 동작).
   if (action === 'fetch_official_photos' || action === 'official_photos') {
