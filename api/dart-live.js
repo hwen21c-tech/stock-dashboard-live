@@ -349,7 +349,17 @@ async function resolveCorpCode(apiKey, stockCode, name, fresh) {
 }
 
 /* 정기보고서·IR 안내처럼 모든 상장사가 내는 '절차 공시' — 신호로 삼지 않는다 */
-const ROUTINE_RULES = ['분기보고서', '반기보고서', '사업보고서', '감사보고서', '기업설명회', 'IR개최', '소유상황보고서', '주식등의대량보유'];
+const ROUTINE_RULES = ['분기보고서', '반기보고서', '사업보고서', '감사보고서', '기업설명회', 'IR개최', '소유상황보고서', '소유주식변동'];
+
+/* '최대주주등소유주식변동신고서'는 최대주주가 바뀐 공시가 아니라 주주 지분 변동 신고다.
+   공시명 키워드('최대주주')만 보고 '최대주주 변경'으로 읽지 않도록 종목 조회에서만 먼저 걸러 낸다. */
+function classifyStockReport(reportNm) {
+  const nm = String(reportNm || '');
+  if (nm.indexOf('소유주식변동') >= 0 || nm.indexOf('소유상황보고서') >= 0) {
+    return { kind: 'info', label: '주식 소유 변동 신고', keyword: null };
+  }
+  return classifyReport(nm);
+}
 
 function isRoutineReport(reportNm) {
   const nm = String(reportNm || '');
@@ -464,6 +474,10 @@ async function handleStockDart(res, q, fresh) {
       const it = normalizeRow(d);
       if (!it.reportNm || !it.rceptNo || seen.has(it.rceptNo)) return;
       seen.add(it.rceptNo);
+      const cls = classifyStockReport(it.reportNm);
+      it.kind = cls.kind;
+      it.kindLabel = cls.label;
+      it.keyword = cls.keyword || null;
       items.push(it);
     });
     const rank = { risk: 0, watch: 1, info: 2 };
@@ -671,6 +685,7 @@ module.exports.classifyReport = classifyReport;
 module.exports._parseCorpCandidates = parseCorpCandidates;
 module.exports._stockSignalOf = stockSignalOf;
 module.exports._isRoutineReport = isRoutineReport;
+module.exports._classifyStockReport = classifyStockReport;
 module.exports.normalizeRow = normalizeRow;
 module.exports.pickItems = pickItems;
 module.exports.INTEREST = INTEREST;
