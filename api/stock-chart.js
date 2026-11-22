@@ -321,7 +321,8 @@ module.exports = async function handler(req, res) {
   const q = getQuery(req);
   const query = (q.q || q.code || q.name || '').trim();
   const countParam = parseInt(q.count, 10);
-  const count = Number.isFinite(countParam) ? Math.min(Math.max(countParam, 20), 200) : 60;
+  /* 20~260 — 260거래일이면 52주 위치 바(1초 체커)까지 한 번에 계산된다 */
+  const count = Number.isFinite(countParam) ? Math.min(Math.max(countParam, 20), 260) : 60;
 
   if (!query) {
     return sendJson(
