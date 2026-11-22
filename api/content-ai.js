@@ -3376,7 +3376,758 @@ const GEN_ACTIONS = [
   'proofread_draft',
   'analyze_shorts_style',
   'shorts_script',
+  'live_briefing',
 ];
+
+/* ====================== ⚡ 실시간 즉석 브리핑 (live_briefing) ======================
+ * POST /api/content-ai  { mode:'live_briefing' | action:'live_briefing', facts:{...} }
+ *
+ *   버튼을 누른 그 순간 프론트가 받아 온 실측 JSON
+ *   (/api/live-briefing · /api/tabs-live · /api/stock-live?mode=index|top · /data/supply-latest.json)을
+ *   facts 로 넘겨받아, 서버 KST 시각과 함께 '지금 이 시각' 브리핑을 만든다.
+ *
+ *   원칙
+ *    - 수치는 facts 에 있는 값만 쓴다. Gemini 문장에 facts 에 없는 숫자가 있으면 그 문장은 버린다.
+ *    - Gemini 가 죽든·느리든 실측 수치만으로 조립한 요약을 항상 200 으로 돌려준다(빈 화면·에러 금지).
+ *    - 휴장이면 '직전 거래일(11/20) 마감 실측 기준'임을 헤더·본문에 정확히 적는다.
+ */
+
+const LB_DEADLINE_MS = 24000;
+const LB_WEEKDAY_KO = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
+
+function lbKst(now) {
+  const d = now instanceof Date ? now : new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    weekday: 'short',
+  }).formatToParts(d);
+  const g = (t) => (parts.find((x) => x.type === t) || {}).value || '';
+  const hh = Number(g('hour')) % 24;
+  return {
+    y: Number(g('year')),
+    m: Number(g('month')),
+    d: Number(g('day')),
+    hh,
+    mi: Number(g('minute')),
+    ss: Number(g('second')),
+    wd: g('weekday'),
+    minutes: hh * 60 + Number(g('minute')),
+  };
+}
+
+const lbPad = (n) => (n < 10 ? '0' : '') + n;
+
+function lbShortDate(v) {
+  const t = s(v, 30);
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})\(([^)]*)\)$/);
+  if (m) return `${m[2]}/${m[3]}(${m[4]})`;
+  const m2 = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return `${m2[2]}/${m2[3]}`;
+  return t;
+}
+
+function lbNum(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string') return null;
+  const t = v.replace(/,/g, '').replace(/[^0-9.\-+]/g, '');
+  if (!t || !/[0-9]/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function lbFmt(n, d) {
+  const v = lbNum(n);
+  if (v === null) return null;
+  return v.toLocaleString('ko-KR', { maximumFractionDigits: d == null ? 2 : d });
+}
+
+function lbPct(p) {
+  const n = lbNum(p);
+  if (n === null) return null;
+  return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+
+function lbTone(p) {
+  const n = lbNum(p);
+  if (n === null) return 'flat';
+  return n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
+}
+
+function lbEokSigned(v) {
+  const n = lbNum(v);
+  if (n === null) return null;
+  return (n > 0 ? '+' : '') + Math.round(n).toLocaleString('ko-KR') + '억';
+}
+
+function lbEokPlainFromKrw(v) {
+  const n = lbNum(v);
+  if (n === null) return null;
+  const eok = n / 1e8;
+  const txt = eok >= 100 ? Math.round(eok).toLocaleString('ko-KR') : eok.toFixed(eok >= 10 ? 0 : 1);
+  return txt + '억';
+}
+
+function lbSanitizeFacts(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  const take = (v, n) => (Array.isArray(v) ? v.slice(0, n) : []);
+  const live = obj(r.live);
+  const tabs = obj(r.tabs);
+  const stocks = obj(r.stocks);
+  const supply = obj(r.supply);
+
+  const indices = take(live.indices, 4)
+    .map((i) => ({
+      key: s(i && i.key, 10),
+      name: s(i && i.name, 20),
+      price: lbNum(i && i.price),
+      change: lbNum(i && i.change),
+      changePct: lbNum(i && i.changePct),
+      value: lbNum(i && i.value),
+      valueText: s(i && i.valueText, 24),
+    }))
+    .filter((i) => i.name && i.price !== null);
+  const indices2 = indices.length
+    ? indices
+    : take(stocks.indices, 4)
+        .map((i) => ({
+          key: s(i && i.key, 10),
+          name: s(i && i.name, 20),
+          price: lbNum(i && i.price),
+          change: lbNum(i && i.change),
+          changePct: lbNum(i && i.changePct),
+          value: lbNum(i && i.value),
+          valueText: s(i && i.valueText, 24),
+        }))
+        .filter((i) => i.name && i.price !== null);
+
+  const futuresRaw = take(live.futures, 4).length ? take(live.futures, 4) : take(stocks.futures, 4);
+  const futures = futuresRaw
+    .map((f) => ({
+      name: s(f && f.name, 24),
+      price: lbNum(f && f.price),
+      changePct: lbNum(f && f.changePct),
+      asOfKst: s(f && f.asOfKst, 20),
+    }))
+    .filter((f) => f.name && f.price !== null);
+
+  const fxRaw = live.fx && live.fx.price != null ? live.fx : stocks.fx && stocks.fx.price != null ? stocks.fx : null;
+  const fx = fxRaw
+    ? {
+        name: s(fxRaw.name, 16) || '원/달러',
+        price: lbNum(fxRaw.price),
+        changePct: lbNum(fxRaw.changePct),
+        tradedDate: s(fxRaw.tradedDate, 12),
+      }
+    : null;
+
+  const topMovers = take(live.topMovers, 10)
+    .map((t) => ({
+      name: s(t && t.name, 24),
+      code: s(t && t.code, 8),
+      price: lbNum(t && t.price),
+      changePct: lbNum(t && t.changePct),
+      valueText: s(t && t.valueText, 20),
+      tag: s(t && t.tag, 8),
+      upperLimit: !!(t && t.upperLimit),
+    }))
+    .filter((t) => t.name && t.price !== null);
+
+  const leadersRaw = take(stocks.stocks, 14).filter((x) => x && x.name && lbNum(x.value) !== null);
+  const leaders = (leadersRaw.length ? leadersRaw : take(stocks.stocks, 14))
+    .map((t) => ({
+      name: s(t && t.name, 24),
+      code: s(t && t.code, 8),
+      market: s(t && t.market, 8),
+      price: lbNum(t && t.price),
+      changePct: lbNum(t && t.changePct),
+      value: lbNum(t && t.value),
+      valueText: s(t && t.valueText, 24),
+      valueDispText: s((t && (t.valueDispText || t.valueText)) || '', 40),
+    }))
+    .filter((t) => t.name && t.price !== null)
+    .sort((a, b) => (b.value || 0) - (a.value || 0))
+    .slice(0, 8);
+
+  const themes = take(tabs.themes, 8)
+    .map((t, idx) => ({
+      rank: lbNum(t && t.rank) || idx + 1,
+      name: s(t && t.name, 40),
+      avgPct: lbNum(t && t.avgPct),
+      riseCount: lbNum(t && t.riseCount),
+      fallCount: lbNum(t && t.fallCount),
+      top4Sum: lbNum(t && t.top4Sum),
+      stocks: take(t && t.stocks, 4)
+        .map((x) => ({
+          name: s(x && x.name, 24),
+          changePct: lbNum(x && x.changePct),
+          valueText: s(x && (x.valueDispText || x.valueText), 24),
+          upperLimit: !!(x && x.upperLimit),
+        }))
+        .filter((x) => x.name),
+    }))
+    .filter((t) => t.name);
+
+  const searchTop = take(tabs.searchTop, 6)
+    .map((t) => ({
+      rank: lbNum(t && t.rank),
+      name: s(t && t.name, 24),
+      changePct: lbNum(t && t.changePct),
+      valueText: lbNum(t && t.value) !== null ? lbEokPlainFromKrw(t.value) : '',
+      market: s(t && t.market, 8),
+    }))
+    .filter((t) => t.name);
+
+  const after = obj(tabs.aftermarket);
+  const aftermarket = {
+    basisLabel: s(after.basisLabel, 40),
+    sessionLabel: s(after.sessionLabel, 60),
+    inSession: !!after.inSession,
+    byValue: take(after.byValue, 4)
+      .map((x) => ({
+        name: s(x && x.name, 24),
+        changePct: lbNum(x && x.changePct),
+        overPct: lbNum(x && x.overPct),
+        valueText: s(x && (x.overValueDispText || x.overValueText), 24),
+      }))
+      .filter((x) => x.name),
+  };
+
+  const upper = obj(tabs.upperLimit);
+  const upperLimit = take(upper.confirmed, 3)
+    .concat(take(upper.watch, 3))
+    .map((x) => ({
+      name: s(x && x.name, 24),
+      changePct: lbNum(x && x.changePct),
+      valueText: s(x && (x.valueIntegText || x.valueDispText || x.valueText), 24),
+      confirmed: !!(x && x.upperLimit),
+    }))
+    .filter((x) => x.name);
+
+  const newsRaw = take(tabs.news, 6).length ? take(tabs.news, 6) : take(live.news, 6);
+  const news = newsRaw
+    .map((n) => ({ title: s(n && n.title, 120), press: s(n && n.press, 20), time: s(n && n.time, 10) }))
+    .filter((n) => n.title);
+
+  const dataBasis = obj(live.dataBasis);
+  const tradingDate = s(dataBasis.tradingDate, 12);
+  let tradingDateLabel = s(dataBasis.tradingDateLabel, 30);
+  if (!tradingDateLabel && tradingDate) {
+    const p = lbKst(new Date(tradingDate + 'T00:00:00+09:00'));
+    tradingDateLabel = `${lbPad(p.m)}/${lbPad(p.d)}(${LB_WEEKDAY_KO[p.wd] || ''})`;
+  }
+  // '2026-11-20(금)' → '11/20(금)' (헤더·본문이 길어지지 않게)
+  tradingDateLabel = lbShortDate(tradingDateLabel);
+
+  const notes = take(live.notes, 6)
+    .concat(take(tabs.notes, 6))
+    .map((n) => s(n, 220))
+    .filter(Boolean)
+    .slice(0, 8);
+
+  const grab = (arr, n) =>
+    take(arr, n)
+      .map((x) => ({
+        name: s(x && x.name, 24),
+        foreignEok: lbNum(x && x.foreignEok),
+        organEok: lbNum(x && x.organEok),
+        individualEok: lbNum(x && x.individualEok),
+      }))
+      .filter((x) => x.name);
+  const groups = obj(supply.groups);
+  const supplyFacts = {
+    basisLabel: lbShortDate(supply.basisLabel),
+    confirmed: !!supply.confirmed,
+    foreignBuy: grab(groups.foreignBuy, 3),
+    organBuy: grab(groups.organBuy, 3),
+    foreignSell: grab(groups.foreignSell, 3),
+    dualBuy: grab(groups.dualBuy, 2),
+  };
+
+  return {
+    marketPhase: s(live.marketPhase, 12),
+    marketPhaseLabel: s(live.marketPhaseLabel, 60),
+    sessionLabel: s(tabs.sessionLabel, 60),
+    marketStatus: s(tabs.marketStatus || live.dataBasis && live.dataBasis.naverMarketStatus, 12),
+    headline: s(live.headline, 260),
+    generatedAtLabel: s(live.generatedAtLabel, 40),
+    tradingDate,
+    tradingDateLabel,
+    indices: indices2,
+    futures,
+    fx,
+    topMovers,
+    leaders,
+    themes,
+    searchTop,
+    aftermarket,
+    upperLimit,
+    news,
+    supply: supplyFacts,
+    notes,
+  };
+}
+
+function lbPhaseOf(f, p) {
+  const weekend = p.wd === 'Sat' || p.wd === 'Sun';
+  const KNOWN = ['장전', '정규장', '장마감', '애프터·장마감', '주말', '휴장'];
+  let phase = KNOWN.indexOf(f.marketPhase) >= 0 ? f.marketPhase : null;
+  if (weekend) phase = '주말';
+  if (!phase) {
+    if (p.minutes < 9 * 60) phase = '장전';
+    else if (p.minutes < 15 * 60 + 30) phase = '정규장';
+    else phase = '장마감';
+  }
+  const label =
+    phase === '주말'
+      ? `주말 휴장 (${LB_WEEKDAY_KO[p.wd] || ''}요일 · 직전 거래일 종가 기준)`
+      : phase === '휴장'
+        ? '휴장일 (직전 거래일 종가 기준)'
+        : phase === '장전'
+          ? '장전 (09:00 정규장 시작 전)'
+          : phase === '정규장'
+            ? '정규장 진행 중 (09:00~15:30)'
+            : '애프터·장마감 (15:30 정규장 종료 이후)';
+  return { phase, label };
+}
+
+function lbBasisLine(f, phase) {
+  const day = f.tradingDateLabel || (f.tradingDate ? f.tradingDate : null);
+  if (phase === '주말' || phase === '휴장' || phase === '장마감' || phase === '애프터·장마감') {
+    return day
+      ? `데이터 기준: 직전 거래일 ${day} 마감 실측값 — 지금 움직이는 값이 아닙니다.`
+      : '데이터 기준: 마지막 체결 실측값 — 지금 움직이는 값이 아닙니다.';
+  }
+  return day
+    ? `데이터 기준: ${LB_WEEKDAY_KO[lbKst(new Date()).wd] || ''}요일 ${phase} 실측값(직전 거래일 ${day} 기준 포함).`
+    : `데이터 기준: ${phase} 실측값.`;
+}
+
+function lbNextOpenLabel(p) {
+  // 오늘(휴장) 다음 정규장 요일 — 주말이면 월요일, 평일이면 다음 평일
+  const add = p.wd === 'Sat' ? 2 : p.wd === 'Sun' ? 1 : 1;
+  const d = new Date(Date.UTC(p.y, p.m - 1, p.d));
+  d.setUTCDate(d.getUTCDate() + add);
+  const wd = LB_WEEKDAY_KO[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()]] || '';
+  return `${lbPad(d.getUTCMonth() + 1)}/${lbPad(d.getUTCDate())}(${wd})`;
+}
+
+/* facts 의 모든 숫자(문자열 안 숫자 포함)를 '허용 수치'로 모은다 — AI 문장 검증용 */
+function lbAllowedNumbers(f) {
+  const set = new Set();
+  const add = (v) => {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      set.add(Number(v.toFixed(4)));
+      set.add(Math.round(v));
+      set.add(Number(Math.abs(v).toFixed(4)));
+      set.add(Math.round(Math.abs(v)));
+    }
+  };
+  const walk = (v, depth) => {
+    if (depth > 6 || v == null) return;
+    if (typeof v === 'number') return add(v);
+    if (typeof v === 'string') {
+      const m = v.match(/-?\d[\d,]*(?:\.\d+)?/g) || [];
+      m.forEach((t) => add(Number(t.replace(/,/g, ''))));
+      return;
+    }
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
+    if (typeof v === 'object') return Object.keys(v).forEach((k) => walk(v[k], depth + 1));
+  };
+  walk(f, 0);
+  // 문장에 자연스럽게 섞이는 작은 수·연도·시각은 가격·수치 주장이 아니므로 허용한다.
+  for (let i = 0; i <= 12; i++) set.add(i);
+  [2024, 2025, 2026, 2027].forEach((y) => set.add(y));
+  [9, 15, 30, 60, 100].forEach((n) => set.add(n));
+  return set;
+}
+
+function lbNumbersInLine(line) {
+  const out = [];
+  const re = /-?\d[\d,]*(?:\.\d+)?/g;
+  let m;
+  while ((m = re.exec(line))) {
+    const raw = m[0].replace(/,/g, '');
+    const n = Number(raw);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out;
+}
+
+function lbNumberAllowed(n, set) {
+  if (set.has(n)) return true;
+  const abs = Math.abs(n);
+  if (set.has(Math.round(n)) || set.has(Math.round(abs))) return true;
+  for (const a of set) {
+    if (a === 0) continue;
+    if (Math.abs(a - n) <= Math.max(0.05, Math.abs(a) * 0.0006)) return true;
+  }
+  return false;
+}
+
+/** Gemini 문장 중 facts 에 없는 숫자를 담은 문장은 버린다. */
+function lbFilterLines(lines, allowed) {
+  const kept = [];
+  let dropped = 0;
+  (Array.isArray(lines) ? lines : []).forEach((ln) => {
+    const text = s(ln, 400);
+    if (text.length < 4) return;
+    const bad = lbNumbersInLine(text).filter((n) => !lbNumberAllowed(n, allowed));
+    if (bad.length) {
+      dropped += 1;
+      return;
+    }
+    kept.push(text.replace(/선감/g, '선물').replace(/나스닥100\s*선물\s*선물/g, '나스닥100 선물'));
+  });
+  return { kept: kept.slice(0, 5), dropped };
+}
+
+function lbBuildRows(f) {
+  const rows = [];
+  f.indices.forEach((i) => {
+    rows.push({
+      label: i.name,
+      value: lbFmt(i.price, 2),
+      delta: [lbFmt(i.change, 2), lbPct(i.changePct)].filter(Boolean).join(' / '),
+      extra: i.valueText ? '거래대금 ' + i.valueText : null,
+      tone: lbTone(i.changePct),
+    });
+  });
+  f.futures.forEach((x) => {
+    rows.push({
+      label: x.name,
+      value: lbFmt(x.price, 2),
+      delta: lbPct(x.changePct),
+      extra: x.asOfKst ? '기준 ' + x.asOfKst : null,
+      tone: lbTone(x.changePct),
+    });
+  });
+  if (f.fx && f.fx.price !== null) {
+    rows.push({
+      label: f.fx.name + ' 환율',
+      value: lbFmt(f.fx.price, 2) + '원',
+      delta: lbPct(f.fx.changePct),
+      extra: f.fx.tradedDate ? '기준 ' + f.fx.tradedDate : null,
+      tone: lbTone(f.fx.changePct),
+    });
+  }
+  return rows;
+}
+
+function lbSupplyLines(f, max) {
+  const sp = f.supply || {};
+  const cap = max == null ? 4 : max;
+  const out = [];
+  const basis = sp.basisLabel ? ` — ${sp.basisLabel} 거래소 확정` : ' — 거래소 확정치';
+  const line = (label, arr, key) =>
+    arr && arr.length
+      ? `${label}: ` +
+        arr
+          .slice(0, 3)
+          .map((x) => `${x.name} ${lbEokSigned(x[key])}`)
+          .filter((x) => x.indexOf('null') < 0)
+          .join(' · ') +
+        basis
+      : null;
+  const fb = line('외국인 순매수 상위', sp.foreignBuy, 'foreignEok');
+  const ob = line('기관 순매수 상위', sp.organBuy, 'organEok');
+  const fs = line('외국인 순매도 상위', sp.foreignSell, 'foreignEok');
+  const db = line('외인·기관 동반 매수', sp.dualBuy, 'foreignEok');
+  [fb, ob, fs, db].forEach((x) => x && out.push(x));
+  if (!out.length) out.push('투자자별 수급: 이번 응답에 확정 수급 자료가 없습니다 — 💰 수급 탭에서 확인하세요.');
+  return out.slice(0, cap);
+}
+
+function lbThemeLines(f) {
+  const out = [];
+  if (!f.themes.length) {
+    out.push('주도 테마: 이번 응답에 테마 랭킹이 없습니다 — 📈 테마 탭에서 확인하세요.');
+  } else {
+    const top = f.themes.slice(0, 3);
+    out.push(
+      '주도 테마(테마 내 노출 종목 평균 등락률): ' +
+        top
+          .map((t) => `${t.rank}위 ${t.name} ${lbPct(t.avgPct) || '등락률 없음'}`)
+          .join(' · ') +
+        (f.tradingDateLabel ? ` — ${f.tradingDateLabel} 마감 기준.` : '.'),
+    );
+    const best = f.themes
+      .slice()
+      .sort((a, b) => (b.avgPct == null ? -999 : b.avgPct) - (a.avgPct == null ? -999 : a.avgPct))[0];
+    if (best && best.stocks && best.stocks.length) {
+      out.push(
+        `${best.name} 노출 종목 중 상승률 상위: ` +
+          best.stocks
+            .slice(0, 3)
+            .map((x) => `${x.name} ${lbPct(x.changePct) || ''}${x.valueText ? '(' + x.valueText + ')' : ''}`)
+            .join(' · ') +
+          '.',
+      );
+    }
+  }
+  return out;
+}
+
+function lbLeaderRows(f) {
+  const src = f.leaders.length ? f.leaders : f.topMovers.map((t) => ({ ...t, value: null }));
+  return src.slice(0, 5).map((t) => ({
+    name: t.name,
+    code: t.code || null,
+    market: t.market || null,
+    price: lbFmt(t.price, 0),
+    changePct: lbPct(t.changePct),
+    tone: lbTone(t.changePct),
+    valueText: t.valueDispText || t.valueText || null,
+    upperLimit: !!t.upperLimit,
+  }));
+}
+
+function lbCheckpointPhase(f, phase, phaseLabel, p) {
+  const out = [];
+  const day = f.tradingDateLabel || '직전 거래일';
+  if (phase === '주말' || phase === '휴장') {
+    out.push(`${phaseLabel} — 국내 정규장이 열리지 않습니다. 다음 정규장은 ${lbNextOpenLabel(p)} 09:00 개장입니다.`);
+    out.push(`지수·선물·환율·종목 수치는 ${day} 마감(또는 마지막 체결) 실측값이고, 지금 움직이는 값이 아닙니다.`);
+  } else if (phase === '장전') {
+    out.push(`장전 — 09:00 정규장 개장 전입니다. 아래 수치는 ${day} 마감 실측값과 개장 전 마지막 체결값입니다.`);
+    out.push('동시호가(08:30~09:00) 전 예상 체결가는 호가 왜곡이 생기므로 시초가 확인 뒤 대응하세요.');
+  } else if (phase === '정규장') {
+    out.push('정규장 진행 중 — 아래 지수·종목 수치는 이번 응답의 체결 시각 기준이고, 15:30 종료 전까지 계속 바뀝니다.');
+    out.push('장중 수급은 확정치가 아니라 잠정치입니다 — 종가 확정 수급과 다를 수 있습니다.');
+  } else {
+    out.push(`장마감 — 아래 수치는 ${day} 종가와 시간외 마지막 체결값입니다.`);
+    out.push('다음 정규장 시초가 전까지는 시간외 단일가·해외 선물 흐름만 갱신됩니다.');
+  }
+  return out;
+}
+
+function lbCheckpointFacts(f, phase, phaseLabel, p) {
+  const out = [];
+  const day = f.tradingDateLabel || '직전 거래일';
+  const k = f.indices.find((i) => i.key === 'KOSPI') || f.indices[0] || null;
+  const q = f.indices.find((i) => i.key === 'KOSDAQ') || null;
+  if (k && k.changePct !== null && k.changePct <= -3) {
+    out.push(
+      `코스피 ${lbPct(k.changePct)}(${lbFmt(k.price, 2)}) 급락 마감 — 급락 다음 거래일은 갭·변동성 확대 구간이라 시초가 추격보다 체결 확인이 우선입니다.`,
+    );
+  } else if (k && k.changePct !== null && k.changePct >= 3) {
+    out.push(`코스피 ${lbPct(k.changePct)}(${lbFmt(k.price, 2)}) 급등 마감 — 갭 상승 출발 뒤 되돌림 여부를 시초가 5분봉으로 확인하세요.`);
+  }
+  if (q && q.changePct !== null && k && k.changePct !== null && Math.abs(q.changePct - k.changePct) >= 2) {
+    out.push(`코스피 ${lbPct(k.changePct)} vs 코스닥 ${lbPct(q.changePct)} — 두 시장 온도차가 2%p 이상입니다(순환매·자금 이동 구간).`);
+  }
+  const fut = f.futures.filter((x) => x.changePct !== null);
+  if (fut.length && fut.every((x) => x.changePct < 0)) {
+    out.push(`해외 선물 동반 약세(${fut.map((x) => `${x.name} ${lbPct(x.changePct)}`).join(' · ')}) — 다음 국내장 시초가 방향의 참고값입니다.`);
+  } else if (fut.length && fut.every((x) => x.changePct > 0)) {
+    out.push(`해외 선물 동반 강세(${fut.map((x) => `${x.name} ${lbPct(x.changePct)}`).join(' · ')}) — 다음 국내장 갭 방향의 참고값입니다.`);
+  }
+  if (f.fx && f.fx.price !== null) {
+    out.push(`원/달러 ${lbFmt(f.fx.price, 2)}원(${lbPct(f.fx.changePct) || '등락률 없음'}) — 환율 레벨이 외국인 수급의 변수입니다.`);
+  }
+  if (k && k.value && f.leaders.length >= 3) {
+    const top3 = f.leaders.slice(0, 3).reduce((a, x) => a + (x.value || 0), 0);
+    const ratio = (top3 / k.value) * 100;
+    if (Number.isFinite(ratio) && ratio >= 20) {
+      out.push(`거래대금 상위 3종목(${f.leaders.slice(0, 3).map((x) => x.name).join('·')})이 코스피 거래대금의 ${ratio.toFixed(1)}% — 자금이 소수 종목에 몰린 상태입니다.`);
+    }
+  }
+  if (f.upperLimit.length) {
+    out.push(
+      `상한가 근접/관찰: ${f.upperLimit
+        .slice(0, 3)
+        .map((x) => `${x.name} ${lbPct(x.changePct) || ''}${x.valueText ? '(' + x.valueText + ')' : ''}`)
+        .join(' · ')} — 확정 상한가가 아닌 관찰 목록입니다.`,
+    );
+  }
+  if (f.aftermarket.basisLabel) {
+    out.push(
+      `시간외: ${f.aftermarket.basisLabel}${f.aftermarket.inSession ? ' (세션 진행 중)' : ' (세션 아님 · 마감값)'} 기준입니다.`,
+    );
+  }
+  out.push('DART 공시·기관 리포트·뉴스 원문은 이 브리핑에 포함되지 않습니다 — 🚨 DART 레이더와 뉴스 탭에서 확인하세요.');
+  return out;
+}
+
+function lbPrompt(f, phaseLabel, p, nowLabel) {
+  const day = f.tradingDateLabel || f.tradingDate || '직전 거래일';
+  const factsForPrompt = {
+    지금시각: nowLabel,
+    시장상태: phaseLabel,
+    데이터기준일: day,
+    지수: f.indices,
+    해외선물: f.futures,
+    환율: f.fx,
+    수급: f.supply,
+    주도테마: f.themes.map((t) => ({ 순위: t.rank, 테마: t.name, 평균등락률: t.avgPct, 상승: t.riseCount, 하락: t.fallCount, 대금합: t.top4Sum, 종목: t.stocks })),
+    거래대금상위: f.leaders,
+    검색상위: f.searchTop,
+    상한가관찰: f.upperLimit,
+    시간외: f.aftermarket,
+    뉴스: f.news,
+  };
+  return {
+    system:
+      '너는 한국 주식시장 시황 브리핑을 쓰는 애널리스트다. 규칙: (1) 제공된 FACTS JSON에 있는 수치만 쓴다. ' +
+      '(2) FACTS에 없는 숫자·종목명·뉴스·공시·목표가를 절대 만들지 않는다. (3) 확인된 사실과 해석을 구분하고, 해석은 "가능성/참고"로만 표현한다. ' +
+      '(4) 휴장·장마감이면 "직전 거래일 마감 실측 기준"임을 분명히 밝힌다. (5) 숫자는 콤마·소수점을 FACTS와 똑같이 쓴다. (6) 모든 문장은 "~습니다/~입니다" 정중한 서술로 끝낸다(반말·"~한다"체 금지). (7) 수치가 없는 막연한 문장(참고해야 합니다·유의할 필요가 있습니다)은 쓰지 않는다.',
+    user:
+      `지금 시각: ${nowLabel} / 시장 상태: ${phaseLabel} / 데이터 기준일: ${day}\n\n` +
+      'FACTS:\n' +
+      JSON.stringify(factsForPrompt) +
+      '\n\n위 FACTS만 근거로 세 묶음을 써라.\n' +
+      '- market: 1) 시장 지수 & 수급 요약 — 지수·선물·환율·확정 수급을 2~4문장.\n' +
+      '- themes: 2) 현재 주도 테마 & 거래대금 상위 핵심 종목 — 테마와 종목 흐름을 2~4문장(FACTS의 테마명·종목명만).\n' +
+      '- checkpoints: 3) 지금 시간대 체크포인트 / 대응 유의사항 — 지금 이 시간대에 확인할 것과 대응 원칙 2~4문장.\n' +
+      `- ${phaseLabel}이면 첫 문장에서 "${day} 마감 실측 기준"임을 밝혀라.\n` +
+      '- FACTS에 없는 것은 쓰지 말고, 모르면 그 문장을 빼라.',
+    temperature: 0.25,
+    maxTokens: 1500,
+    schema: {
+      type: 'object',
+      properties: {
+        headline: { type: 'string' },
+        market: { type: 'array', items: { type: 'string' } },
+        themes: { type: 'array', items: { type: 'string' } },
+        checkpoints: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['market', 'themes', 'checkpoints'],
+    },
+  };
+}
+
+async function handleLiveBriefing(res, body, keyConfigured) {
+  const now = new Date();
+  const p = lbKst(now);
+  const nowLabel = `${p.y}-${lbPad(p.m)}-${lbPad(p.d)}(${LB_WEEKDAY_KO[p.wd] || ''}) ${lbPad(p.hh)}:${lbPad(p.mi)} KST`;
+  const f = lbSanitizeFacts(body && body.facts);
+  const { phase, label: phaseLabel } = lbPhaseOf(f, p);
+
+  const haveAny = f.indices.length || f.futures.length || f.leaders.length || f.themes.length;
+  if (!haveAny) {
+    return send(res, 200, {
+      ok: false,
+      action: 'live_briefing',
+      reason: 'missing_facts',
+      message: '실측 데이터가 비어 있어 브리핑을 만들지 못했습니다. 잠시 뒤 🔄 지금 다시 생성 을 눌러 주세요.',
+      generatedAtKst: nowLabel,
+      keyConfigured,
+    });
+  }
+
+  const header = `⚡ ${p.y}-${lbPad(p.m)}-${lbPad(p.d)} ${lbPad(p.hh)}:${lbPad(p.mi)} 기준 실시간 시황 브리핑`;
+  const basisLine = lbBasisLine(f, phase);
+  const marketRows = lbBuildRows(f);
+  const themeLines = lbThemeLines(f);
+  const leaderRows = lbLeaderRows(f);
+  const phaseLines = lbCheckpointPhase(f, phase, phaseLabel, p);
+  const factLines = lbCheckpointFacts(f, phase, phaseLabel, p);
+
+  const sources = [];
+  if (f.indices.length) sources.push('네이버 금융 지수·종목');
+  if (f.futures.length) sources.push('Yahoo 해외선물');
+  if (f.fx) sources.push('원/달러');
+  if (f.themes.length) sources.push('네이버 테마 랭킹');
+  if (f.supply && (f.supply.foreignBuy.length || f.supply.organBuy.length)) sources.push('거래소 확정 수급');
+  const sourcesLine = sources.length ? '실측 출처: ' + sources.join(' · ') : null;
+
+  let aiLines = null;
+  let aiMeta = { used: false, model: null, note: null, droppedLines: 0 };
+  if (!keyConfigured) {
+    aiMeta.note = 'Gemini 키가 없어 실측 수치만으로 조립한 요약입니다.';
+  } else if (process.env.DISABLE_GEMINI === '1') {
+    aiMeta.note = '이 환경에서 Gemini 호출이 꺼져 있어 실측 조립 요약으로 답했습니다.';
+  } else {
+    try {
+      const out = await generate(lbPrompt(f, phaseLabel, p, nowLabel), Date.now() + LB_DEADLINE_MS);
+      const parsed = extractJson(out && out.text);
+      if (parsed) {
+        const allowed = lbAllowedNumbers(f);
+        const m = lbFilterLines(parsed.market, allowed);
+        const t = lbFilterLines(parsed.themes, allowed);
+        const cpRaw = (Array.isArray(parsed.checkpoints) ? parsed.checkpoints : []).filter((x) => lbNumbersInLine(s(x, 400)).length > 0);
+        const c = lbFilterLines(cpRaw, allowed);
+        const dropped = m.dropped + t.dropped + c.dropped;
+        if (m.kept.length || t.kept.length || c.kept.length) {
+          aiLines = { market: m.kept, themes: t.kept, checkpoints: c.kept };
+          aiMeta = {
+            used: true,
+            model: out.model,
+            note: dropped ? `실측에 없는 수치를 담은 AI 문장 ${dropped}개는 제외했습니다.` : null,
+            droppedLines: dropped,
+          };
+        } else {
+          aiMeta.note = 'AI 문장이 실측 수치와 맞지 않아 실측 조립 요약으로 답했습니다.';
+        }
+      } else {
+        aiMeta.note = 'AI 응답 형식이 깨져 실측 조립 요약으로 답했습니다.';
+      }
+    } catch (err) {
+      aiMeta.note =
+        (err && err.code) === 'quota_exceeded'
+          ? 'Gemini 하루 한도를 다 써서 실측 조립 요약으로 답했습니다.'
+          : 'Gemini 응답이 지연·실패해 실측 조립 요약으로 답했습니다(수치는 실측값).';
+    }
+  }
+
+  const aiHasMarket = !!(aiLines && aiLines.market.length);
+  const aiHasThemes = !!(aiLines && aiLines.themes.length);
+  const aiHasCheck = !!(aiLines && aiLines.checkpoints.length);
+  const supplyLines = lbSupplyLines(f, aiHasMarket ? 3 : 4);
+  const secMarket = {
+    key: 'market',
+    title: '1) 시장 지수 & 수급 요약',
+    rows: marketRows,
+    lines: aiHasMarket ? aiLines.market.concat(supplyLines) : supplyLines,
+  };
+  const secThemes = {
+    key: 'themes',
+    title: '2) 현재 주도 테마 & 거래대금 상위 핵심 종목',
+    themes: f.themes.slice(0, 4).map((t) => ({
+      rank: t.rank,
+      name: t.name,
+      avgPct: lbPct(t.avgPct),
+      rise: t.riseCount,
+      fall: t.fallCount,
+      top4Text: t.top4Sum !== null ? lbEokPlainFromKrw(t.top4Sum) : null,
+      tone: lbTone(t.avgPct),
+    })),
+    leaders: leaderRows,
+    lines: aiHasThemes ? aiLines.themes.concat(themeLines.slice(0, 1)) : themeLines,
+  };
+  const secCheck = {
+    key: 'checkpoints',
+    title: '3) 지금 시간대 체크포인트 / 대응 유의사항',
+    lines: aiHasCheck ? aiLines.checkpoints.slice(0, 3).concat(factLines.slice(0, 6)) : phaseLines.concat(factLines),
+  };
+
+  return send(res, 200, {
+    ok: true,
+    action: 'live_briefing',
+    header,
+    generatedAtKst: nowLabel,
+    phase,
+    phaseLabel,
+    basisLine,
+    headline: f.headline || null,
+    tradingDate: f.tradingDate || null,
+    tradingDateLabel: f.tradingDateLabel || null,
+    sections: [secMarket, secThemes, secCheck],
+    notes: f.notes.slice(0, 4),
+    news: f.news.slice(0, 4),
+    sourcesLine,
+    ai: aiMeta,
+    keyConfigured,
+    elapsedMs: Date.now() - now.getTime(),
+  });
+}
 
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -3450,6 +4201,12 @@ module.exports = async function handler(req, res) {
   }
 
   const action = s(body.action, 30);
+  const reqMode = s(body.mode, 30);
+  // ⚡ 실시간 즉석 브리핑 — 프론트가 방금 받은 실측 JSON(facts)으로 그 시각 브리핑을 만든다.
+  //    Gemini 가 죽어도 실측 조립 요약을 200 으로 돌려준다(빈 화면 금지).
+  if (reqMode === 'live_briefing' || action === 'live_briefing') {
+    return handleLiveBriefing(res, body, keyConfigured);
+  }
   // 🌐 공식 페이지 사진 — Gemini 키와 무관하게 먼저 처리한다(키 없이도 동작).
   if (action === 'fetch_official_photos' || action === 'official_photos') {
     const qp = new URLSearchParams();
