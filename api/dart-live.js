@@ -19,7 +19,6 @@
  *   - 관심 종목은 8번 종베 10종목 + 6번 RN존 11종목 + 1번 테마 32종목(중복 제거).
  */
 
-const zlib = require('zlib');
 const { fetchJson, fetchBuffer, sendJson, getQuery, kstLabel } = require('../lib/http');
 
 const CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
@@ -240,98 +239,107 @@ function pickItems(rows) {
 }
 
 /* ======================================================================
-   🔍 종목별 공시 조회 (?code=6자리)
+   🔍 종목별 공시 조회 (?code=6자리&name=종목명)
    ----------------------------------------------------------------------
    체커가 한 종목을 조회할 때 그 종목의 최근 공시를 '그 회사만' 조회한다.
    · 위의 list.json 전체 스캔은 하루 수천 건 중 100건 × 5장만 보므로,
      특정 종목의 공시를 '전수'로 말할 수 없다(그래서 관심종목·위험키워드만 표시).
-   · 종목코드 → DART 고유번호(corp_code) 를 공식 고유번호 파일(corpCode.xml)로 확인한 뒤
-     list.json?corp_code=… 로 그 회사만 조회한다. 그래야 '공시 없음'도 사실로 말할 수 있다.
-   · 고유번호 파일은 키가 필요하고 약 8MB(XML)라 인스턴스 메모리에 6시간 캐시한다.
-   · 키가 없거나 파일·응답에 닿지 못하면 ok:false + reason 그대로 → 화면은 '미확인'.
+   · DART list.json 은 종목코드로 검색해 주지 않고 corp_code 만 받는다. 그래서
+     ① DART 공시검색에 6자리 종목코드를 넣어 그 회사의 고유번호(corp_code)를 찾고
+        (실측: 005380→현대자동차 00164742, 053800→안랩 00298270. 회사명이 아니라 종목코드로도 찾힌다),
+     ② OpenDART company.json 으로 '주식종목코드(stock_code)'가 요청한 종목코드와 같은지 확인한 뒤
+     ③ list.json?corp_code=… 로 그 회사만 조회한다(엉뚱한 회사 공시를 붙이지 않는다).
+   · 고유번호 전체 파일(corpCode.xml)은 약 8MB 라 서버리스 20초 예산에 걸려 쓰지 않는다.
+   · 키·회사·응답을 확인하지 못하면 ok:false + reason 그대로 → 화면은 '미확인'.
    ====================================================================== */
 
-const CORP_XML_TTL_MS = 6 * 3600 * 1000;
-const CORP_XML_URL = 'https://opendart.fss.or.kr/api/corpCode.xml';
+const DART_SEARCH_URL = 'https://dart.fss.or.kr/dsab007/detailSearch.ax';
+const DART_COMPANY_URL = 'https://opendart.fss.or.kr/api/company.json';
 const STOCK_LOOKBACK_DAYS = 30;
 const STOCK_MAX_ITEMS = 12;
+const CORP_SEARCH_MAX = 5;
 
-let corpXmlCache = { at: 0, xml: null };
-const corpCodeCache = new Map(); // stockCode → { corpCode, corpName } | null
+const corpCodeCache = new Map(); // stockCode → { corpCode, corpName, stockCode } | null
 
-/** ZIP(단일 XML)에서 첫 .xml 엔트리를 꺼내 Buffer 로 돌려준다. */
-function unzipFirstXml(buf) {
-  let eo = -1;
-  const floor = Math.max(0, buf.length - 66000);
-  for (let i = buf.length - 22; i >= floor; i -= 1) {
-    if (buf.readUInt32LE(i) === 0x06054b50) {
-      eo = i;
-      break;
-    }
+/** DART 공시검색(회사) HTML 에서 { corpCode, name } 후보를 뽑는다. */
+function parseCorpCandidates(html) {
+  const out = [];
+  const seen = new Set();
+  const re = /<a\s+href="javascript:openCorpInfoNew\('(\d{8})'[^>]*title="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    const corpCode = m[1];
+    if (seen.has(corpCode)) continue;
+    const text = String(m[3] || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const title = String(m[2] || '').replace(/\s*기업개황.*$/, '').trim();
+    const name = text || title || null;
+    if (!name) continue;
+    seen.add(corpCode);
+    out.push({ corpCode, name });
   }
-  if (eo < 0) throw new Error('zip_eocd_not_found');
-  const count = buf.readUInt16LE(eo + 10);
-  let p = buf.readUInt32LE(eo + 16);
-  for (let k = 0; k < count; k += 1) {
-    if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(p + 10);
-    const csize = buf.readUInt32LE(p + 20);
-    const nameLen = buf.readUInt16LE(p + 28);
-    const extraLen = buf.readUInt16LE(p + 30);
-    const cmtLen = buf.readUInt16LE(p + 32);
-    const localOff = buf.readUInt32LE(p + 42);
-    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
-    if (/\.xml$/i.test(name) && localOff + 30 <= buf.length) {
-      const lNameLen = buf.readUInt16LE(localOff + 26);
-      const lExtraLen = buf.readUInt16LE(localOff + 28);
-      const start = localOff + 30 + lNameLen + lExtraLen;
-      const raw = buf.subarray(start, start + csize);
-      if (method === 0) return Buffer.from(raw);
-      if (method === 8) return zlib.inflateRawSync(raw);
-      throw new Error(`zip_method_${method}`);
-    }
-    p += 46 + nameLen + extraLen + cmtLen;
-  }
-  throw new Error('zip_xml_entry_not_found');
+  return out;
 }
 
-/** 고유번호 XML 문자열에서 종목코드에 해당하는 <list> 한 덩어리만 찾는다(전체 파싱 없이). */
-function findCorpInXml(xml, stockCode) {
-  const needle = `<stock_code>${stockCode}</stock_code>`;
-  let i = xml.indexOf(needle);
-  let guard = 0;
-  while (i >= 0 && guard < 5) {
-    const close = xml.indexOf('</list>', i);
-    let open = xml.lastIndexOf('<list', i);
-    if (open >= 0) {
-      const gt = xml.indexOf('>', open);
-      open = gt > 0 && gt < i ? gt + 1 : -1;
-    }
-    if (open >= 0 && close > i) {
-      const chunk = xml.slice(open, close);
-      const cc = (chunk.match(/<corp_code>\s*(\d{8})\s*<\/corp_code>/) || [])[1];
-      const cn = (chunk.match(/<corp_name>\s*([^<]*?)\s*<\/corp_name>/) || [])[1];
-      if (cc) return { corpCode: cc, corpName: cn ? cn.trim() : null };
-    }
-    i = xml.indexOf(needle, i + needle.length);
-    guard += 1;
+async function searchCorpCandidates(name) {
+  const url =
+    DART_SEARCH_URL +
+    '?textCrpNm=' + encodeURIComponent(name) +
+    '&option=corp&pageGrouping=1&currentPage=1&maxResults=15&sort=date&series=desc';
+  const buf = await fetchBuffer(url, {
+    timeout: 8000,
+    headers: { Accept: 'text/html,application/xhtml+xml', Referer: 'https://dart.fss.or.kr/' },
+  });
+  let html = buf.toString('utf8');
+  if (/ã|ë|ì|í/.test(html.slice(0, 4000))) {
+    try { html = new TextDecoder('euc-kr').decode(buf); } catch (_) {}
   }
-  return null;
+  return parseCorpCandidates(html);
 }
 
-async function loadCorpXml(apiKey, fresh) {
-  if (!fresh && corpXmlCache.xml && Date.now() - corpXmlCache.at < CORP_XML_TTL_MS) return corpXmlCache.xml;
-  const buf = await fetchBuffer(`${CORP_XML_URL}?crtfc_key=${encodeURIComponent(apiKey)}`, { timeout: 20000 });
-  const xml = unzipFirstXml(buf).toString('utf8');
-  if (xml.indexOf('<corp_code>') < 0) throw new Error('corp_xml_format_unexpected');
-  corpXmlCache = { at: Date.now(), xml };
-  return xml;
+/** OpenDART company.json — 고유번호가 정말 이 종목코드의 회사인지 확인한다. */
+async function fetchCompanyInfo(apiKey, corpCode) {
+  const d = await fetchJson(
+    DART_COMPANY_URL + '?crtfc_key=' + encodeURIComponent(apiKey) + '&corp_code=' + encodeURIComponent(corpCode),
+    { timeout: 7000 },
+  );
+  if (!d || String(d.status) !== '000') return null;
+  const stockCode = String(d.stock_code || '').trim();
+  return {
+    corpCode,
+    corpName: d.corp_name || d.stock_name || null,
+    stockCode: /^\d{6}$/.test(stockCode) ? stockCode : null,
+    corpCls: d.corp_cls || null,
+  };
 }
 
-async function resolveCorpCode(apiKey, stockCode, fresh) {
+async function resolveCorpCode(apiKey, stockCode, name, fresh) {
   if (!fresh && corpCodeCache.has(stockCode)) return corpCodeCache.get(stockCode);
-  const xml = await loadCorpXml(apiKey, fresh);
-  const hit = findCorpInXml(xml, stockCode);
+  let hit = null;
+  /* ① 종목코드로 회사 찾기 — DART 공시검색은 6자리 코드도 받는다 */
+  const queries = [stockCode];
+  const nm = String(name || '').replace(/\s+/g, ' ').trim();
+  if (nm) queries.push(nm);
+  for (const q of queries) {
+    let cands = [];
+    try {
+      cands = await searchCorpCandidates(q);
+    } catch (e) {
+      cands = [];
+    }
+    if (nm) cands.sort((a, b) => (a.name === nm ? 0 : 1) - (b.name === nm ? 0 : 1));
+    for (const c of cands.slice(0, CORP_SEARCH_MAX)) {
+      try {
+        const info = await fetchCompanyInfo(apiKey, c.corpCode);
+        if (info && info.stockCode === stockCode) {
+          hit = info;
+          break;
+        }
+      } catch (e) {
+        /* 다음 후보로 */
+      }
+    }
+    if (hit) break;
+  }
   corpCodeCache.set(stockCode, hit);
   if (corpCodeCache.size > 800) {
     const oldest = corpCodeCache.keys().next();
@@ -404,7 +412,7 @@ async function handleStockDart(res, q, fresh) {
 
   const started = Date.now();
   try {
-    const corp = await resolveCorpCode(apiKey, code, fresh);
+    const corp = await resolveCorpCode(apiKey, code, q.name, fresh);
     if (!corp) {
       return sendJson(
         res,
@@ -414,8 +422,8 @@ async function handleStockDart(res, q, fresh) {
           ...base,
           keySet: true,
           reason: 'corp_not_found',
-          message: 'DART 고유번호 파일에서 이 종목코드(상장사)를 찾지 못했습니다 — 개별주 공시를 확인할 수 없습니다.',
-          signal: { key: 'unknown', label: '⚪ 공시 미확인', note: '고유번호 미확인' },
+          message: 'DART 에서 이 종목코드의 회사를 확인하지 못했습니다(상장 전·합병·코드 변경 등) — 개별주 공시를 확인할 수 없습니다.',
+          signal: { key: 'unknown', label: '⚪ 공시 미확인', note: '회사 확인 실패' },
           items: [],
         },
         NO_STORE,
@@ -638,9 +646,8 @@ module.exports = async function handler(req, res) {
 
 // 테스트(test_local.mjs)에서 분류 규칙을 직접 검증할 수 있게 내보낸다.
 module.exports.classifyReport = classifyReport;
-// 테스트용: 고유번호 XML 파싱·ZIP 해제는 실데이터로 검증할 수 있게 내보낸다.
-module.exports._unzipFirstXml = unzipFirstXml;
-module.exports._findCorpInXml = findCorpInXml;
+// 테스트용: 회사 후보 파싱·신호 판정은 실데이터로 검증할 수 있게 내보낸다.
+module.exports._parseCorpCandidates = parseCorpCandidates;
 module.exports._stockSignalOf = stockSignalOf;
 module.exports.normalizeRow = normalizeRow;
 module.exports.pickItems = pickItems;
