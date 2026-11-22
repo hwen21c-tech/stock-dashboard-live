@@ -4154,7 +4154,7 @@ function siRuleLines(f) {
   const cat = (f['특징주'] || [])[0];
   if (cat && cat['제목']) {
     pastBits.push(
-      '과거 [특징주] ' + (cat['날짜'] || '') + ' "\'' + cat['제목'] + '\'"' +
+      '과거 [특징주] ' + (cat['날짜'] || '') + ' “' + cat['제목'] + '”' +
         (cat['등락률'] != null ? ' (그날 ' + lbPct(cat['등락률']) + ')' : ''),
     );
   }

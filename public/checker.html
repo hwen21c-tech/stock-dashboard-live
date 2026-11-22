@@ -1102,6 +1102,23 @@
       '상태': judge.label
     };
   }
+  /* 과거 파동·[특징주] 재료를 '그때 대비 지금'으로 한 줄 — 전부 실측값 */
+  function pastCompareLine(){
+    var h = state.hist;
+    if (!h) return null;
+    var w = (h.waves || [])[0] || null;
+    var it = (h.catalyst && h.catalyst.items && h.catalyst.items[0]) || null;
+    var bits = [];
+    if (w && w.nowVsPeakPct != null){
+      bits.push('과거 ' + w.startDate + '~' + w.peakDate + ' ' + pct(w.gainPct) + ' 파동 → 그 고점 대비 지금 ' + pct(w.nowVsPeakPct));
+    }
+    if (it && it.title){
+      bits.push('당시 [특징주] “' + it.title + '”');
+    }
+    if (!bits.length) return null;
+    return '과거 비교 — ' + bits.join(' · ');
+  }
+
   function renderWhy(lines, meta){
     var host = $('whyBody'); if (!host) return;
     var src = meta && meta.source === 'ai' ? 'ai' : 'rule';
@@ -1130,7 +1147,13 @@
     }).then(function(j){
       if (my !== state.seq) return;
       if (j && j.ok && (j.lines || []).length){
-        renderWhy(j.lines, { source: j.source === 'ai' ? 'ai' : 'rule', note: j.note || null });
+        var lines = (j.lines || []).slice();
+        /* AI 가 과거 비교를 빼먹으면 실측 계산 줄을 한 줄 덧붙인다(있으면 그대로) */
+        var past = pastCompareLine();
+        if (past && !lines.some(function(l){ return /과거|파동|고점 대비/.test(l); }) && lines.length < 4){
+          lines = lines.concat([past]);
+        }
+        renderWhy(lines, { source: j.source === 'ai' ? 'ai' : 'rule', note: j.note || null });
       } else {
         renderWhy(whyRuleLines(), { source: 'rule', note: (j && j.message) || 'AI 해석을 받지 못해 실측 값만으로 정리했습니다.' });
       }
@@ -1650,7 +1673,8 @@
         var t = esc(x.title || '');
         var body = x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener" class="ct">' + t + '</a>' : '<span class="ct">' + t + '</span>';
         var when = [x.date, x.press].filter(Boolean).join(' · ');
-        if (x.match && x.match !== 'same' && x.tradeDate) when += ' (→ ' + x.tradeDate + ' 거래일)';
+        if (x.match && x.match !== 'same' && x.tradeDate) when += ' (그날 휴장 → ' + x.tradeDate + ' 기준)';
+        if (!x.tradeDate) when += ' · 1년 일봉 범위 밖(그날 시세 미확인)';
         return '<div class="catrow">' + body +
           '<span class="cm">' + esc(when) + (bits.length ? ' · ' + bits.join(' · ') : '') + '</span></div>';
       }).join('');
