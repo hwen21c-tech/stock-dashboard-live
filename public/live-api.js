@@ -3538,6 +3538,14 @@
     var riseRatio = isNum(t.riseRatio) ? t.riseRatio : (totalN ? Math.round((rise / totalN) * 1000) / 10 : null);
     /* 🔗 스탁이지 테마는 '네이버 랭킹'이 아니라 스탁이지 분류임을 카드에서 바로 구분되게 표시한다 */
     var isSe = t.source === 'stockeasy';
+    var lowLiq = !!t.lowLiquidity;
+    /* 대장 대금 300억 미만 — '테마 강도'로 오해하지 않게 카드에 그대로 적는다 */
+    var lowBadge = lowLiq
+      ? '<span style="font-size:9px; font-weight:900; color:#fcd34d; background:rgba(245,158,11,0.16); border:1px solid rgba(180,83,9,0.7); border-radius:4px; padding:1px 4px; margin-left:4px; letter-spacing:-0.2px;" title="실질 대장주 거래대금이 300억 미만입니다">⚠ 저유동성</span>'
+      : '';
+    var joinBadge = t.seJoined
+      ? '<span style="font-size:9px; font-weight:900; color:#c4b5fd; background:rgba(124,58,237,0.18); border:1px solid rgba(167,139,250,0.4); border-radius:4px; padding:1px 4px; margin-left:4px; letter-spacing:-0.2px;" title="스탁이지 실시간 테마 구성종목이 이 카드에 함께 들어왔습니다">🔗 구성 합류</span>'
+      : '';
     var nameBadge = isSe
       ? '<span style="font-size:9px; font-weight:900; color:#c4b5fd; background:rgba(124,58,237,0.22); border:1px solid rgba(167,139,250,0.45); border-radius:4px; padding:1px 4px; margin-left:5px; letter-spacing:-0.2px;">스탁이지</span>'
       : '';
@@ -3554,7 +3562,7 @@
     return (
       '<div class="theme-block" data-live="1" data-theme-no="' + esc(t.themeNo || '') + '">' +
         '<div class="theme-header">' +
-          '<span class="theme-name" title="순위·등락률은 노출 상위 4종목 기준">' + esc(t.rank) + '위 ' + (isSe ? '🔗 ' : '🔥 ') + esc(t.name) + '</span>' + nameBadge + searchBadge +
+          '<span class="theme-name" title="순위·등락률 = ' + esc(t.avgPctBasisLabel || '테마 등락률') + '">' + esc(t.rank) + '위 ' + (isSe ? '🔗 ' : '🔥 ') + esc(t.name) + '</span>' + nameBadge + lowBadge + joinBadge + searchBadge +
           '<span class="theme-avg" style="color:' + colFor(avg) + '; font-weight:800; font-feature-settings:\'tnum\'; font-size:13px;">' +
             esc(slPct(avg)) +
             (t.avgPctBasisLabel
@@ -3638,18 +3646,22 @@
       var title = head.querySelector('span');
       if (title) {
         var ttxt = isPrevDay
-          ? '🔥 주도 테마맵 (직전 강세 Top ' + themes.length + ')'
+          ? '🔥 주도 테마맵 (직전 강세' + (body.themeSeCards ? ' + 스탁이지' : '') + ' Top ' + themes.length + ')'
           : '🔥 실시간 주도 테마맵 (오늘 장중 강세 테마 Top ' + themes.length + ')';
         if (title.textContent !== ttxt) title.textContent = ttxt;
       }
       var sub = head.querySelector('.sub');
       if (sub) {
+        /* 프리마켓 — '직전 마감 실질 대장 등락률' 기준임을 머리말에 그대로 적는다(상위 4종목 평균 아님).
+         *  스탁이지 테마가 합류하면 몇 개가 들어왔는지(카드 + 기존 카드 구성 병합)도 함께 밝힌다. */
+        var seTxt = body.themeSeIn
+          ? ' + 🔗 스탁이지 ' + body.themeSeIn + '개' + (body.themeSeJoined ? '(구성 ' + body.themeSeJoined + '개 병합)' : '')
+          : '';
         var stxt = isPrevDay
-          ? '직전 ' + (body.themePrevLabel || '거래일') + ' 마감 강세 Top ' + themes.length +
-            ' · 네이버 프리마켓 실시간 체결 · ⚡ ' + stamp + ' 갱신'
+          ? '직전 ' + (body.themePrevLabel || '거래일') + ' 마감 실질 대장 등락률(±100% 이상 제외) · 프리마켓 체결 병기' +
+            seTxt + ' · ⚡ ' + stamp + ' 갱신'
           : '네이버 실시간 테마 랭킹(노출 상위 4종목 평균 등락률·합산 대금 기준 ' + themes.length +
-            '테마 · 후보 ' + (body.themeRankTotal || 0) + '개)' +
-            (body.themeSeIn ? ' + 🔗 스탁이지 ' + body.themeSeIn + '개' : '') +
+            '테마 · 후보 ' + (body.themeRankTotal || 0) + '개)' + seTxt +
             ' · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== stxt) sub.textContent = stxt;
         sub.style.color = isPrevDay ? '#7dd3fc' : '';

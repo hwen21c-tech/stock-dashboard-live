@@ -1304,7 +1304,9 @@ async function handleStockTheme(res, q, fresh) {
           .map((t, i) => ({
             rank: t.rank || i + 1,
             name: t.name,
-            top4Avg: t.top4Avg == null ? null : t.top4Avg,
+            /* 표시·판정 기준 = 실질 대장 등락률(baselinePct). 옛 파일이면 노출 4종목 평균으로 폴백.
+             *  (2026-11-23) top4Avg 는 타임X AI +182.71% 1종목에 탈모 치료가 +50.48% 로 보이던 값이다. */
+            top4Avg: t.baselinePct != null ? t.baselinePct : t.top4Avg == null ? null : t.top4Avg,
             stocks: (t.stocks || []).map((x) => ({ code: String(x.code || ''), name: x.name || null })),
           }))
       : [];

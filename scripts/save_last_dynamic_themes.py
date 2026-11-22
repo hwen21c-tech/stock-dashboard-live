@@ -44,6 +44,9 @@ UA = {"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/1
 TOP_N = 8
 STOCK_TOP = 4
 CANDIDATES = 20
+OUTLIER_ABS_PCT = 100.0   # ±100% 이상은 평균·순위에서 뺀다(신규상장·상한가 첫날 왜곡)
+MIN_LEADER_EOK = 300.0    # 실질 대장 하한(억)
+MIN_FILL_EOK = 100.0      # 대장이 없을 때 쓰는 저유동성 하한(억)
 
 EXCLUDE_RE = re.compile(r"(스팩|SPAC|우선주|ETF|ETN|리츠|인버스|레버리지)", re.I)
 SPAC_RE = re.compile(r"(스팩|SPAC)", re.I)
@@ -109,6 +112,12 @@ def pick_stocks(rows, top=STOCK_TOP):
 
 
 def make_theme(no, name, rows):
+    """테마 1건 — 화면 4종목 + 실질 대장(대금 300억↑ → 100억↑ 저유동성) + 정확한 테마 평균.
+
+    2026-11-23 수리: 예전에는 순위를 '노출 4종목 평균(top4Avg)'으로 매겨, 타임X AI +182.71%
+    한 종목이 낀 '탈모 치료 +50.48%'가 1위로 남았다(실제 테마 평균 +4.66%). 이제 순위·막대는
+    실질 대장 등락률이고, top4Avg 는 참고값으로만 남긴다(스튜디오·성적표와 같은 잣대).
+    """
     picked = pick_stocks(rows)
     if not picked:
         return None
@@ -119,14 +128,27 @@ def make_theme(no, name, rows):
     fall = len([x for x in allp if x < 0])
     steady = max(0, total - rise - fall)
     sum_value = sum((s.get("value") or 0) for s in picked)
+    # ── 실질 대장 후보: ±100% 이상 이상치 제외, 대금 300억↑ 상승 → 100억↑(저유동성) 상승
+    cands = []
+    for r in rows:
+        chg = r.get("changePct")
+        if not isinstance(chg, (int, float)) or chg <= 0 or abs(chg) >= OUTLIER_ABS_PCT:
+            continue
+        eok = (r.get("value") or 0) / 1e8
+        if eok < MIN_FILL_EOK:
+            continue
+        cands.append((r, eok < MIN_LEADER_EOK, eok))
+    cands.sort(key=lambda c: (c[1], -c[0]["changePct"]))
+    kept = [x for x in allp if abs(x) < OUTLIER_ABS_PCT]
     return {
         "rank": 0,
         "themeNo": no,
         "name": name,
         "keyword": name,
+        "_cands": cands,
         "top4Avg": round(sum(pcts) / len(pcts), 2) if pcts else None,
         "top4Sum": sum_value,
-        "avgPct": round(sum(allp) / len(allp), 2) if allp else None,
+        "avgPct": round(sum(kept) / len(kept), 2) if kept else None,
         "sumValueText": money_text(sum_value),
         "stockCount": total,
         "riseCount": rise,
@@ -153,9 +175,33 @@ def make_theme(no, name, rows):
 
 
 def rank_themes(themes, top_n=TOP_N):
+    """실질 대장(대금 300억↑ → 100억↑ 저유동성)을 테마마다 하나씩 배정하고 그 등락률로 줄을 세운다."""
     themes = [t for t in themes if t and t.get("top4Avg") is not None]
-    themes.sort(key=lambda t: (-t["top4Avg"], -(t.get("top4Sum") or 0)))
-    out = themes[:top_n]
+    # 대장 후보가 강한 테마부터 훑으며 서로 다른 종목을 대장으로 잡는다(같은 종목 중복 대장 금지)
+    order = sorted(themes, key=lambda t: -((t.get("_cands") or [(({"changePct": -999},),)])[0][0]["changePct"]))
+    used, out = set(), []
+    for t in order:
+        pick, low = None, False
+        for r, lo, _eok in (t.get("_cands") or []):
+            if r["code"] in used:
+                continue
+            pick, low = r, lo
+            break
+        if pick is None:
+            continue
+        used.add(pick["code"])
+        t = dict(t)
+        t.pop("_cands", None)
+        t["leaderCode"] = pick["code"]
+        t["leaderName"] = pick["name"]
+        t["leaderPct"] = round(pick["changePct"], 2)
+        t["leaderValueEok"] = round((pick.get("value") or 0) / 1e8, 1)
+        t["lowLiquidity"] = low
+        t["baselinePct"] = t["leaderPct"]
+        t["baselineRule"] = "실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외"
+        out.append(t)
+    out.sort(key=lambda t: (-(t.get("baselinePct") or -999), -(t.get("top4Sum") or 0)))
+    out = out[:top_n]
     for i, t in enumerate(out, start=1):
         t["rank"] = i
     return out
@@ -169,7 +215,7 @@ def write_snapshot(themes, as_of, basis_label, source, rank_total=None, write=Tr
         "generatedAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"),
         "source": source,
         "rankTotal": rank_total,
-        "rule": "노출 상위 4종목 평균 등락률 → 합산 거래대금 순",
+        "rule": "실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 → 합산 대금 · 테마 평균 = 구성종목 평균(±100% 이상 제외)",
         "themes": themes,
     }
     if write:
@@ -380,7 +426,8 @@ def build_from_naver(write=True):
     d = now_kst()
     label = f"{d.month}/{d.day}({WD[d.weekday()]}) 정규장 마감"
     write_snapshot(picked, today, label, "naver-theme-ranking", len(rows), write=write)
-    return {"ok": True, "asOfDate": today, "themes": [f"{t['rank']}. {t['name']} {t['top4Avg']:+.2f}%" for t in picked],
+    return {"ok": True, "asOfDate": today, "themes": [f"{t['rank']}. {t['name']} {t.get('baselinePct', t['top4Avg']):+.2f}%"
+                                                      + (" (저유동성)" if t.get("lowLiquidity") else "") for t in picked],
             "file": TARGET, "written": write}
 
 
@@ -409,7 +456,9 @@ def summary():
     d = json.load(open(TARGET))
     return {"ok": True, "path": TARGET, "asOfDate": d.get("asOfDate"), "basisLong": d.get("basisLong"),
             "generatedAt": d.get("generatedAt"), "source": d.get("source"),
-            "themes": [f"{t['rank']}. {t['name']} {t['top4Avg']:+.2f}% "
+            "themes": [f"{t['rank']}. {t['name']} {t.get('baselinePct', t['top4Avg']):+.2f}%"
+                       + (" (저유동성)" if t.get("lowLiquidity") else "")
+                       + f" ← {t.get('leaderName') or '—'} "
                        + " / ".join(f"{s['name']} {s['changePct']:+.1f}%" for s in t["stocks"])
                        for t in d.get("themes") or []]}
 

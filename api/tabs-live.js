@@ -935,8 +935,12 @@ async function fetchStockEasyThemes() {
   }
 }
 
-/** 스탁이지 테마 구성종목에 실시간 시세를 붙여 화면용 테마 객체로 만든다(Naver 테마와 같은 필드) */
-function buildStockEasyThemes(se, map) {
+/** 스탁이지 테마 구성종목에 실시간 시세를 붙여 화면용 테마 객체로 만든다(Naver 테마와 같은 필드)
+ *  · premarket=true(08:00~09:00)에는 정규장 등락률이 0.00%로 내려오므로
+ *    NXT 프리마켓 체결값(q.overPct)만 등락률로 센다 — 체결 0건 종목은 0.00%로 채우지 않고 뺀다.
+ *  · 체결 종목이 2개 미만인 테마는 '오늘 강세'라 부를 근거가 없어 세우지 않는다(값을 만들지 않는다).
+ */
+function buildStockEasyThemes(se, map, premarket) {
   const out = [];
   (se && se.themes ? se.themes : []).forEach((t) => {
     if (!t || !t.name) return;
@@ -945,11 +949,14 @@ function buildStockEasyThemes(se, map) {
       if (!s || !/^\d{6}$/.test(String(s.code || ''))) return;
       const q = map[s.code];
       if (!q || typeof q.price !== 'number') return;
+      const hasOver = overTraded(q);
+      const livePct = premarket && hasOver ? q.overPct : null;
+      const livePrice = premarket && hasOver && typeof q.overPrice === 'number' ? q.overPrice : null;
       stocks.push({
         code: s.code,
         name: s.name || (q && q.name) || s.code,
         tileName: s.name || (q && q.name) || s.code,
-        price: q.price,
+        price: livePrice !== null ? livePrice : q.price,
         changePct: typeof q.changePct === 'number' ? q.changePct : null,
         open: q.open ?? null,
         high: q.high ?? null,
@@ -959,6 +966,13 @@ function buildStockEasyThemes(se, map) {
         valueText: q.valueText || formatKoreanMoney(q.value),
         valueBasis: q.valueBasis || '통합',
         upperLimit: Boolean(q.upperLimit),
+        livePct,
+        livePrice,
+        livePhase: livePct === null ? null : '프리마켓',
+        priceBasis: livePct === null ? '직전 종가' : '프리마켓',
+        /* 스탁이지가 자기 화면에 띄운 값(프리마켓 체결이 없을 때의 참고값) — 섞지 않고 따로 남긴다 */
+        seChg: typeof s.chg === 'number' ? s.chg : null,
+        seValueEok: typeof s.value_eok === 'number' ? s.value_eok : null,
         missing: false,
       });
     });
@@ -966,9 +980,19 @@ function buildStockEasyThemes(se, map) {
     const picked = pickThemeStocks(stocks);
     if (!picked.length) return;
     const shown = picked.slice(0, THEME_STOCK_TOP);
-    const pcts = shown.map((x) => x.changePct).filter((v) => typeof v === 'number');
-    const top4Avg = pcts.length ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2)) : null;
-    if (top4Avg === null) return;
+    /* 프리마켓에는 '오늘 체결된' 종목만 등락률로 센다 — 정규장 0.00%가 평균에 섞이면 테마 등락률이 왜곡된다 */
+    const pctOf = (x) =>
+      premarket
+        ? typeof x.livePct === 'number'
+          ? x.livePct
+          : null
+        : typeof x.changePct === 'number'
+          ? x.changePct
+          : null;
+    const pcts = shown.map(pctOf).filter((v) => typeof v === 'number');
+    if (premarket && pcts.length < 2) return;
+    if (!pcts.length) return;
+    const top4Avg = Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2));
     const top4Sum = shown.reduce((acc, x) => acc + (typeof x.value === 'number' ? x.value : 0), 0);
     out.push({
       rank: 0,
@@ -977,19 +1001,19 @@ function buildStockEasyThemes(se, map) {
       themeNo: null,
       source: 'stockeasy',
       seRank: t.rank || null,
+      seUpdatedAt: (se && se.updatedAt) || null,
       avgPct: null,
       avgPctLive: null,
       top4Avg,
       top4Sum,
       avgPctCalc: top4Avg,
+      avgPctBasisLabel: premarket ? '프리마켓 체결 평균' : null,
       sumValue: top4Sum,
       sumValueText: formatKoreanMoney(top4Sum),
-      riseCount: shown.filter((x) => typeof x.changePct === 'number' && x.changePct > 0).length,
-      fallCount: shown.filter((x) => typeof x.changePct === 'number' && x.changePct < 0).length,
-      steadyCount: shown.filter((x) => x.changePct === 0).length,
-      riseRatio: Math.round(
-        (shown.filter((x) => typeof x.changePct === 'number' && x.changePct > 0).length / shown.length) * 1000,
-      ) / 10,
+      riseCount: shown.filter((x) => typeof pctOf(x) === 'number' && pctOf(x) > 0).length,
+      fallCount: shown.filter((x) => typeof pctOf(x) === 'number' && pctOf(x) < 0).length,
+      steadyCount: 0,
+      riseRatio: Math.round((shown.filter((x) => typeof pctOf(x) === 'number' && pctOf(x) > 0).length / shown.length) * 1000) / 10,
       stockCount: stocks.length,
       membersShown: picked.length,
       stocks: picked,
@@ -998,29 +1022,33 @@ function buildStockEasyThemes(se, map) {
   return out;
 }
 
-/** 테마명·구성종목이 사실상 같은 묶음인지(중복 노출 방지) */
 function themeNameKey(s) {
   return String(s || '')
     .replace(/[^0-9A-Za-z가-힣]+/g, '')
     .toLowerCase();
 }
 
-function stockEasyDuplicates(seTheme, others) {
+/** 같은 묶음이면 그 상대 테마를 돌려준다(중복 카드 대신 '합류'에 쓴다) */
+function stockEasyMatch(seTheme, others) {
   const seKey = themeNameKey(seTheme.name).replace(/(테마|관련|수혜|급등|신규)/g, '');
   const seCodes = (seTheme.stocks || []).map((s) => s.code);
-  for (const o of others) {
+  for (const o of others || []) {
     const oKey = themeNameKey(o.name).replace(/(테마|관련|수혜|급등|신규)/g, '');
-    if (seKey && oKey && seKey === oKey) return true;
+    if (seKey && oKey && seKey === oKey) return o;
     if (seKey && oKey && Math.min(seKey.length, oKey.length) >= 3 && (seKey.includes(oKey) || oKey.includes(seKey))) {
-      return true;
+      return o;
     }
     const oCodes = (o.stocks || []).map((s) => s.code);
     if (seCodes.length && oCodes.length) {
       const shared = seCodes.filter((c) => oCodes.includes(c)).length;
-      if (shared / Math.min(seCodes.length, oCodes.length) >= 0.8) return true;
+      if (shared / Math.min(seCodes.length, oCodes.length) >= 0.8) return o;
     }
   }
-  return false;
+  return null;
+}
+
+function stockEasyDuplicates(seTheme, others) {
+  return Boolean(stockEasyMatch(seTheme, others));
 }
 
 
@@ -1045,16 +1073,25 @@ function dynamicThemesFlat(dyn) {
 
 /**
  * 직전 거래일 스냅샷 테마에 오늘 아침 polling 시세를 덧씌운다.
- *  · 테마 구성·순위는 직전 거래일 마감 그대로 유지(오늘 랭킹이 없으므로 다시 줄 세우지 않는다)
+ *  · 테마 구성·순위는 직전 거래일 마감 기준을 유지하되, **막대·정렬 값은 '실질 대장주' 등락률**이다.
+ *    (2026-11-23 수리) 예전엔 노출 4종목 평균(top4Avg)으로 줄을 세워, 타임X AI +182.71% 1종목이
+ *    낀 '탈모 치료 +50.48%'가 1위로 남았다. 실제 테마 평균은 +4.66%였다.
+ *    → 스튜디오·성적표와 같은 잣대: ±100% 이상 이상치 제외 · 실질 대장(대금 300억↑ → 100억↑ 저유동성) 기준.
+ *  · 테마 평균(avgPct)은 구성종목 평균 그대로 함께 내려 화면이 옆에 작게 병기한다(두 기준을 섞지 않는다).
  *  · 종목 등락률: 프리마켓 체결이 있으면 그 값(livePct), 없으면 직전 거래일 마감 등락률
  *  · 종목 거래대금·시고저: 직전 거래일 마감 값(프리마켓에는 정규장 대금이 아직 없다)
- *  · 테마 헤더 등락률: 테마를 세운 '직전 거래일 마감' 평균으로 고정하고, 오늘 아침 프리마켓 평균은
- *    avgPctLive 로 따로 내려 화면이 옆에 작게 병기한다(두 기준을 섞지 않는다).
  */
 function mapPrevDayThemes(snapshot, themes, map, premarket) {
   const label = (snapshot && snapshot.shortLabel) || '직전 거래일';
+  const labelPct = (v) => (typeof v === 'number' ? Number(v.toFixed(2)) : null);
+  const OUTLIER = 100;      // ±100% 이상은 이상치(신규상장·상한가 첫날) — 평균·타일에서 뺀다
+  const MIN_LEADER_EOK = 300;   // 실질 대장 하한(억)
+  const MIN_FILL_EOK = 100;     // 대장이 없을 때 쓰는 저유동성 하한(억)
   return (themes || []).map((t, i) => {
-    const stocks = (t.stocks || []).map((s) => {
+    const rawStocks = (t.stocks || []).filter(
+      (s) => s && s.code && !(typeof s.changePct === 'number' && Math.abs(s.changePct) >= OUTLIER),
+    );
+    const stocks = rawStocks.map((s) => {
       const q = map[s.code] || null;
       const hasOver = overTraded(q);
       const livePct = premarket && hasOver ? q.overPct : null;
@@ -1095,17 +1132,45 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
       ? Number((prevPcts.reduce((a, b) => a + b, 0) / prevPcts.length).toFixed(2))
       : null;
     const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
+
+    /* ── 기준선: 스냅샷이 실측 대장을 실어 왔으면 그 값을, 아니면(옛 파일) 종목에서 같은 규칙으로 고른다 ── */
+    let baselinePct = labelPct(typeof t.baselinePct === 'number' ? t.baselinePct : t.leaderPct);
+    let leaderCode = t.leaderCode || null;
+    let leaderName = t.leaderName || null;
+    let lowLiquidity = Boolean(t.lowLiquidity);
+    if (baselinePct === null) {
+      const cands = stocks
+        .filter((s) => typeof s.prevDayPct === 'number' && s.prevDayPct > 0)
+        .map((s) => ({ s, eok: (typeof s.value === 'number' ? s.value : 0) / 1e8 }))
+        .filter((x) => x.eok >= MIN_FILL_EOK)
+        .sort((a, b) => (a.eok >= MIN_LEADER_EOK ? 0 : 1) - (b.eok >= MIN_LEADER_EOK ? 0 : 1) || b.s.prevDayPct - a.s.prevDayPct);
+      if (cands.length) {
+        const pick = cands[0];
+        baselinePct = labelPct(pick.s.prevDayPct);
+        leaderCode = pick.s.code;
+        leaderName = pick.s.name;
+        lowLiquidity = pick.eok < MIN_LEADER_EOK;
+      }
+    }
     return {
       ...t,
       rank: i + 1,
       stocks,
+      /* 이상치 종목은 타일에서도 뺐다 — 목록이 3개로 줄 수 있으므로 실제 개수를 함께 내린다 */
       pricedCount: stocks.length,
       avgPct: typeof t.avgPct === 'number' ? t.avgPct : avgPrev,
+      themeAvgPct: typeof t.avgPct === 'number' ? t.avgPct : avgPrev,
       top4Avg: typeof t.top4Avg === 'number' ? t.top4Avg : null,
-      /* 헤더 등락률은 '테마를 세운' 직전 거래일 마감 기준으로 고정하고,
-       *  오늘 아침 프리마켓 평균은 별도 값(avgPctLive)으로 함께 내려 화면이 나란히 표시한다. */
-      avgPctCalc: avgPrev,
-      avgPctBasisLabel: label + ' 종가 평균',
+      /* 헤더 등락률·정렬 = 실질 대장 등락률(스튜디오와 같은 잣대).
+       *  테마 평균은 themeAvgPct 로 함께 내려 화면이 옆에 병기한다. */
+      avgPctCalc: baselinePct === null ? avgPrev : baselinePct,
+      avgPctBasisLabel: baselinePct === null ? label + ' 종가 평균' : label + ' 대장 ' + (leaderName || '등락'),
+      baselinePct: baselinePct === null ? null : baselinePct,
+      baselineRule: t.baselineRule || '실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외',
+      sortPct: baselinePct === null ? avgPrev : baselinePct,
+      leaderCode,
+      leaderName,
+      lowLiquidity,
       avgPctLive: avgLive,
       livePricedCount: livePcts.length,
       liveCoverage: `${livePcts.length}/${stocks.length}`,
@@ -1146,9 +1211,65 @@ async function fetchThemeQuotes(extraCodes, premarket) {
   let themes;
   let themeSource;
   let seIn = 0;
+  let seJoined = 0;      // 기존 테마 카드에 구성종목이 합류한 수
+  let seCards = 0;       // 새로 카드로 선 스탁이지 테마 수
   if (prevDayList) {
     themes = mapPrevDayThemes(LAST_DYNAMIC, prevDayList, map, premarket);
     themeSource = 'prev-day-dynamic';
+    /* 🔗 프리마켓에도 스탁이지 실시간 테마를 합류시킨다 (2026-11-23).
+     *  08:00~09:00 에는 네이버 랭킹이 오늘 값을 내지 않아 직전 마감 스냅샷만 섰고,
+     *  그 사이 스탁이지가 이미 '지금 강한 테마'(예: 11/23 08:40 화장품·밸류업)를 내려주는데도
+     *  이 분기에는 합류 코드가 없어 화면에 오르지 못했다.
+     *  · 같은 테마(이름·구성 80% 이상 겹침)면 카드를 새로 만들지 않고 그 카드에 구성종목만 합친다
+     *    — '화장품' 카드가 두 개 생기거나, 오늘 +15% 종목이 화면에서 빠지는 것을 막는다.
+     *  · 정렬은 각 카드의 막대값(직전 실질 대장 등락률 / 스탁이지 프리마켓 평균) 내림차순. */
+    if (se.ok && se.themes.length) {
+      const seBuilt = buildStockEasyThemes(se, map, premarket);
+      const merged = [];
+      seBuilt.forEach((t) => {
+        const dup = stockEasyMatch(t, themes);
+        if (dup) {
+          const have = new Set((dup.stocks || []).map((s) => s.code));
+          const add = (t.stocks || []).filter((s) => !have.has(s.code));
+          if (add.length) {
+            dup.stocks = (dup.stocks || []).concat(add).slice(0, 6);
+            dup.seJoined = true;
+            dup.seJoinedName = t.name;
+            dup.seJoinedCodes = add.map((s) => s.code);
+            /* 구성이 늘었으니 프리마켓 평균·커버리지를 다시 센다(값을 꾸미지 않고 다시 계산만) */
+            const livePcts = dup.stocks.map((s) => s.livePct).filter((v) => typeof v === 'number');
+            const needLive = Math.max(2, Math.ceil(dup.stocks.length / 2));
+            dup.avgPctLive =
+              livePcts.length >= needLive
+                ? Number((livePcts.reduce((a, b) => a + b, 0) / livePcts.length).toFixed(2))
+                : null;
+            dup.livePricedCount = livePcts.length;
+            dup.liveCoverage = `${livePcts.length}/${dup.stocks.length}`;
+            merged.push(t.name);
+          } else {
+            dup.seJoined = true;
+            dup.seJoinedName = t.name;
+            merged.push(t.name);
+          }
+        } else {
+          themes.push(t);
+          seCards += 1;
+        }
+      });
+      if (merged.length) seJoined = merged.length;
+      themes = themes
+        .slice()
+        .sort(
+          (a, b) =>
+            (b.sortPct ?? b.avgPctCalc ?? b.top4Avg ?? -999) - (a.sortPct ?? a.avgPctCalc ?? a.top4Avg ?? -999) ||
+            (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
+        )
+        .slice(0, THEME_TOP);
+      themes.forEach((t, i) => {
+        t.rank = i + 1;
+      });
+      seIn = themes.filter((t) => t.source === 'stockeasy').length;
+    }
   } else if (dyn.ok) {
     themes = mergeThemeQuotes(dyn.themes, map, premarket);
     /* 시세가 붙은 뒤 한 번 더 — 화면에 보이는 Top4 기준으로 순위를 확정한다 */
@@ -1162,7 +1283,7 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     /* 🔗 스탁이지 테마도 같은 잣대(노출 종목 평균 등락률 → 합산 대금)로 Top 8 경쟁에 넣는다.
      *   네이버 테마와 이름·구성종목이 80% 이상 겹치면 중복 노출하지 않는다. */
     if (se.ok && se.themes.length) {
-      const seBuilt = buildStockEasyThemes(se, map).filter((t) => !stockEasyDuplicates(t, themes));
+      const seBuilt = buildStockEasyThemes(se, map, premarket).filter((t) => !stockEasyDuplicates(t, themes));
       if (seBuilt.length) {
         themes = themes.concat(seBuilt).sort(
           (a, b) =>
@@ -1193,8 +1314,11 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themePrevLabel: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.shortLabel) || null : null,
     themePrevAsOf: prevDayList ? (LAST_DYNAMIC && LAST_DYNAMIC.asOfDate) || null : null,
     themeSeIn: seIn,
+    themeSeJoined: seJoined,
+    themeSeCards: seCards,
     themeSeUpdatedAt: se.ok ? se.updatedAt || null : null,
     themeSeError: se.ok ? null : se.error || null,
+    themeBaselineRule: prevDayList ? '실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외' : null,
   };
 }
 
@@ -2635,7 +2759,7 @@ module.exports = async function handler(req, res) {
   notes.push('거래대금은 통합(KRX+NXT·시간외 포함) 기준이며, 통합 체결이 없는 종목은 정규장 값입니다.');
   notes.push(
     themeData.themeSource === 'prev-day-dynamic'
-      ? `1번 주도 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 강세 Top 8 테마 구성에 오늘 아침 프리마켓 체결가를 덧씌운 상태입니다(오늘 랭킹은 09:00 이후 실시간 반영).`
+      ? `1번 주도 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 관제탑 실측 주도 테마에 오늘 아침 프리마켓 체결가를 덧씌운 상태입니다(오늘 랭킹은 09:00 이후 실시간 반영).`
       : '1번 주도 테마맵은 네이버 실시간 테마 랭킹에서 오늘 장중 등락률 상위 테마를 그대로 받아 그립니다(고정 8대 테마 아님).',
   );
   notes.push('상한가·임박은 상승률 +25% 이상 & 거래대금 100억 이상에만 부여하고, 100억 미만 소형주는 제외 목록으로 분리합니다.');
@@ -2646,22 +2770,30 @@ module.exports = async function handler(req, res) {
   } else {
     notes.push('실시간 검색순위(네이버 searchTop)는 장전·응답 실패로 비어 있어 🔍 뱃지·검색 가점을 생략합니다.');
   }
-  if (themeData.themeSource === 'naver-theme') {
+  if (themeData.themeSource === 'naver-theme' || themeData.themeSource === 'prev-day-dynamic') {
     if (themeData.themeSeIn > 0) {
       const seAt = themeData.themeSeUpdatedAt ? String(themeData.themeSeUpdatedAt).slice(11, 16) : '—';
       notes.push(
-        `1번 테마맵의 🔗 표시 ${themeData.themeSeIn}개는 스탁이지(stockeasy.intellio.kr)가 분류한 실시간 강세 테마입니다. 테마 구성은 15분마다 갱신(${seAt} 기준)되고, 등락률·거래대금은 네이버 테마와 같은 잣대(Top4 평균·합산 대금)로 매 20초 실시간 계산합니다.`,
+        `1번 테마맵의 🔗 표시 ${themeData.themeSeIn}개는 스탁이지(stockeasy.intellio.kr)가 분류한 실시간 강세 테마입니다. 테마 구성은 15분마다 갱신(${seAt} 기준)되고, 등락률·거래대금은 네이버 시세로 매 20초 실시간 계산합니다.`,
       );
+      if (themeData.themeSeJoined > 0) {
+        notes.push(
+          `스탁이지 테마 ${themeData.themeSeJoined}개(구성종목)는 이름·구성이 겹치는 기존 카드에 합쳐 넣었습니다 — 같은 테마 카드가 두 번 서지 않게 하면서, 오늘 프리마켓에 실제로 움직인 구성종목을 그 카드 안에 보여주기 위해서입니다.`,
+        );
+      }
     } else if (themeData.themeSeError) {
       notes.push(
-        `스탁이지 테마는 이번 응답에서 편입하지 않았습니다(${themeData.themeSeError}) — 네이버 실시간 테마 랭킹만으로 표시합니다.`,
+        `스탁이지 테마는 이번 응답에서 편입하지 않았습니다(${themeData.themeSeError}) — 네이버 테마·직전 마감 기준만으로 표시합니다.`,
       );
     }
   }
   if (premarket || themeData.themeSource === 'prev-day-dynamic') {
     if (themeData.themeSource === 'prev-day-dynamic') {
       notes.push(
-        `프리마켓(08:00~08:50)에는 네이버 테마 랭킹이 아직 오늘 값을 내지 않아, 1번 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 강세 Top 8 테마의 구성·순위를 유지하고 각 종목 위에 오늘 아침 NXT 프리마켓 실시간 체결가(전일 종가 대비)를 덧씌워 표시합니다.`,
+        `프리마켓(08:00~09:00)에는 네이버 테마 랭킹이 아직 오늘 값을 내지 않아, 1번 테마맵은 직전 거래일(${themeData.themePrevLabel || '직전'} 마감) 관제탑 실측 주도 테마를 세우고 각 종목 위에 오늘 아침 NXT 프리마켓 실시간 체결가(전일 종가 대비)를 덧씌워 표시합니다.`,
+      );
+      notes.push(
+        '테마 순위·막대는 노출 4종목 평균이 아니라 실질 대장주(거래대금 300억↑ 상승 종목, 없으면 100억↑는 저유동성 표기)의 등락률이고, ±100% 이상 이상치(신규상장·상한가 첫날)는 평균·타일에서 뺍니다 — 스튜디오·성적표와 같은 잣대입니다.',
       );
     } else {
       notes.push(
@@ -2694,6 +2826,9 @@ module.exports = async function handler(req, res) {
     themeSource: themeData.themeSource || null,
     themeRankTotal: themeData.themeRankTotal || 0,
     themeSeIn: themeData.themeSeIn || 0,
+    themeSeJoined: themeData.themeSeJoined || 0,
+    themeSeCards: themeData.themeSeCards || 0,
+    themeBaselineRule: themeData.themeBaselineRule || null,
     themeSeUpdatedAt: themeData.themeSeUpdatedAt || null,
     themeSeError: themeData.themeSeError || null,
     themePrevLabel: themeData.themePrevLabel || null,
