@@ -3784,7 +3784,11 @@ function lbFilterLines(lines, allowed) {
       dropped += 1;
       return;
     }
-    kept.push(text.replace(/선감/g, '선물').replace(/나스닥100\s*선물\s*선물/g, '나스닥100 선물'));
+    const fixed = text
+      .replace(/(\d(?:\.\d+)?)\s*퍼센트/g, '$1%') // '0.82퍼센트' → '0.82%'
+      .replace(/선감/g, '선물')
+      .replace(/나스닥100\s*선물\s*선물/g, '나스닥100 선물');
+    kept.push(fixed);
   });
   return { kept: kept.slice(0, 5), dropped };
 }
