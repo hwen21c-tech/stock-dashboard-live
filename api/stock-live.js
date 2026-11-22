@@ -68,6 +68,46 @@ function store(key, value) {
   return value;
 }
 
+/* -------------------- 종목명 → 종목코드 (네이버 자동완성) --------------------
+ *  네이버 polling API 는 6자리 코드만 받는다. 이름으로 물으면 조용히 '기본 종목'을
+ *  돌려주기 때문에, 이름 입력은 여기서 코드로 먼저 바꾼 뒤 시세를 조회한다.
+ *  · 정확히 같은 이름만 인정한다(부분 일치로 다른 종목을 보여주지 않는다).
+ *  · 실패는 null 로 남기고 화면은 '종목을 찾지 못했습니다'로 안내한다. */
+const nameCodeCache = new Map();
+async function resolveStockCode(name) {
+  const key = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!key) return null;
+  if (/^\d{6}$/.test(key)) return key;
+  if (nameCodeCache.has(key)) return nameCodeCache.get(key);
+  let code = null;
+  try {
+    const d = await fetchJson(
+      'https://m.stock.naver.com/front-api/search/autoComplete?query=' +
+        encodeURIComponent(key) +
+        '&target=stock',
+      { headers: NAVER_HEADERS, timeout: 5000 },
+    );
+    const items = (d && d.result && d.result.items) || [];
+    const norm = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
+    const hit = items.find(
+      (it) =>
+        it &&
+        it.category === 'stock' &&
+        /^\d{6}$/.test(String(it.code || '')) &&
+        norm(it.name) === norm(key),
+    );
+    code = hit ? String(hit.code) : null;
+  } catch (e) {
+    code = null;
+  }
+  nameCodeCache.set(key, code);
+  if (nameCodeCache.size > 500) {
+    const oldest = nameCodeCache.keys().next();
+    if (!oldest.done) nameCodeCache.delete(oldest.value);
+  }
+  return code;
+}
+
 /* ---------------------------- 네이버 지수 ---------------------------- */
 async function fetchIndices() {
   const url =
@@ -1455,10 +1495,19 @@ module.exports = async function handler(req, res) {
   // ?mode=theme&code=005930 — 체커용 소속 테마·테마 신호등·최근/과거 재료 (새 함수 파일 없이 내부 라우트)
   if (q.mode === 'theme') return handleStockTheme(res, q, fresh);
 
-  const codeList = (q.codes || q.code || '')
+  const rawQueries = String(q.codes || q.code || '')
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => /^\d{6}$/.test(s));
+    .filter(Boolean)
+    .slice(0, 8);
+  const codeList = rawQueries.filter((s) => /^\d{6}$/.test(s));
+  const nameQueries = rawQueries.filter((s) => !/^\d{6}$/.test(s));
+  const nameResolved = [];
+  for (const nm of nameQueries) {
+    const c = await resolveStockCode(nm);
+    nameResolved.push({ query: nm, code: c || null });
+    if (c && !codeList.includes(c)) codeList.push(c);
+  }
   const codes = codeList.length ? codeList : DEFAULT_STOCKS.map((s) => s.code);
   const cacheKey = `live:${codes.join(',')}`;
 
@@ -1560,6 +1609,7 @@ module.exports = async function handler(req, res) {
     futures,
     macro,
     stocks: stockRows,
+    resolved: nameResolved,
     sources,
     errors,
   };
