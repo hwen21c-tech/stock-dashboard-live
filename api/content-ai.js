@@ -2973,7 +2973,12 @@ function modelOrder() {
 
 /** 순서대로 시도. 실제로 답한 모델을 model 에 정직하게 담아 돌려준다. */
 async function generate(prompt, deadline) {
-  const order = modelOrder().filter((m, i, a) => m && a.indexOf(m) === i);
+  let order = modelOrder().filter((m, i, a) => m && a.indexOf(m) === i);
+  // 짧은 작업(2~3줄 해석 등)은 빠른 경량 모델을 먼저 부른다 — 체커가 1~2초 안에 결과를 봐야 하기 때문.
+  if (prompt && prompt.fastFirst) {
+    const fast = FALLBACK_MODELS.filter((m) => m && m !== PRIMARY_MODEL && order.indexOf(m) >= 0);
+    if (fast.length) order = fast.concat(order.filter((m) => fast.indexOf(m) < 0));
+  }
   const tries = [];
   // 1패스: 3.8 Flash → Lite Latest → 3 Flash. 2패스: 일시 혼잡(503/타임아웃)이었으면 한 바퀴 더.
   for (let pass = 0; pass < 2; pass++) {
@@ -4007,6 +4012,240 @@ function lbPrompt(f, phaseLabel, p, nowLabel) {
   };
 }
 
+/* ======================================================================
+   🧠 종목 1초 해석 — 체커가 보낸 '실측 사실만' 으로 왜 오르고/빠졌는지 2~3줄
+   ----------------------------------------------------------------------
+   · POST { action:'stock_insight', facts:{ 종목, 테마, 뉴스, 미장, 공시, 경보, 상태 } }
+   · Gemini 가 죽거나 키가 없어도 200 + source:'rule' 로 실측 조립 요약을 돌려준다.
+   · FACTS 에 없는 숫자를 담은 AI 문장은 버린다(lbAllowedNumbers/lbFilterLines 재사용).
+     → 없는 공시·뉴스·수치를 지어내지 않는다.
+   ====================================================================== */
+
+const SI_DEADLINE_MS = 22000;
+const SI_MAX_LINES = 3;
+
+function siStr(v, max) {
+  const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  return t ? t.slice(0, max || 120) : null;
+}
+
+function siNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).replace(/[,\s%원]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function siSanitizeFacts(raw) {
+  const f = raw && typeof raw === 'object' ? raw : {};
+  const st = f['종목'] && typeof f['종목'] === 'object' ? f['종목'] : {};
+  const th = f['테마'] && typeof f['테마'] === 'object' ? f['테마'] : {};
+  const mk = f['미장'] && typeof f['미장'] === 'object' ? f['미장'] : {};
+  const dc = f['공시'] && typeof f['공시'] === 'object' ? f['공시'] : {};
+  const al = f['경보'] && typeof f['경보'] === 'object' ? f['경보'] : {};
+  const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n || 4);
+  return {
+    종목: {
+      이름: siStr(st['이름'], 30),
+      코드: siStr(st['코드'], 10),
+      현재가: siNum(st['현재가']),
+      등락률: siNum(st['등락률']),
+      시가: siNum(st['시가']),
+      고가: siNum(st['고가']),
+      저가: siNum(st['저가']),
+      시가대비: siNum(st['시가대비']),
+      고가대비: siNum(st['고가대비']),
+      거래대금억: siNum(st['거래대금억']),
+      거래대금체급: siStr(st['거래대금체급'], 12),
+      위치52주: siNum(st['위치52주']),
+      최고52주: siNum(st['최고52주']),
+      최저52주: siNum(st['최저52주']),
+      시장상태: siStr(st['시장상태'], 12),
+      기준일: siStr(st['기준일'], 20),
+    },
+    테마: {
+      대표: siStr(th['대표'], 40),
+      순위: siNum(th['순위']),
+      전체: siNum(th['전체']),
+      평균등락률: siNum(th['평균등락률']),
+      상위4평균: siNum(th['상위4평균']),
+      신호: siStr(th['신호'], 30),
+      상위4: list(th['상위4'], 4)
+        .map((x) => ({ 이름: siStr(x && x['이름'], 24), 등락률: siNum(x && x['등락률']) }))
+        .filter((x) => x['이름']),
+    },
+    뉴스: list(f['뉴스'], 3)
+      .map((x) => ({ 제목: siStr(x && x['제목'], 60), 언론사: siStr(x && x['언론사'], 20), 시각: siStr(x && x['시각'], 16) }))
+      .filter((x) => x['제목']),
+    미장: {
+      지수: list(mk['지수'], 4).map((x) => ({ 이름: siStr(x && x['이름'], 20), 등락률: siNum(x && x['등락률']) })).filter((x) => x['이름']),
+      선물: list(mk['선물'], 4).map((x) => ({ 이름: siStr(x && x['이름'], 20), 등락률: siNum(x && x['등락률']) })).filter((x) => x['이름']),
+      매크로: list(mk['매크로'], 4).map((x) => ({ 이름: siStr(x && x['이름'], 20), 등락률: siNum(x && x['등락률']) })).filter((x) => x['이름']),
+      환율: mk['환율'] && typeof mk['환율'] === 'object'
+        ? { 이름: siStr(mk['환율']['이름'], 16), 등락률: siNum(mk['환율']['등락률']) }
+        : null,
+    },
+    공시: {
+      신호: siStr(dc['신호'], 30),
+      위험건수: siNum(dc['위험건수']),
+      최근: list(dc['최근'], 3).map((x) => ({ 공시명: siStr(x && x['공시명'], 60), 접수일: siStr(x && x['접수일'], 12) })).filter((x) => x['공시명']),
+      조회기간일: siNum(dc['조회기간일']),
+    },
+    경보: {
+      지정: siStr(al['지정'], 16),
+      거래정지: al['거래정지'] === true ? true : al['거래정지'] === false ? false : null,
+    },
+    상태: siStr(f['상태'], 30),
+  };
+}
+
+/** FACTS 만으로 만드는 규칙 요약 — AI 가 없거나 실패해도 빈 화면을 두지 않는다. */
+function siRuleLines(f) {
+  const s = f['종목'];
+  const name = s['이름'] || '이 종목';
+  const lines = [];
+  const pct = s['등락률'];
+  const parts = [];
+  if (s['현재가'] != null) parts.push(lbFmt(s['현재가'], 0) + '원');
+  if (pct != null) parts.push(lbPct(pct));
+  if (s['시가대비'] != null) parts.push('시가 대비 ' + lbPct(s['시가대비']));
+  if (s['거래대금억'] != null) parts.push('거래대금 ' + lbFmt(s['거래대금억'], 0) + '억');
+  lines.push(name + ' ' + (parts.length ? parts.join(' · ') : '실측 시세를 받지 못했습니다'));
+
+  /* 왜 — 미장·테마 방향을 '같은 방향/반대' 로만 사실 표기(인과 단정 없음) */
+  const why = [];
+  const sox = (f['미장']['매크로'] || []).find((x) => /SOX|반도체/.test(x['이름'] || ''));
+  const nq = (f['미장']['선물'] || []).find((x) => /나스닥/.test(x['이름'] || ''));
+  if (sox && sox['등락률'] != null && Math.abs(sox['등락률']) >= 1) why.push(sox['이름'] + ' ' + lbPct(sox['등락률']));
+  if (nq && nq['등락률'] != null && Math.abs(nq['등락률']) >= 1) why.push(nq['이름'] + ' ' + lbPct(nq['등락률']));
+  if (!why.length) {
+    (f['미장']['지수'] || []).forEach((x) => {
+      if (x['등락률'] != null) why.push(x['이름'] + ' ' + lbPct(x['등락률']));
+    });
+  }
+  const th = f['테마'];
+  const themeBits = [];
+  if (th['대표']) themeBits.push(th['대표'] + (th['상위4평균'] != null ? ' 상위4 평균 ' + lbPct(th['상위4평균']) : th['평균등락률'] != null ? ' 평균 ' + lbPct(th['평균등락률']) : ''));
+  const same = pct != null && th['상위4평균'] != null ? (pct >= 0) === (th['상위4평균'] >= 0) : null;
+  const whyLine = [why.length ? '미장 ' + why.slice(0, 2).join(' · ') : null, themeBits.length ? '소속 테마 ' + themeBits.join('') : null]
+    .filter(Boolean)
+    .join(' / ');
+  if (whyLine) lines.push(whyLine + (same === true ? ' — 같은 방향' : same === false ? ' — 이 종목만 반대 방향' : '') + ' (사실 대조)' );
+
+  const news = (f['뉴스'] || [])[0];
+  const tail = [];
+  if (news) tail.push('최근 재료: ' + news['제목']);
+  const dc = f['공시'];
+  if (dc['신호']) tail.push('공시 ' + dc['신호']);
+  const al = f['경보'];
+  if (al['거래정지'] === true) tail.push('거래정지 종목');
+  else if (al['지정']) tail.push('KRX ' + al['지정'] + ' 지정');
+  if (tail.length) lines.push(tail.join(' · '));
+  return lines.slice(0, SI_MAX_LINES);
+}
+
+function siPrompt(f) {
+  return {
+    system:
+      '너는 한국 주식시장을 짧게 해설하는 애널리스트다. 규칙: (1) 제공된 FACTS JSON 안의 수치·테마·뉴스·공시만 쓴다. ' +
+      '(2) FACTS 에 없는 숫자·종목명·뉴스·공시·목표가·수급 주체를 절대 만들지 않는다. ' +
+      '(3) 확인된 사실과 해석을 구분하고, 해석은 "~로 보입니다/~배경으로 볼 수 있습니다" 로만 쓴다. ' +
+      '(4) 매수·매도 권유, 목표가, 수익 보장 표현을 쓰지 않는다. (5) 숫자는 FACTS 와 똑같이 쓰고(콤마·소수점 그대로, 등락률은 % 기호), ' +
+      '"퍼센트"라는 단어는 쓰지 않는다. (6) 각 줄은 70자 이내의 짧은 한국어 문장으로 쓴다. (7) FACTS 가 비었거나 모르면 그 줄을 빼라. (8) FACTS 의 시장상태가 CLOSE 이거나 기준일이 오늘이 아니면 \'마감 기준\' 임을 밝히고, 진행 중인 것처럼 쓰지 않는다.',
+    user:
+      'FACTS:\n' +
+      JSON.stringify(f) +
+      '\n\n위 FACTS 만 근거로 아래 3줄을 써라(쓸 수 없는 줄은 빼고 2줄만 써도 된다).\n' +
+      '· 1줄: 지금 이 종목이 어디에 있는지 — 가격·등락률·시가 위/아래·거래대금 중 FACTS 에 있는 값.\n' +
+      '· 2줄: 왜 그렇게 움직였는지 — FACTS 의 미장(선물·SOX 등)·소속 테마 방향·최근 뉴스·공시 중에서 골라 연결. 인과를 단정하지 말고 "~여파로 보입니다/~와 같은 방향입니다" 로.\n' +
+      '· 3줄: 지금 확인할 것 한 가지 — FACTS 의 공시·경보·52주 위치·거래대금 중에서.',
+    temperature: 0.3,
+    maxTokens: 500,
+    fastFirst: true,
+    schema: {
+      type: 'object',
+      properties: {
+        lines: { type: 'array', items: { type: 'string' } },
+        tone: { type: 'string' },
+      },
+      required: ['lines'],
+    },
+  };
+}
+
+async function handleStockInsight(res, body, keyConfigured) {
+  const p = lbKst(new Date());
+  const nowLabel = `${p.y}-${lbPad(p.m)}-${lbPad(p.d)}(${LB_WEEKDAY_KO[p.wd] || ''}) ${lbPad(p.hh)}:${lbPad(p.mi)} KST`;
+  const facts = siSanitizeFacts(body && body.facts);
+  const ruleLines = siRuleLines(facts);
+  const hasAny = !!(facts['종목']['이름'] || facts['종목']['현재가']);
+  if (!hasAny) {
+    return send(res, 200, {
+      ok: false,
+      action: 'stock_insight',
+      reason: 'missing_facts',
+      message: '실측 값이 비어 있어 해석을 만들지 않았습니다.',
+      lines: [],
+      keyConfigured,
+      generatedAtKst: nowLabel,
+    });
+  }
+
+  const base = {
+    ok: true,
+    action: 'stock_insight',
+    code: facts['종목']['코드'] || null,
+    name: facts['종목']['이름'] || null,
+    generatedAtKst: nowLabel,
+    keyConfigured,
+    factsCoerced: facts,
+  };
+
+  if (!keyConfigured) {
+    return send(res, 200, { ...base, source: 'rule', lines: ruleLines, note: 'Gemini 키가 없어 실측 값만으로 정리했습니다.' });
+  }
+  if (process.env.DISABLE_GEMINI === '1') {
+    return send(res, 200, { ...base, source: 'rule', lines: ruleLines, note: 'Gemini 호출이 꺼져 있어 실측 값만으로 정리했습니다.' });
+  }
+
+  try {
+    const out = await generate(siPrompt(facts), Date.now() + SI_DEADLINE_MS);
+    const parsed = extractJson(out && out.text);
+    const allowed = lbAllowedNumbers(facts);
+    const filtered = parsed ? lbFilterLines(parsed.lines, allowed) : { kept: [], dropped: 0 };
+    if (filtered.kept.length) {
+      return send(res, 200, {
+        ...base,
+        source: 'ai',
+        lines: filtered.kept.slice(0, SI_MAX_LINES),
+        model: out.model || null,
+        droppedLines: filtered.dropped,
+        note: filtered.dropped ? `실측에 없는 수치를 담은 AI 문장 ${filtered.dropped}개는 제외했습니다.` : null,
+        ruleLines,
+      });
+    }
+    return send(res, 200, {
+      ...base,
+      source: 'rule',
+      lines: ruleLines,
+      model: out && out.model ? out.model : null,
+      droppedLines: filtered.dropped,
+      note: parsed ? 'AI 문장이 실측 수치와 맞지 않아 실측 값으로 정리했습니다.' : 'AI 응답 형식이 깨져 실측 값으로 정리했습니다.',
+    });
+  } catch (err) {
+    const code = err && err.code;
+    return send(res, 200, {
+      ...base,
+      source: 'rule',
+      lines: ruleLines,
+      note:
+        code === 'quota_exceeded'
+          ? 'Gemini 하루 한도를 다 써서 실측 값으로 정리했습니다.'
+          : 'Gemini 응답이 지연·실패해 실측 값으로 정리했습니다(수치는 실측값).',
+      aiError: { code: code || null, message: String((err && err.message) || err).slice(0, 200) },
+    });
+  }
+}
+
 async function handleLiveBriefing(res, body, keyConfigured) {
   const now = new Date();
   const p = lbKst(now);
@@ -4210,6 +4449,10 @@ module.exports = async function handler(req, res) {
   //    Gemini 가 죽어도 실측 조립 요약을 200 으로 돌려준다(빈 화면 금지).
   if (reqMode === 'live_briefing' || action === 'live_briefing') {
     return handleLiveBriefing(res, body, keyConfigured);
+  }
+  // 🧠 종목 1초 해석 — 체커가 보낸 실측 사실만으로 2~3줄. 키가 없어도 규칙 요약을 200 으로 돌려준다.
+  if (reqMode === 'stock_insight' || action === 'stock_insight') {
+    return handleStockInsight(res, body, keyConfigured);
   }
   // 🌐 공식 페이지 사진 — Gemini 키와 무관하게 먼저 처리한다(키 없이도 동작).
   if (action === 'fetch_official_photos' || action === 'official_photos') {

@@ -516,21 +516,36 @@ async function buildAlertsBody() {
   };
 }
 
-async function handleAlerts(res, fresh) {
+async function handleAlerts(res, fresh, q) {
+  /* ?code=6자리 — 체커용: 같은 공식 목록에서 이 종목 한 줄만 돌려준다(응답 71KB → 수백 B).
+     목록 자체는 그대로 실측 전체이고, 화면에는 '이 종목이 지정돼 있는지'만 쓰인다. */
+  const only = /^\d{6}$/.test(String((q && q.code) || '').trim()) ? String(q.code).trim() : null;
+  const shape = (body) => {
+    if (!only) return body;
+    const row = (body.byCode && body.byCode[only]) || null;
+    return {
+      ...body,
+      total: row ? 1 : 0,
+      stocks: row ? [row] : [],
+      byCode: row ? { [only]: row } : {},
+      stock: row,
+      filteredCode: only,
+    };
+  };
   if (!fresh && alertCache.body && Date.now() - alertCache.at < ALERT_MEM_TTL_MS) {
     res.setHeader('X-Cache', 'HIT-memory');
-    return sendJson(res, 200, alertCache.body, ALERT_CACHE_CONTROL);
+    return sendJson(res, 200, shape(alertCache.body), ALERT_CACHE_CONTROL);
   }
   try {
     const body = await buildAlertsBody();
     alertCache.at = Date.now();
     alertCache.body = body;
     res.setHeader('X-Cache', 'MISS');
-    return sendJson(res, 200, body, ALERT_CACHE_CONTROL);
+    return sendJson(res, 200, shape(body), ALERT_CACHE_CONTROL);
   } catch (e) {
     if (alertCache.body) {
       res.setHeader('X-Cache', 'STALE');
-      return sendJson(res, 200, { ...alertCache.body, stale: true, error: String(e.message) }, 'no-store');
+      return sendJson(res, 200, { ...shape(alertCache.body), stale: true, error: String(e.message) }, 'no-store');
     }
     return sendJson(
       res,
@@ -1484,7 +1499,7 @@ module.exports = async function handler(req, res) {
   const fresh = q.fresh === '1' || q.fresh === 'true';
 
   // ?mode=alerts — 공식 시장경보 목록 (서버리스 함수 수를 늘리지 않기 위한 내부 라우트)
-  if (q.mode === 'alerts') return handleAlerts(res, fresh);
+  if (q.mode === 'alerts') return handleAlerts(res, fresh, q);
 
   // ?kis_test=1 — KIS(한국투자증권) 공식 API 연동 진단 (토큰·시세·수급)
   if (q.kis_test === '1') return handleKisTest(res, q, fresh);
