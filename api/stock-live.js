@@ -1505,8 +1505,9 @@ const themeMapCache = new Map();
 /* 오늘의 테마맵에 세울 대표 테마 — 네이버 테마 번호는 scripts/build_theme_membership.py 산출물 기준.
  *  (화면에 보이는 이름표는 label, 실제 테마명은 네이버 groupInfo.name 을 그대로 쓴다) */
 const THEME_MAP_PICK = [
-  { no: 155, label: '반도체' },
+  { no: 155, label: '반도체 대표' },
   { no: 12, label: '반도체 장비' },
+  { no: 14, label: '반도체 재료' },
   { no: 307, label: '시스템반도체' },
   { no: 64, label: '2차전지' },
   { no: 446, label: '2차전지 소재' },
