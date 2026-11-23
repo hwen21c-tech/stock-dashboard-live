@@ -3402,20 +3402,50 @@
   /* ==========================================================================
    * 👀 [1탭] 지금 봐야 할 섹터 & 종목 (테마맵 바로 아래 접기/펴기 박스)
    *  · 점수 = 등락률×3 + log10(합산/종목 대금)×4 + 검색순위 가점((31-순위)/3) + 진입종목×0.8
-   *  · 강세 테마·거래대금·실시간 검색순위를 한 줄에 모아, 직장인이 잠깐 봐도
+   *          + 최근 5분·15분 거래대금 순증 가중치 (2026-11-23 사용자 확정 '돈의 흐름')
+   *  · 강세 테마·거래대금·실시간 검색순위·순증을 한 줄에 모아, 직장인이 잠깐 봐도
    *    '지금 강한 섹터'와 '그 안에서 대금·검색이 붙는 종목'을 바로 집게 한다.
+   *  · 세부 분야 존중 — 노출 종목이 100% 같은 묶음만 중복을 피한다.
    *  · 값은 /api/tabs-live 의 themes(top4 평균·합산 대금·검색 뱃지)만 쓴다 — 추정 없음.
    *  · 종목 1·2·3위 후보는 **통합 거래대금 100억↑만** (2026-11-20 사용자 확정).
    *    등락률만 높은 초소형주(예: 대금 2억 +30%)가 log 대금 점수 때문에 1위로 올라오는 것을 막는다.
    * ==========================================================================*/
   var WATCH_MIN_EOK = 100;   // 100억 미만 잡주 제외 하한(억 단위)
+  /* 💸 돈의 흐름 가중치 (2026-11-23 사용자 확정) — 정적(scripts/auto_update_all_tabs.py)과 같은 값.
+   *    "등락률만 높은 이미 오른 종목"이 아니라 최근 5분·15분 대금 순증이 붙으면서 상승률도
+   *    높은 섹터·종목이 1·2·3위에 오게 한다. 단위는 억 원(순증). */
+  var WATCH_FLOW_5M = 0.5;
+  var WATCH_FLOW_15M = 0.15;
+  var WATCH_FLOW_CAP = 60;          // 섹터 돈의 흐름 가점 최대(등락률 20%p 급)
+  var WATCH_STOCK_FLOW_5M = 0.6;
+  var WATCH_STOCK_FLOW_15M = 0.18;
+  var WATCH_STOCK_FLOW_CAP = 70;    // 종목 돈의 흐름 가점 최대(등락률 23%p 급)
+
+  /* 테마의 '돈의 흐름' = 노출 종목의 최근 5분·15분 순증 합(플러스만). 기록 없으면 0. */
+  function watchThemeFlow(t) {
+    var f5 = 0, f15 = 0, n = 0;
+    (t.stocks || []).forEach(function (s) {
+      if (!s || !s.code || !isNum(s.value)) return;
+      var g = tvGain(s.code, tvEok(s.value), state.tvNowMin);
+      if (!g) return;
+      if (g.d1 > 0) f5 += g.d1;
+      if (g.sum > 0) f15 += g.sum;
+      n += 1;
+    });
+    return { f5: Math.round(f5 * 10) / 10, f15: Math.round(f15 * 10) / 10, n: n };
+  }
+
+  function watchRound1(v) { return Math.round(v * 10) / 10; }
+
   function watchScoreTheme(t) {
     var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : t.avgPct);
     var sumEok = isNum(t.sumValue) ? t.sumValue / 1e8 : 0;
     var best = t.searchBadge && isNum(t.searchBadge.bestRank) ? t.searchBadge.bestRank : null;
     var cnt = t.searchBadge && isNum(t.searchBadge.count) ? t.searchBadge.count : 0;
+    var flow = watchThemeFlow(t);
+    var flowBonus = Math.min(flow.f5 * WATCH_FLOW_5M + flow.f15 * WATCH_FLOW_15M, WATCH_FLOW_CAP);
     var score = (isNum(avg) ? avg * 3 : 0) + Math.log(Math.max(sumEok, 1)) / Math.LN10 * 4 +
-      (best ? (31 - best) / 3 : 0) + cnt * 0.8;
+      (best ? (31 - best) / 3 : 0) + cnt * 0.8 + flowBonus;
     return {
       name: t.name || '—',
       avg: isNum(avg) ? avg : null,
@@ -3423,6 +3453,10 @@
       sumText: t.sumValueText || '—',
       bestRank: best,
       count: cnt,
+      flow5: flow.f5,
+      flow15: flow.f15,
+      /* 노출 종목이 100% 같은 묶음인지 판별하는 지문 — 세부 분야가 다른 테마는 그대로 인정한다 */
+      sig: (t.stocks || []).map(function (s) { return s && s.code; }).filter(Boolean).sort().join(','),
       score: Math.round(score * 10) / 10,
       rank: t.rank || 0,
     };
@@ -3432,8 +3466,13 @@
     var pct = isNum(s.livePct) ? s.livePct : s.changePct;
     var eok = isNum(s.value) ? s.value / 1e8 : 0;
     var rank = isNum(s.searchRank) ? s.searchRank : null;
+    var g = s.code && isNum(s.value) ? tvGain(s.code, tvEok(s.value), state.tvNowMin) : null;
+    var f5 = g ? g.d1 : 0;
+    var f15 = g ? g.sum : 0;
+    var flowBonus = Math.min(Math.max(f5, 0) * WATCH_STOCK_FLOW_5M + Math.max(f15, 0) * WATCH_STOCK_FLOW_15M,
+      WATCH_STOCK_FLOW_CAP);
     var score = (isNum(pct) ? pct * 3 : 0) + Math.log(Math.max(eok, 1)) / Math.LN10 * 3 +
-      (rank ? (31 - rank) / 3 : 0) + (isNum(themeScore) ? themeScore * 0.05 : 0);
+      (rank ? (31 - rank) / 3 : 0) + (isNum(themeScore) ? themeScore * 0.05 : 0) + flowBonus;
     return {
       name: s.name || '—',
       code: s.code || '',
@@ -3444,15 +3483,31 @@
       searchRank: rank,
       themeName: s.themeNameRef || '',
       role: s.role || '',
+      flow5: watchRound1(f5),
+      flow15: watchRound1(f15),
       score: Math.round(score * 10) / 10,
     };
   }
 
+  function watchFlowText(v) {
+    if (!isNum(v) || Math.abs(v) < 1) return '';
+    return (v > 0 ? '+' : '') + (Math.round(v * 10) / 10) + '억';
+  }
+
+  function watchFlowRaw(v) {
+    if (!isNum(v)) return '0억';
+    return (v > 0 ? '+' : '') + (Math.round(v * 10) / 10) + '억';
+  }
+
   function watchSectorItemHtml(w, idx) {
     var meta = '합산 ' + w.sumText;
+    if (watchFlowText(w.flow5)) meta += ' · 💸 5분 ' + watchFlowText(w.flow5);
     if (w.bestRank) meta += ' · 🔍 최고 ' + w.bestRank + '위 · ' + w.count + '종목';
     var tip = '종합점수 ' + w.score + ' = 등락률×3 + log₁₀(합산 대금)×4' +
-      (w.bestRank ? ' + 검색순위 가점' : '') + ' + 검색 진입종목×0.8 (누르면 테마 카드로 이동)';
+      (w.bestRank ? ' + 검색순위 가점' : '') + ' + 검색 진입종목×0.8' +
+      ' + 최근 5분 대금 순증×0.5 + 15분 순증×0.15 (최대 60점)' +
+      (isNum(w.flow5) ? ' (지금 5분 ' + watchFlowRaw(w.flow5) + ' / 15분 ' + watchFlowRaw(w.flow15) + ')' : '') +
+      ' (누르면 테마 카드로 이동)';
     return '<div class="watch-item" data-live="1" onclick="themeWatchFocus(' + (idx - 1) + ')" title="' + esc(tip) + '">' +
       '<div class="wi-head"><span class="wi-rank">' + idx + '</span>' +
         '<span class="wi-name">' + esc(w.name) + '</span>' +
@@ -3462,6 +3517,7 @@
 
   function watchStockItemHtml(w, idx) {
     var meta = w.valueText;
+    if (watchFlowText(w.flow5)) meta += ' · 💸 5분 ' + watchFlowText(w.flow5);
     if (w.searchRank) meta += ' · 🔍 ' + w.searchRank + '위';
     if (w.themeName) meta += ' · ' + w.themeName;
     var click = buildOnclick(
@@ -3472,7 +3528,9 @@
         (w.searchRank ? '실시간 검색 ' + w.searchRank + '위 · ' : '') + '대금 ' + w.valueText
     );
     var tip = '종합점수 ' + w.score + ' = 등락률×3 + log₁₀(대금)×3' +
-      (w.searchRank ? ' + 검색순위 가점' : '') + ' + 소속 테마 점수 가점';
+      (w.searchRank ? ' + 검색순위 가점' : '') + ' + 소속 테마 점수 가점' +
+      ' + 최근 5분 대금 순증×0.6 + 15분 순증×0.18 (최대 70점)' +
+      (isNum(w.flow5) ? ' (지금 5분 ' + watchFlowRaw(w.flow5) + ' / 15분 ' + watchFlowRaw(w.flow15) + ')' : '');
     return '<div class="watch-item" data-live="1" onclick="' + esc(click) + '" title="' + esc(tip) + '">' +
       '<div class="wi-head"><span class="wi-rank">' + idx + '</span>' +
         '<span class="wi-name">' + esc(w.name) + '</span>' +
@@ -3511,7 +3569,16 @@
       if (!bestByCode[k] || st.score > bestByCode[k].score) bestByCode[k] = st;
     });
     var uniqueStocks = Object.keys(bestByCode).map(function (k) { return bestByCode[k]; });
-    var topSectors = sectors.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
+    /* 세부 분야 존중 — 노출 종목이 100% 같은 묶음만 한 번으로 줄인다(같은 로봇이라도
+     * 로봇·스마트팩토리·피지컬AI처럼 분야가 다르면 각각 인정). */
+    var topSectors = [];
+    var seenSig = {};
+    sectors.slice().sort(function (a, b) { return b.score - a.score; }).forEach(function (w) {
+      if (topSectors.length >= 3) return;
+      if (w.sig && seenSig[w.sig]) return;
+      if (w.sig) seenSig[w.sig] = 1;
+      topSectors.push(w);
+    });
     var topStocks = uniqueStocks.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
 
     var leftHtml = topSectors.map(function (w, i) {
@@ -3537,7 +3604,7 @@
     if (box) {
       var sub = box.querySelector('.watch-sub');
       if (sub) {
-        var txt = '강세 테마 + 거래대금 + 실시간 검색 종합 · 대금 100억↑ · ⚡ ' + stamp + ' 갱신';
+        var txt = '등락률 + 거래대금 + 돈의 흐름(5·15분 순증) + 검색 종합 · 대금 100억↑ · ⚡ ' + stamp + ' 갱신';
         if (sub.textContent !== txt) sub.textContent = txt;
       }
       box.setAttribute('data-live', '1');
