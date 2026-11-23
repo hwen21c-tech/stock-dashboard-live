@@ -3365,6 +3365,307 @@ function normShortsScript(data) {
 
 /* ---------------------------------------------------------------- 핸들러 */
 
+/* ---------------------------------------------------------------- 📋 업무 대시보드 (work-dashboard.html)
+ *  POST /api/content-ai  { action:'work_polish' | 'work_parse' | 'work_meeting', ... }
+ *   · work_polish  { kind:'iss'|'wk', text }            → { data:{ text } }   보고서 문구 정리
+ *   · work_parse   { text, mode?:'meeting' }            → { data:{ kind, type, title, date, ... , todos[], decisions[], actions[] } }
+ *   · work_meeting { text } 또는 { mime, data(base64) } → { data:{ transcript, title, summary, decisions[], actions[] } }
+ *  키가 없으면 다른 액션과 같은 503 안내를 그대로 돌려준다(UI가 '키 미설정'을 표시).
+ *  Gemini 호출이 실패하면 200 + ok:false 로 사실대로 알린다 — 대시보드는 그때 전사문만이라도 저장한다.
+ */
+const SCHEMA_WORK_POLISH = {
+  type: 'object',
+  properties: { text: { type: 'string', description: '정리된 본문만 (머리말·설명 없이)' } },
+  required: ['text'],
+};
+
+const SCHEMA_WORK_PARSE = {
+  type: 'object',
+  properties: {
+    kind: { type: 'string', description: 'schedule(일정) | todo(할 일) | meeting(회의 기록) | run(런 현황) 중 하나' },
+    type: { type: 'string', description: 'kind=schedule 일 때 구분: meeting | work | run | etc (아니면 빈 문자열)' },
+    title: { type: 'string', description: '제목 (짧게, 없으면 빈 문자열)' },
+    date: { type: 'string', description: '시작일 YYYY-MM-DD (없으면 빈 문자열)' },
+    date2: { type: 'string', description: '종료일 YYYY-MM-DD (기간일 때만)' },
+    time: { type: 'string', description: '시작 시각 HH:MM 24시간제 (없으면 빈 문자열)' },
+    time2: { type: 'string', description: '종료 시각 HH:MM' },
+    loc: { type: 'string', description: '장소' },
+    who: { type: 'string', description: '만나는 사람' },
+    group: { type: 'string', description: '런 이름 (예: VT04차 런)' },
+    part: { type: 'string', description: '런 파트 (양극 / 음극)' },
+    status: { type: 'string', description: '런 현황: 대기 | 진행중 | 평가대기 | 평가중 | 완료 | 보류' },
+    memo: { type: 'string', description: '회의 내용·메모 (원문에 있는 내용만)' },
+    summary: { type: 'string', description: '한두 줄 요약' },
+    decisions: { type: 'array', items: { type: 'string' }, description: '결정사항' },
+    actions: { type: 'array', items: { type: 'string' }, description: '액션아이템' },
+    todos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { text: { type: 'string' }, due: { type: 'string', description: 'YYYY-MM-DD 또는 빈 문자열' } },
+      },
+      description: 'kind=todo 일 때 넣을 할 일들',
+    },
+    run: {
+      type: 'object',
+      properties: {
+        doe: { type: 'string' },
+        mixst: { type: 'string', description: '진행중 | 완료 | 빈 문자열' },
+        mixi: { type: 'string' },
+        coatst: { type: 'string' },
+        coati: { type: 'string' },
+        pressst: { type: 'string' },
+        pressi: { type: 'string' },
+        silst: { type: 'string' },
+        silr: { type: 'string' },
+        semist: { type: 'string' },
+        semir: { type: 'string' },
+        etc: { type: 'string' },
+      },
+      description: 'kind=run 일 때 채울 공정·평가 값',
+    },
+  },
+  required: ['kind'],
+};
+
+const SCHEMA_WORK_MEETING = {
+  type: 'object',
+  properties: {
+    transcript: { type: 'string', description: '음성/전사문을 실제 발언 순서대로 정리한 전사 (원문에 없으면 빈 문자열)' },
+    title: { type: 'string', description: '회의 제목 (전사로 알 수 있을 때만, 아니면 빈 문자열)' },
+    summary: { type: 'string', description: '3줄 이내 요약' },
+    decisions: { type: 'array', items: { type: 'string' }, description: '결정사항 (각 1문장)' },
+    actions: { type: 'array', items: { type: 'string' }, description: '액션아이템 (담당자가 나오면 “홍길동: …” 형태)' },
+    attendees: { type: 'array', items: { type: 'string' }, description: '등장한 사람 이름 (없으면 빈 배열)' },
+  },
+  required: ['summary'],
+};
+
+const WORK_DATE = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+const WORK_TIME = (v) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '');
+function kstToday() {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+const WORK_WD = ['일', '월', '화', '수', '목', '금', '토'];
+
+function workPolishPrompt(kind, text) {
+  const iss =
+    kind === 'iss'
+      ? '이차전지 극판 제작 공정(믹싱·코팅·프레스)의 “공정중 이슈” 메모입니다. 보고서에 그대로 붙여넣을 수 있게 정리하세요.\n' +
+        '- 공정별로 한 줄(같은 공정 내용은 합치기), 형식: "· 공정명 (상태, 날짜): 내용"\n' +
+        '- 개조식 명사형 종결(예: ~함, ~필요, ~확인 중), 불필요한 조사·중복 표현·구어체 제거\n' +
+        '- 숫자, 날짜, 상태, 고유명사는 그대로 유지하고 없는 내용은 절대 추가하지 마세요\n'
+      : '주간업무 보고 초안입니다. 보고용으로 다듬으세요.\n' +
+        '- 섹션 제목(▶, ■), 날짜, 숫자, 상태, 고유명사는 그대로 유지\n' +
+        '- 중복되는 표현과 군더더기를 줄이고 간결한 개조식 문장으로 정리\n' +
+        '- 없는 내용은 절대 추가하지 마세요\n';
+  return {
+    system:
+      '너는 이차전지 전극 공정 실무자의 한국어 업무 문구를 다듬는 편집자다. ' +
+      '주어진 글의 사실만 남기고 새로운 사실·수치·이름을 만들지 않는다. 출력은 JSON 하나뿐이다.',
+    user: iss + '\n아래 메모를 정리해 JSON {"text":"..."} 로만 답하세요. 설명·머리말 없이 정리된 본문만 넣으세요.\n\n---\n' + text,
+    schema: SCHEMA_WORK_POLISH,
+    temperature: 0.2,
+    maxTokens: 2000,
+  };
+}
+
+function workParsePrompt(text, mode) {
+  const today = kstToday();
+  const wd = WORK_WD[new Date(today + 'T00:00:00Z').getUTCDay()];
+  const focus =
+    mode === 'meeting'
+      ? '이 글은 회의 메모입니다. kind="meeting" 으로 두고 memo(원문 취지)·summary·decisions·actions 를 채우세요.'
+      : '문장의 의도를 kind 로 고르세요: 일정이면 schedule, 해야 할 일이면 todo, 회의 결과/메모면 meeting, 런(전지 시험 런) 현황이면 run.';
+  return {
+    system:
+      '너는 한국어 업무 문장을 업무 대시보드 항목으로 나누는 도우미다. ' +
+      '오늘은 ' + today + ' (' + wd + '요일, 한국 시간)이다. 내일·모레·다음주 월요일 같은 상대 날짜를 이 기준으로 계산한다. ' +
+      '원문에 없는 정보는 절대 만들지 말고 빈 문자열/빈 배열로 둔다. 출력은 JSON 하나뿐이다.',
+    user:
+      focus +
+      '\n- 날짜는 YYYY-MM-DD, 시각은 HH:MM(24시간제)\n' +
+      '- title 은 “일정 넣어줘” 같은 요청 표현을 뺀 알맹이만\n' +
+      '- 런이면 group(예: VT04차 런)·part(양극/음극)·status 를 채우고, 공정/평가 언급이 있으면 run 객체에 넣기\n' +
+      '- 할 일이 여러 개면 todos 배열로\n\n문장:\n' + text + '\n\nJSON 으로만 답하세요.',
+    schema: SCHEMA_WORK_PARSE,
+    temperature: 0.2,
+    maxTokens: 2000,
+  };
+}
+
+function workMeetingPrompt(text, hint) {
+  const head =
+    '아래는 회의 녹음' + (text ? '의 전사문' : ' 파일') + '입니다. ' +
+    (hint ? '회의 제목 힌트: “' + hint + '”. ' : '') +
+    '다음 규칙으로 정리하세요.\n' +
+    '- summary: 3줄 이내 한국어 요약 (무슨 회의였고 무엇이 정해졌는지)\n' +
+    '- decisions: 실제로 확정·합의된 것만 각 1문장\n' +
+    '- actions: 다음에 해야 할 일만 각 1문장 (담당자가 들리면 “이름: 할 일”)\n' +
+    '- transcript: 들린 발언을 순서대로 정리(없으면 빈 문자열). 숫자·일정·고유명사는 들린 그대로\n' +
+    '- 추측하거나 없는 내용을 만들지 마세요. 잡음만 있고 내용이 없으면 summary 를 “들리는 내용이 없습니다”로.\n';
+  return {
+    system:
+      '너는 한국어 회의 녹음을 정리하는 속기·요약 도우미다. 들린 내용만 쓴다. 출력은 JSON 하나뿐이다.',
+    user: head + (text ? '\n전사문:\n' + text : '\n(첨부한 음성을 듣고 위 형식으로 정리하세요.)') + '\n\nJSON 으로만 답하세요.',
+    schema: SCHEMA_WORK_MEETING,
+    temperature: 0.2,
+    maxTokens: 4000,
+    media: null,
+  };
+}
+
+async function handleWork(res, body, keyConfigured) {
+  const action = s(body.action, 30);
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  if (process.env.DISABLE_GEMINI === '1') {
+    return send(res, 503, { ok: false, reason: 'disabled', message: '이 환경에서는 Gemini 호출이 꺼져 있습니다(DISABLE_GEMINI=1).', keyConfigured: true });
+  }
+
+  let prompt = null;
+  let media = null;
+  if (action === 'work_polish') {
+    const text = s(body.text, 20000);
+    const kind = s(body.kind, 10) === 'iss' ? 'iss' : 'wk';
+    if (text.length < 2) return send(res, 400, { ok: false, reason: 'missing_text', message: '정리할 내용이 없습니다.' });
+    prompt = workPolishPrompt(kind, text);
+  } else if (action === 'work_parse') {
+    const text = s(body.text, 2000);
+    if (text.length < 2) return send(res, 400, { ok: false, reason: 'missing_text', message: '해석할 문장이 없습니다.' });
+    prompt = workParsePrompt(text, s(body.mode, 20));
+  } else {
+    const text = s(body.text, 60000);
+    const hint = s(body.hint, 120);
+    const mime = s(body.mime, 60).toLowerCase().split(';')[0].trim();
+    const b64 = String(body.data || '').replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
+    if (!text && !b64) {
+      return send(res, 400, {
+        ok: false,
+        reason: 'missing_input',
+        message: '받아쓴 글(text) 또는 녹음 파일(mime·data) 중 하나가 필요합니다.',
+      });
+    }
+    if (!text && b64) {
+      if (SUMMARY_MEDIA_MIMES.indexOf(mime) < 0) {
+        return send(res, 400, {
+          ok: false,
+          reason: 'unsupported_media_type',
+          message: 'M4A · MP3 · WAV · WEBM · OGG · MP4 만 전사할 수 있습니다(받은 형식: ' + (mime || '알 수 없음') + ').',
+        });
+      }
+      const bytes = Math.floor((b64.length * 3) / 4);
+      if (bytes > SUMMARY_MEDIA_MAX_BYTES + 8192) {
+        return send(res, 413, {
+          ok: false,
+          reason: 'media_too_large',
+          message: '녹음 파일은 4MB까지입니다(지금 ' + (bytes / 1048576).toFixed(1) + 'MB). 녹음기에서 필요한 구간만 잘라 다시 올려 주세요.',
+        });
+      }
+      media = [{ mimeType: mime, data: b64 }];
+    }
+    prompt = workMeetingPrompt(text, hint);
+    if (media) prompt.media = media;
+  }
+
+  const started = Date.now();
+  const deadline = started + (media ? 52000 : 45000);
+  let out;
+  try {
+    out = await generate(prompt, deadline);
+  } catch (err) {
+    const status = err.status === 400 ? 400 : 200;
+    const message =
+      err.code === 'quota_exceeded'
+        ? 'Gemini 무료 티어의 모델별 하루 요청 한도를 다 썼습니다. 잠시 뒤 다시 눌러 주세요.'
+        : err.status === 504
+          ? 'Gemini 응답이 시간 안에 오지 않았습니다. 조금 짧게 다시 눌러 주세요.'
+          : err.code === 'all_models_busy'
+            ? 'Gemini 모델이 지금 몰려서 응답하지 않았습니다. 1~2분 뒤 다시 눌러 주세요.'
+            : `Gemini 호출 실패: ${String(err.message || '').slice(0, 180)}`;
+    return send(res, status, { ok: false, action, reason: err.code || 'gemini_unavailable', message, keyConfigured: true, tries: err.tries || [] });
+  }
+
+  const parsed = extractJson(out.text) || {};
+  let data = null;
+  if (action === 'work_polish') {
+    const text = s(parsed.text, 20000);
+    if (!text) {
+      return send(res, 200, { ok: false, action, reason: 'empty_result', message: '정리된 문장이 비어 왔습니다. 한 번 더 눌러 주세요.', model: out.model, __raw: out.text.slice(0, 4000) });
+    }
+    data = { text };
+  } else if (action === 'work_parse') {
+    const kindRaw = s(parsed.kind, 20).toLowerCase();
+    const kind = ['schedule', 'todo', 'meeting', 'run'].indexOf(kindRaw) >= 0 ? kindRaw : 'schedule';
+    const typeRaw = s(parsed.type, 20).toLowerCase();
+    const type = ['meeting', 'work', 'run', 'etc'].indexOf(typeRaw) >= 0 ? typeRaw : (kind === 'meeting' ? 'meeting' : kind === 'run' ? 'run' : 'work');
+    const run = parsed.run && typeof parsed.run === 'object' ? parsed.run : {};
+    data = {
+      kind,
+      type,
+      title: s(parsed.title, 120),
+      date: WORK_DATE(parsed.date),
+      date2: WORK_DATE(parsed.date2),
+      time: WORK_TIME(parsed.time),
+      time2: WORK_TIME(parsed.time2),
+      loc: s(parsed.loc, 80),
+      who: s(parsed.who, 80),
+      group: s(parsed.group, 60),
+      part: s(parsed.part, 20),
+      status: ['대기', '진행중', '평가대기', '평가중', '완료', '보류'].indexOf(s(parsed.status, 10)) >= 0 ? s(parsed.status, 10) : '',
+      memo: s(parsed.memo, 8000),
+      summary: s(parsed.summary, 400),
+      decisions: arr(parsed.decisions, 20).map((x) => s(x, 300)).filter(Boolean),
+      actions: arr(parsed.actions, 20).map((x) => s(x, 300)).filter(Boolean),
+      todos: arr(parsed.todos, 20)
+        .map((x) => ({ text: s(x && x.text, 200), due: WORK_DATE(x && (x.due || x.date)) }))
+        .filter((x) => x.text),
+      run: {
+        doe: s(run.doe, 80),
+        mixst: s(run.mixst, 10), mixi: s(run.mixi, 200),
+        coatst: s(run.coatst, 10), coati: s(run.coati, 200),
+        pressst: s(run.pressst, 10), pressi: s(run.pressi, 200),
+        silst: s(run.silst, 10), silr: s(run.silr, 200),
+        semist: s(run.semist, 10), semir: s(run.semir, 200),
+        etc: s(run.etc, 200),
+      },
+    };
+  } else {
+    const transcript = s(parsed.transcript, 60000);
+    const summary = s(parsed.summary, 800);
+    const decisions = arr(parsed.decisions, 30).map((x) => s(x, 300)).filter(Boolean);
+    const actions = arr(parsed.actions, 30).map((x) => s(x, 300)).filter(Boolean);
+    if (!summary && !transcript && !decisions.length && !actions.length) {
+      return send(res, 200, {
+        ok: false,
+        action,
+        reason: 'empty_result',
+        message: '녹음에서 알아들을 내용을 찾지 못했습니다. 다시 녹음하거나 직접 메모해 주세요.',
+        model: out.model,
+        __raw: out.text.slice(0, 4000),
+      });
+    }
+    data = {
+      transcript,
+      title: s(parsed.title, 120),
+      summary,
+      decisions,
+      actions,
+      attendees: arr(parsed.attendees, 20).map((x) => s(x, 40)).filter(Boolean),
+    };
+  }
+
+  return send(res, 200, {
+    ok: true,
+    action,
+    parsed: !!extractJson(out.text),
+    model: out.model,
+    primaryModel: PRIMARY_MODEL,
+    fellBack: !!out.fellBack,
+    elapsedMs: Date.now() - started,
+    data,
+  });
+}
+
 const GEN_ACTIONS = [
   'blog',
   'summarize',
@@ -4812,6 +5113,12 @@ module.exports = async function handler(req, res) {
       model: PRIMARY_MODEL,
       fallbacks: FALLBACK_MODELS,
       actions: GEN_ACTIONS,
+      work_dashboard: {
+        actions: ['work_polish', 'work_parse', 'work_meeting'],
+        polish: "POST { action:'work_polish', kind:'iss'|'wk', text:'메모' } → { ok, data:{ text } }",
+        parse: "POST { action:'work_parse', text:'자연어 문장', mode:'meeting'(선택) } → { ok, data:{ kind, type, title, date, time, group, part, status, memo, summary, decisions[], actions[], todos[], run{} } }",
+        meeting: "POST { action:'work_meeting', text:'전사문' } 또는 { action:'work_meeting', mime:'audio/mp4', data:'base64' } → { ok, data:{ transcript, title, summary, decisions[], actions[] } } — 음성 4MB·요청 본문 약 4.2MB 한도",
+      },
       battery_research: {
         action: 'battery_research',
         how:
@@ -4889,6 +5196,10 @@ module.exports = async function handler(req, res) {
   }
   // 유튜브 자막은 Gemini 호출이 아니라서 키 설정과 무관하게 먼저 처리한다.
   if (action === 'youtube_transcript') return handleYoutubeTranscript(res, body);
+  // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
+  if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
+    return handleWork(res, body, keyConfigured);
+  }
   if (GEN_ACTIONS.indexOf(action) < 0) {
     return send(res, 400, {
       ok: false,
