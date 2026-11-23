@@ -697,6 +697,13 @@ function pickThemeStocks(stocks) {
     .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999) || (b.value ?? 0) - (a.value ?? 0));
   const byValueRise = rising.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const byValueFall = falling.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+  /* 📌 '실질 거래대금 대장'은 **+3% 이상 오른 종목 중** 거래대금이 가장 큰 종목만 (사용자 확정 2026-11-23).
+     +1%대 종목(예: 원익홀딩스)이 대금이 크다는 이유로 '대장' 딱지를 달면 테마 강도가 과장된다.
+     +3% 이상 종목이 하나도 없으면 이 역할은 비우고, 그 종목은 아래 '거래대금 상위'로만 채운다. */
+  const VALUE_LEADER_MIN_PCT = 3.0;
+  const strongByValue = list
+    .filter((s) => typeof s.changePct === 'number' && s.changePct >= VALUE_LEADER_MIN_PCT)
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const out = [];
   const push = (s, role) => {
     if (!s || out.length >= THEME_STOCK_TOP) return;
@@ -704,7 +711,15 @@ function pickThemeStocks(stocks) {
     out.push({ ...s, role, tileName: s.name });
   };
   push(byPctRise[0], '상승률 대장');
-  push(byValueRise[0], '실질 거래대금 대장');
+  const valueLeader = strongByValue.find((s) => !out.some((x) => x.code === s.code));
+  if (valueLeader) {
+    push(valueLeader, '실질 거래대금 대장');
+  } else {
+    /* +3% 이상 종목이 없거나, 그 종목이 이미 '상승률 대장'으로 올라간 경우 —
+       거래대금 1위 상승주는 '대장' 딱지 없이 '거래대금 상위'로만 채운다. */
+    const topValueRiser = byValueRise.find((s) => !out.some((x) => x.code === s.code));
+    if (topValueRiser) push(topValueRiser, '거래대금 상위');
+  }
   byPctRise.forEach((s) => push(s, '동반 상승'));
   byValueRise.forEach((s) => push(s, '거래대금 상위'));
   byValueFall.forEach((s) => push(s, '하락 대금 상위'));
