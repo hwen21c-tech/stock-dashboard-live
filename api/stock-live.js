@@ -75,11 +75,15 @@ function store(key, value) {
  *  돌려주기 때문에, 이름 입력은 여기서 코드로 먼저 바꾼 뒤 시세를 조회한다.
  *  · 정확히 같은 이름만 인정한다(부분 일치로 다른 종목을 보여주지 않는다).
  *  · 실패는 null 로 남기고 화면은 '종목을 찾지 못했습니다'로 안내한다. */
+/* KRX 종목코드 — 기존 6자리 숫자 + 신규상장 6자리 영숫자(예: 0147B0 · 0162D0).
+ *  신규상장주 카드(🆕)가 새 코드 체계 종목의 실시간 시세를 받을 수 있게 넓혔다(11/23).
+ *  숫자 4 + 영문 1 + 숫자 1 형태로 좁혀, 6글자 영문 이름을 코드로 오인하지 않는다. */
+const CODE_RE = /^(?:\d{6}|\d{4}[A-Z]\d)$/;
 const nameCodeCache = new Map();
 async function resolveStockCode(name) {
   const key = String(name || '').replace(/\s+/g, ' ').trim();
   if (!key) return null;
-  if (/^\d{6}$/.test(key)) return key;
+  if (CODE_RE.test(key)) return key;
   if (nameCodeCache.has(key)) return nameCodeCache.get(key);
   let code = null;
   try {
@@ -95,7 +99,7 @@ async function resolveStockCode(name) {
       (it) =>
         it &&
         it.category === 'stock' &&
-        /^\d{6}$/.test(String(it.code || '')) &&
+        CODE_RE.test(String(it.code || '')) &&
         norm(it.name) === norm(key),
     );
     code = hit ? String(hit.code) : null;
@@ -521,7 +525,7 @@ async function buildAlertsBody() {
 async function handleAlerts(res, fresh, q) {
   /* ?code=6자리 — 체커용: 같은 공식 목록에서 이 종목 한 줄만 돌려준다(응답 71KB → 수백 B).
      목록 자체는 그대로 실측 전체이고, 화면에는 '이 종목이 지정돼 있는지'만 쓰인다. */
-  const only = /^\d{6}$/.test(String((q && q.code) || '').trim()) ? String(q.code).trim() : null;
+  const only = CODE_RE.test(String((q && q.code) || '').trim()) ? String(q.code).trim() : null;
   const shape = (body) => {
     if (!only) return body;
     const row = (body.byCode && body.byCode[only]) || null;
@@ -847,7 +851,7 @@ async function buildKisTestBody(q) {
   }
 
   // ② 삼성전자 공식 시세 (요청 종목이 있으면 그 종목 우선)
-  const code = /^\d{6}$/.test(String(q.code || '')) ? String(q.code) : '005930';
+  const code = CODE_RE.test(String(q.code || '')) ? String(q.code) : '005930';
   body.code = code;
   try {
     const kq = await withTimeout(kis.fetchKisQuote(code, { raw: q.raw === '1' }), 9000, 'kis-quote');
@@ -1038,7 +1042,7 @@ async function fetchStockNews(code, limit) {
 async function handleStockNews(res, q, fresh) {
   const code = String(q.code || '').trim();
   const generatedAtKst = kstLabel(new Date());
-  if (!/^\d{6}$/.test(code)) {
+  if (!CODE_RE.test(code)) {
     return sendJson(
       res,
       400,
@@ -1253,7 +1257,7 @@ function themeScore(ctx) {
 async function handleStockTheme(res, q, fresh) {
   const code = String(q.code || '').trim();
   const generatedAtKst = kstLabel(new Date());
-  if (!/^\d{6}$/.test(code)) {
+  if (!CODE_RE.test(code)) {
     return sendJson(
       res,
       400,
@@ -2080,7 +2084,7 @@ function findWaves(rows, maxWaves) {
 async function handleHistoryCatalyst(res, q, fresh) {
   const generatedAtKst = kstLabel(new Date());
   const code = String(q.code || '').trim();
-  if (!/^\d{6}$/.test(code)) {
+  if (!CODE_RE.test(code)) {
     return sendJson(
       res,
       400,
@@ -2424,8 +2428,8 @@ module.exports = async function handler(req, res) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 8);
-  const codeList = rawQueries.filter((s) => /^\d{6}$/.test(s));
-  const nameQueries = rawQueries.filter((s) => !/^\d{6}$/.test(s));
+  const codeList = rawQueries.filter((s) => CODE_RE.test(s));
+  const nameQueries = rawQueries.filter((s) => !CODE_RE.test(s));
   const nameResolved = [];
   for (const nm of nameQueries) {
     const c = await resolveStockCode(nm);
@@ -2505,7 +2509,7 @@ module.exports = async function handler(req, res) {
   //  · 실측(Vercel→KIS 왕복 ~700ms, 초당 20건 제한) 결과 13~40종목 배치에 기본 적용하면
   //    시세 응답이 3초 이상 느려지고 EGW00201 이 잦아진다 → 배치는 ?kis=1 로 명시할 때만.
   //  · ?kis=0 끄기 · ?kis=1 배치 교차보강 · ?kis=force 장전 가드 무시
-  const singleCode = /^\d{6}$/.test(String(q.code || ''));
+  const singleCode = CODE_RE.test(String(q.code || ''));
   const kisOptIn = q.kis === '1' || q.kis === 'force';
   let kisSummary = null;
   if (q.kis !== '0' && (singleCode || kisOptIn)) {
@@ -2558,7 +2562,7 @@ module.exports = async function handler(req, res) {
   }
 
   // ?code=005930 처럼 단일 종목을 직접 물을 때 그 종목을 최상위에 그대로 꺼내 준다
-  if (/^\d{6}$/.test(String(q.code || ''))) {
+  if (CODE_RE.test(String(q.code || ''))) {
     const one = stockRows.find((s) => s.code === q.code) || null;
     body.stock = one;
     body.kisQuote = (kisSummary && kisSummary.quotes && kisSummary.quotes[q.code]) || null;

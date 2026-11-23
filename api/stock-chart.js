@@ -61,6 +61,10 @@ const ALIAS = {
   하이브: '352820',
 };
 
+/* KRX 종목코드 — 기존 6자리 숫자 + 신규상장 6자리 영숫자(예: 0147B0 · 0162D0).
+ *  (11/23) 🆕 신규상장주 카드에서 누른 새 코드 종목의 일봉·차트가 열리도록 넓혔다. */
+const CODE_RE = /^(?:\d{6}|\d{4}[A-Z]\d)$/;
+
 /* ---------------------- 1) 종목명 → 종목코드 ---------------------- */
 
 /** 네이버 자동완성 응답에서 (code, name) 후보를 최대한 관대하게 뽑아낸다. */
@@ -69,9 +73,9 @@ function parseAutocomplete(payload) {
   const seen = new Set();
   const walk = (node) => {
     if (!Array.isArray(node)) return;
-    const six = node.find((v) => typeof v === 'string' && /^\d{6}$/.test(v));
+    const six = node.find((v) => typeof v === 'string' && CODE_RE.test(v));
     if (six) {
-      const name = node.find((v, i) => i > 0 && typeof v === 'string' && !/^\d{6}$/.test(v) && /[가-힣A-Za-z]/.test(v));
+      const name = node.find((v, i) => i > 0 && typeof v === 'string' && !CODE_RE.test(v) && /[가-힣A-Za-z]/.test(v));
       const key = `${six}:${name || ''}`;
       if (!seen.has(key)) {
         seen.add(key);
@@ -105,7 +109,7 @@ async function resolveBySearchApi(name) {
   const payload = await fetchJson(url, { headers: NAVER_HEADERS, timeout: 4000 });
   const items = (payload && payload.result && payload.result.items) || [];
   return items
-    .filter((it) => it && /^\d{6}$/.test(String(it.code)))
+    .filter((it) => it && CODE_RE.test(String(it.code)))
     .map((it) => ({ code: String(it.code), name: it.name || String(it.code), market: it.typeName || null }));
 }
 
@@ -120,7 +124,7 @@ function pickBest(candidates, query) {
 
 async function resolveStock(query) {
   const trimmed = String(query || '').trim();
-  if (/^\d{6}$/.test(trimmed)) {
+  if (CODE_RE.test(trimmed)) {
     return { code: trimmed, name: null, market: null, resolvedBy: 'code' };
   }
   const errors = [];
