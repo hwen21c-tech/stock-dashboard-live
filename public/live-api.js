@@ -3654,9 +3654,10 @@
       if (sub) {
         /* 프리마켓 — '직전 마감 실질 대장 등락률' 기준임을 머리말에 그대로 적는다(상위 4종목 평균 아님).
          *  스탁이지 테마가 합류하면 몇 개가 들어왔는지(카드 + 기존 카드 구성 병합)도 함께 밝힌다. */
-        var seTxt = body.themeSeIn
-          ? ' + 🔗 스탁이지 ' + body.themeSeIn + '개' + (body.themeSeJoined ? '(구성 ' + body.themeSeJoined + '개 병합)' : '')
-          : '';
+        var seBits = [];
+        if (body.themeSeIn) seBits.push('🔗 스탁이지 카드 ' + body.themeSeIn + '개');
+        if (body.themeSeJoined) seBits.push('🔗 스탁이지 구성 병합 ' + body.themeSeJoined + '개');
+        var seTxt = seBits.length ? ' + ' + seBits.join(' · ') : '';
         var stxt = isPrevDay
           ? '직전 ' + (body.themePrevLabel || '거래일') + ' 마감 실질 대장 등락률(±100% 이상 제외) · 프리마켓 체결 병기' +
             seTxt + ' · ⚡ ' + stamp + ' 갱신'
