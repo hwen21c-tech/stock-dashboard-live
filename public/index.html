@@ -4727,7 +4727,7 @@
     <div class="srb-right">
       <div id="autoSyncBadge" style="padding: 3px 8px; font-size: 10.5px; font-weight: 800; background: rgba(99,102,241,0.18); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35); border-radius: 4px;">🌙 스마트 24시: 야간 30분 안심 (다음: 06:00:35)</div>
       <button onclick="forceLiveRefresh()" class="srb-btn-refresh">🔄 즉시 새로고침</button>
-      <span id="lastSyncTxt" style="color: #38bdf8; font-size: 10.5px; font-weight: 800;">최근 갱신: 22:26:30 (22:00 야간선물·프리마켓 동기화 🟢)</span>
+      <span id="lastSyncTxt" style="color: #38bdf8; font-size: 10.5px; font-weight: 800;">최근 갱신: 07:49:36 (07:30 장전 브리핑·시초가 2트랙 동기화 🟢)</span>
     </div>
   </div>
 
@@ -4855,12 +4855,12 @@
 
     <!-- TICKER BAR (ALL 9 CORE INDICES CLICKABLE WITH CHART POPUPS) -->
   <div class="ticker-bar" style="overflow-x: auto; white-space: nowrap; padding: 7px 12px; gap: 8px; display: flex; align-items: center;">
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스피 (KOSPI)', '5,067.44pt (+1.99%)', '거래대금 14.8조 원', '11/18 코스피 5,067.44(+1.99%) 마감. 기관 +4,940억 순매수 vs 외국인 -3,391억·개인 -6,182억. 고 5,133.14 / 저 4,943.17.', 'kospi')">
-      <span class="label">코스피 📈</span><span class="val up">5,067.44 (+1.99%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스피 (KOSPI)', '4,708.54pt (-3.31%)', '거래대금 16조623억(통합)', '11/23 코스피 4,708.54(-3.31%) 마감. 11:33 매도 사이드카(선물 714.50) → 11:42 저 4,586.80(-5.82%) → 종가 4,708.54. 외국인 -2,560억 · 기관 +1,758억 · 개인 -3,532억.', 'kospi')">
+      <span class="label">코스피 📈</span><span class="val down">4,708.54 (-3.31%)</span>
     </div>
     <span class="ticker-sep">|</span>
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스닥 (KOSDAQ)', '662.81pt (+1.96%)', '대금 5조5,168억', '11/18 코스닥 662.81(+1.96%) 마감. 기관 +1,795억·외국인 -486억·개인 -1,225억. 고 674.30 / 저 646.31.', 'kosdaq')">
-      <span class="label">코스닥 📈</span><span class="val up">662.81 (+1.96%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스닥 (KOSDAQ)', '635.45pt (-1.58%)', '대금 4조6,738억(통합)', '11/23 코스닥 635.45(-1.58%) 마감(2년 만의 최저). 고 645.93 / 저 618.74. 외국인 -376억 · 기관 +1,950억 · 개인 -1,694억.', 'kosdaq')">
+      <span class="label">코스닥 📈</span><span class="val down">635.45 (-1.58%)</span>
     </div>
     <span class="ticker-sep">|</span>
     <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('코스피200 주간선물 (12월물)', '726.65pt (-3.47%)', '11/23 15:45 마감 확정 · 기준가 752.75', '11/23 주간선물(12월물) 726.65(-26.10p, -3.47%) 마감 · 기준가(11/20 확정) 752.75 · 시 719.90 · 고 737.25 · 저 708.25 · 코스피200 현물 730.83(-3.24%) 대비 -4.18p 백워데이션. 11:33 매도 사이드카(당시 714.50, -5.08%) 이후 저점 708.25까지 밀렸다가 종가 726.65로 회복했습니다. 이 값이 11/23 18:00 야간장의 기준가이며, 야간선물은 777.95(+7.06%)로 마감했습니다.', 'kospi200_day')">
@@ -4875,20 +4875,20 @@
       <span class="label" style="color:#c7d2fe;">야간선물(코스닥) 🌙 <span style="font-size:8.5px; background:#312e81; color:#c7d2fe; padding:1px 4px; border-radius:3px; border:1px solid #4338ca; font-weight:800;">미제공</span></span><span class="val" style="color:#94a3b8; font-weight:800;">— 미제공</span>
     </div>
     <span class="ticker-sep">|</span>
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);" onclick="openIndexChart('E-mini 나스닥 100 선물 (CME Globex NQ 최근월물)', '28,034.75pt (-1.23%)', '11/14 07:00 마감(주말 휴장)', 'CME NQ 12월물 11/14 07:00 마감치. 젠슨 황 사임 후폭풍으로 반도체 약세, 08:00 재개.', 'nasdaq_fut')">
-      <span class="label">나스닥선물 🇺🇸 <span style="font-size:8.5px; background:#064e3b; color:#6ee7b7; padding:1px 4px; border-radius:3px; border:1px solid #10b981; font-weight:800;">CME 최근월물 NQ</span></span><span class="val down" style="color:#34d399; font-weight:800;">28,034.75 (-1.23%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);" onclick="openIndexChart('E-mini 나스닥 100 선물 (CME Globex NQ 최근월물)', '26,845.00pt (+6.84%)', '기준 11/24 06:59 KST', '야후 NQ=F 실측치 · 26,845.00pt (+6.84%) · 기준 11/24 06:59 KST, 전일 25,126.59pt · 일봉은 실제 캔들로 표시', 'nasdaq_fut')">
+      <span class="label">나스닥선물 🇺🇸 <span style="font-size:8.5px; background:#064e3b; color:#6ee7b7; padding:1px 4px; border-radius:3px; border:1px solid #10b981; font-weight:800;">CME NQ 실시간</span></span><span class="val up">26,845.00 (+6.84%)</span>
     </div>
     <span class="ticker-sep">|</span>
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('필라델피아 반도체 지수 (SOX)', '10,146.32pt (-3.43%)', 'AMD -8.75%·AVGO -4.76%', '11/13 정규장 SOX -3.43%. AMD -8.75%·브로드컴 -4.76% 급락으로 국내 반도체에 부담.', 'sox')" title="야후 ^SOX · /api/stock-live 실시간 연동">
-      <span class="label">필라델피아반도체 💻 <span style="font-size:8.5px; background:rgba(255,255,255,0.08); padding:1px 3px; border-radius:2px; color:#cbd5e1;">美장 마감 기준</span></span><span class="val down">10,146.32 (-3.43%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('필라델피아 반도체 지수 (SOX)', '9,588.05pt (+14.03%)', '美장 최근 마감 (11/24 07:15 KST)', '야후 ^SOX 실측치 · 9,588.05pt (+14.03%) · 기준 11/24 07:15 KST · 美장 최근 마감 (11/24 07:15 KST)', 'sox')">
+      <span class="label">필라델피아반도체 💻 <span style="font-size:8.5px; background:rgba(255,255,255,0.08); padding:1px 3px; border-radius:2px; color:#cbd5e1;">SOX 실측</span></span><span class="val up">9,588.05 (+14.03%)</span>
     </div>
     <span class="ticker-sep">|</span>
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('WTI 국제유가 선물 (NYMEX 최근월물)', '$88.56 (-$0.18, -0.20%)', '브렌트 $95.84', '미·이란 확전(바레인 미군기지 드론 공격)과 12월 긴축 우려로 88달러대 유지.', 'wti')" title="야후 CL=F · /api/stock-live 실시간 연동">
-      <span class="label">WTI 유가 🛢️ <span style="font-size:8.5px; background:rgba(255,255,255,0.08); padding:1px 3px; border-radius:2px; color:#cbd5e1;">NYMEX</span></span><span class="val down">$88.56 (-0.20%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.03);" onclick="openIndexChart('WTI 국제유가 선물 (NYMEX 최근월물)', '$80.25 (-3.79%)', '기준 11/24 06:59 KST', '야후 CL=F 실측치 · $80.25 (-3.79%) · 기준 11/24 06:59 KST · 브렌트는 무료 실시간 API 없음', 'wti')">
+      <span class="label">WTI 유가 🛢️ <span style="font-size:8.5px; background:rgba(255,255,255,0.08); padding:1px 3px; border-radius:2px; color:#cbd5e1;">NYMEX 실시간</span></span><span class="val down">$80.25 (-3.79%)</span>
     </div>
     <span class="ticker-sep">|</span>
-    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);" onclick="openIndexChart('원/달러 환율 (야간 NDF 듀얼 실측치)', '1,339.00원 (+2.50원, +0.19%)', '하나은행 고시 07:19', '서울환시 개장 전 하나은행 고시 1,339.00원. 달러인덱스 103.33 강세와 동반 상승.', 'usdkrw')">
-      <span class="label">원/달러 💵 <span style="font-size:8.5px; background:#0c4a6e; color:#38bdf8; padding:1px 4px; border-radius:3px; border:1px solid #0284c7; font-weight:800;">야간 NDF 안착</span></span><span class="val down" style="color:#38bdf8; font-weight:800;">1,339.00원 (+0.19%)</span>
+    <div class="ticker-item" style="cursor: pointer; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);" onclick="openIndexChart('원/달러 환율 (서울 외환시장 매매기준율)', '1,342.50원 (-0.19%)', '서울환시 고시 2026-11-23', '네이버 환율(서울 외환시장 매매기준율) 실측치 · 1,342.50원 (-0.19%) · 변동 -2.50원 · NDF 환율은 공개 실시간 API가 없어 고시값으로 표기', 'usdkrw')">
+      <span class="label">원/달러 💵 <span style="font-size:8.5px; background:#0c4a6e; color:#38bdf8; padding:1px 4px; border-radius:3px; border:1px solid #0284c7; font-weight:800;">서울환시 고시</span></span><span class="val down">1,342.50원 (-0.19%)</span>
     </div>
   </div>
       
