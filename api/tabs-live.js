@@ -2528,7 +2528,7 @@ const TV_SUPABASE = {
 const TV_BUCKET_MIN = 5;   // 5분 간격
 const TV_BUCKET_MAX = 6;   // 최근 30분(5분 칸 6개)까지 보관
 const TV_KEEP_MIN = 30;    // 이보다 오래된 칸은 버린다
-const TV_TIMEOUT = 1200;   // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
+const TV_TIMEOUT = 800;    // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
 const TV_GAIN = { in5: 10, hot5: 30, in15: 30, hot15: 100 };
 
 function tvBucketOfMinute(min) {
@@ -2664,11 +2664,12 @@ function tvResponse(doc, nowBucket, themes) {
  * 이번 응답의 5분 버킷을 읽어 (장중이면) 현재 칸을 기록하고, 화면에 실을 버킷을 돌려준다.
  *  · marketLive: 정규장·프리마켓·애프터마켓 안에서만 기록한다(장외에는 기존 기록 그대로).
  */
-async function tvSyncBuckets({ themes, session, overSession, now }) {
+async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) {
   const nowMin = Math.floor(now.getTime() / 60000);
   const nowBucket = tvBucketOfMinute(nowMin);
   const marketLive = session.phase === '정규장' || (overSession && overSession.inSession);
-  const doc = await tvReadDoc();
+  /* 읽기는 핸들러가 네이버 수집과 동시에 먼저 시작해 둔다(응답 지연을 만들지 않게). */
+  const doc = await (docPromise || tvReadDoc());
   const buckets = tvSanitizeBuckets(doc, tvDayStartMinute(now), nowMin);
 
   if (!marketLive) {
@@ -2737,6 +2738,9 @@ module.exports = async function handler(req, res) {
   const now = new Date();
   const p = kstParts(now);
   const overSession = overSessionOf(p);
+  /* 💸 5분 거래대금 버킷 읽기는 여기서 먼저 띄워 둔다 — 아래 네이버 수집(수 초)과 병렬로 끝나
+   *    응답 시간에 거의 보태지 않는다. 실패하면 null(기록 없음과 같은 취급). */
+  const tvDocPromise = tvReadDoc();
   const premarket = overSession.phase === '프리마켓';
   /* 08:50~09:00(정규장 개장 전)에도 네이버 테마 랭킹은 아직 오늘 값을 내지 않는다 →
    *  프리마켓과 같은 기준(직전 거래일 강세 Top 8 유지 + 오늘 체결 덧씌우기)으로 그린다. */
@@ -3023,7 +3027,7 @@ module.exports = async function handler(req, res) {
    *    이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다. 폰을 잠깐 열어도 `(25/5/6)`이 바로 보인다. */
   let tvBuckets = null;
   try {
-    tvBuckets = await tvSyncBuckets({ themes, session, overSession, now });
+    tvBuckets = await tvSyncBuckets({ themes, session, overSession, now, docPromise: tvDocPromise });
   } catch (e) {
     tvBuckets = null;
   }
