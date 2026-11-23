@@ -2,53 +2,53 @@
  "ok": true,
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
- "via": "landing-data(playwright)",
- "fetchedAt": "2026-11-23 13:11:31",
- "updatedAt": "2026-11-23T13:11:14.522470+09:00",
- "updatedAgeMin": 0.3,
+ "via": "landing-data",
+ "fetchedAt": "2026-11-23 13:29:54",
+ "updatedAt": "2026-11-23T13:29:53.186493+09:00",
+ "updatedAgeMin": 0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "090710",
   "439960",
+  "160190",
   "108490",
   "388720",
   "319400",
   "282720",
+  "389260",
+  "240810",
   "290550",
-  "010120",
-  "278470",
-  "241710",
-  "123690",
-  "372320",
-  "476830",
-  "174900"
+  "009470",
+  "295310",
+  "347700",
+  "001430"
  ],
  "themes": [
   {
    "rank": 1,
    "name": "로봇",
-   "avgRS": 50,
+   "avgRS": 28,
    "stocks": [
     {
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 556.6,
+     "value_eok": 557.13,
      "verified": true
     },
     {
      "code": "439960",
      "name": "코스모로보틱스",
-     "chg": 22.1,
-     "value_eok": 228.03,
+     "chg": 22.7,
+     "value_eok": 239.21,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 6.2,
-     "value_eok": 1352.27,
+     "code": "160190",
+     "name": "하이젠알앤엠",
+     "chg": 7.8,
+     "value_eok": 25.27,
      "verified": true
     }
    ]
@@ -62,21 +62,21 @@
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 556.6,
+     "value_eok": 557.13,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 6.2,
-     "value_eok": 1352.27,
+     "chg": 6.4,
+     "value_eok": 1398.69,
      "verified": true
     },
     {
      "code": "388720",
      "name": "유일로보틱스",
-     "chg": 5.0,
-     "value_eok": 24.49,
+     "chg": 5.3,
+     "value_eok": 25.41,
      "verified": true
     }
    ]
@@ -90,98 +90,98 @@
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 556.6,
+     "value_eok": 557.13,
      "verified": true
     },
     {
      "code": "319400",
      "name": "현대무벡스",
-     "chg": 5.7,
-     "value_eok": 112.21,
+     "chg": 6.1,
+     "value_eok": 122.03,
      "verified": true
     },
     {
      "code": "388720",
      "name": "유일로보틱스",
-     "chg": 5.0,
-     "value_eok": 24.49,
+     "chg": 5.3,
+     "value_eok": 25.41,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "전력저장장치",
-   "avgRS": 73,
+   "name": "태양광에너지",
+   "avgRS": 39,
    "stocks": [
     {
      "code": "282720",
      "name": "금양그린파워",
-     "chg": 22.7,
-     "value_eok": 143.73,
+     "chg": 26.2,
+     "value_eok": 157.53,
      "verified": true
     },
     {
-     "code": "290550",
-     "name": "디케이티",
-     "chg": 8.2,
-     "value_eok": 212.75
+     "code": "389260",
+     "name": "대명에너지",
+     "chg": 4.8,
+     "value_eok": 89.29
     },
     {
-     "code": "010120",
-     "name": "LS ELECTRIC",
-     "chg": -0.1,
-     "value_eok": 592.75
+     "code": "240810",
+     "name": "원익IPS",
+     "chg": 1.8,
+     "value_eok": 475.11
     }
    ]
   },
   {
    "rank": 5,
-   "name": "화장품",
-   "avgRS": 68,
+   "name": "전력저장장치",
+   "avgRS": 71,
    "stocks": [
     {
-     "code": "278470",
-     "name": "에이피알",
-     "chg": 8.5,
-     "value_eok": 1322.62
+     "code": "282720",
+     "name": "금양그린파워",
+     "chg": 26.2,
+     "value_eok": 157.53
     },
     {
-     "code": "241710",
-     "name": "코스메카코리아",
-     "chg": 7.2,
-     "value_eok": 140.58
+     "code": "290550",
+     "name": "디케이티",
+     "chg": 7.5,
+     "value_eok": 223.92
     },
     {
-     "code": "123690",
-     "name": "한국화장품",
-     "chg": 6.5,
-     "value_eok": 231.78
+     "code": "009470",
+     "name": "삼화전기",
+     "chg": 0.2,
+     "value_eok": 11.85
     }
    ]
   },
   {
    "rank": 6,
-   "name": "유전자 치료제/분석",
-   "avgRS": 40,
+   "name": "우주항공산업",
+   "avgRS": 97,
    "stocks": [
     {
-     "code": "372320",
-     "name": "큐로셀",
-     "chg": 29.9,
-     "value_eok": 188.57
+     "code": "295310",
+     "name": "에이치브이엠",
+     "chg": 12.9,
+     "value_eok": 93.81
     },
     {
-     "code": "476830",
-     "name": "알지노믹스",
-     "chg": 1.9,
-     "value_eok": 59.32
+     "code": "347700",
+     "name": "스피어",
+     "chg": 6.6,
+     "value_eok": 135.15
     },
     {
-     "code": "174900",
-     "name": "앱클론",
-     "chg": 1.7,
-     "value_eok": 34.89
+     "code": "001430",
+     "name": "세아베스틸지주",
+     "chg": 4.1,
+     "value_eok": 34.81
     }
    ]
   }
