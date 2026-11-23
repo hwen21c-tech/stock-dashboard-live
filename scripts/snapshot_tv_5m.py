@@ -35,6 +35,7 @@ import urllib.request
 
 ROOT = '/workspace'
 TRACK_CODES_PATH = os.path.join(ROOT, 'data', 'tv_track_codes.json')
+LOCAL_DOC = os.path.join(ROOT, 'data', 'tv_5m_buckets.json')
 STATIC_INDEX = os.path.join(ROOT, 'deploy_repo', 'index.html')
 LIVE_INDEX = os.path.join(ROOT, 'sd_live', 'public', 'index.html')
 
@@ -141,8 +142,10 @@ def fetch_values(codes: list[str]) -> dict:
     return values
 
 
-def read_doc(now: dt.datetime) -> dict:
+def read_doc(now: dt.datetime):
+    """(doc, readable) — readable=False 면 기존 행을 덮어쓰지 않는다(지난 칸 보호)."""
     cloud = None
+    cloud_ok = False
     try:
         url = (f"{SUPABASE['url']}/rest/v1/{SUPABASE['table']}"
                f"?code=eq.{urllib.parse.quote(SUPABASE['code'])}&select=code,data")
@@ -150,13 +153,23 @@ def read_doc(now: dt.datetime) -> dict:
                                'Authorization': 'Bearer ' + SUPABASE['key'],
                                'Accept': 'application/json'}, timeout=6) or []
         data = (rows[0] or {}).get('data') if rows else None
+        cloud_ok = True
         if isinstance(data, dict):
             cloud = data
     except Exception:                                   # noqa: BLE001
-        cloud = None
+        cloud_ok = False
+
+    local = None
+    try:
+        with open(LOCAL_DOC, encoding='utf-8') as f:
+            local = json.load(f)
+        if not isinstance(local, dict):
+            local = None
+    except Exception:                                   # noqa: BLE001
+        local = None
 
     merged: dict[int, dict] = {}
-    for src in (cloud,):
+    for src in (cloud, local):
         for b in (src or {}).get('buckets') or []:
             try:
                 t = int(b.get('t'))
@@ -176,7 +189,7 @@ def read_doc(now: dt.datetime) -> dict:
     now_min = int(time.time() // 60)
     keep = [b for t, b in merged.items() if day_start <= t and t >= now_min - 60]
     keep.sort(key=lambda x: x['t'])
-    return {'v': 1, 'date': now.strftime('%Y-%m-%d'), 'buckets': keep[-BUCKET_MAX:]}
+    return {'v': 1, 'date': now.strftime('%Y-%m-%d'), 'buckets': keep[-BUCKET_MAX:]}, (cloud_ok or local is not None)
 
 
 def write_doc(doc: dict) -> bool:
@@ -212,7 +225,10 @@ def main() -> int:
     if not values:
         return 0
 
-    doc = read_doc(now)
+    doc, readable = read_doc(now)
+    if not readable:
+        print('[TV5] 기록 읽기 실패 — 기존 칸을 덮어쓰지 않고 건너뜁니다')
+        return 0
     bucket_min = bucket_of(int(time.time() // 60))
     buckets = doc.setdefault('buckets', [])
     bucket = next((b for b in buckets if b.get('t') == bucket_min), None)
@@ -235,6 +251,12 @@ def main() -> int:
     doc['buckets'] = buckets[-BUCKET_MAX:]
     doc['date'] = now.strftime('%Y-%m-%d')
     doc['src'] = 'check.sh'
+    try:
+        os.makedirs(os.path.dirname(LOCAL_DOC) or '.', exist_ok=True)
+        with open(LOCAL_DOC, 'w', encoding='utf-8') as f:
+            json.dump(doc, f, ensure_ascii=False)
+    except Exception:                                   # noqa: BLE001
+        pass
     ok = write_doc(doc)
     print(f"[TV5] {hhmm(bucket_min)} 칸 +{added}종목 "
           f"(보관 {len(doc['buckets'])}칸 · {'저장' if ok else '저장 실패'})")

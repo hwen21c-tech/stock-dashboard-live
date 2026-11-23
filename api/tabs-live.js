@@ -2528,7 +2528,7 @@ const TV_SUPABASE = {
 const TV_BUCKET_MIN = 5;   // 5분 간격
 const TV_BUCKET_MAX = 6;   // 최근 30분(5분 칸 6개)까지 보관
 const TV_KEEP_MIN = 30;    // 이보다 오래된 칸은 버린다
-const TV_TIMEOUT = 800;    // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
+const TV_TIMEOUT = 1000;   // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
 const TV_GAIN = { in5: 10, hot5: 30, in15: 30, hot15: 100 };
 
 function tvBucketOfMinute(min) {
@@ -2561,7 +2561,13 @@ function tvHeader() {
   };
 }
 
-/** 공용 5분 버킷 행 읽기 — 실패하면 null(기록 없음과 같은 취급). */
+/**
+ * 공용 5분 버킷 행 읽기.
+ *  · status='ok'      : 행이 있고 data 를 읽었다
+ *  · status='missing' : 행이 없다(HTTP 200 + 빈 배열) → 새로 만들어도 된다
+ *  · status='error'   : 읽지 못했다(타임아웃·HTTP 오류) → **덮어쓰면 안 된다**
+ *    (읽기 실패를 '기록 없음'으로 오해하고 현재 칸 하나만 쓰면 지난 5분 칸이 사라진다)
+ */
 async function tvReadDoc() {
   const url =
     `${TV_SUPABASE.url}/rest/v1/${TV_SUPABASE.table}?code=eq.${encodeURIComponent(TV_SUPABASE.code)}` +
@@ -2570,12 +2576,13 @@ async function tvReadDoc() {
   const timer = ctl ? setTimeout(() => ctl.abort(), TV_TIMEOUT) : null;
   try {
     const r = await fetch(url, { headers: tvHeader(), cache: 'no-store', signal: ctl ? ctl.signal : undefined });
-    if (!r.ok) return null;
+    if (!r.ok) return { status: 'error', doc: null };
     const rows = await r.json();
     const doc = Array.isArray(rows) && rows[0] ? rows[0].data : null;
-    return doc && typeof doc === 'object' ? doc : null;
+    if (!rows || !rows.length) return { status: 'missing', doc: null };
+    return doc && typeof doc === 'object' ? { status: 'ok', doc } : { status: 'missing', doc: null };
   } catch (e) {
-    return null;
+    return { status: 'error', doc: null };
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -2663,10 +2670,11 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
   const nowBucket = tvBucketOfMinute(nowMin);
   const marketLive = session.phase === '정규장' || (overSession && overSession.inSession);
   /* 읽기는 핸들러가 네이버 수집과 동시에 먼저 시작해 둔다(응답 지연을 만들지 않게). */
-  const doc = await (docPromise || tvReadDoc());
-  const buckets = tvSanitizeBuckets(doc, tvDayStartMinute(now), nowMin);
+  const read = (await (docPromise || tvReadDoc())) || { status: 'error', doc: null };
+  const buckets = tvSanitizeBuckets(read.doc, tvDayStartMinute(now), nowMin);
 
-  if (!marketLive) {
+  /* 읽기 실패면 기존 행을 덮어쓰지 않는다 — 지난 5분 칸을 잃는 것보다 이번 칸을 못 남기는 편이 낫다. */
+  if (!marketLive || read.status === 'error') {
     return tvResponse({ date: tvKstDate(now), buckets }, nowBucket);
   }
 
