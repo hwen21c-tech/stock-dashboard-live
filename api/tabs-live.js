@@ -2528,8 +2528,8 @@ const TV_SUPABASE = {
 const TV_BUCKET_MIN = 5;   // 5분 간격
 const TV_BUCKET_MAX = 6;   // 최근 30분(5분 칸 6개)까지 보관
 const TV_KEEP_MIN = 30;    // 이보다 오래된 칸은 버린다
-const TV_TIMEOUT = 1000;   // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
-const TV_GAIN = { in5: 10, hot5: 30, in15: 30, hot15: 100 };
+const TV_TIMEOUT = 1000;        // Supabase 쓰기 한도(ms) — 응답 지연을 만들지 않는다
+const TV_READ_TIMEOUT = 2500;   // 읽기 한도(ms) — 네이버 수집과 병렬이라 기다려도 응답이 느려지지 않는다
 
 function tvBucketOfMinute(min) {
   return Math.floor(min / TV_BUCKET_MIN) * TV_BUCKET_MIN;
@@ -2568,12 +2568,12 @@ function tvHeader() {
  *  · status='error'   : 읽지 못했다(타임아웃·HTTP 오류) → **덮어쓰면 안 된다**
  *    (읽기 실패를 '기록 없음'으로 오해하고 현재 칸 하나만 쓰면 지난 5분 칸이 사라진다)
  */
-async function tvReadDoc() {
+async function tvReadDocOnce() {
   const url =
     `${TV_SUPABASE.url}/rest/v1/${TV_SUPABASE.table}?code=eq.${encodeURIComponent(TV_SUPABASE.code)}` +
     '&select=code,data';
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-  const timer = ctl ? setTimeout(() => ctl.abort(), TV_TIMEOUT) : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), TV_READ_TIMEOUT) : null;
   try {
     const r = await fetch(url, { headers: tvHeader(), cache: 'no-store', signal: ctl ? ctl.signal : undefined });
     if (!r.ok) return { status: 'error', doc: null };
@@ -2586,6 +2586,17 @@ async function tvReadDoc() {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/* 읽기는 응답 조립 전(네이버 수집과 병렬)에 끝나므로 넉넉히 기다려도 화면이 느려지지 않는다.
+ *  한 번 실패하면 150ms 뒤 한 번 더 — 일시적인 네트워크 끊김으로 이번 응답이 빈손이 되지 않게. */
+async function tvReadDoc() {
+  let r = await tvReadDocOnce();
+  if (r.status === 'error') {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    r = await tvReadDocOnce();
+  }
+  return r;
 }
 
 /** 공용 5분 버킷 행 쓰기(코드 기준 upsert). 실패는 조용히 false. */
