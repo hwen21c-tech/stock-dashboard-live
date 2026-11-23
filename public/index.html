@@ -6094,50 +6094,309 @@
       <!-- SUPPLY OVERVIEW BANNER -->
       <div style="background:#111827; border:1px solid #1e3a8a; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:11.5px; color:#cbd5e1; line-height:1.45;">
         <strong style="color:#38bdf8;">⏱️ 당일 시간대별 수급 유지도 총평:</strong><br>
-        코스피 외국인(-5,419억) · 기관(-59억) · 개인(+145억) | 코스닥 외국인(-806억) · 기관(+1,259억) · 개인(-512억) 실시간 수급 공방 중. <strong style="color:#fef08a;">시간별 수급 추이 바</strong>를 통해 장 막판까지 자금이 유지되었는지 즉시 확인하실 수 있습니다.
+        📋 거래소 확정 수급 기준일 2026-11-23(월) — 아래 카드의 외인·기관 금액은 그날 종가 × 순매수 주수입니다(장중 실시간 아님 · 확정 400종목 후보).<strong style="color:#fef08a;">시간별 수급 추이 바</strong>를 통해 장 막판까지 자금이 유지되었는지 즉시 확인하실 수 있습니다.
       </div>
 
       <!-- 📌 핀 고정 종목 전용 영역 — 오늘 확정 수급 목록 밖으로 나가도 이 탭에 남는다 (live-supply.js + strategy-pins.js) -->
       <div id="supPinnedWrap" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
 
       <div class="supply-grid-4">
-
-        <!-- 1. 외국인 주도 순매수 — 매일 장마감 확정 수급으로 자동 교체 (live-supply.js) -->
         <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#0284c7;">
-          <div class="sec-head" style="border-bottom-color:#1e3a8a; color:#60a5fa; font-size:12.5px;">
-            <span id="supForeignHead">🌏 외국인 주도 순매수 (확정 대기)</span>
-            <span class="sub" id="supForeignCount">—</span>
+          <div class="sec-head" style="border-bottom-color:#0284c7; color:#60a5fa; font-size:12.5px;">
+            <span>🌏 외국인 주도 순매수 (11/23 확정)</span>
+            <span class="sub">코스피·코스닥 외인 확정 순매수 상위 · 6종목</span>
           </div>
-          <div id="supForeignBuy"></div>
-        </div>
+          <!-- 삼성전자우 -->
+          <div class="supply-stock-card" data-code="005935" data-name="삼성전자우" onclick="openDetail('삼성전자우 [수급 1위]', '+0.14%', '외인 +388억', '【거래소 확정 2026-11-23(월)】 외국인 +388억 · 기관 -193억 · 개인 -196억.【종가】 144,500원 (+0.14%) · 당일 거래대금 5,892억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성전자우</span><span class="ssc-price up">144,500원 (+0.14%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +388억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">115조 9,426억</span>
+            </div>
+            <div class="ssc-desc">외국인 +388억 · 기관 -193억 · 개인 -196억 (확정 11/23 종가 기준)</div>
+          </div>
 
-        <!-- 2. 기관 주도 순매수 -->
+          <!-- GS -->
+          <div class="supply-stock-card" data-code="078930" data-name="GS" onclick="openDetail('GS [수급 2위]', '-6.91%', '외인 +304억', '【거래소 확정 2026-11-23(월)】 외국인 +304억 · 기관 -95억 · 개인 -225억.【종가】 70,000원 (-6.91%) · 당일 거래대금 586억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">GS</span><span class="ssc-price down">70,000원 (-6.91%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +304억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">6조 5,027억</span>
+              <span class="s-badge streak">외인 3일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 +304억 · 기관 -95억 · 개인 -225억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- SK스퀘어 -->
+          <div class="supply-stock-card" data-code="402340" data-name="SK스퀘어" onclick="openDetail('SK스퀘어 [수급 3위]', '+2.07%', '외인 +231억', '【거래소 확정 2026-11-23(월)】 외국인 +231억 · 기관 +59억 · 개인 -270억.【종가】 691,000원 (+2.07%) · 당일 거래대금 4,340억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">SK스퀘어</span><span class="ssc-price up">691,000원 (+2.07%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +231억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">91조 1,595억</span>
+            </div>
+            <div class="ssc-desc">외국인 +231억 · 기관 +59억 · 개인 -270억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 이수페타시스 -->
+          <div class="supply-stock-card" data-code="007660" data-name="이수페타시스" onclick="openDetail('이수페타시스 [수급 4위]', '+4.60%', '외인 +219억', '【거래소 확정 2026-11-23(월)】 외국인 +219억 · 기관 -109억 · 개인 -110억.【종가】 72,800원 (+4.60%) · 당일 거래대금 982억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">이수페타시스</span><span class="ssc-price up">72,800원 (+4.60%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +219억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">5조 3,442억</span>
+            </div>
+            <div class="ssc-desc">외국인 +219억 · 기관 -109억 · 개인 -110억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 삼성SDI -->
+          <div class="supply-stock-card" data-code="006400" data-name="삼성SDI" onclick="openDetail('삼성SDI [수급 5위]', '-0.25%', '외인 +167억', '【거래소 확정 2026-11-23(월)】 외국인 +167억 · 기관 +29억 · 개인 -186억.【종가】 401,500원 (-0.25%) · 당일 거래대금 2,058억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성SDI</span><span class="ssc-price down">401,500원 (-0.25%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +167억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">32조 3,551억</span>
+              <span class="s-badge streak">외인 2일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 +167억 · 기관 +29억 · 개인 -186억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- LG이노텍 -->
+          <div class="supply-stock-card" data-code="011070" data-name="LG이노텍" onclick="openDetail('LG이노텍 [수급 6위]', '-2.24%', '외인 +144억', '【거래소 확정 2026-11-23(월)】 외국인 +144억 · 기관 -46억 · 개인 -70억.【종가】 261,500원 (-2.24%) · 당일 거래대금 626억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">LG이노텍</span><span class="ssc-price down">261,500원 (-2.24%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +144억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">6조 1,883억</span>
+            </div>
+            <div class="ssc-desc">외국인 +144억 · 기관 -46억 · 개인 -70억 (확정 11/23 종가 기준)</div>
+          </div>
+
+        </div>
         <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#0284c7;">
-          <div class="sec-head" style="border-bottom-color:#1e3a8a; color:#60a5fa; font-size:12.5px;">
-            <span id="supOrganHead">🏢 기관 주도 순매수 (확정 대기)</span>
-            <span class="sub" id="supOrganCount">—</span>
+          <div class="sec-head" style="border-bottom-color:#0284c7; color:#60a5fa; font-size:12.5px;">
+            <span>🏢 기관 주도 순매수 (11/23 확정)</span>
+            <span class="sub">기관 확정 순매수 상위 · 6종목</span>
           </div>
-          <div id="supOrganBuy"></div>
-        </div>
+          <!-- 삼성전자 -->
+          <div class="supply-stock-card" data-code="005930" data-name="삼성전자" onclick="openDetail('삼성전자 [기관 1위]', '-1.37%', '기관 +1,194억', '【거래소 확정 2026-11-23(월)】 외국인 -82억 · 기관 +1,194억 · 개인 -1,217억.【종가】 180,600원 (-1.37%) · 당일 거래대금 34,494억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성전자</span><span class="ssc-price down">180,600원 (-1.37%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +1,194억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">1,055조 8,379억</span>
+            </div>
+            <div class="ssc-desc">외국인 -82억 · 기관 +1,194억 · 개인 -1,217억 (확정 11/23 종가 기준)</div>
+          </div>
 
-        <!-- 3. 외국인 집중 순매도 -->
+          <!-- 에이피알 -->
+          <div class="supply-stock-card" data-code="278470" data-name="에이피알" onclick="openDetail('에이피알 [기관 2위]', '+8.70%', '기관 +400억', '【거래소 확정 2026-11-23(월)】 외국인 -145억 · 기관 +400억 · 개인 -250억.【종가】 256,000원 (+8.70%) · 당일 거래대금 1,407억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">에이피알</span><span class="ssc-price up">256,000원 (+8.70%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +400억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">9조 5,842억</span>
+            </div>
+            <div class="ssc-desc">외국인 -145억 · 기관 +400억 · 개인 -250억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 삼성전기 -->
+          <div class="supply-stock-card" data-code="009150" data-name="삼성전기" onclick="openDetail('삼성전기 [기관 3위]', '+2.97%', '기관 +389억', '【거래소 확정 2026-11-23(월)】 외국인 +34억 · 기관 +389억 · 개인 -418억.【종가】 797,000원 (+2.97%) · 당일 거래대금 7,059억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성전기</span><span class="ssc-price up">797,000원 (+2.97%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +389억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">59조 5,309억</span>
+            </div>
+            <div class="ssc-desc">외국인 +34억 · 기관 +389억 · 개인 -418억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 로보티즈 -->
+          <div class="supply-stock-card" data-code="108490" data-name="로보티즈" onclick="openDetail('로보티즈 [기관 4위]', '+6.85%', '기관 +224억', '【거래소 확정 2026-11-23(월)】 외국인 -46억 · 기관 +224억 · 개인 -167억.【종가】 249,500원 (+6.85%) · 당일 거래대금 979억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">로보티즈</span><span class="ssc-price up">249,500원 (+6.85%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +224억</span>
+              <span class="s-badge streak">코스닥</span>
+              <span class="s-badge gold">3조 6,604억</span>
+            </div>
+            <div class="ssc-desc">외국인 -46억 · 기관 +224억 · 개인 -167억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 두산 -->
+          <div class="supply-stock-card" data-code="000150" data-name="두산" onclick="openDetail('두산 [기관 5위]', '+4.74%', '기관 +195억', '【거래소 확정 2026-11-23(월)】 외국인 -82억 · 기관 +195억 · 개인 -125억.【종가】 552,000원 (+4.74%) · 당일 거래대금 792억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">두산</span><span class="ssc-price up">552,000원 (+4.74%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +195억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">7조 8,591억</span>
+            </div>
+            <div class="ssc-desc">외국인 -82억 · 기관 +195억 · 개인 -125억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 셀트리온 -->
+          <div class="supply-stock-card" data-code="068270" data-name="셀트리온" onclick="openDetail('셀트리온 [기관 6위]', '-4.93%', '기관 +193억', '【거래소 확정 2026-11-23(월)】 외국인 -55억 · 기관 +193억 · 개인 -129억.【종가】 202,500원 (-4.93%) · 당일 거래대금 916억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">셀트리온</span><span class="ssc-price down">202,500원 (-4.93%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">기관 +193억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">47조 62억</span>
+              <span class="s-badge streak">기관 3일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 -55억 · 기관 +193억 · 개인 -129억 (확정 11/23 종가 기준)</div>
+          </div>
+
+        </div>
         <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#ef4444;">
-          <div class="sec-head" style="border-bottom-color:#7f1d1d; color:#f87171; font-size:12.5px;">
-            <span id="supSellHead">🚨 외국인 집중 순매도 팩트 (확정 대기)</span>
-            <span class="sub" id="supSellCount">—</span>
+          <div class="sec-head" style="border-bottom-color:#ef4444; color:#f87171; font-size:12.5px;">
+            <span>🚨 외국인 집중 순매도 (11/23 확정)</span>
+            <span class="sub">차익 매물 출회 경계 · 6종목</span>
           </div>
-          <div id="supForeignSell"></div>
-          <div style="font-size:9.5px;color:#94a3b8;line-height:1.5;padding:6px 2px 0">※ 순매도 상위는 '차익 매물 출회' 후보일 뿐 매도 신호가 아닙니다. 금액은 그날 종가 × 순매도 주수입니다.</div>
-        </div>
+          <!-- SK하이닉스 -->
+          <div class="supply-stock-card" data-code="000660" data-name="SK하이닉스" onclick="openDetail('SK하이닉스 [외인 순매도 1위]', '-1.08%', '외인 -1,852억', '【거래소 확정 2026-11-23(월)】 외국인 -1,852억 · 기관 -301억 · 개인 -1,725억.【종가】 1,101,000원 (-1.08%) · 당일 거래대금 42,480억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">SK하이닉스</span><span class="ssc-price down">1,101,000원 (-1.08%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -1,852억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">778조 1,858억</span>
+            </div>
+            <div class="ssc-desc">외국인 -1,852억 · 기관 -301억 · 개인 -1,725억 (확정 11/23 종가 기준)</div>
+          </div>
 
-        <!-- 4. 외인·기관 동반 순매수 (연기금 세부 주체는 공개 API 없음) -->
-        <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#0284c7;">
-          <div class="sec-head" style="border-bottom-color:#1e3a8a; color:#60a5fa; font-size:12.5px;">
-            <span id="supDualHead">🏛️ 외인·기관 동반 순매수 (확정 대기)</span>
-            <span class="sub" id="supDualCount">—</span>
+          <!-- 하나금융지주 -->
+          <div class="supply-stock-card" data-code="086790" data-name="하나금융지주" onclick="openDetail('하나금융지주 [외인 순매도 2위]', '-4.76%', '외인 -243억', '【거래소 확정 2026-11-23(월)】 외국인 -243억 · 기관 +187억 · 개인 +57억.【종가】 118,000원 (-4.76%) · 당일 거래대금 755억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">하나금융지주</span><span class="ssc-price down">118,000원 (-4.76%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -243억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">31조 7,519억</span>
+              <span class="s-badge streak">기관 2일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 -243억 · 기관 +187억 · 개인 +57억 (확정 11/23 종가 기준)</div>
           </div>
-          <div id="supDualBuy"></div>
-          <div style="font-size:9.5px;color:#94a3b8;line-height:1.5;padding:6px 2px 0">※ 연기금·금융투자 등 세부 주체별 순매수는 공개 API에 없습니다. 여기서는 외국인과 기관이 같은 날 동반 순매수한 종목만 보여 줍니다.</div>
+
+          <!-- 레인보우로보틱스 -->
+          <div class="supply-stock-card" data-code="277810" data-name="레인보우로보틱스" onclick="openDetail('레인보우로보틱스 [외인 순매도 3위]', '+0.98%', '외인 -236억', '【거래소 확정 2026-11-23(월)】 외국인 -236억 · 기관 +129억 · 개인 +106억.【종가】 412,000원 (+0.98%) · 당일 거래대금 829억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">레인보우로보틱스</span><span class="ssc-price up">412,000원 (+0.98%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -236억</span>
+              <span class="s-badge streak">코스닥</span>
+              <span class="s-badge gold">7조 9,927억</span>
+              <span class="s-badge streak">기관 5일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 -236억 · 기관 +129억 · 개인 +106억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- NAVER -->
+          <div class="supply-stock-card" data-code="035420" data-name="NAVER" onclick="openDetail('NAVER [외인 순매도 4위]', '-6.68%', '외인 -195억', '【거래소 확정 2026-11-23(월)】 외국인 -195억 · 기관 -496억 · 개인 +688억.【종가】 150,800원 (-6.68%) · 당일 거래대금 2,272억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">NAVER</span><span class="ssc-price down">150,800원 (-6.68%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -195억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">22조 9,407억</span>
+            </div>
+            <div class="ssc-desc">외국인 -195억 · 기관 -496억 · 개인 +688억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- KB금융 -->
+          <div class="supply-stock-card" data-code="105560" data-name="KB금융" onclick="openDetail('KB금융 [외인 순매도 5위]', '-4.86%', '외인 -182억', '【거래소 확정 2026-11-23(월)】 외국인 -182억 · 기관 +58억 · 개인 +122억.【종가】 145,000원 (-4.86%) · 당일 거래대금 1,689억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">KB금융</span><span class="ssc-price down">145,000원 (-4.86%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -182억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">51조 4,297억</span>
+              <span class="s-badge streak">기관 2일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 -182억 · 기관 +58억 · 개인 +122억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 주성엔지니어링 -->
+          <div class="supply-stock-card" data-code="036930" data-name="주성엔지니어링" onclick="openDetail('주성엔지니어링 [외인 순매도 6위]', '+0.48%', '외인 -158억', '【거래소 확정 2026-11-23(월)】 외국인 -158억 · 기관 +51억 · 개인 +45억.【종가】 145,800원 (+0.48%) · 당일 거래대금 2,379억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">주성엔지니어링</span><span class="ssc-price up">145,800원 (+0.48%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#7f1d1d; color:#fecaca;">외인 -158억</span>
+              <span class="s-badge streak">코스닥</span>
+              <span class="s-badge gold">6조 7,769억</span>
+            </div>
+            <div class="ssc-desc">외국인 -158억 · 기관 +51억 · 개인 +45억 (확정 11/23 종가 기준)</div>
+          </div>
+
+        </div>
+        <div class="panel-box" style="margin-bottom:0; background:#111827; border-color:#0284c7;">
+          <div class="sec-head" style="border-bottom-color:#0284c7; color:#60a5fa; font-size:12.5px;">
+            <span>🏛️ 외인·기관 동반 순매수 (11/23 확정)</span>
+            <span class="sub">양 주체 동반 매수 · 6종목</span>
+          </div>
+          <!-- 삼성전기 -->
+          <div class="supply-stock-card" data-code="009150" data-name="삼성전기" onclick="openDetail('삼성전기 [동반 1위]', '+2.97%', '외인 +34억 · 기관 +389억', '【거래소 확정 2026-11-23(월)】 외국인 +34억 · 기관 +389억 · 개인 -418억.【종가】 797,000원 (+2.97%) · 당일 거래대금 7,059억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성전기</span><span class="ssc-price up">797,000원 (+2.97%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +34억 · 기관 +389억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">59조 5,309억</span>
+            </div>
+            <div class="ssc-desc">외국인 +34억 · 기관 +389억 · 개인 -418억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- SK스퀘어 -->
+          <div class="supply-stock-card" data-code="402340" data-name="SK스퀘어" onclick="openDetail('SK스퀘어 [동반 2위]', '+2.07%', '외인 +231억 · 기관 +59억', '【거래소 확정 2026-11-23(월)】 외국인 +231억 · 기관 +59억 · 개인 -270억.【종가】 691,000원 (+2.07%) · 당일 거래대금 4,340억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">SK스퀘어</span><span class="ssc-price up">691,000원 (+2.07%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +231억 · 기관 +59억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">91조 1,595억</span>
+            </div>
+            <div class="ssc-desc">외국인 +231억 · 기관 +59억 · 개인 -270억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 삼성SDI -->
+          <div class="supply-stock-card" data-code="006400" data-name="삼성SDI" onclick="openDetail('삼성SDI [동반 3위]', '-0.25%', '외인 +167억 · 기관 +29억', '【거래소 확정 2026-11-23(월)】 외국인 +167억 · 기관 +29억 · 개인 -186억.【종가】 401,500원 (-0.25%) · 당일 거래대금 2,058억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">삼성SDI</span><span class="ssc-price down">401,500원 (-0.25%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +167억 · 기관 +29억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">32조 3,551억</span>
+              <span class="s-badge streak">외인 2일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 +167억 · 기관 +29억 · 개인 -186억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 현대차 -->
+          <div class="supply-stock-card" data-code="005380" data-name="현대차" onclick="openDetail('현대차 [동반 4위]', '-2.55%', '외인 +35억 · 기관 +120억', '【거래소 확정 2026-11-23(월)】 외국인 +35억 · 기관 +120억 · 개인 -154억.【종가】 248,500원 (-2.55%) · 당일 거래대금 836억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">현대차</span><span class="ssc-price down">248,500원 (-2.55%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +35억 · 기관 +120억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">50조 5,614억</span>
+              <span class="s-badge streak">외인 5일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 +35억 · 기관 +120억 · 개인 -154억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- LS ELECTRIC -->
+          <div class="supply-stock-card" data-code="010120" data-name="LS ELECTRIC" onclick="openDetail('LS ELECTRIC [동반 5위]', '+2.10%', '외인 +68억 · 기관 +24억', '【거래소 확정 2026-11-23(월)】 외국인 +68억 · 기관 +24억 · 개인 -91억.【종가】 112,000원 (+2.10%) · 당일 거래대금 655억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">LS ELECTRIC</span><span class="ssc-price up">112,000원 (+2.10%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +68억 · 기관 +24억</span>
+              <span class="s-badge streak">코스피</span>
+              <span class="s-badge gold">16조 8,000억</span>
+            </div>
+            <div class="ssc-desc">외국인 +68억 · 기관 +24억 · 개인 -91억 (확정 11/23 종가 기준)</div>
+          </div>
+
+          <!-- 안랩 -->
+          <div class="supply-stock-card" data-code="053800" data-name="안랩" onclick="openDetail('안랩 [동반 6위]', '+3.06%', '외인 +58억 · 기관 +25억', '【거래소 확정 2026-11-23(월)】 외국인 +58억 · 기관 +25억 · 개인 -85억.【종가】 114,500원 (+3.06%) · 당일 거래대금 500억.【계산】 순매수 주수 × 그날 종가 ÷ 1억 (네이버 투자자별 매매동향)', '확정 종가 등락률(2026-11-23(월))', '당일 순매수(확정)')">
+            <div class="ssc-top"><span class="ssc-name">안랩</span><span class="ssc-price up">114,500원 (+3.06%)</span></div>
+            <div class="ssc-badges">
+              <span class="s-badge net" style="background:#065f46; color:#6ee7b7;">외인 +58억 · 기관 +25억</span>
+              <span class="s-badge streak">코스닥</span>
+              <span class="s-badge gold">1조 2,740억</span>
+              <span class="s-badge streak">기관 3일 연속</span>
+            </div>
+            <div class="ssc-desc">외국인 +58억 · 기관 +25억 · 개인 -85억 (확정 11/23 종가 기준)</div>
+          </div>
+
         </div>
 
       </div>
