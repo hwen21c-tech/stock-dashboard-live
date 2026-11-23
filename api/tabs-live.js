@@ -2505,6 +2505,203 @@ async function buildStrategyLive(map) {
   };
 }
 
+/* ============================================================================
+ * 💸 5분 거래대금 버킷 — Supabase family_sync[stock_tv_5m_v1]
+ * ----------------------------------------------------------------------------
+ *  1번 탭 종목 타일의 `300억 (25/5/6)` 순증은 '최근 15분을 5분 간격 3구간'으로 본다.
+ *    d1 = 최근 5분(현재 − 5분 전) · d2 = 5~10분 전 · d3 = 10~15분 전
+ *  그 3구간을 계산하려면 5분 전·10분 전·15분 전의 대금이 어딘가 남아 있어야 하는데,
+ *  브라우저 localStorage 에만 쌓으면 폰을 잠깐 열었을 때 기록이 비어 아무것도 안 보인다.
+ *  → 5분 칸(epoch 분을 5로 내림)마다 종목별 누적 대금(억)을 이 행에 함께 쌓는다.
+ *
+ *  · 한 칸에는 **그 칸에서 처음 본 값**만 남긴다(덮어쓰지 않는다) — 칸 시작 시점의
+ *    대금과 비교해야 '5분 구간'이 맞는다. 이미 있는 종목 값은 건드리지 않는다.
+ *  · 장전·주말·야간 등 장외 시간에는 쓰지 않는다 — 굳은 값을 새 기록처럼 덮어쓰지 않는다.
+ *  · 읽기·쓰기 실패는 조용히 넘어간다(화면은 클라이언트 기록만으로도 동작한다).
+ * ========================================================================== */
+const TV_SUPABASE = {
+  url: process.env.SUPABASE_URL || 'https://hiruybkapzuhjrzjoyik.supabase.co',
+  key: process.env.SUPABASE_ANON_KEY || 'sb_publishable_e5JJbvCPDhY91uXaUEVNVA_8Byv_gI8',
+  table: 'family_sync',
+  code: 'stock_tv_5m_v1',
+};
+const TV_BUCKET_MIN = 5;   // 5분 간격
+const TV_BUCKET_MAX = 6;   // 최근 30분(5분 칸 6개)까지 보관
+const TV_KEEP_MIN = 30;    // 이보다 오래된 칸은 버린다
+const TV_TIMEOUT = 1200;   // Supabase 읽기/쓰기 한도(ms) — 응답 지연을 만들지 않는다
+const TV_GAIN = { in5: 10, hot5: 30, in15: 30, hot15: 100 };
+
+function tvBucketOfMinute(min) {
+  return Math.floor(min / TV_BUCKET_MIN) * TV_BUCKET_MIN;
+}
+
+function tvKstDate(now) {
+  const p = kstParts(now);
+  return `${p.y}-${pad2(p.m)}-${pad2(p.d)}`;
+}
+
+/** KST 하루가 시작하는 epoch 분(오늘 00:00 KST) — 다른 날 버킷을 섞지 않는다. */
+function tvDayStartMinute(now) {
+  const p = kstParts(now);
+  const t = Date.parse(`${p.y}-${pad2(p.m)}-${pad2(p.d)}T00:00:00+09:00`);
+  return Number.isFinite(t) ? Math.floor(t / 60000) : Math.floor(now.getTime() / 60000) - 900;
+}
+
+/** epoch 분 → KST 'HH:MM'(툴팁·디버그용 표기) */
+function tvHHMM(bucketMin) {
+  const d = new Date((bucketMin + 540) * 60000); // UTC+9
+  return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+}
+
+function tvHeader() {
+  return {
+    apikey: TV_SUPABASE.key,
+    Authorization: 'Bearer ' + TV_SUPABASE.key,
+    Accept: 'application/json',
+  };
+}
+
+/** 공용 5분 버킷 행 읽기 — 실패하면 null(기록 없음과 같은 취급). */
+async function tvReadDoc() {
+  const url =
+    `${TV_SUPABASE.url}/rest/v1/${TV_SUPABASE.table}?code=eq.${encodeURIComponent(TV_SUPABASE.code)}` +
+    '&select=code,data';
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), TV_TIMEOUT) : null;
+  try {
+    const r = await fetch(url, { headers: tvHeader(), cache: 'no-store', signal: ctl ? ctl.signal : undefined });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const doc = Array.isArray(rows) && rows[0] ? rows[0].data : null;
+    return doc && typeof doc === 'object' ? doc : null;
+  } catch (e) {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** 공용 5분 버킷 행 쓰기(코드 기준 upsert). 실패는 조용히 false. */
+async function tvWriteDoc(doc) {
+  const url = `${TV_SUPABASE.url}/rest/v1/${TV_SUPABASE.table}?on_conflict=code`;
+  const headers = { ...tvHeader(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' };
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), TV_TIMEOUT) : null;
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify([{ code: TV_SUPABASE.code, data: doc, updated_at: new Date().toISOString() }]),
+      cache: 'no-store',
+      signal: ctl ? ctl.signal : undefined,
+    });
+    return r.ok;
+  } catch (e) {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** 오늘 것만, 최근 6칸만 — 남의 날·지난 칸이 섞여 들어오지 않게 다듬는다. */
+function tvSanitizeBuckets(doc, dayStartMin, nowMin) {
+  const list = Array.isArray(doc && doc.buckets) ? doc.buckets : [];
+  const keep = [];
+  list.forEach((b) => {
+    if (!b || typeof b.t !== 'number' || !b.s || typeof b.s !== 'object') return;
+    if (b.t < dayStartMin) return;
+    if (b.t < nowMin - TV_KEEP_MIN) return;
+    const s = {};
+    Object.keys(b.s).forEach((c) => {
+      if (typeof b.s[c] === 'number' && b.s[c] > 0) s[c] = b.s[c];
+    });
+    keep.push({ t: b.t, hhmm: b.hhmm || tvHHMM(b.t), s });
+  });
+  keep.sort((a, b) => a.t - b.t);
+  return keep.slice(-TV_BUCKET_MAX);
+}
+
+/** 현재 5분 칸에 이번 값들을 '처음' 남긴다(이미 있는 종목은 그대로). */
+function tvMergeSamples(buckets, bucketMin, samples) {
+  let bucket = buckets.find((b) => b && b.t === bucketMin);
+  if (!bucket) {
+    bucket = { t: bucketMin, hhmm: tvHHMM(bucketMin), s: {} };
+    buckets.push(bucket);
+  }
+  let added = 0;
+  Object.keys(samples).forEach((code) => {
+    if (typeof bucket.s[code] === 'number') return;
+    bucket.s[code] = samples[code];
+    added += 1;
+  });
+  return added;
+}
+
+/** 응답에 실을 5분 버킷 — 이번 응답 종목만 남겨 payload 를 가볍게 한다. */
+function tvResponse(doc, nowBucket, themes) {
+  const codes = {};
+  (themes || []).forEach((t) =>
+    (t && t.stocks ? t.stocks : []).forEach((s) => {
+      if (s && s.code) codes[s.code] = 1;
+    }),
+  );
+  const buckets = [];
+  ((doc && doc.buckets) || []).forEach((b) => {
+    if (!b || typeof b.t !== 'number' || !b.s) return;
+    const s = {};
+    let n = 0;
+    Object.keys(b.s).forEach((c) => {
+      if (!codes[c]) return;
+      s[c] = b.s[c];
+      n += 1;
+    });
+    if (n) buckets.push({ t: b.t, hhmm: b.hhmm || tvHHMM(b.t), s });
+  });
+  return { v: 1, date: (doc && doc.date) || null, now: nowBucket, buckets };
+}
+
+/**
+ * 이번 응답의 5분 버킷을 읽어 (장중이면) 현재 칸을 기록하고, 화면에 실을 버킷을 돌려준다.
+ *  · marketLive: 정규장·프리마켓·애프터마켓 안에서만 기록한다(장외에는 기존 기록 그대로).
+ */
+async function tvSyncBuckets({ themes, session, overSession, now }) {
+  const nowMin = Math.floor(now.getTime() / 60000);
+  const nowBucket = tvBucketOfMinute(nowMin);
+  const marketLive = session.phase === '정규장' || (overSession && overSession.inSession);
+  const doc = await tvReadDoc();
+  const buckets = tvSanitizeBuckets(doc, tvDayStartMinute(now), nowMin);
+
+  if (!marketLive) {
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+  }
+
+  const samples = {};
+  (themes || []).forEach((t) =>
+    (t && t.stocks ? t.stocks : []).forEach((s) => {
+      if (!s || !s.code || typeof s.value !== 'number' || !(s.value > 0)) return;
+      samples[s.code] = Math.round((s.value / 1e8) * 10) / 10;
+    }),
+  );
+  if (!Object.keys(samples).length) {
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+  }
+
+  const added = tvMergeSamples(buckets, nowBucket, samples);
+  if (!added) {
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+  }
+  buckets.sort((a, b) => a.t - b.t);
+  const next = {
+    v: 1,
+    date: tvKstDate(now),
+    buckets: buckets.slice(-TV_BUCKET_MAX),
+    updatedAt: now.toISOString(),
+    src: 'tabs-live',
+  };
+  await tvWriteDoc(next);
+  return tvResponse(next, nowBucket, themes);
+}
+
 /** Vercel CDN 캐시 헤더까지 같이 내려준다.
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
@@ -2822,6 +3019,15 @@ module.exports = async function handler(req, res) {
     );
   }
 
+  /* 💸 5분 거래대금 버킷 — 이번 응답 종목의 대금을 공용 기록(Supabase)에 남기고,
+   *    이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다. 폰을 잠깐 열어도 `(25/5/6)`이 바로 보인다. */
+  let tvBuckets = null;
+  try {
+    tvBuckets = await tvSyncBuckets({ themes, session, overSession, now });
+  } catch (e) {
+    tvBuckets = null;
+  }
+
   const body = {
     ok:
       themes.length > 0 ||
@@ -2835,6 +3041,7 @@ module.exports = async function handler(req, res) {
     sessionPhase: session.phase,
     sessionLabel: session.label,
     marketStatus: naverStatus,
+    tvBuckets,
     themes,
     searchTop,
     searchTopBasis: 'naver stock.naver.com KRX searchTop Top 30 (실시간 검색순위)',

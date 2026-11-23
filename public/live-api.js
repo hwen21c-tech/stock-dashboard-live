@@ -1791,7 +1791,7 @@
         (g ? '<span class="tv-gain">' + esc(tvGainText(g)) + '</span>' : '') +
         (g && g.level === 'hot' ? '<span class="tv-badge">🔥 급증</span>' : '');
       volEl.title = '거래대금 ' + vText(stock) + ' (' + (stock.valueBasis || '통합') + ')' +
-        (g ? ' · 5분·15분 전 대비 순증' : '');
+        (g ? ' · ' + tvTip(g) + (tvLevelText(g) ? ' · ' + tvLevelText(g) : '') : '');
       hits += 1;
     }
 
@@ -3210,17 +3210,28 @@
   }
 
   /* ==========================================================================
-   * 🕯 [1탭] 거래대금 5분 · 15분 순증 + 형광 신호등
+   * 💸 [1탭] 거래대금 5분 간격 3구간 순증 — `300억 (25/5/6)` + 형광 신호등
    * ----------------------------------------------------------------------------
-   *  · 취득한 실시간 거래대금(통합·억)을 종목별 '1분 버킷'으로 브라우저 메모리 +
-   *    localStorage(당일 날짜 키 sd_tv_bucket_YYYY-MM-DD)에 최근 45분 저장한다.
-   *  · 5분 전 / 15분 전 버킷과 비교해 순증을 표시한다 — 아직 쌓이지 않았거나
-   *    증가분이 0 이하이면 아무 것도 그리지 않는다(값을 만들지 않는다).
-   *  · 신호등: 5분 +30억↑ 또는 15분 +100억↑ = 🔥급증(핫핑크 글로우 + 뱃지),
-   *            5분 +10억↑ 또는 15분 +30억↑  = 🌿유입(라임 하이라이트).
+   *  · 15분을 5분 간격 3구간으로 본다.
+   *      d1 = 최근 5분    (현재 − 5분 전 칸)
+   *      d2 = 5~10분 전   (5분 전 칸 − 10분 전 칸)
+   *      d3 = 10~15분 전  (10분 전 칸 − 15분 전 칸)
+   *  · 칸은 '5분 버킷'(epoch 분을 5로 내림)이고, 한 칸에는 그 칸에서 처음 본 값을 남긴다
+   *    (덮어쓰지 않는다) — 칸 시작 시점 대금과 비교해야 5분 구간이 맞는다.
+   *  · 값은 두 곳에서 합친다.
+   *      ① 서버: /api/tabs-live 의 tvBuckets (Supabase family_sync[stock_tv_5m_v1])
+   *         → 폰 브라우저를 처음 열어도 이미 쌓인 기록으로 바로 표시된다.
+   *      ② 브라우저: localStorage(당일 키 sd_tv_bucket5_YYYY-MM-DD)
+   *    같은 칸에 둘 다 있으면 더 이른(작은) 값을 쓴다 — 누적 대금은 시간이 갈수록 커지므로
+   *    작은 쪽이 '칸 시작 시점'에 가깝다.
+   *  · 표기: 세 구간 모두 있으면 `(25/5/6)`, 앞 구간만 있으면 `(25/-/-)`.
+   *    10억 미만 소수 1자리 · 10억 이상 정수 · 0 이하/변동없음은 `0` · 기록 없으면 `-`.
+   *    최근 5분 기준점이 없으면 아무것도 그리지 않는다(값을 만들지 않는다).
+   *  · 신호등: 최근 5분 d1 ≥ 30억 또는 15분 합계 ≥ 100억 = 🔥 급증,
+   *            최근 5분 d1 ≥ 10억 또는 15분 합계 ≥ 30억  = 🌿 유입.
    * ==========================================================================*/
-  var TV_KEY_PREFIX = 'sd_tv_bucket_';
-  var TV_KEEP_MIN = 45;
+  var TV_KEY_PREFIX = 'sd_tv_bucket5_';
+  var TV_KEEP_MIN = 60;
   var TV_GAIN_HOT_5 = 30;
   var TV_GAIN_HOT_15 = 100;
   var TV_GAIN_IN_5 = 10;
@@ -3231,6 +3242,9 @@
     function p2(n) { return (n < 10 ? '0' : '') + n; }
     return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
   }
+
+  /* epoch 분 → 5분 칸 시작(내림). KST 오프셋(540분)이 5의 배수라 KST 정각·5분과도 맞는다. */
+  function tvBucketOf(min) { return Math.floor(min / 5) * 5; }
 
   function tvLoad() {
     var today = tvTodayKey();
@@ -3253,73 +3267,122 @@
 
   function tvEok(value) { return Math.round((value / 1e8) * 10) / 10; }
 
-  /* 이번 폴링 값을 1분 버킷에 기록한다(같은 분이면 덮어쓴다). */
-  function tvRecord(themes) {
-    var nowMin = Math.floor(Date.now() / 60000);
+  function tvSlot(tv, bucketMin) {
+    var slot = tv[String(bucketMin)];
+    if (!slot || typeof slot !== 'object' || Array.isArray(slot)) return null;
+    return slot;
+  }
+
+  /* 이번 응답의 현재 5분 칸에 값을 기록한다 — 그 칸에서 처음 본 종목만 채운다. */
+  function tvRecord(themes, nowMin) {
     var tv = tvLoad();
-    var touched = 0;
+    var now = isNum(nowMin) ? nowMin : Math.floor(Date.now() / 60000);
+    var key = String(tvBucketOf(now));
+    var slot = tv[key];
+    if (!slot || typeof slot !== 'object' || Array.isArray(slot)) slot = tv[key] = {};
+    var added = 0;
     (themes || []).forEach(function (t) {
       (t.stocks || []).forEach(function (s) {
         if (!s || !s.code || !isNum(s.value)) return;
-        var eok = tvEok(s.value);
-        var arr = tv[s.code];
-        if (!Array.isArray(arr)) { arr = []; tv[s.code] = arr; }
-        var last = arr[arr.length - 1];
-        if (last && last[0] === nowMin) last[1] = eok;
-        else arr.push([nowMin, eok]);
-        while (arr.length > 1 && arr[0][0] < nowMin - TV_KEEP_MIN) arr.shift();
-        touched += 1;
+        if (isNum(slot[s.code])) return;   // 이 5분 칸에 이미 남긴 종목은 그대로 둔다
+        slot[s.code] = tvEok(s.value);
+        added += 1;
       });
     });
-    state.tvNowMin = nowMin;
-    if (touched) tvSave(tv);
-    return touched;
+    state.tvNowMin = now;
+    if (added) tvSave(tv);
+    return added;
   }
 
-  /* 목표 시각(now-5 / now-15) 이전의 가장 가까운 버킷. 구간이 비어 있으면 null. */
-  function tvPastEok(code, nowMin, targetMin, tolMin) {
-    var tv = state.tv || tvLoad();
-    var arr = tv[code];
-    if (!Array.isArray(arr) || arr.length < 2) return null;
-    var hit = null;
-    for (var i = 0; i < arr.length; i += 1) {
-      if (typeof arr[i][0] === 'number' && arr[i][0] <= targetMin) hit = arr[i];
+  /* 서버(Supabase) 5분 버킷 병합 — 같은 칸에 이미 있으면 더 이른(작은) 값을 쓴다. */
+  function tvApplyServer(doc) {
+    if (!doc || !Array.isArray(doc.buckets) || !doc.buckets.length) {
+      if (doc && isNum(doc.now)) state.tvNowMin = doc.now;
+      return 0;
     }
-    if (!hit) return null;
-    if (hit[0] >= nowMin) return null;
-    if (hit[0] < targetMin - tolMin) return null; // 스냅샷 사이가 비어 오차가 큼
-    return hit[1];
+    var tv = tvLoad();
+    var now = isNum(doc.now) ? doc.now : Math.floor(Date.now() / 60000);
+    var n = 0;
+    doc.buckets.forEach(function (bucket) {
+      if (!bucket || !isNum(bucket.t) || !bucket.s || typeof bucket.s !== 'object') return;
+      var slot = tvSlot(tv, bucket.t);
+      if (!slot) slot = tv[String(bucket.t)] = {};
+      Object.keys(bucket.s).forEach(function (code) {
+        var v = bucket.s[code];
+        if (!isNum(v)) return;
+        if (!isNum(slot[code])) { slot[code] = v; n += 1; }
+        else if (v < slot[code]) slot[code] = v;
+      });
+    });
+    if (isNum(doc.now)) state.tvNowMin = doc.now;
+    if (n) tvSave(tv);
+    /* 오늘·최근 1시간 밖의 칸은 버린다(어제 칸이 오늘 값으로 섞이지 않게) */
+    var keys = Object.keys(tv);
+    keys.forEach(function (k) {
+      var b = Number(k);
+      if (!isFinite(b) || b < now - TV_KEEP_MIN) delete tv[k];
+    });
+    return n;
   }
 
-  function tvFmt(v) {
-    var n = Math.round(v * 10) / 10;
-    return n >= 10 ? String(Math.round(n)) : n.toFixed(1);
+  function tvAt(code, bucketMin) {
+    var tv = state.tv || tvLoad();
+    var slot = tvSlot(tv, bucketMin);
+    if (!slot) return null;
+    return isNum(slot[code]) ? slot[code] : null;
   }
 
+  function tvRound1(v) { return Math.round(v * 10) / 10; }
+
+  /* 최근 15분 5분 간격 3구간 순증. 최근 5분 기준점이 없으면 null(표시 안 함). */
   function tvGain(code, eok, nowMin) {
     if (!code || !isNum(eok)) return null;
     var now = isNum(nowMin) ? nowMin : Math.floor(Date.now() / 60000);
-    var d5 = null;
-    var d15 = null;
-    var p5 = tvPastEok(code, now, now - 5, 3);
-    if (isNum(p5)) d5 = Math.round((eok - p5) * 10) / 10;
-    var p15 = tvPastEok(code, now, now - 15, 4);
-    if (isNum(p15)) d15 = Math.round((eok - p15) * 10) / 10;
-    if (d5 !== null && d5 <= 0) d5 = null;
-    if (d15 !== null && d15 <= 0) d15 = null;
-    if (d5 === null && d15 === null) return null;
+    var b = tvBucketOf(now);
+    var p1 = tvAt(code, b - 5);
+    if (!isNum(p1)) return null;
+    var p2 = tvAt(code, b - 10);
+    var p3 = tvAt(code, b - 15);
+    var d1 = tvRound1(eok - p1);
+    var d2 = isNum(p2) ? tvRound1(p1 - p2) : null;
+    var d3 = isNum(p2) && isNum(p3) ? tvRound1(p2 - p3) : null;
+    var sum = tvRound1(d1 + (isNum(d2) ? d2 : 0) + (isNum(d3) ? d3 : 0));
     var level = 'low';
-    if ((d5 !== null && d5 >= TV_GAIN_HOT_5) || (d15 !== null && d15 >= TV_GAIN_HOT_15)) level = 'hot';
-    else if ((d5 !== null && d5 >= TV_GAIN_IN_5) || (d15 !== null && d15 >= TV_GAIN_IN_15)) level = 'in';
-    return { d5: d5, d15: d15, level: level };
+    if (d1 >= TV_GAIN_HOT_5 || sum >= TV_GAIN_HOT_15) level = 'hot';
+    else if (d1 >= TV_GAIN_IN_5 || sum >= TV_GAIN_IN_15) level = 'in';
+    return { d1: d1, d2: d2, d3: d3, sum: sum, level: level };
+  }
+
+  /* (25/5/6) 숫자 하나 — 10억 미만 소수 1자리(정수면 .0 생략), 10억 이상 정수, 0 이하 0, 기록 없음 - */
+  function tvNum(v) {
+    if (!isNum(v)) return '-';
+    var n = Math.round(v * 10) / 10;
+    if (!(n > 0)) return '0';
+    if (n >= 10) return String(Math.round(n));
+    var s = n.toFixed(1);
+    return s.slice(-2) === '.0' ? s.slice(0, -2) : s;
   }
 
   function tvGainText(g) {
     if (!g) return '';
-    var parts = [];
-    if (g.d5 !== null) parts.push('5분 +' + tvFmt(g.d5));
-    if (g.d15 !== null) parts.push('15분 +' + tvFmt(g.d15));
-    return parts.length ? ' (' + parts.join(' · ') + ')' : '';
+    return ' (' + tvNum(g.d1) + '/' + tvNum(g.d2) + '/' + tvNum(g.d3) + ')';
+  }
+
+  function tvTip(g) {
+    if (!g) return '';
+    function one(v) {
+      if (!isNum(v)) return '미수집';
+      var n = Math.round(v * 10) / 10;
+      return (n > 0 ? '+' : '') + n + '억';
+    }
+    return '최근 5분 ' + one(g.d1) + ' / 5~10분 전 ' + one(g.d2) + ' / 10~15분 전 ' + one(g.d3);
+  }
+
+  function tvLevelText(g) {
+    if (!g || g.level === 'low') return '';
+    return g.level === 'hot'
+      ? '급증(최근 5분 +30억↑ / 15분 합계 +100억↑)'
+      : '유입(최근 5분 +10억↑ / 15분 합계 +30억↑)';
   }
 
   /* 거래대금 span — 순증 텍스트 + 신호등 클래스. 순증이 없으면 원래 표기 그대로. */
@@ -3328,9 +3391,8 @@
     if (!stock || !stock.code || !isNum(stock.value)) return '<span class="st-vol">' + text + '</span>';
     var g = tvGain(stock.code, tvEok(stock.value), state.tvNowMin);
     var tip = '거래대금 ' + (vText(stock) || '—') + ' (' + ((stock && stock.valueBasis) || '통합') + ')';
-    if (g && g.level !== 'low') {
-      tip += ' · 5분·15분 전 대비 순증 — ' + (g.level === 'hot' ? '급증(5분 +30억↑ / 15분 +100억↑)' : '유입(5분 +10억↑ / 15분 +30억↑)');
-    }
+    if (g) tip += ' · ' + tvTip(g);
+    if (g && g.level !== 'low') tip += ' · ' + tvLevelText(g);
     return '<span class="st-vol' + (g && g.level !== 'low' ? ' tv-' + g.level : '') + '" title="' + esc(tip) + '">' +
       text + (g ? '<span class="tv-gain">' + esc(tvGainText(g)) + '</span>' : '') +
       (g && g.level === 'hot' ? '<span class="tv-badge">🔥 급증</span>' : '') +
@@ -3706,8 +3768,13 @@
     var steps = [];
     function step(label, views, fn) { steps.push({ label: label, views: views, fn: fn }); }
 
-    /* ① 거래대금 1분 버킷은 테마 렌더보다 먼저 쌓아야 이번 값까지 순증에 들어간다. */
-    step('tv', ['overview'], function () { tvRecord(body.themes || []); return 1; });
+    /* ① 거래대금 5분 칸은 테마 렌더보다 먼저 채워야 이번 값까지 순증에 들어간다.
+     *    서버(Supabase) 버킷을 먼저 병합한 뒤, 이번 응답의 현재 칸을 기록한다. */
+    step('tv', ['overview'], function () {
+      tvApplyServer(body.tvBuckets);
+      tvRecord(body.themes || [], state.tvNowMin);
+      return 1;
+    });
 
     // 1번 탭 — NXT 실시간 주도주 트랙(고정 텍스트 → 실데이터)
     step('nxt', ['overview'], function () { return renderNxtTracks(body, stamp); });
@@ -3955,8 +4022,10 @@
     _tvRecord: tvRecord,
     _tvGain: tvGain,
     _tvLoad: tvLoad,
+    _tvApplyServer: tvApplyServer,
+    _tvGainText: tvGainText,
     _volHtml: volHtml,
-    _themeState: function () { return { tvDate: state.tvDate, tvNowMin: state.tvNowMin, codes: state.tv ? Object.keys(state.tv).length : 0 }; },
+    _themeState: function () { return { tvDate: state.tvDate, tvNowMin: state.tvNowMin, buckets: state.tv ? Object.keys(state.tv).length : 0, codes: state.tv ? Object.keys(state.tv).length : 0 }; },
     _renderHigh52: renderHigh52,
     _renderUpperLimit: renderUpperLimit,
     _renderNews: renderNews,

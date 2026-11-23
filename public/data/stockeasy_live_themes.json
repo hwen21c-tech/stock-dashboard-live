@@ -3,15 +3,15 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-23 10:31:29",
- "updatedAt": "2026-11-23T10:31:07.643746+09:00",
- "updatedAgeMin": 0.4,
+ "fetchedAt": "2026-11-23 10:57:49",
+ "updatedAt": "2026-11-23T10:57:49.054389+09:00",
+ "updatedAgeMin": 0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "090710",
+  "439960",
   "108490",
-  "160190",
   "098460",
   "381620",
   "123690",
@@ -20,34 +20,35 @@
   "282720",
   "109610",
   "389260",
-  "290550",
-  "010120"
+  "372320",
+  "174900",
+  "096530"
  ],
  "themes": [
   {
    "rank": 1,
    "name": "로봇",
-   "avgRS": 53,
+   "avgRS": 50,
    "stocks": [
     {
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 533.19,
+     "value_eok": 540.11,
+     "verified": true
+    },
+    {
+     "code": "439960",
+     "name": "코스모로보틱스",
+     "chg": 13.2,
+     "value_eok": 51.73,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 5.8,
-     "value_eok": 932.83,
-     "verified": true
-    },
-    {
-     "code": "160190",
-     "name": "하이젠알앤엠",
-     "chg": 4.8,
-     "value_eok": 13.23,
+     "chg": 4.3,
+     "value_eok": 1074.16,
      "verified": true
     }
    ]
@@ -61,21 +62,21 @@
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 533.19,
+     "value_eok": 540.11,
      "verified": true
     },
     {
      "code": "108490",
      "name": "로보티즈",
-     "chg": 5.8,
-     "value_eok": 932.83,
+     "chg": 4.3,
+     "value_eok": 1074.16,
      "verified": true
     },
     {
      "code": "098460",
      "name": "고영",
-     "chg": 3.7,
-     "value_eok": 118.16,
+     "chg": 3.2,
+     "value_eok": 139.77,
      "verified": true
     }
    ]
@@ -89,21 +90,21 @@
      "code": "090710",
      "name": "휴림로봇",
      "chg": 30.0,
-     "value_eok": 533.19,
+     "value_eok": 540.11,
      "verified": true
     },
     {
      "code": "381620",
      "name": "제닉스로보틱스",
-     "chg": 5.6,
-     "value_eok": 46.56,
+     "chg": 4.1,
+     "value_eok": 52.91,
      "verified": true
     },
     {
      "code": "098460",
      "name": "고영",
-     "chg": 3.7,
-     "value_eok": 118.16,
+     "chg": 3.2,
+     "value_eok": 139.77,
      "verified": true
     }
    ]
@@ -116,21 +117,21 @@
     {
      "code": "123690",
      "name": "한국화장품",
-     "chg": 10.5,
-     "value_eok": 198.22,
+     "chg": 9.3,
+     "value_eok": 205.11,
      "verified": true
     },
     {
      "code": "278470",
      "name": "에이피알",
-     "chg": 8.3,
-     "value_eok": 760.0
+     "chg": 8.9,
+     "value_eok": 890.67
     },
     {
      "code": "241710",
      "name": "코스메카코리아",
-     "chg": 4.1,
-     "value_eok": 64.0
+     "chg": 4.0,
+     "value_eok": 80.09
     }
    ]
   },
@@ -142,45 +143,45 @@
     {
      "code": "282720",
      "name": "금양그린파워",
-     "chg": 23.8,
-     "value_eok": 109.73
+     "chg": 23.5,
+     "value_eok": 115.78
     },
     {
      "code": "109610",
      "name": "에스와이",
-     "chg": 3.5,
-     "value_eok": 83.66
+     "chg": 2.6,
+     "value_eok": 95.82
     },
     {
      "code": "389260",
      "name": "대명에너지",
-     "chg": 1.6,
-     "value_eok": 40.17
+     "chg": 1.4,
+     "value_eok": 42.23
     }
    ]
   },
   {
    "rank": 6,
-   "name": "전력저장장치",
-   "avgRS": 73,
+   "name": "유전자 치료제/분석",
+   "avgRS": 59,
    "stocks": [
     {
-     "code": "282720",
-     "name": "금양그린파워",
-     "chg": 23.8,
-     "value_eok": 109.73
+     "code": "372320",
+     "name": "큐로셀",
+     "chg": 29.9,
+     "value_eok": 186.49
     },
     {
-     "code": "290550",
-     "name": "디케이티",
-     "chg": 4.6,
-     "value_eok": 130.81
+     "code": "174900",
+     "name": "앱클론",
+     "chg": 2.6,
+     "value_eok": 23.99
     },
     {
-     "code": "010120",
-     "name": "LS ELECTRIC",
-     "chg": -0.4,
-     "value_eok": 364.5
+     "code": "096530",
+     "name": "씨젠",
+     "chg": -1.5,
+     "value_eok": 27.92
     }
    ]
   }
