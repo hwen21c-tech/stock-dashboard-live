@@ -3466,6 +3466,8 @@
     var cnt = t.searchBadge && isNum(t.searchBadge.count) ? t.searchBadge.count : 0;
     var flow = watchThemeFlow(t);
     var flowBonus = Math.min(flow.f5 * WATCH_FLOW_5M + flow.f15 * WATCH_FLOW_15M, WATCH_FLOW_CAP);
+    /* '상승률도 높은 곳' — +3%↑(11/23 대장 기준)은 그대로, 0~3%는 절반, 하락은 돈만 많아도 0 */
+    flowBonus *= (isNum(avg) && avg >= 3) ? 1 : ((isNum(avg) && avg > 0) ? 0.5 : 0);
     var score = (isNum(avg) ? avg * 3 : 0) + Math.log(Math.max(sumEok, 1)) / Math.LN10 * 4 +
       (best ? (31 - best) / 3 : 0) + cnt * 0.8 + flowBonus;
     var lead = watchThemeLead(t);
@@ -3498,6 +3500,7 @@
     var f15 = g ? g.sum : 0;
     var flowBonus = Math.min(Math.max(f5, 0) * WATCH_STOCK_FLOW_5M + Math.max(f15, 0) * WATCH_STOCK_FLOW_15M,
       WATCH_STOCK_FLOW_CAP);
+    flowBonus *= (isNum(pct) && pct >= 3) ? 1 : ((isNum(pct) && pct > 0) ? 0.5 : 0);
     var score = (isNum(pct) ? pct * 3 : 0) + Math.log(Math.max(eok, 1)) / Math.LN10 * 3 +
       (rank ? (31 - rank) / 3 : 0) + (isNum(themeScore) ? themeScore * 0.05 : 0) + flowBonus;
     return {
