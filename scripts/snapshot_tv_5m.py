@@ -53,7 +53,7 @@ BUCKET_MAX = 6        # 최근 30분(5분 칸 6개)
 KEEP_MIN = 30
 SESSION_START = 8 * 60
 SESSION_END = 20 * 60
-MAX_CODES = 80        # 한 번의 폴링에 넣을 종목 수 상한(요청 URL·응답 크기)
+MAX_CODES = 110       # 한 번에 추적할 종목 수 상한(테마 타일 + 폴링 종목, 40개씩 나눠 부른다)
 
 
 def kst_now() -> dt.datetime:
