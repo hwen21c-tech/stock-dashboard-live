@@ -3405,7 +3405,8 @@
    *          + 최근 5분·15분 거래대금 순증 가중치 (2026-11-23 사용자 확정 '돈의 흐름')
    *  · 강세 테마·거래대금·실시간 검색순위·순증을 한 줄에 모아, 직장인이 잠깐 봐도
    *    '지금 강한 섹터'와 '그 안에서 대금·검색이 붙는 종목'을 바로 집게 한다.
-   *  · 세부 분야 존중 — 노출 종목이 100% 같은 묶음만 중복을 피한다.
+   *  · 1등 대장주가 같은 테마는 1칸으로 묶고 '+A·B 동반'으로 메타에 적는다(11/23 확정).
+   *    대장주가 다르면(반도체·반도체 소부장·반도체 전력) 각각 독립 순위.
    *  · 값은 /api/tabs-live 의 themes(top4 평균·합산 대금·검색 뱃지)만 쓴다 — 추정 없음.
    *  · 종목 1·2·3위 후보는 **통합 거래대금 100억↑만** (2026-11-20 사용자 확정).
    *    등락률만 높은 초소형주(예: 대금 2억 +30%)가 log 대금 점수 때문에 1위로 올라오는 것을 막는다.
@@ -3416,7 +3417,7 @@
    *    높은 섹터·종목이 1·2·3위에 오게 한다. 단위는 억 원(순증). */
   var WATCH_FLOW_5M = 0.5;
   var WATCH_FLOW_15M = 0.15;
-  var WATCH_FLOW_CAP = 60;          // 섹터 돈의 흐름 가점 최대(등락률 20%p 급)
+  var WATCH_FLOW_CAP = 45;          // 섹터 돈의 흐름 가점 최대(등락률 15%p 급)
   var WATCH_STOCK_FLOW_5M = 0.6;
   var WATCH_STOCK_FLOW_15M = 0.18;
   var WATCH_STOCK_FLOW_CAP = 70;    // 종목 돈의 흐름 가점 최대(등락률 23%p 급)
@@ -3437,6 +3438,27 @@
 
   function watchRound1(v) { return Math.round(v * 10) / 10; }
 
+  /* '스마트팩토리(스마트공장)' → '스마트팩토리' — 동반 표기에 쓸 짧은 테마명 */
+  function watchShortName(nm) {
+    var s = String(nm || '').replace(/^\s*\d+위\s*/, '');
+    s = s.replace(/\s*[\(\[].*$/, '').trim();
+    s = s.replace(/[^0-9A-Za-z가-힣·&\/+~\- ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return s;
+  }
+
+  /* 테마의 1등 대장주 — 👑 상승률 대장 → 💰 실질 거래대금 대장 → 첫 종목 순 */
+  function watchThemeLead(t) {
+    var list = (t.stocks || []).filter(function (s) { return s && s.code; });
+    function pick(txt) {
+      for (var i = 0; i < list.length; i += 1) {
+        if ((list[i].role || '').indexOf(txt) >= 0) return list[i];
+      }
+      return null;
+    }
+    var lead = pick('상승률 대장') || pick('실질 거래대금 대장') || pick('대장') || list[0] || null;
+    return lead ? { code: lead.code, name: lead.name || '' } : { code: '', name: '' };
+  }
+
   function watchScoreTheme(t) {
     var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : t.avgPct);
     var sumEok = isNum(t.sumValue) ? t.sumValue / 1e8 : 0;
@@ -3446,8 +3468,13 @@
     var flowBonus = Math.min(flow.f5 * WATCH_FLOW_5M + flow.f15 * WATCH_FLOW_15M, WATCH_FLOW_CAP);
     var score = (isNum(avg) ? avg * 3 : 0) + Math.log(Math.max(sumEok, 1)) / Math.LN10 * 4 +
       (best ? (31 - best) / 3 : 0) + cnt * 0.8 + flowBonus;
+    var lead = watchThemeLead(t);
     return {
       name: t.name || '—',
+      leadCode: lead.code,
+      leadName: lead.name,
+      short: watchShortName(t.name),
+      mates: [],
       avg: isNum(avg) ? avg : null,
       sumEok: sumEok,
       sumText: t.sumValueText || '—',
@@ -3503,10 +3530,16 @@
     var meta = '합산 ' + w.sumText;
     if (watchFlowText(w.flow5)) meta += ' · 💸 5분 ' + watchFlowText(w.flow5);
     if (w.bestRank) meta += ' · 🔍 최고 ' + w.bestRank + '위 · ' + w.count + '종목';
+    if (w.mates && w.mates.length) {
+      var matesTxt = w.mates.slice(0, 4).join('·');
+      if (w.mates.length > 4) matesTxt += ' 외 ' + (w.mates.length - 4);
+      meta += ' · +' + matesTxt + ' 동반';
+    }
     var tip = '종합점수 ' + w.score + ' = 등락률×3 + log₁₀(합산 대금)×4' +
       (w.bestRank ? ' + 검색순위 가점' : '') + ' + 검색 진입종목×0.8' +
-      ' + 최근 5분 대금 순증×0.5 + 15분 순증×0.15 (최대 60점)' +
+      ' + 최근 5분 대금 순증×0.5 + 15분 순증×0.15 (최대 45점)' +
       (isNum(w.flow5) ? ' (지금 5분 ' + watchFlowRaw(w.flow5) + ' / 15분 ' + watchFlowRaw(w.flow15) + ')' : '') +
+      (w.mates && w.mates.length ? ' — 같은 1등 대장주 ' + (w.leadName || w.leadCode) + '로 묶음: ' + w.mates.join(', ') : '') +
       ' (누르면 테마 카드로 이동)';
     return '<div class="watch-item" data-live="1" onclick="themeWatchFocus(' + (idx - 1) + ')" title="' + esc(tip) + '">' +
       '<div class="wi-head"><span class="wi-rank">' + idx + '</span>' +
@@ -3569,16 +3602,23 @@
       if (!bestByCode[k] || st.score > bestByCode[k].score) bestByCode[k] = st;
     });
     var uniqueStocks = Object.keys(bestByCode).map(function (k) { return bestByCode[k]; });
-    /* 세부 분야 존중 — 노출 종목이 100% 같은 묶음만 한 번으로 줄인다(같은 로봇이라도
-     * 로봇·스마트팩토리·피지컬AI처럼 분야가 다르면 각각 인정). */
+    /* 🧩 1등 대장주가 같은 테마는 1개 대표 칸으로 묶고, 나머지 테마명은 '+A·B 동반'으로
+     * 메타에 적는다(2026-11-23 사용자 확정). 대장주가 다르면(반도체·반도체 소부장·반도체 전력)
+     * 각각 독립 순위로 세운다 — 대장주를 못 읽으면 노출 종목이 100% 같은 묶음만 하나로 친다. */
     var topSectors = [];
-    var seenSig = {};
+    var byLead = {};
     sectors.slice().sort(function (a, b) { return b.score - a.score; }).forEach(function (w) {
-      if (topSectors.length >= 3) return;
-      if (w.sig && seenSig[w.sig]) return;
-      if (w.sig) seenSig[w.sig] = 1;
+      var key = w.leadCode ? ('c:' + w.leadCode) : ('s:' + (w.sig || w.name));
+      var rep = byLead[key];
+      if (rep) {
+        if (w.short && w.short !== rep.short && rep.mates.indexOf(w.short) < 0) rep.mates.push(w.short);
+        return;
+      }
+      w.mates = [];
+      byLead[key] = w;
       topSectors.push(w);
     });
+    topSectors = topSectors.slice(0, 3);
     var topStocks = uniqueStocks.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 3);
 
     var leftHtml = topSectors.map(function (w, i) {
