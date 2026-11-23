@@ -2637,21 +2637,15 @@ function tvMergeSamples(buckets, bucketMin, samples) {
   return added;
 }
 
-/** 응답에 실을 5분 버킷 — 이번 응답 종목만 남겨 payload 를 가볍게 한다. */
-function tvResponse(doc, nowBucket, themes) {
-  const codes = {};
-  (themes || []).forEach((t) =>
-    (t && t.stocks ? t.stocks : []).forEach((s) => {
-      if (s && s.code) codes[s.code] = 1;
-    }),
-  );
+/** 응답에 실을 5분 버킷 — 테마가 바뀌어도 새 종목이 바로 이어 쓸 수 있게 칸에 남은 종목을 모두 싣는다. */
+function tvResponse(doc, nowBucket) {
   const buckets = [];
   ((doc && doc.buckets) || []).forEach((b) => {
     if (!b || typeof b.t !== 'number' || !b.s) return;
     const s = {};
     let n = 0;
     Object.keys(b.s).forEach((c) => {
-      if (!codes[c]) return;
+      if (typeof b.s[c] !== 'number' || !(b.s[c] > 0)) return;
       s[c] = b.s[c];
       n += 1;
     });
@@ -2673,7 +2667,7 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
   const buckets = tvSanitizeBuckets(doc, tvDayStartMinute(now), nowMin);
 
   if (!marketLive) {
-    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket);
   }
 
   const samples = {};
@@ -2684,12 +2678,12 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
     }),
   );
   if (!Object.keys(samples).length) {
-    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket);
   }
 
   const added = tvMergeSamples(buckets, nowBucket, samples);
   if (!added) {
-    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket, themes);
+    return tvResponse({ date: tvKstDate(now), buckets }, nowBucket);
   }
   buckets.sort((a, b) => a.t - b.t);
   const next = {
@@ -2700,7 +2694,7 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
     src: 'tabs-live',
   };
   await tvWriteDoc(next);
-  return tvResponse(next, nowBucket, themes);
+  return tvResponse(next, nowBucket);
 }
 
 /** Vercel CDN 캐시 헤더까지 같이 내려준다.
