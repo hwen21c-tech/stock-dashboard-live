@@ -3472,7 +3472,13 @@ function workPolishPrompt(kind, text) {
 
 function workParsePrompt(text, mode) {
   const today = kstToday();
-  const wd = WORK_WD[new Date(today + 'T00:00:00Z').getUTCDay()];
+  const base = new Date(today + 'T00:00:00Z');
+  const wd = WORK_WD[base.getUTCDay()];
+  const table = [];
+  for (let i = 0; i < 15; i++) {
+    const d = new Date(base.getTime() + i * 86400000);
+    table.push(d.toISOString().slice(0, 10) + ' ' + WORK_WD[d.getUTCDay()] + (i === 0 ? '(오늘)' : ''));
+  }
   const focus =
     mode === 'meeting'
       ? '이 글은 회의 메모입니다. kind="meeting" 으로 두고 memo(원문 취지)·summary·decisions·actions 를 채우세요.'
@@ -3480,14 +3486,18 @@ function workParsePrompt(text, mode) {
   return {
     system:
       '너는 한국어 업무 문장을 업무 대시보드 항목으로 나누는 도우미다. ' +
-      '오늘은 ' + today + ' (' + wd + '요일, 한국 시간)이다. 내일·모레·다음주 월요일 같은 상대 날짜를 이 기준으로 계산한다. ' +
+      '오늘은 ' + today + ' (' + wd + '요일, 한국 시간)이다. ' +
       '원문에 없는 정보는 절대 만들지 말고 빈 문자열/빈 배열로 둔다. 출력은 JSON 하나뿐이다.',
     user:
       focus +
-      '\n- 날짜는 YYYY-MM-DD, 시각은 HH:MM(24시간제)\n' +
-      '- title 은 “일정 넣어줘” 같은 요청 표현을 뺀 알맹이만\n' +
-      '- 런이면 group(예: VT04차 런)·part(양극/음극)·status 를 채우고, 공정/평가 언급이 있으면 run 객체에 넣기\n' +
-      '- 할 일이 여러 개면 todos 배열로\n\n문장:\n' + text + '\n\nJSON 으로만 답하세요.',
+      '\n\n[날짜표 — 오늘부터 15일, 이 표의 날짜만 고른다]\n' + table.join('  |  ') +
+      '\n- “내일/모레/이번 주 X요일/다음 주 X요일/N일 뒤”는 위 표에서 그 날짜를 골라 date에 YYYY-MM-DD로 넣는다. “다음 주 X요일”은 오늘 요일에서 7일 뒤 같은 요일이다.\n' +
+      '- “오후 2시”→time "14:00", “오전 9시 반”→"09:30". 시각은 24시간 HH:MM.\n' +
+      '- title 은 “일정 넣어줘/추가/등록” 같은 요청 표현을 뺀 알맹이만 (예: "VT07차 음극 런 평가 미팅")\n' +
+      '- 런이면 group(“VT07차 런”)·part(양극/음극)·status 를 채우고, 공정·평가 언급이 있으면 run 객체에 넣는다.\n' +
+      '- 할 일이 여러 개면 todos 배열로.\n' +
+      '- ⚠️ 모든 칸에는 결과 값만 넣는다. 계산 과정·괄호 설명·추론 메모·문장 부연은 어느 칸에도 쓰지 않는다. who 에는 사람 이름만.\n' +
+      '- 모르는 값은 빈 문자열("")로 둔다.\n\n문장:\n' + text + '\n\nJSON 으로만 답하세요.',
     schema: SCHEMA_WORK_PARSE,
     temperature: 0.2,
     maxTokens: 2000,
