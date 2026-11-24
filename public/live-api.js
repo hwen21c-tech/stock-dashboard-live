@@ -510,7 +510,7 @@
   }
 
   /* ======================================================================
-   * 6번 RN존 탭 — 기본 목록 11종목의 60일봉·현재가·RN선을 동적 갱신
+   * 6번 RN존 탭 — 기본 목록 종목의 250봉(1년)·현재가·RN선을 동적 갱신
    *   · 한꺼번에 11종목을 때리지 않는다: 선택 종목 먼저 → 나머지를 4종목씩 순차
    *   · 실패한 종목은 기존(내장) 데이터를 그대로 유지한다
    * ==================================================================== */
@@ -564,10 +564,14 @@
       .catch(function (err) { if (timer) clearTimeout(timer); throw err; });
   }
 
-  /** 종목 1개의 60일봉·현재가·RN을 받아 RN존 목록 항목을 교체한다. 실패 시 false. */
+  /* RN존 차트는 250봉(1년)을 쓴다 — 60봉만 받아 오면 들고 있던 1년 이력이 60봉으로 잘려
+     '직전 상단 RN 터치 후 눌림' 파동이 사라진다(2026-11-25 수리). */
+  var RN_CANDLE_COUNT = 250;
+
+  /** 종목 1개의 250봉·현재가·RN을 받아 RN존 목록 항목을 교체한다. 실패 시 false. */
   function refreshStockData(code) {
     if (!code) return Promise.resolve(false);
-    return fetchChartJson(code, 60)
+    return fetchChartJson(code, RN_CANDLE_COUNT)
       .then(function (out) {
         var body = out.body;
         if (!body || body.ok !== true) return false;
@@ -617,7 +621,7 @@
         try { if (window.LiveExtra && typeof window.LiveExtra.renderChips === 'function') window.LiveExtra.renderChips(); } catch (e) { /* noop */ }
         if (rnRefresh.fail === 0) {
           rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · ' + rnRefresh.ok + '/' + rnRefresh.total +
-            ' 종목 60일봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
+            ' 종목 250봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
         } else {
           rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · 성공 ' + rnRefresh.ok + ' · 보류 ' + rnRefresh.fail +
             '/' + rnRefresh.total + ' (보류 종목은 기존 데이터 유지)', 'warn');
@@ -793,7 +797,7 @@
     startRnCycle();
     if (isRnTabVisible()) refreshRnList({ onlySelected: true });
 
-    // ⚡ 1번 탭만 보고 있어도 RN존 11종목 실측(60일봉·RN선)을 백그라운드로 받아 둔다.
+    // ⚡ 1번 탭만 보고 있어도 RN존 종목 실측(250봉·RN선)을 백그라운드로 받아 둔다.
     //    → 6번 탭을 열지 않아도 1번 탭 상단 '실전 타점 신호등' 칩이 최신 실측치로 만들어진다.
     //    · 화면이 뜬 뒤 조용히 4종목씩 순차 갱신(먼저 도는 갱신이 있으면 끝날 때까지 대기)
     var bgTries = 0;

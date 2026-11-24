@@ -255,6 +255,31 @@ function touchCount(candles, low, high) {
   return n;
 }
 
+function rnTickRound(v) {
+  const p = Math.abs(Number(v) || 0);
+  let t = 1;
+  if (p >= 2000) t = 5;
+  if (p >= 5000) t = 10;
+  if (p >= 20000) t = 50;
+  if (p >= 50000) t = 100;
+  if (p >= 200000) t = 500;
+  if (p >= 500000) t = 1000;
+  return Math.round(Number(v) / t) * t;
+}
+
+/* 공식 21선 사이가 너무 넓을 때(3→5 = +66.7%) 그 중간값을 '중간 보조' 눈금으로 준다.
+   현대모비스 344,500원 → 300,000 / (중간 보조 400,000) / 500,000. 공식선이 아니므로
+   타점 계산에는 쓰지 않고 표기·차트 보조선에만 쓴다(rescan_strategies.py rn_aux_level 과 동일 규칙). */
+const AUX_MIN_GAP_PCT = 40.0;
+function rnAuxLevel(lo, hi) {
+  const lv = Number(lo) || 0;
+  const uv = Number(hi) || 0;
+  if (lv <= 0 || uv <= lv) return null;
+  if ((uv / lv - 1) * 100 < AUX_MIN_GAP_PCT) return null;
+  const v = rnTickRound((lv + uv) / 2);
+  return v > lv && v < uv ? v : null;
+}
+
 function buildRnZones(price, candles, depth = 5) {
   const step = rnStep(price);
   const band = step * 0.1; // RN선 접촉 판정 폭(±10% of step) — 선 자체는 공식 배열
@@ -302,6 +327,7 @@ function buildRnZones(price, candles, depth = 5) {
     pivot: nS ? nS.level : null,
     lowerRN: nS ? nS.level : null,
     upperRN: nR ? nR.level : null,
+    auxRN: nS && nR ? rnAuxLevel(nS.level, nR.level) : null,
     lowerColor: nS ? nS.color : null,
     upperColor: nR ? nR.color : null,
     lowerColorKo: nS ? nS.colorKo : null,

@@ -1099,42 +1099,90 @@ def rn_category(price, lower, upper):
     return 'near_lower' if d_low <= d_up else 'upper'
 
 
+AUX_MIN_GAP_PCT = 40.0     # 공식 21선 구간폭이 이보다 넓으면 '중간 보조 눈금'을 하나 표기한다
+
+
+def rn_aux_level(lv, uv):
+    """공식 21선 사이가 너무 넓을 때(3→5 = +66.7%) 그 구간 중간값을 '보조 눈금'으로 만든다.
+       · 예: 현대모비스 344,500원 → 하단 300,000 / (중간 보조 400,000) / 상단 500,000
+             1,000,000~1,500,000 → 1,250,000 · 30,000~50,000 → 40,000
+       · 공식선이 아니므로 1·2차 타점 계산에는 쓰지 않는다(표기·차트 보조선 전용).
+       · 원전 RN_LINES 배열 자체는 건드리지 않는다."""
+    try:
+        lv, uv = float(lv), float(uv)
+    except (TypeError, ValueError):
+        return None
+    if lv <= 0 or uv <= lv:
+        return None
+    if (uv / lv - 1) * 100.0 < AUX_MIN_GAP_PCT:
+        return None
+    v = to_tick((lv + uv) / 2.0)
+    if v <= lv or v >= uv:
+        return None
+    return int(v)
+
+
 def rn_lines(price):
-    """현재가 기준 바로 아래 공식 RN선 = lowerRN, 바로 위 공식 RN선 = upperRN."""
+    """현재가 기준 바로 아래 공식 RN선 = lowerRN, 바로 위 공식 RN선 = upperRN.
+       · 현재가가 공식선과 정확히 일치하면 상단 RN은 '그 다음 선'을 쓴다(예전에는 같은 선을
+         상단으로 잡아 '위쪽 공식 RN선 없음(최상단)'으로 표기되는 표기 오류가 있었다).
+       · 구간폭이 40%를 넘으면(3→5 구간) '중간 보조' 눈금을 함께 표기한다."""
     p = float(price or 0)
     lower, upper = None, None
     for v, c in RN_LINES:
         if v <= p:
             lower = (v, c)
-        if v >= p and upper is None:
+        if v > p and upper is None:
             upper = (v, c)
-    lv, lc = lower if lower else RN_LINES[0]
-    if upper is None:                      # 공식 최상단(1,500,000원) 위 — 위쪽 선이 없다
+    below_floor = lower is None           # 공식 최저선(500원) 아래 — 하단 RN 없음
+    if below_floor:
+        lv, lc = RN_LINES[0]
+        uv, uc = RN_LINES[0]
+    elif upper is None:                   # 공식 최상단(1,500,000원) 이상 — 위쪽 선이 없다
+        lv, lc = lower
         uv, uc = lv, lc
     else:
+        lv, lc = lower
         uv, uc = upper
     buy1 = to_tick(lv * 1.04)
-    if uv > lv:
+    aux = None if (below_floor or uv <= lv) else rn_aux_level(lv, uv)
+    if below_floor:
+        zone_text = (f"공식 최저선 {lv:,}원({RN_COLOR_KO[lc]}) 아래 {(p / lv - 1) * 100:+.2f}% "
+                     f"· 하단 RN 없음")
+    elif uv > lv:
         span = (uv - lv)
+        aux_txt = (f"중간 보조 {aux:,}원({(aux / p - 1) * 100:+.2f}%) · " if aux else '')
         zone_text = (f"하단 {lv:,}원({RN_COLOR_KO[lc]}) {(p / lv - 1) * 100:+.2f}% · "
+                     f"{aux_txt}"
                      f"상단 {uv:,}원({RN_COLOR_KO[uc]}) {(uv / p - 1) * 100:+.2f}% · "
                      f"구간폭 {span:,}원")
     else:
         zone_text = f"하단 {lv:,}원({RN_COLOR_KO[lc]}) {(p / lv - 1) * 100:+.2f}% · 위쪽 공식 RN선 없음(최상단)"
+    if below_floor:
+        category = 'touch_lower'
+    elif uv <= lv:
+        category = 'above_top'
+    else:
+        category = rn_category(p, lv, uv)
     return {
         'upperRN': int(uv), 'lowerRN': int(lv),
         'lowerColor': lc, 'upperColor': uc,
         'lowerColorHex': RN_COLOR[lc], 'upperColorHex': RN_COLOR[uc],
         'lowerColorKo': RN_COLOR_KO[lc], 'upperColorKo': RN_COLOR_KO[uc],
         'lowerKind': RN_COLOR_RANK[lc], 'upperKind': RN_COLOR_RANK[uc],
+        'auxRN': aux,
+        'auxText': (f"중간 보조 {aux:,}원 ({(aux / p - 1) * 100:+.2f}%)" if aux else ''),
         'zoneText': zone_text,
         'buy1': buy1, 'buy2': to_tick(buy1 * 0.8),
         'targetMin': to_tick(buy1 * 1.07), 'targetMax': to_tick(buy1 * 1.2),
-        'category': rn_category(p, lv, uv),
+        'category': category,
     }
 
 
-def rn_candles(cs, n=60):
+RN_CANDLE_N = 250   # RN존 차트 봉 개수(1년). 60봉이면 '직전 상단 RN 터치 후 눌림' 파동이 잘린다.
+
+
+def rn_candles(cs, n=RN_CANDLE_N):
     """RAW_STOCKS 카드가 그리는 일봉 형식(date/open/high/low/close/vol/ratio)으로 바꾼다."""
     out, prev = [], None
     for x in (cs or [])[-n:]:
@@ -1201,6 +1249,7 @@ def build_rnzone(uni, per, cache, days):
             'lowerColorHex': lines['lowerColorHex'], 'upperColorHex': lines['upperColorHex'],
             'lowerColorKo': lines['lowerColorKo'], 'upperColorKo': lines['upperColorKo'],
             'lowerKind': lines['lowerKind'], 'upperKind': lines['upperKind'],
+            'auxRN': lines.get('auxRN'), 'auxText': lines.get('auxText', ''),
             'zoneText': lines['zoneText'],
             'buy1': lines['buy1'], 'buy2': lines['buy2'],
             'targetMin': lines['targetMin'], 'targetMax': lines['targetMax'],
@@ -1210,7 +1259,7 @@ def build_rnzone(uni, per, cache, days):
             'pickReason': r['pickReason'],
             'bigCap': r['bigCap'],
             'capText': (f"{r['capEok'] / 10000:,.1f}조" if r['capEok'] >= 10000 else (f"{r['capEok']:,.0f}억" if r['capEok'] else '')),
-            'candles': rn_candles(cs, 60),
+            'candles': rn_candles(cs, RN_CANDLE_N),
         })
     ORDER = {'touch_lower': 0, 'near_lower': 1, 'upper': 2, 'touch_upper': 3}
     out.sort(key=lambda s: (ORDER.get(s['category'], 9), -s['valueEok']))
@@ -1260,30 +1309,54 @@ def build_jongbe(uni, per, cache, days):
                            f"당일 고가 {int(h):,}원 / 종가 {int(c):,}원."),
                 'candles': rn_candles(cs, 45), '_score': rec['valueEok'] * (1 + rec['pct'] / 100),
             })
-        # 강창권 — 장대양봉(+10%↑) 뒤 5·20일선 위 눌림
+        # 강창권(4음 1양 눌림목) — 원전 조건으로 엄격하게 (2026-11-25 사용자 지시)
+        #   ① 장대양봉은 2~5번째 봉(오늘 제외 · 1~4거래일 전) · 몸통 +10%↑
+        #   ② 정배열 — 5일선 > 20일선 (역배열 제외: 예전 에이피알처럼 역배열 통과 결함)
+        #   ③ 오늘은 눌림 — 등락률 -4%~+4%, 몸통 +3% 이하(또 장대양봉 제외), 장대양봉 고점 아래
+        #   ④ 5·20일선 위 지지 + 5일선 이격 5% 이내 (이격이 크면 추격)
+        #   ⑤ 눌림 구간 거래량 < 장대양봉 거래량 × 80%
         big = None
-        for k in range(1, 6):
-            if len(cs) <= k:
+        for k in range(2, 6):              # k=1(오늘)은 제외 — 당일 급등봉을 '눌림'으로 오인하지 않는다
+            if len(cs) < k:
                 break
             b = cs[-k]
             if b['o'] and (b['c'] - b['o']) / b['o'] * 100 >= 10.0:
                 big = b
                 break
-        if big and s5 and s20 and c >= s20 and c >= s5 * 0.985 and rec['pct'] <= 4.0:
+        if big and s5 and s20:
+            big_body = (big['c'] - big['o']) / big['o'] * 100 if big['o'] else 0.0
+            big_high = max(big['h'], big['c'])
+            vol_ratio = (rec['v'] / big['v']) if big.get('v') else 9.9
+            today_body = (c - o) / o * 100 if o else 0.0
+            ma5_gap = abs(c / s5 - 1) * 100 if s5 else 99.0
+            ok_kang = (s5 > s20                                   # ② 정배열
+                       and -4.0 <= rec['pct'] <= 4.0              # ③ 과도한 급등 추격 제외
+                       and today_body <= 3.0                      #   오늘 또 장대양봉이면 눌림 아님
+                       and c < big_high                           #   장대양봉 고점을 넘지 않은 눌림
+                       and c >= s20 and c >= s5 * 0.985           # ④ 5·20일선 위 지지
+                       and ma5_gap <= 5.0                         #   5일선 이격 5% 이내
+                       and vol_ratio < 0.8)                       # ⑤ 눌림 구간 거래량 감소
+        else:
+            ok_kang = False
+            big_body = vol_ratio = ma5_gap = 0.0
+        if ok_kang:
             kang.append({
                 'name': u['name'], 'code': code, 'track': 'kang',
                 'price': int(c), 'changeRatio': rec['pct'],
                 'valueText': f"{rec['valueEok']:,.0f}억",
-                'badge': f"🏆 강창권 픽: 장대양봉 후 눌림 · 5일선 {int(s5):,}원",
+                'badge': f"🏆 강창권 픽: 장대양봉 후 눌림 · 5일선 {int(s5):,}원 지지",
                 'entry': f"5일선 {int(s5):,}원 지지 확인 후 종가 매수",
                 'target': f"{to_tick(c * 1.15):,}원 (+15%)",
                 'stop': f"20일선 {int(s20):,}원 이탈 시 매도",
                 # 장중 실시간 판정용 숫자 — 손절은 20일선 이탈
                 'basePrice': int(c), 'target1': to_tick(c * 1.15), 'target2': None,
                 'stopPrice': int(s20), 'ma5': int(s5), 'ma20': int(s20),
+                'bigDate': big['date'], 'bigBody': round(big_body, 2), 'volRatio': round(vol_ratio, 2),
 
-                'reason': (f"{big['date'][4:6]}/{big['date'][6:8]} 장대양봉(+{(big['c'] - big['o']) / big['o'] * 100:.2f}%) 이후 "
-                           f"눌림 구간(오늘 {rec['pct']:+.2f}%). 5일선 {int(s5):,}원 · 20일선 {int(s20):,}원 위에서 지지. "
+                'reason': (f"{big['date'][4:6]}/{big['date'][6:8]} 장대양봉(몸통 +{big_body:.2f}%) 이후 "
+                           f"눌림(오늘 {rec['pct']:+.2f}% · 몸통 {today_body:+.2f}%) — 장대양봉 고점 "
+                           f"{int(big_high):,}원 아래에서 거래량 {vol_ratio * 100:.0f}%로 줄며 5일선 이격 "
+                           f"{ma5_gap:.2f}%. 정배열(5일선 {int(s5):,}원 > 20일선 {int(s20):,}원) · "
                            f"강창권 규칙은 5일선 지지 종가 매수·20일선 이탈 매도입니다."),
                 'candles': rn_candles(cs, 45), '_score': rec['valueEok'],
             })
