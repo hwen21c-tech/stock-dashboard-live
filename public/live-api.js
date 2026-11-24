@@ -2691,7 +2691,7 @@
           '<strong style="color:#fff; font-size:12.5px;">' + esc(it.name || '') + '</strong>' +
           '<span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">' + esc(nxtRankStateTxt(pct)) + '</span>' +
         '</div>' +
-        '<div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">NXT 체결 대금: <strong class="nxt-value" style="color:#c084fc;">' + esc(it.valueText || '—') + '</strong></div>' +
+        '<div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">통합 체결 대금: <strong class="nxt-value" style="color:#c084fc;">' + esc(it.valueDispText || it.valueText || '—') + '</strong></div>' +
       '</div>' +
       '<div style="text-align:right;">' +
         '<div class="nxt-price" style="font-size:13px; font-weight:800; color:' + col + ';">' + esc(isNum(it.price) ? fmt(it.price) + '원' : '—') + '</div>' +
