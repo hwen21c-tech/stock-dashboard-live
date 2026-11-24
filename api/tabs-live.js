@@ -296,6 +296,9 @@ const AFTER_PCT_BOTTOM = 3; // 시간외 등락 하위
 /* ------------------------------- 캐시/시간 ------------------------------- */
 const memCache = new Map();
 const MEM_TTL_MS = 5000;
+/* ?mode=supply_live 전용 — KIS 초당 20건 제한 보호용 60초 캐시 */
+const supplyCache = new Map();
+const SUPPLY_TTL_MS = 60000;
 
 const pad2 = (n) => (n < 10 ? '0' : '') + n;
 const WEEKDAY_KO = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
@@ -2767,13 +2770,40 @@ module.exports = async function handler(req, res) {
    *  · KIS 국내기관_외국인 매매종목 가집계(FHPTJ04400000)를 외국인(1)·기관계(2) 두 번 호출.
    *  · raw=1 이면 응답 필드 원본과 rawKeys 를 함께 내려준다(단위 확인용).
    */
+  /* ------------------------------------------------------------------
+   * ?mode=supply_live — KIS 장중 외국인·기관 순매수 상위(가집계)
+   * ------------------------------------------------------------------
+   *  · 외국인(1)·기관계(2) 30행씩 받아 종목코드로 병합 → (외+기) 합산 순매수 상위 4.
+   *  · KIS 초당 20건 제한 보호: 60초 메모리 캐시 + CDN 캐시(60초, 120초 stale 허용).
+   *  · 15:30 이후·휴장일·KIS 오류로 가집계가 비거나 0이면 supply-latest.json 확정치로 폴백.
+   *  · raw=1 이면 응답 필드 원본과 rawKeys 를 함께 내려준다(단위 확인용, 캐시 없음).
+   */
   if (q.mode === 'supply_live') {
     const started = Date.now();
     const p0 = kstParts(new Date());
     const stamp = `${p0.y}-${pad2(p0.m)}-${pad2(p0.d)}(${WEEKDAY_KO[p0.wd] || ''}) ${pad2(p0.hh)}:${pad2(p0.mi)}:${pad2(p0.ss)} KST`;
     const wantRaw = q.raw === '1';
-    const top = Math.max(1, Math.min(30, Number(q.top) || 8));
+    const topN = Math.max(1, Math.min(10, Number(q.top) || 4));
     const divCode = String(q.div || '1');
+    const SUPPLY_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
+    const cKey = `supply_live:${topN}:${divCode}:${wantRaw ? 'raw' : 'std'}`;
+
+    if (!wantRaw) {
+      const hit = supplyCache.get(cKey);
+      if (hit && Date.now() - hit.at < SUPPLY_TTL_MS) {
+        res.setHeader('X-Cache', 'HIT-memory');
+        applyCacheHeaders(res, SUPPLY_CACHE_CONTROL);
+        return sendJson(res, 200, hit.value, SUPPLY_CACHE_CONTROL);
+      }
+    }
+
+    /* 순매수 금액 단위 — 11/24 14:56 실측으로 확정: frgn_ntby_tr_pbmn 218,885 ↔ 삼성전자
+       1,143,000주 × 191,500원 = 218,884,500,000원 → 응답 값의 단위는 **백만원**.
+       그래서 억 환산은 raw / 100 이다. */
+    const SUPPLY_VALUE_UNIT = '백만원';
+    const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
+    const round1 = (x) => Math.round(x * 10) / 10;
+
     const body = {
       ok: true,
       mode: 'supply_live',
@@ -2790,62 +2820,175 @@ module.exports = async function handler(req, res) {
         FID_DIV_CLS_CODE: divCode, FID_RANK_SORT_CLS_CODE: '0',
         FID_ETC_CLS_CODE: { foreign: '1', organ: '2' },
       },
-      basis: 'KIS 장중 가집계(15:30 이후·휴장일에는 비거나 0) · 확정 수급은 FHKST01010900',
-      valueUnit: '백만원',
+      basis: 'KIS 장중 가집계(15:30 이후·휴장일에는 비거나 0) · 확정 수급은 supply-latest.json',
+      valueUnit: SUPPLY_VALUE_UNIT,
       netValueEokRule: 'netValueEok = netValueRaw / 100 (응답 단위 백만원)',
       usingKis: (() => { try { return kisLib ? kisLib.isConfigured() : false; } catch (e) { return false; } })(),
       libVersion: (() => { try { return kisLib ? kisLib.LIB_VERSION : null; } catch (e) { return null; } })(),
       groups: {},
+      top4: [],
+      empty: false,
+      confirmed: false,
+      asOfLabel: '',
       errors: [],
     };
 
-    if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
-      body.ok = false;
-      body.reason = 'kis_not_configured';
-      body.message = 'KIS_APP_KEY/KIS_APP_SECRET 환경변수가 없어 가집계를 부를 수 없습니다.';
-      applyCacheHeaders(res, 'no-store');
-      return sendJson(res, 503, body, 'no-store');
+    /* 확정치 폴백 — supply-latest.json(재스캔이 매일 갱신, public/data 에 함께 배포)에서
+       외국인 매수 상위·기관 매수 상위·동반 매수 목록을 코드로 합쳐 (외+기) 상위 N 을 만든다. */
+    function confirmedSupplyTop(n) {
+      let d = null;
+      try {
+        d = require('../public/data/supply-latest.json');
+      } catch (e) {
+        return null;
+      }
+      const groups = (d && d.groups) || {};
+      const m = new Map();
+      ['foreignBuy', 'organBuy', 'dualBuy'].forEach((gk) => {
+        (groups[gk] || []).forEach((x) => {
+          if (!x || !x.code) return;
+          const cur = m.get(x.code) || { code: x.code, name: x.name, price: x.price, changePct: x.pct, foreignEok: null, organEok: null };
+          if (x.foreignEok != null) cur.foreignEok = x.foreignEok;
+          if (x.organEok != null) cur.organEok = x.organEok;
+          if (cur.name == null) cur.name = x.name;
+          if (cur.price == null) cur.price = x.price;
+          if (cur.changePct == null) cur.changePct = x.pct;
+          m.set(x.code, cur);
+        });
+      });
+      const list = [...m.values()]
+        .map((x) => ({ ...x, totalEok: round1((x.foreignEok || 0) + (x.organEok || 0)) }))
+        .sort((a, b) => b.totalEok - a.totalEok)
+        .slice(0, n);
+      if (!list.length) return null;
+      const bd = String(d.basisDate || '');
+      const md = bd.length === 8 ? `${Number(bd.slice(4, 6))}/${Number(bd.slice(6, 8))}` : '';
+      return {
+        top: list,
+        asOfLabel: md ? `확정 ${md} 기준` : `확정 ${String(d.basisLabel || '').trim()} 기준`,
+        basisDate: bd,
+        basisLabel: d.basisLabel || '',
+        generatedAt: d.generatedAt || '',
+        source: d.source || 'supply-latest.json',
+      };
     }
 
-    /* 순매수 금액 단위 — 11/24 14:56 실측으로 확정: frgn_ntby_tr_pbmn 218,885 ↔ 삼성전자
-       1,143,000주 × 191,500원 = 218,884,500,000원 → 응답 값의 단위는 **백만원**.
-       그래서 억 환산은 raw / 100 이다. */
-    const SUPPLY_VALUE_UNIT = '백만원';
-    const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
-    const trimmed = (r) => ({
-      ok: r.ok, role: r.role, count: r.count, valueUnit: SUPPLY_VALUE_UNIT,
-      rawKeys: wantRaw ? r.rawKeys : undefined,
-      rawFirstRow: wantRaw ? r.rawFirstRow : undefined,
-      top: r.rows.slice(0, top).map((x) => ({
-        rank: x.rank, code: x.code, name: x.name, price: x.price, changePct: x.changePct,
-        netQty: x.netQty, netValueRaw: x.netValueRaw, netValueEok: toEok(x.netValueRaw),
-      })),
-      rows: wantRaw ? r.rows.map((x) => ({ ...x, netValueEok: toEok(x.netValueRaw) })) : undefined,
-      fetchedAt: r.fetchedAt,
-    });
+    function sendSupplyFallback(why) {
+      const fb = confirmedSupplyTop(topN);
+      body.empty = !fb;
+      body.fallback = true;
+      body.fallbackReason = why;
+      body.elapsedMs = Date.now() - started;
+      if (!fb) {
+        body.ok = false;
+        body.reason = why;
+        body.top4 = [];
+        applyCacheHeaders(res, 'no-store');
+        return sendJson(res, 502, body, 'no-store');
+      }
+      body.ok = true;
+      body.confirmed = true;
+      body.source = 'confirmed';
+      body.confirmedSource = fb.source;
+      body.basisDate = fb.basisDate;
+      body.basisLabel = fb.basisLabel;
+      body.confirmedGeneratedAt = fb.generatedAt;
+      body.asOfLabel = fb.asOfLabel;
+      body.top4 = fb.top.slice(0, 4);
+      body.top = fb.top;
+      applyCacheHeaders(res, SUPPLY_CACHE_CONTROL);
+      if (!wantRaw) supplyCache.set(cKey, { at: Date.now(), value: body });
+      return sendJson(res, 200, body, SUPPLY_CACHE_CONTROL);
+    }
+
+    /* 주말 휴장 — KIS 가집계는 직전 거래일 값을 그대로 줄 수 있어 오늘 시각으로 표기하면
+       틀린다. 처음부터 확정치(직전 거래일)로 내려준다. */
+    if (p0.wd === 'Sat' || p0.wd === 'Sun') return sendSupplyFallback('weekend_use_confirmed');
+
+    if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+      return sendSupplyFallback('kis_not_configured');
+    }
 
     const settled = await Promise.allSettled([
       kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode, sortCode: '0' }),
       kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode, sortCode: '0' }),
     ]);
-    const labels = [['foreign', '외국인'], ['organ', '기관계']];
+    const roles = [['foreign', '외국인'], ['organ', '기관계']];
+    const got = {};
     settled.forEach((s, i) => {
-      const [key, label] = labels[i];
+      const [key, label] = roles[i];
       if (s.status === 'fulfilled') {
-        body.groups[key] = { label, ...trimmed(s.value) };
+        const r = s.value;
+        got[key] = r;
+        const trimmed = {
+          ok: r.ok, role: r.role, count: r.count, valueUnit: SUPPLY_VALUE_UNIT,
+          rawKeys: wantRaw ? r.rawKeys : undefined,
+          rawFirstRow: wantRaw ? r.rawFirstRow : undefined,
+          top: r.rows.slice(0, Math.max(topN, 4)).map((x) => ({
+            rank: x.rank, code: x.code, name: x.name, price: x.price, changePct: x.changePct,
+            netQty: x.netQty, netValueRaw: x.netValueRaw, netValueEok: toEok(x.netValueRaw),
+          })),
+          rows: wantRaw ? r.rows.map((x) => ({ ...x, netValueEok: toEok(x.netValueRaw) })) : undefined,
+          fetchedAt: r.fetchedAt,
+        };
+        body.groups[key] = { label, ...trimmed };
       } else {
         const e = s.reason || {};
+        got[key] = null;
         body.groups[key] = { label, ok: false, error: String(e.message || e), code: e.code || null, msgCd: e.msgCd || null, msg1: e.msg1 || null };
         body.errors.push(`${label}: ${String(e.message || e)}`);
-        body.ok = false;
       }
     });
-    if (!body.ok) body.reason = 'kis_api_error';
+
+    /* 외국인·기관 두 목록을 종목코드로 병합 — 한쪽 목록에만 있으면 그쪽 값만 채우고
+       반대쪽은 null 로 둔다(없는 값을 0으로 단정하지 않는다 · 표기에서도 한쪽만 보인다). */
+    const merged = new Map();
+    const mergeRows = (r, side) => {
+      if (!r || !r.rows || !r.rows.length) return;
+      r.rows.forEach((x) => {
+        if (!x || !x.code) return;
+        const cur = merged.get(x.code) || {
+          code: x.code, name: x.name, price: x.price, changePct: x.changePct,
+          foreignEok: null, organEok: null,
+        };
+        const eok = toEok(x.netValueRaw);
+        if (side === 'foreign') cur.foreignEok = eok; else cur.organEok = eok;
+        if (cur.name == null) cur.name = x.name;
+        if (cur.price == null) cur.price = x.price;
+        if (cur.changePct == null) cur.changePct = x.changePct;
+        merged.set(x.code, cur);
+      });
+    };
+    mergeRows(got.foreign, 'foreign');
+    mergeRows(got.organ, 'organ');
+    const rows = [...merged.values()]
+      .map((x) => ({
+        ...x,
+        totalEok: round1((x.foreignEok || 0) + (x.organEok || 0)),
+        foreignOnly: x.organEok == null,
+        organOnly: x.foreignEok == null,
+      }))
+      .sort((a, b) => b.totalEok - a.totalEok || (b.foreignEok || 0) - (a.foreignEok || 0));
+
+    const anyNonZero = rows.some((x) => (x.foreignEok || 0) !== 0 || (x.organEok || 0) !== 0);
+    const bothOk = !!(got.foreign && got.foreign.ok && got.organ && got.organ.ok);
+    if (!bothOk || !rows.length || !anyNonZero) {
+      return sendSupplyFallback(!bothOk ? 'kis_api_error' : 'kis_empty_or_zero');
+    }
+
+    body.empty = false;
+    body.confirmed = false;
+    body.asOfLabel = `가집계 ${pad2(p0.hh)}:${pad2(p0.mi)} 기준`;
+    body.top4 = rows.slice(0, 4);
+    body.top = rows.slice(0, topN);
+    body.count = rows.length;
     body.elapsedMs = Date.now() - started;
 
-    applyCacheHeaders(res, 'no-store');
-    return sendJson(res, body.ok ? 200 : 502, body, 'no-store');
+    applyCacheHeaders(res, SUPPLY_CACHE_CONTROL);
+    if (!wantRaw) supplyCache.set(cKey, { at: Date.now(), value: body });
+    return sendJson(res, 200, body, SUPPLY_CACHE_CONTROL);
   }
+
   const fresh = q.fresh === '1' || q.fresh === 'true';
   const cacheKey = 'tabs-live';
 
