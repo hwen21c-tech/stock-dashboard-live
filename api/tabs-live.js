@@ -3468,6 +3468,30 @@ const CP_CHIM_HINT = '13시 이후 프로그램 방어 확인 후 분할 · 매�
 const CP_CHIM_INDEX_TTL_MS = 60000;
 const cpIndexCache = new Map();
 const cpChimCache = new Map(); // { at, value } — 60초 결과 캐시(같은 분의 반복 호출이 KIS를 다시 때리지 않게)
+/* 2026-11-25 — 침착해 종가베팅 3대 업그레이드(사용자 승인)
+ *  ① 3단 시간대 분할 비중(3강 Ch.2) · ② 시장 판별 배너(3강 Ch.1) · ③ 예고·DART 악재 경고 */
+const CP_CHIM_SPLIT = '14:30 부근 30% → 14:40~15:00 40~50% → 15:00~마감 20~30%';
+const CP_CHIM_FLOW_TTL_MS = 60000;
+const cpChimFlowCache = new Map();
+const CP_CHIM_DART_TTL_MS = 5 * 60 * 1000;
+let cpChimDartCache = { at: 0, value: null };
+const CP_CHIM_WARN_SOURCE =
+  '지정·단기과열 = KIS 시세 실시간(FHKST01010100) · 경고 예고·관리종목·거래정지 = KIS 종목마스터 일 스냅샷(data/krx-warn-latest.json) · DART 악재 = 오픈DART 공시(최근 3일)';
+/* DART 악재(희석·악재) 키워드 — 공시명 기준. 원전(침착해)이 정리 대상으로 적은 유형만 담는다. */
+const CP_CHIM_DART_RISK = [
+  { kw: '유상증자', label: '유상증자(지분 희석)' },
+  { kw: '전환사채', label: '전환사채(CB)' },
+  { kw: '신주인수권부사채', label: '신주인수권부사채(BW)' },
+  { kw: '감자', label: '감자' },
+  { kw: '횡령', label: '횡령·배임' },
+  { kw: '배임', label: '횡령·배임' },
+  { kw: '채무불이행', label: '채무불이행' },
+  { kw: '불성실공시', label: '불성실공시' },
+  { kw: '소송', label: '소송' },
+  { kw: '블록딜', label: '블록딜' },
+  { kw: '대량보유', label: '대량보유(블록딜 영향)' },
+  { kw: '주식병합', label: '주식병합' },
+];
 
 /* 0465 응답은 최근 30행만 준다 → 추세 라벨도 '오후(13시)' 또는 '최근 N분' 창을 그대로 적는다. */
 function chimHourText(h) {
@@ -3497,7 +3521,8 @@ const CP_CHIM_RULES = {
   select:
     '프로그램 순매수(당일 누적 · KIS 0465) 최우선 · 프로그램이 소폭 순매도여도 외인·기관 양매수면 방어 종목으로 포함(뱃지) · ETF·ETN·스팩·우선주 제외',
   sort: '프로그램 순매수 ↓ · 오후(13시 이후) 순증 → 추세 → 외인+기관 합산 ↓',
-  entry: '13시 이후 지수 대비 눌림 구간에서 프로그램이 받아주는 것을 확인 후 분할매수',
+  entry: '13시 이후 지수 대비 눌림에서 프로그램 방어 확인 후 분할매수 · 돌파·불타기는 당일 고점 돌파 확인 후에만(눌림과 돌파를 같은 비중으로 넣지 않는다)',
+  split: '3단 분할 — ' + CP_CHIM_SPLIT + ' (14:30 전에는 관찰, 비중 0%)',
   exit: '당일 고점 부근 프로그램 매도 전환 시 분할 청산 · 시간외 3~5% 상승 시 분할 익절',
   stop: '프로그램 매도세로 당일 저점 이탈 시 즉시 손절 · 블록딜·유증·자사주 처분 등 악재 공시 시 즉시 정리',
   caveat:
@@ -3569,6 +3594,302 @@ function chimMarketGate(idx) {
   };
 }
 
+/** 시장 전체 외인·기관 현물(억원) + 코스피200 선물(계약) — 네이버 증권 trend · 60초 캐시
+ *  · 3강 Ch.1 '시장 판별' 배너용. 값이 없으면 null 로 두고 판정에 쓰지 않는다(추정 금지).
+ *  · bizdate 가 오늘이 아니면(장전·휴장) 배너가 '직전 거래일 확정'으로 표기한다. */
+async function fetchChimMarketFlow() {
+  const hit = cpChimFlowCache.get('flow');
+  if (hit && Date.now() - hit.at < CP_CHIM_FLOW_TTL_MS) return hit.value;
+  const value = { ok: false, asOfLabel: '', bizdate: null, kospi: null, kosdaq: null, fut: null, note: '' };
+  const n = (s) => {
+    const t = String(s === null || s === undefined ? '' : s).replace(/[^0-9+-]/g, '');
+    if (!t || t === '+' || t === '-') return null;
+    const v = Number(t);
+    return isFinite(v) ? v : null;
+  };
+  const one = async (market) => {
+    const d = await fetchJson('https://m.stock.naver.com/api/index/' + market + '/trend', {
+      headers: NAVER_HEADERS,
+      timeout: NAVER_TIMEOUT,
+    });
+    return {
+      foreign: n(d && d.foreignValue),
+      organ: n(d && d.institutionalValue),
+      personal: n(d && d.personalValue),
+      bizdate: (d && d.bizdate) || null,
+    };
+  };
+  try {
+    const [kospi, kosdaq, fut] = await Promise.all([one('KOSPI'), one('KOSDAQ'), one('FUT')]);
+    value.kospi = kospi;
+    value.kosdaq = kosdaq;
+    value.fut = fut;
+    value.bizdate = kospi.bizdate || kosdaq.bizdate || fut.bizdate || null;
+    value.ok = [kospi.foreign, kosdaq.foreign, fut.foreign].some((x) => typeof x === 'number');
+    if (value.bizdate) value.asOfLabel = String(value.bizdate).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+    if (!value.ok) value.note = '투자자별 수급 응답에 값이 없습니다(장전·휴장 가능).';
+  } catch (e) {
+    value.note = '시장 수급 조회 실패: ' + String((e && e.message) || e);
+  }
+  cpChimFlowCache.set('flow', { at: Date.now(), value });
+  return value;
+}
+
+/** 선물 계약 수 표기 */
+function chimContracts(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '미수신';
+  return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(Math.round(v)).toLocaleString('en-US') + '계약';
+}
+
+/** 3강 Ch.1 — 시장 판별 배너: 지수 + 외인·기관 현물 + 외인 선물
+ *  · 경고: 지수 급락(최저 -1% 이하) / 디커플링(1%p↑ 벌어지고 한쪽 하락) /
+ *          외인·기관 현물 쌍매도 / 외인 현·선물 쌍매도 / 외인 현물 -3,000억 이하
+ *  · 강세: 양시장 상승 + 외인·기관 현물 양매수 + 외인 선물 순매수(미수신이면 무시)
+ *  · 그 밖은 혼조·방향성 약함으로 내려 '확인된 자리만 소액'을 권한다.
+ *  · 임계값(-1%, 1%p, -3,000억)은 관제탑 자체 기준이며 응답에 함께 적는다(원전 왜곡 금지). */
+function chimMarketBanner(gate, flow, meta) {
+  const m = meta || {};
+  const k = numOrNull(gate && gate.kospiPct);
+  const q = numOrNull(gate && gate.kosdaqPct);
+  const idxVals = [k, q].filter((v) => v !== null);
+  const minIdx = idxVals.length ? Math.min.apply(null, idxVals) : null;
+  const f = flow && flow.ok ? flow : null;
+  const numAt = (o, key) => (o && typeof o[key] === 'number' ? o[key] : null);
+  const fSpotK = f ? numAt(f.kospi, 'foreign') : null;
+  const fSpotQ = f ? numAt(f.kosdaq, 'foreign') : null;
+  const oSpotK = f ? numAt(f.kospi, 'organ') : null;
+  const oSpotQ = f ? numAt(f.kosdaq, 'organ') : null;
+  const spotF = fSpotK !== null && fSpotQ !== null ? fSpotK + fSpotQ : null;
+  const spotO = oSpotK !== null && oSpotQ !== null ? oSpotK + oSpotQ : null;
+  const futF = f ? numAt(f.fut, 'foreign') : null;
+  const futO = f ? numAt(f.fut, 'organ') : null;
+  const stale = Boolean(m.weekend || m.preopen || m.afterClose);
+  const asOf = f
+    ? stale
+      ? '직전 거래일' + (f.asOfLabel ? '(' + f.asOfLabel + ')' : '') + ' 확정'
+      : '실시간' + (f.asOfLabel ? ' · ' + f.asOfLabel : '')
+    : '수급 미수신';
+
+  const reasons = [];
+  if (k !== null || q !== null) {
+    const parts = [];
+    if (k !== null) parts.push('코스피 ' + (k > 0 ? '+' : '') + k.toFixed(2) + '%');
+    if (q !== null) parts.push('코스닥 ' + (q > 0 ? '+' : '') + q.toFixed(2) + '%');
+    reasons.push('지수 ' + parts.join(' · '));
+  }
+  if (spotF !== null && spotO !== null) {
+    reasons.push('현물 외인 ' + chimSignedEok(spotF) + ' · 기관 ' + chimSignedEok(spotO));
+  }
+  if (futF !== null) reasons.push('선물 외인 ' + chimContracts(futF) + (futO !== null ? ' · 기관 ' + chimContracts(futO) : ''));
+
+  let kind = 'neutral';
+  let icon = '⚪';
+  let title = '방향성 약함';
+  let action = '주도주 확인 전까지 관망 우선 · 비중은 기본의 절반 이하';
+  const hits = [];
+
+  if (minIdx === null && spotF === null) {
+    kind = 'unknown';
+    icon = '⛔';
+    title = '장세 판별 불가';
+    action = '지수·수급 응답 없음 — 판정하지 않습니다(기준을 만들지 않음)';
+  } else {
+    if (minIdx !== null && minIdx <= -1) hits.push('지수 급락(최저 ' + minIdx.toFixed(2) + '%)');
+    if (k !== null && q !== null && Math.abs(k - q) >= 1 && minIdx < 0) {
+      hits.push('디커플링(코스피 ' + (k > 0 ? '+' : '') + k.toFixed(2) + '% vs 코스닥 ' + (q > 0 ? '+' : '') + q.toFixed(2) + '%)');
+    }
+    if (spotF !== null && spotO !== null && spotF < 0 && spotO < 0) hits.push('외인·기관 현물 쌍매도');
+    if (spotF !== null && futF !== null && spotF < 0 && futF < 0) hits.push('외인 현·선물 쌍매도');
+    if (spotF !== null && spotF <= -3000) hits.push('외인 현물 대량 순매도(' + chimSignedEok(spotF) + ')');
+
+    const strong =
+      k !== null && q !== null && k > 0 && q > 0 &&
+      spotF !== null && spotO !== null && spotF > 0 && spotO > 0 &&
+      (futF === null || futF >= 0);
+
+    if (hits.length) {
+      kind = 'warn';
+      icon = '⚠️';
+      title = '하락/디커플링 장세';
+      action = '종베 비중 축소 · 눌림만 · 소액 대응(또는 관망)';
+    } else if (strong) {
+      kind = 'strong';
+      icon = '🟢';
+      title = '강세장';
+      action = '주도주 중심 종베 · 익일 갭상승 노림';
+    } else if (
+      (k !== null && k < 0) || (q !== null && q < 0) ||
+      (spotF !== null && spotF < 0) || (spotO !== null && spotO < 0) ||
+      (futF !== null && futF < 0)
+    ) {
+      kind = 'caution';
+      icon = '🟡';
+      title = '혼조 장세';
+      action = '확인된 자리만 소액 · 비중 절반 이하';
+    }
+  }
+  if (stale && kind !== 'unknown') title += ' (직전 거래일 기준)';
+
+  return {
+    kind,
+    icon,
+    title,
+    action,
+    line: icon + ' ' + title + ' — ' + action,
+    reasons,
+    hits,
+    asOf,
+    stale,
+    numbers: {
+      kospiPct: k,
+      kosdaqPct: q,
+      minPct: minIdx,
+      foreignSpotEok: spotF,
+      organSpotEok: spotO,
+      foreignFutContracts: futF,
+      organFutContracts: futO,
+    },
+    src: '네이버 증권 지수·투자자별 trend(KOSPI·KOSDAQ·FUT) · 임계값은 관제탑 자체 기준',
+  };
+}
+
+/** 시장경보 스냅샷(경고 예고·지정·관리종목·거래정지) — scripts/fetch_krx_warn.py 가 하루 1회 생성 */
+let _cpKrxWarnSnap = null;
+function loadKrxWarnSnapshot() {
+  if (_cpKrxWarnSnap && Date.now() - _cpKrxWarnSnap.at < 10 * 60 * 1000) return _cpKrxWarnSnap.value;
+  const value = { ok: false, generatedAt: null, map: new Map(), note: null, noticeCount: 0 };
+  try {
+    const d = require('../public/data/krx-warn-latest.json');
+    (d && d.rows ? d.rows : []).forEach((r) => {
+      if (r && r.code) value.map.set(String(r.code), r);
+    });
+    value.ok = true;
+    value.generatedAt = (d && (d.generatedAt || d.basisDate)) || null;
+    value.noticeCount = d && d.rows ? d.rows.filter((r) => r.notice).length : 0;
+  } catch (e) {
+    value.note = '시장경보 스냅샷 없음 — 예고 단계 미반영';
+  }
+  _cpKrxWarnSnap = { at: Date.now(), value };
+  return value;
+}
+
+/** 오픈DART 최근 3일 공시에서 후보 종목의 희석·악재 공시만 골라 Map 으로 만든다(5분 캐시).
+ *  · 주요사항보고(B) 2장 + 발행공시(C) 1장 — 유증·CB/BW·감자·최대주주변경 등이 몰리는 유형.
+ *  · DART_API_KEY 가 없거나 응답이 실패하면 map 을 비우고 note 만 남긴다(악재 없음으로 단정하지 않는다). */
+async function fetchChimDartRisks(codes) {
+  const want = new Set((codes || []).map((c) => String(c)));
+  if (cpChimDartCache.value && Date.now() - cpChimDartCache.at < CP_CHIM_DART_TTL_MS) {
+    return cpChimDartCache.value;
+  }
+  const value = { ok: false, map: new Map(), asOf: null, note: null, requested: want.size, found: 0 };
+  const apiKey = process.env.DART_API_KEY;
+  if (!apiKey || !String(apiKey).trim()) {
+    value.note = 'DART_API_KEY 없음 — 악재 공시 확인 불가';
+    cpChimDartCache = { at: Date.now(), value };
+    return value;
+  }
+  const pad = (n) => (n < 10 ? '0' : '') + n;
+  const ymdOf = (offsetDay) => {
+    const p = kstParts(new Date(Date.now() + offsetDay * 86400000));
+    return String(p.y) + pad(p.m) + pad(p.d);
+  };
+  const end = ymdOf(0);
+  const bgn = ymdOf(-2);
+  const cls = (nm) => {
+    const s = String(nm || '');
+    for (const r of CP_CHIM_DART_RISK) if (s.indexOf(r.kw) >= 0) return r.label;
+    return null;
+  };
+  const scans = [
+    { ty: 'B', page: 1 },
+    { ty: 'B', page: 2 },
+    { ty: 'C', page: 1 },
+  ];
+  try {
+    const settled = await Promise.allSettled(
+      scans.map((s) => {
+        const url =
+          'https://opendart.fss.or.kr/api/list.json?crtfc_key=' + encodeURIComponent(apiKey) +
+          '&bgn_de=' + bgn + '&end_de=' + end + '&page_count=100&page_no=' + s.page +
+          '&pblntf_ty=' + s.ty + '&sort=date&sort_mth=desc';
+        return fetchJson(url, { timeout: 7000 });
+      }),
+    );
+    let rows = 0;
+    let apiErr = null;
+    settled.forEach((s) => {
+      if (s.status !== 'fulfilled') return;
+      const d = s.value || {};
+      const status = String(d.status || '');
+      if (status !== '000' && status !== '013') {
+        apiErr = apiErr || 'DART status ' + status;
+        return;
+      }
+      (d.list || []).forEach((it) => {
+        rows += 1;
+        const code = String(it.stock_code || '').trim();
+        if (!/^\d{6}$/.test(code) || !want.has(code)) return;
+        const label = cls(it.report_nm);
+        if (!label) return;
+        const cur = value.map.get(code);
+        const date = String(it.rcept_dt || '');
+        const item = {
+          label,
+          reportNm: String(it.report_nm || '').trim(),
+          rceptDate: /^\d{8}$/.test(date) ? date.slice(4, 6) + '/' + date.slice(6, 8) : null,
+          rceptDt: date,
+          rceptNo: it.rcept_no || null,
+          url: /^\d{14}$/.test(String(it.rcept_no || ''))
+            ? 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo=' + it.rcept_no
+            : null,
+        };
+        /* 같은 종목에 여러 건이면 가장 최근 접수분만 카드에 쓴다 */
+        if (!cur || date >= String(cur.rceptDt || '')) value.map.set(code, item);
+      });
+    });
+    value.ok = rows > 0;
+    value.found = value.map.size;
+    value.asOf = end.slice(0, 4) + '-' + end.slice(4, 6) + '-' + end.slice(6, 8) + ' 기준 최근 3일';
+    if (!rows) value.note = apiErr || 'DART 응답에 공시가 없습니다.';
+  } catch (e) {
+    value.note = 'DART 조회 실패: ' + String((e && e.message) || e);
+  }
+  cpChimDartCache = { at: Date.now(), value };
+  return value;
+}
+
+/** 진입 구분 — 눌림 / 돌파·불타기 (3강 Ch.2). 당일 고가·현재가·등락률만으로 판정한다(추정 금지). */
+function chimEntryKind(c) {
+  const pctv = numOrNull(c && c.changePct);
+  const price = numOrNull(c && c.price);
+  const high = numOrNull(c && c.high);
+  const fromHigh = price !== null && high !== null && high > 0 ? ((high - price) / high) * 100 : null;
+  let kind = '눌림';
+  if (pctv !== null && pctv >= 5 && fromHigh === null) kind = '판정 보류';
+  else if (pctv !== null && pctv >= 5 && fromHigh !== null && fromHigh <= 0.5) kind = '돌파·불타기';
+  let rule;
+  if (kind === '돌파·불타기') {
+    rule = '당일 고점 돌파·윗꼬리 먹기 확인 후에만 불타기 — 확인 전 30%는 넣지 않는다 · 3단: ' + CP_CHIM_SPLIT;
+  } else if (kind === '판정 보류') {
+    rule = '당일 고가 미수신 — 눌림 자리에서만 분할하고 돌파·불타기는 고점 돌파 확인 후 · 3단: ' + CP_CHIM_SPLIT;
+  } else {
+    rule = '지수 대비 눌림(당일 고점에서 밀린 자리)에서 프로그램이 받아주는 것을 확인 후 분할 · 3단: ' + CP_CHIM_SPLIT;
+  }
+  return { kind, rule, fromHighPct: fromHigh === null ? null : Math.round(fromHigh * 100) / 100 };
+}
+
+/** 전략 객체 → 한 줄 문장(카드·모달이 그대로 읽는다) */
+function chimStrategyLine(s) {
+  if (!s) return '';
+  return (
+    '진입: ' + (s.entryKind ? s.entryKind + ' — ' : '') + (s.entry || '') +
+    ' · 3단 분할: ' + (s.split3 || CP_CHIM_SPLIT) +
+    ' · 비중: ' + (s.sizing || '') +
+    ' · 시간외·익일: ' + (s.afterHours || '') +
+    ' · 손절: ' + (s.stop || '')
+  );
+}
+
 /** 후보 코드별 프로그램 추이 병렬 조회(4개씩 · 마감시각 보호) */
 async function fetchProgramBatch(codes, deadline) {
   const out = new Map();
@@ -3620,13 +3941,27 @@ async function buildChimchakhae(ctx) {
     errors: [],
   };
 
-  /* ① 시장 게이트 */
+  /* ① 시장 게이트 + ② 시장 판별 배너(3강 Ch.1) — 지수·외인 현물·외인 선물 */
+  let flow = null;
   try {
-    out.marketGate = chimMarketGate(await fetchIndexGate());
+    const [idxGate, marketFlow] = await Promise.all([fetchIndexGate(), fetchChimMarketFlow()]);
+    out.marketGate = chimMarketGate(idxGate);
+    flow = marketFlow;
   } catch (e) {
     out.errors.push('시장 게이트: ' + String((e && e.message) || e));
     out.marketGate = chimMarketGate(null);
   }
+  out.marketBanner = chimMarketBanner(out.marketGate, flow, { preopen, weekend, afterClose });
+  if (flow && flow.ok) {
+    if (flow.fut && typeof flow.fut.foreign === 'number') out.marketGate.foreignFut = flow.fut.foreign;
+    out.marketGate.foreignFutNote =
+      '외인 선물 = 네이버 코스피200 선물 투자자별(계약) · 판정 기준: ' + out.marketBanner.asOf;
+    out.marketFlow = { ok: true, asOf: flow.asOfLabel, kospi: flow.kospi, kosdaq: flow.kosdaq, fut: flow.fut };
+  } else {
+    out.marketFlow = { ok: false, note: (flow && flow.note) || '시장 수급 미수신' };
+  }
+  out.split3 = CP_CHIM_SPLIT;
+  out.warnSource = CP_CHIM_WARN_SOURCE;
 
   if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
     out.ok = false;
@@ -3642,6 +3977,7 @@ async function buildChimchakhae(ctx) {
     if (cur) {
       cur.sources.push(src);
       if (cur.price === null) cur.price = numOrNull(r.price);
+      if (cur.high === null) cur.high = numOrNull(r.high);
       if (typeof cur.foreignEok !== 'number' && typeof r.foreignEok === 'number') cur.foreignEok = r.foreignEok;
       if (typeof cur.organEok !== 'number' && typeof r.organEok === 'number') cur.organEok = r.organEok;
       if (!cur.name && r.name) cur.name = r.name;
@@ -3652,6 +3988,7 @@ async function buildChimchakhae(ctx) {
       name: r.name || null,
       price: numOrNull(r.price),
       changePct: numOrNull(r.changePct),
+      high: numOrNull(r.high),
       valueEok: numOrNull(r.valueEok),
       foreignEok: numOrNull(r.foreignEok),
       organEok: numOrNull(r.organEok),
@@ -3668,7 +4005,8 @@ async function buildChimchakhae(ctx) {
   out.poolSize = pool.length;
   const targets = pool.slice(0, CP_CHIM_POOL_MAX);
 
-  /* ③ 프로그램 수급 조회 */
+  /* ③ 프로그램 수급 조회 · DART 희석·악재 공시는 동시에 돌린다(응답 예산 안에서 겹쳐 기다린다) */
+  const dartPromise = fetchChimDartRisks(targets.map((t) => t.code));
   const progMap = await fetchProgramBatch(
     targets.map((t) => t.code),
     started + CP_CHIM_DEADLINE_MS,
@@ -3687,6 +4025,23 @@ async function buildChimchakhae(ctx) {
     requested: targets.length,
     received: Array.from(progMap.values()).filter((x) => x.ok).length,
     failed: Array.from(progMap.values()).filter((x) => !x.ok).length,
+  };
+
+  /* DART 악재 — 프로그램 조회와 동시에 띄웠다. 6초를 넘기면 이번 주기는 '확인 생략'으로 남긴다. */
+  const dartRisks = await Promise.race([
+    dartPromise.catch((e) => ({ ok: false, map: new Map(), asOf: null, note: 'DART 조회 실패: ' + String((e && e.message) || e) })),
+    new Promise((resolve) =>
+      setTimeout(
+        () => resolve({ ok: false, map: new Map(), asOf: null, note: 'DART 응답 지연 — 이번 주기 악재 확인 생략' }),
+        6000,
+      ),
+    ),
+  ]);
+  out.dartStats = {
+    ok: Boolean(dartRisks && dartRisks.ok),
+    found: (dartRisks && dartRisks.found) || 0,
+    asOf: (dartRisks && dartRisks.asOf) || null,
+    note: (dartRisks && dartRisks.note) || null,
   };
 
   const gate = out.marketGate || {};
@@ -3773,16 +4128,23 @@ async function buildChimchakhae(ctx) {
     if (idxPct !== null && c.changePct !== null && c.changePct > idxPct) why.push('지수 대비 강세(밀림 방어)');
 
     const gateReduce = gate.advice === 'reduce' || gate.advice === 'hedge';
+    const bannerWarn = Boolean(out.marketBanner && out.marketBanner.kind === 'warn');
+    const entryInfo = chimEntryKind(c);
     const strategy = {
+      entryKind: entryInfo.kind,
+      entryRule: entryInfo.rule,
+      split3: CP_CHIM_SPLIT,
       entry:
         state === '순매수'
           ? trend.kind === 'flip'
             ? '오전 매도 → 오후 순매수 전환 확인된 자리에서 13시 이후 분할매수'
             : '13시 이후 지수 대비 눌림 구간에서 프로그램이 받아주는 것을 확인 후 분할매수'
           : '프로그램 방향이 확인될 때까지 관망 · 오후 순매수 전환 확인 후 소량 진입',
-      sizing: gateReduce
-        ? '시장 게이트 ' + (gate.label || '비중 축소') + ' — 기본 비중의 절반, 1~2종목'
-        : '기본 비중 유지 · 2~3회 분할 진입',
+      sizing: bannerWarn
+        ? '시장 판별 경고(하락·디커플링) — 기본 비중의 절반 이하 · 눌림만 · 1종목'
+        : gateReduce
+          ? '시장 게이트 ' + (gate.label || '비중 축소') + ' — 기본 비중의 절반, 1~2종목'
+          : '기본 비중 유지 · 3단 분할(30/40~50/20~30%)',
       afterHours:
         '시간외 단일가 3~5% 상승 시 분할 익절 · 익일 08:50 갭상승이면 절반 익절, 갭 실패(시가 이탈)면 잔량 정리',
       stop:
@@ -3821,15 +4183,7 @@ async function buildChimchakhae(ctx) {
       shortOver: false,
       chimchakhaeReason: why.join(' · '),
       strategy,
-      chimchakhaeStrategy:
-        '타점: ' +
-        strategy.entry +
-        ' · 비중: ' +
-        strategy.sizing +
-        ' · 시간외·익일: ' +
-        strategy.afterHours +
-        ' · 손절: ' +
-        strategy.stop,
+      chimchakhaeStrategy: chimStrategyLine(strategy),
       nextDayGuide: strategy.afterHours,
       ruleHint: CP_CHIM_HINT,
       _stateScore: state === '순매수' ? 3 : state === '미수신' ? 2 : 1,
@@ -3846,46 +4200,123 @@ async function buildChimchakhae(ctx) {
       (b.totalEok || 0) - (a.totalEok || 0),
   );
 
-  /* ⑥ 경보(투자경고·단기과열) — 상위 카드만 KIS 시세에서 확인해 뱃지로 반영 */
+  /* ⑥ 경보·악재 — ① 종목마스터 스냅샷(지정·경고 예고·관리종목·거래정지)
+   *   ② 오픈DART 희석·악재 공시 ③ 상위 카드 KIS 시세(실시간 지정·단기과열·투자유의)
+   *  ※ '경고 예고'는 KIS 시세 응답에 필드가 없다(종목마스터에만 존재) → 스냅샷이 그 역할을 맡는다. */
   const WARN_LABEL = { '00': null, '01': '투자주의', '02': '투자경고', '03': '투자위험' };
-  const top = prelim.slice(0, Math.max(CP_CHIM_MAX_ROWS, CP_CHIM_WARN_MAX));
-  /* 경보 조회는 상위 3종목만 — KIS 호출을 줄여 '미수신'이 생기지 않게 한다(11/24 실측) */
+  const STAT_LABEL = {
+    '51': '관리종목', '52': '투자위험', '53': '투자경고', '54': '투자주의', '58': '거래정지', '59': '단기과열',
+  };
+  const krxWarn = loadKrxWarnSnapshot();
+  out.krxWarnAsOf = krxWarn.generatedAt || null;
+  if (krxWarn.note) out.krxWarnNote = krxWarn.note;
+  const riskLevel = (badges) =>
+    (badges || []).reduce((m, b) => Math.max(m, b.level === 'block' ? 3 : 2), 0);
+
+  /* ⑥-a 스냅샷·DART 반영 — 후보 전원, 추가 호출 없음 */
+  prelim.forEach((r) => {
+    const kRow = krxWarn.map.get(r.code) || null;
+    const dart = dartRisks && dartRisks.map ? dartRisks.map.get(r.code) || null : null;
+    r.krxWarn = kRow ? kRow.warn || null : null;
+    r.krxWarnLabel = kRow ? kRow.warnLabel || null : null;
+    r.warnNotice = Boolean(kRow && kRow.notice);
+    r.krxWarnAsOf = krxWarn.generatedAt || null;
+    r.dartRisk = dart
+      ? { label: dart.label, reportNm: dart.reportNm, rceptDate: dart.rceptDate, url: dart.url || null }
+      : null;
+    const badges = [];
+    if (kRow) {
+      if (kRow.halt) badges.push({ level: 'block', text: '⛔ 거래정지' });
+      if (kRow.liquid) badges.push({ level: 'block', text: '⛔ 정리매매' });
+      if (kRow.managed) badges.push({ level: 'block', text: '⛔ 관리종목' });
+      if (kRow.warn === '03') badges.push({ level: 'block', text: '⛔ 투자위험' });
+      else if (kRow.warn === '02') badges.push({ level: 'warn', text: '⚠️ 투자경고' });
+      else if (kRow.warn === '01') badges.push({ level: 'warn', text: '⚠️ 투자주의' });
+      if (kRow.notice) badges.push({ level: 'warn', text: '⚠️ 경고 예고' });
+      if (kRow.unfaith) badges.push({ level: 'warn', text: '⚠️ 불성실공시' });
+    }
+    if (dart) badges.push({ level: 'warn', text: '⛔ DART 악재' });
+    r.riskBadges = badges;
+    r._riskScore = riskLevel(badges);
+  });
+
+  /* ⑥-b 상위 카드 KIS 시세로 실시간 지정·단기과열·투자유의 확인(호출 3건 — 초당 제한 보호)
+   *  후보를 8개까지 넓게 잡은 뒤 경보로 후순위를 만들고 최종 6개를 고른다. */
+  const top = prelim.slice(0, Math.max(CP_CHIM_MAX_ROWS, CP_CHIM_WARN_MAX) + 2);
   const warnTargets = top.slice(0, CP_CHIM_WARN_MAX);
   try {
     const settled = await Promise.allSettled(warnTargets.map((r) => kisLib.fetchKisQuote(r.code)));
     settled.forEach((s, i) => {
       if (s.status !== 'fulfilled' || !s.value) return;
       const q = s.value;
+      const r = warnTargets[i];
       const codeWarn = q.marketWarn ? String(q.marketWarn) : null;
-      warnTargets[i].marketWarn = codeWarn && codeWarn !== '00' ? codeWarn : null;
-      warnTargets[i].warnLabel = codeWarn && codeWarn !== '00' ? WARN_LABEL[codeWarn] || null : null;
-      warnTargets[i].shortOver = Boolean(q.shortOver);
-      if (warnTargets[i].warnLabel) warnTargets[i].chimchakhaeReason += ' · ⚠️ ' + warnTargets[i].warnLabel + ' — 비중 축소';
-      if (warnTargets[i].shortOver) warnTargets[i].chimchakhaeReason += ' · ⛔ 단기과열 지정';
-      if (warnTargets[i].warnLabel || warnTargets[i].shortOver) {
-        warnTargets[i].strategy.sizing += ' · 경고 단계는 비중 최소화(원전은 패스)';
+      r.marketWarn = codeWarn && codeWarn !== '00' ? codeWarn : null;
+      r.warnLabel = codeWarn && codeWarn !== '00' ? WARN_LABEL[codeWarn] || null : null;
+      r.shortOver = Boolean(q.shortOver);
+      r.statLabel = q.statCls && STAT_LABEL[q.statCls] ? STAT_LABEL[q.statCls] : null;
+      r.caution = Boolean(q.caution);
+      r.kisQuoteAsOf = q.asOfDate || null;
+      const live = [];
+      if (r.shortOver) live.push({ level: 'warn', text: '⛔ 단기과열 지정' });
+      if (r.warnLabel) live.push({ level: r.warnLabel === '투자위험' ? 'block' : 'warn', text: '⚠️ ' + r.warnLabel + ' 지정' });
+      if (r.statLabel && !r.warnLabel) live.push({ level: r.statLabel === '관리종목' ? 'block' : 'warn', text: '⚠️ ' + r.statLabel });
+      if (r.caution) live.push({ level: 'warn', text: '⚠️ 투자유의' });
+      if (q.liquidation) live.push({ level: 'block', text: '⛔ 정리매매' });
+      if (q.managed) live.push({ level: 'block', text: '⛔ 관리종목' });
+      live.forEach((b) => {
+        if (!r.riskBadges.some((x) => x.text === b.text)) r.riskBadges.push(b);
+      });
+      r._riskScore = riskLevel(r.riskBadges);
+      /* 고가를 실시간으로 받았으니 진입 구분(눌림/돌파)을 다시 판정한다 */
+      if (r.strategy) {
+        const entry = chimEntryKind({ price: q.price, high: q.high, changePct: q.changePct });
+        r.strategy.entryKind = entry.kind;
+        r.strategy.entryRule = entry.rule;
       }
     });
   } catch (e) {
     out.errors.push('경보 확인: ' + String((e && e.message) || e));
   }
+
+  /* ⑥-c 최종 정렬 — 프로그램 판정이 같으면 경고·악재 종목을 후순위로 내린다 */
   top.sort(
     (a, b) =>
       b._stateScore - a._stateScore ||
+      (a._riskScore || 0) - (b._riskScore || 0) ||
       b._trendScore - a._trendScore ||
-      (a.warnLabel ? 1 : 0) - (b.warnLabel ? 1 : 0) ||
       (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok),
   );
+  out.riskStats = {
+    flagged: prelim.filter((r) => (r._riskScore || 0) > 0).length,
+    notice: prelim.filter((r) => r.warnNotice).length,
+    dart: prelim.filter((r) => r.dartRisk).length,
+  };
 
   out.rows = top.slice(0, CP_CHIM_MAX_ROWS).map((r, i) => {
     const copy = Object.assign({}, r);
     delete copy._stateScore;
     delete copy._trendScore;
+    delete copy._riskScore;
+    /* 경보·악재·전략 문구는 KIS 실시간 값이 붙은 뒤 한 곳에서 조립한다 */
+    const badgeText = (copy.riskBadges || []).map((b) => b.text).join(' · ');
+    if (badgeText) {
+      copy.chimchakhaeReason += ' · ' + badgeText;
+      copy.strategy.sizing += ' · 경고·악재 종목은 비중 최소화(원전은 패스)';
+    }
+    if (copy.dartRisk) {
+      copy.chimchakhaeReason += ' · ' + copy.dartRisk.label +
+        (copy.dartRisk.rceptDate ? ' ' + copy.dartRisk.rceptDate : '') + ' 공시';
+    }
+    copy.riskBadgeText = badgeText;
+    copy.chimchakhaeStrategy = chimStrategyLine(copy.strategy);
     copy.rank = i + 1;
     return copy;
   });
   out.drop = drop;
   out.candidates = prelim.length;
+  if (out.dartStats && out.dartStats.note) out.notes.push('DART 악재 확인: ' + out.dartStats.note);
+  if (krxWarn.note) out.notes.push('시장경보(예고): ' + krxWarn.note);
 
   const progHours = out.rows.map((r) => r.programAsOfHour).filter(Boolean).sort();
   const lastHour = progHours.length ? progHours[progHours.length - 1] : null;
@@ -3911,6 +4342,10 @@ async function buildChimchakhae(ctx) {
       base: r.programTrendBase,
       warn: r.warnLabel || r.marketWarn,
       shortOver: r.shortOver,
+      krxWarn: r.krxWarn,
+      krxNotice: r.warnNotice,
+      dart: r.dartRisk ? r.dartRisk.label : null,
+      badges: (r.riskBadges || []).map((b) => b.text),
       note: r.programNote,
       f: r.foreignEok,
       o: r.organEok,
@@ -4149,6 +4584,7 @@ async function buildClosingPicks(ctx) {
       name: nm || null,
       price: Math.round(price),
       changePct: round2(changePct),
+      high: numOrNull(q.high),
       valueEok,
       foreignEok: f,
       organEok: o,
