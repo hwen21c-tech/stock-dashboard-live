@@ -3175,6 +3175,21 @@ async function fetchClosingSupplyRank(limit) {
   if (p0.minutes < 9 * 60) return put(fallback('preopen_use_confirmed'));
   if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) return put(fallback('kis_not_configured'));
 
+  /* 장중(09:00~15:30)에는 KIS 가집계가 비면 전일 확정치로 대체하지 않는다 —
+   * '오늘 종가베팅' 후보에 어제 수급을 앉히면 사실과 다른 카드가 된다(사용자 철칙: 임의 대체 금지).
+   * 마감 후·장전·휴장에는 브리프대로 supply-latest.json 확정치 폴백을 쓴다. */
+  const inSession = p0.minutes >= 9 * 60 && p0.minutes < AFTER_START;
+  const onFail = (why) => {
+    if (!inSession) return put(fallback(why));
+    out.ok = false;
+    out.confirmed = false;
+    out.source = 'kis';
+    out.fallbackReason = why + '_live_no_confirmed';
+    out.rows = [];
+    out.asOfLabel = '';
+    return put(out);
+  };
+
   const settled = await Promise.allSettled([
     kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode: '1', sortCode: '0' }),
     kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode: '1', sortCode: '0' }),
@@ -3220,7 +3235,7 @@ async function fetchClosingSupplyRank(limit) {
   const anyNonZero = rows.some((x) => (x.foreignEok || 0) !== 0 || (x.organEok || 0) !== 0);
   const bothOk = !!(got.foreign && got.foreign.ok && got.organ && got.organ.ok);
   if (!bothOk || !rows.length || !anyNonZero) {
-    return put(fallback(!bothOk ? 'kis_api_error' : 'kis_empty_or_zero'));
+    return onFail(!bothOk ? 'kis_api_error' : 'kis_empty_or_zero');
   }
 
   out.ok = true;
@@ -3432,6 +3447,9 @@ async function buildClosingPicks(ctx) {
       organEok: o,
       totalEok: typeof r.totalEok === 'number' ? r.totalEok : round2(fs + os),
       supplyKind: bothBuy ? '쌍끌이' : '한쪽 매수',
+      /* 카드마다 어느 집계의 수급인지 적는다 — 전일 확정치가 오늘 시세 옆에 앉을 때
+       * 기준을 카드에서 바로 알 수 있어야 한다. */
+      basis: sup.confirmed ? (sup.asOfLabel || '확정 기준') : 'KIS 가집계',
       ruleHint: CP_SUPPLY_HINT,
     });
   });
@@ -3457,6 +3475,11 @@ async function buildClosingPicks(ctx) {
   out.supplyFallbackReason = sup.fallbackReason || null;
   out.empty = { theme: out.themeTrack.length === 0, supply: out.supplyTrack.length === 0 };
   if (out.empty.theme && out.empty.supply) out.note = '조건 충족 종목 없음 — 기준을 임의로 완화하지 않습니다.';
+  if (out.empty.supply && !sup.confirmed) {
+    out.notes.push(
+      '수급 가집계 응답이 없어 수급 트랙을 비웠습니다(전일 확정치로 대체하지 않음) — 테마 트랙은 그대로입니다.',
+    );
+  }
   out.elapsedMs = Date.now() - started;
   return out;
 }
