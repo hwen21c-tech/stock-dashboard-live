@@ -3832,18 +3832,22 @@ async function buildChimchakhae(ctx) {
   /* ⑥ 경보(투자경고·단기과열) — 상위 카드만 KIS 시세에서 확인해 뱃지로 반영 */
   const WARN_LABEL = { '00': null, '01': '투자주의', '02': '투자경고', '03': '투자위험' };
   const top = prelim.slice(0, Math.max(CP_CHIM_MAX_ROWS, CP_CHIM_WARN_MAX));
+  /* 경보 조회는 상위 3종목만 — KIS 호출을 줄여 '미수신'이 생기지 않게 한다(11/24 실측) */
+  const warnTargets = top.slice(0, CP_CHIM_WARN_MAX);
   try {
-    const settled = await Promise.allSettled(top.map((r) => kisLib.fetchKisQuote(r.code)));
+    const settled = await Promise.allSettled(warnTargets.map((r) => kisLib.fetchKisQuote(r.code)));
     settled.forEach((s, i) => {
       if (s.status !== 'fulfilled' || !s.value) return;
       const q = s.value;
       const codeWarn = q.marketWarn ? String(q.marketWarn) : null;
-      top[i].marketWarn = codeWarn;
-      top[i].warnLabel = codeWarn ? WARN_LABEL[codeWarn] || null : null;
-      top[i].shortOver = Boolean(q.shortOver);
-      if (top[i].warnLabel) top[i].chimchakhaeReason += ' · ⚠️ ' + top[i].warnLabel + ' — 비중 축소';
-      if (top[i].shortOver) top[i].chimchakhaeReason += ' · ⛔ 단기과열 지정';
-      if (top[i].warnLabel || top[i].shortOver) top[i].strategy.sizing += ' · 경고 단계는 비중 최소화(원전은 패스)';
+      warnTargets[i].marketWarn = codeWarn && codeWarn !== '00' ? codeWarn : null;
+      warnTargets[i].warnLabel = codeWarn && codeWarn !== '00' ? WARN_LABEL[codeWarn] || null : null;
+      warnTargets[i].shortOver = Boolean(q.shortOver);
+      if (warnTargets[i].warnLabel) warnTargets[i].chimchakhaeReason += ' · ⚠️ ' + warnTargets[i].warnLabel + ' — 비중 축소';
+      if (warnTargets[i].shortOver) warnTargets[i].chimchakhaeReason += ' · ⛔ 단기과열 지정';
+      if (warnTargets[i].warnLabel || warnTargets[i].shortOver) {
+        warnTargets[i].strategy.sizing += ' · 경고 단계는 비중 최소화(원전은 패스)';
+      }
     });
   } catch (e) {
     out.errors.push('경보 확인: ' + String((e && e.message) || e));
