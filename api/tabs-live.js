@@ -3208,8 +3208,11 @@ module.exports = async function handler(req, res) {
     }
 
     /* 주말 휴장 — KIS 가집계는 직전 거래일 값을 그대로 줄 수 있어 오늘 시각으로 표기하면
-       틀린다. 처음부터 확정치(직전 거래일)로 내려준다. */
+       틀린다. 처음부터 확정치(직전 거래일)로 내려준다.
+       개장 전(09:00 이전)도 같은 이유로 확정치를 쓴다 — 직전 거래일 집계가 오늘 시각으로
+       둔갑하는 것을 막는다. */
     if (p0.wd === 'Sat' || p0.wd === 'Sun') return sendSupplyFallback('weekend_use_confirmed');
+    if (p0.minutes < 9 * 60) return sendSupplyFallback('preopen_use_confirmed');
 
     if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
       return sendSupplyFallback('kis_not_configured');
@@ -3284,7 +3287,8 @@ module.exports = async function handler(req, res) {
 
     body.empty = false;
     body.confirmed = false;
-    body.asOfLabel = `가집계 ${pad2(p0.hh)}:${pad2(p0.mi)} 기준`;
+    /* 15:30 이 지나면 KIS 가집계는 그 시점 값으로 멈춘다 → 요청 시각이 아니라 마감 시각으로 적는다 */
+    body.asOfLabel = p0.minutes >= AFTER_START ? '가집계 15:30 마감 기준' : `가집계 ${pad2(p0.hh)}:${pad2(p0.mi)} 기준`;
     body.top4 = rows.slice(0, 4);
     body.top = rows.slice(0, topN);
     body.count = rows.length;
