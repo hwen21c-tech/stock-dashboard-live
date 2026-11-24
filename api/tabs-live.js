@@ -3449,12 +3449,18 @@ function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up, membe
  *  · 응답이 비면 추정치를 만들지 않고 programStatus '미수신'으로 내린다.
  * ========================================================================== */
 const CP_CHIM_MAX_ROWS = 6;
-const CP_CHIM_POOL_MAX = 14;
-const CP_CHIM_DEADLINE_MS = 12000;
+/* 후보 조회 상한 — 종목별 0465 호출은 비싸다(초당 20건 제한·왕복 수백ms).
+ *  탭 응답 예산(클라이언트 14초)을 지키려면 8종목·경보 3종목으로 충분하다.
+ *  (11/24 실측: 14종목+경보 8건이면 콜드에서 14초를 넘겨 '응답 시간 초과'가 났다) */
+const CP_CHIM_POOL_MAX = 8;
+const CP_CHIM_WARN_MAX = 3;
+const CP_CHIM_DEADLINE_MS = 6000;
+const CP_CHIM_CACHE_TTL_MS = 60000;
 const CP_CHIM_SMALL_SELL_RATIO = 0.2; // 프로그램 순매도가 (외+기) 순매수의 20% 이내면 '소폭'(관제탑 자체 기준)
 const CP_CHIM_HINT = '13시 이후 프로그램 방어 확인 후 분할 · 매도 전환 시 청산 · 저점 이탈 즉시 손절';
 const CP_CHIM_INDEX_TTL_MS = 60000;
 const cpIndexCache = new Map();
+const cpChimCache = new Map(); // { at, value } — 60초 결과 캐시(같은 분의 반복 호출이 KIS를 다시 때리지 않게)
 
 /* 0465 응답은 최근 30행만 준다 → 추세 라벨도 '오후(13시)' 또는 '최근 N분' 창을 그대로 적는다. */
 function chimHourText(h) {
@@ -3559,9 +3565,9 @@ function chimMarketGate(idx) {
 /** 후보 코드별 프로그램 추이 병렬 조회(4개씩 · 마감시각 보호) */
 async function fetchProgramBatch(codes, deadline) {
   const out = new Map();
-  for (let i = 0; i < codes.length; i += 4) {
+  for (let i = 0; i < codes.length; i += 6) {
     if (Date.now() > deadline) break;
-    const slice = codes.slice(i, i + 4);
+    const slice = codes.slice(i, i + 6);
     const settled = await Promise.allSettled(slice.map((c) => kisLib.fetchProgramTradeByStock(c)));
     settled.forEach((s, idx) => {
       const code = slice[idx];
@@ -3587,6 +3593,8 @@ function chimSignedEok(v) {
 async function buildChimchakhae(ctx) {
   const started = Date.now();
   const { supplyPassed, themePassed, session } = ctx || {};
+  const cached = cpChimCache.get('chim');
+  if (cached && !(ctx && ctx.debug) && Date.now() - cached.at < CP_CHIM_CACHE_TTL_MS) return cached.value;
   const p0 = kstParts(new Date());
   const weekend = p0.wd === 'Sat' || p0.wd === 'Sun';
   const preopen = !weekend && p0.minutes < 9 * 60;
@@ -3823,7 +3831,7 @@ async function buildChimchakhae(ctx) {
 
   /* ⑥ 경보(투자경고·단기과열) — 상위 카드만 KIS 시세에서 확인해 뱃지로 반영 */
   const WARN_LABEL = { '00': null, '01': '투자주의', '02': '투자경고', '03': '투자위험' };
-  const top = prelim.slice(0, CP_CHIM_MAX_ROWS + 2);
+  const top = prelim.slice(0, Math.max(CP_CHIM_MAX_ROWS, CP_CHIM_WARN_MAX));
   try {
     const settled = await Promise.allSettled(top.map((r) => kisLib.fetchKisQuote(r.code)));
     settled.forEach((s, i) => {
@@ -3910,6 +3918,7 @@ async function buildChimchakhae(ctx) {
     );
   }
   out.elapsedMs = Date.now() - started;
+  if (!(ctx && ctx.debug)) cpChimCache.set('chim', { at: Date.now(), value: out });
   return out;
 }
 
