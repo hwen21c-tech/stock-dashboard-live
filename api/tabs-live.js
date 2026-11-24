@@ -43,6 +43,13 @@ const {
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
 const { assignThemeRoles, themeRoleMap, liquidAvgPct, liquidBasisLabel } = require('../lib/theme-roles');
+/* KIS 공식 API — ?mode=supply_live(장중 기관·외국인 가집계) 에서만 쓴다. 없으면 null 로 두고 503 안내. */
+let kisLib = null;
+try {
+  kisLib = require('../lib/kis');
+} catch (e) {
+  kisLib = null;
+}
 
 /* 전략 실시간 판정(비중법사 · 홍인기)이 보는 종목은 재스캔 결과 파일과 같은 기준을 쓴다.
  *  public/data/*.json 은 배포 산출물에 그대로 포함되므로 require 로 읽어 기준봉 종가를 가져온다.
@@ -2751,6 +2758,90 @@ module.exports = async function handler(req, res) {
   }
 
   const q = getQuery(req);
+
+  /* ------------------------------------------------------------------
+   * ?mode=supply_live — KIS 장중 기관·외국인 순매수 상위(가집계) 단독 확인용
+   * ------------------------------------------------------------------
+   *  · 기본 tabs-live 응답(네이버 테마 수집, 수 초)과 완전히 분리한다 — 여기서 바로
+   *    반환하고 아래 수집은 타지 않는다(기본 응답 속도에 영향 없음).
+   *  · KIS 국내기관_외국인 매매종목 가집계(FHPTJ04400000)를 외국인(1)·기관계(2) 두 번 호출.
+   *  · raw=1 이면 응답 필드 원본과 rawKeys 를 함께 내려준다(단위 확인용).
+   */
+  if (q.mode === 'supply_live') {
+    const started = Date.now();
+    const p0 = kstParts(new Date());
+    const stamp = `${p0.y}-${pad2(p0.m)}-${pad2(p0.d)}(${WEEKDAY_KO[p0.wd] || ''}) ${pad2(p0.hh)}:${pad2(p0.mi)}:${pad2(p0.ss)} KST`;
+    const wantRaw = q.raw === '1';
+    const top = Math.max(1, Math.min(30, Number(q.top) || 8));
+    const divCode = String(q.div || '1');
+    const body = {
+      ok: true,
+      mode: 'supply_live',
+      source: 'kis',
+      trId: 'FHPTJ04400000',
+      api: '/uapi/domestic-stock/v1/quotations/foreign-institution-total',
+      generatedAt: new Date().toISOString(),
+      generatedAtKst: `${pad2(p0.hh)}:${pad2(p0.mi)}:${pad2(p0.ss)}`,
+      generatedAtLabel: stamp,
+      sessionPhase: overSessionOf(p0).inSession ? overSessionOf(p0).phase : sessionOf(p0, null).phase,
+      marketStatus: null,
+      params: {
+        FID_COND_MRKT_DIV_CODE: 'V', FID_COND_SCR_DIV_CODE: '16449', FID_INPUT_ISCD: '0000',
+        FID_DIV_CLS_CODE: divCode, FID_RANK_SORT_CLS_CODE: '0',
+        FID_ETC_CLS_CODE: { foreign: '1', organ: '2' },
+      },
+      basis: 'KIS 장중 가집계(15:30 이후·휴장일에는 비거나 0) · 확정 수급은 FHKST01010900',
+      usingKis: (() => { try { return kisLib ? kisLib.isConfigured() : false; } catch (e) { return false; } })(),
+      libVersion: (() => { try { return kisLib ? kisLib.LIB_VERSION : null; } catch (e) { return null; } })(),
+      groups: {},
+      errors: [],
+    };
+
+    if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+      body.ok = false;
+      body.reason = 'kis_not_configured';
+      body.message = 'KIS_APP_KEY/KIS_APP_SECRET 환경변수가 없어 가집계를 부를 수 없습니다.';
+      applyCacheHeaders(res, 'no-store');
+      return sendJson(res, 503, body, 'no-store');
+    }
+
+    const trimmed = (r) => ({
+      ok: r.ok, role: r.role, count: r.count,
+      rawKeys: wantRaw ? r.rawKeys : undefined,
+      rawFirstRow: wantRaw ? r.rawFirstRow : undefined,
+      top: r.rows.slice(0, top).map((x) => ({
+        rank: x.rank, code: x.code, name: x.name, price: x.price, changePct: x.changePct,
+        tradeValueRaw: x.tradeValueRaw, netQty: x.netQty, netValueRaw: x.netValueRaw,
+        // 단위 확인 전 임시 환산 — 원/백만원 가정을 나란히 두어 실측으로 확정한다
+        netValueEokIfWon: x.netValueRaw == null ? null : Math.round((x.netValueRaw / 1e8) * 10) / 10,
+        netValueEokIfMillion: x.netValueRaw == null ? null : Math.round((x.netValueRaw / 1e2) * 10) / 10,
+      })),
+      rows: wantRaw ? r.rows : undefined,
+      fetchedAt: r.fetchedAt,
+    });
+
+    const settled = await Promise.allSettled([
+      kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode, sortCode: '0' }),
+      kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode, sortCode: '0' }),
+    ]);
+    const labels = [['foreign', '외국인'], ['organ', '기관계']];
+    settled.forEach((s, i) => {
+      const [key, label] = labels[i];
+      if (s.status === 'fulfilled') {
+        body.groups[key] = { label, ...trimmed(s.value) };
+      } else {
+        const e = s.reason || {};
+        body.groups[key] = { label, ok: false, error: String(e.message || e), code: e.code || null, msgCd: e.msgCd || null, msg1: e.msg1 || null };
+        body.errors.push(`${label}: ${String(e.message || e)}`);
+        body.ok = false;
+      }
+    });
+    if (!body.ok) body.reason = 'kis_api_error';
+    body.elapsedMs = Date.now() - started;
+
+    applyCacheHeaders(res, 'no-store');
+    return sendJson(res, body.ok ? 200 : 502, body, 'no-store');
+  }
   const fresh = q.fresh === '1' || q.fresh === 'true';
   const cacheKey = 'tabs-live';
 
