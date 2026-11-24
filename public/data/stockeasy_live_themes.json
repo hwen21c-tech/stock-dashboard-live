@@ -3,9 +3,9 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-24 17:45:59",
- "updatedAt": "2026-11-24T17:45:47.767323+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-24 17:54:23",
+ "updatedAt": "2026-11-24T17:54:06.648878+09:00",
+ "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
  "codes": [
