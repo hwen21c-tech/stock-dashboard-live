@@ -3870,6 +3870,37 @@ async function buildChimchakhae(ctx) {
       : afterClose
         ? '15:30 마감 기준'
         : '실시간 ' + pad2(p0.hh) + ':' + pad2(p0.mi);
+  /* 진단용(?cp_debug=1) — 후보 전원의 상태·경보·프로그램 값을 그대로 내린다(기본 응답에는 없음) */
+  if (ctx && ctx.debug) {
+    out.chimAll = prelim.map((r) => ({
+      code: r.code,
+      name: r.name,
+      state: r.programState,
+      progEok: r.programEok,
+      qty: r.programQty,
+      trend: r.programTrend,
+      base: r.programTrendBase,
+      warn: r.warnLabel || r.marketWarn,
+      shortOver: r.shortOver,
+      note: r.programNote,
+      f: r.foreignEok,
+      o: r.organEok,
+      valueEok: r.valueEok,
+    }));
+    out.progTargets = targets.map((c) => {
+      const p = progMap.get(c.code);
+      return {
+        code: c.code,
+        name: c.name,
+        ok: Boolean(p && p.ok),
+        err: p && !p.ok ? p.error : null,
+        rows: p && p.ok && p.data ? p.data.rows.length : 0,
+        hour: p && p.ok && p.data && p.data.latest ? p.data.latest.hour : null,
+        qty: p && p.ok && p.data && p.data.latest ? p.data.latest.netQty : null,
+      };
+    });
+  }
+
   if (!out.rows.length) {
     out.notes.push('프로그램 순매수·방어 조건을 통과한 종목이 없습니다(기준을 임의로 완화하지 않음).');
   }
@@ -4110,7 +4141,7 @@ async function buildClosingPicks(ctx) {
 
   /* ---------------- 📘 침착해 종가베팅 (프로그램 수급·오후장 방어) — 3번째 탭 ---------------- */
   try {
-    out.chimchakhae = await buildChimchakhae({ supplyPassed, themePassed, session });
+    out.chimchakhae = await buildChimchakhae({ supplyPassed, themePassed, session, debug: Boolean(ctx && ctx.debug) });
   } catch (e) {
     out.chimchakhae = { ok: false, rows: [], rules: CP_CHIM_RULES, error: String((e && e.message) || e) };
     out.errors.push('침착해 트랙: ' + String((e && e.message) || e));
