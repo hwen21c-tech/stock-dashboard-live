@@ -4206,6 +4206,128 @@ function applyCacheHeaders(res, policy) {
   res.setHeader('Vercel-CDN-Cache-Control', policy);
 }
 
+/* ------------------------------------------------------------------------ */
+/* 🌙 국내선물옵션 — 코스피200 주간(F)·야간(CM) KIS 실시간                     */
+/* ------------------------------------------------------------------------ */
+/*  · KIS 국내선물옵션 현재가(FHMIF10000000)로 헤더 티커의 '주간선물'·'야간선물(코스피)'
+ *    자리를 실시간 값으로 채운다. 값이 없으면 null 로 두고 화면의 기록값을 건드리지 않는다.
+ *  · 세션: 주간장 09:00~15:45(지수선물 F) · 야간장 18:00~익일 06:00(CM)
+ *    야간장은 월 18:00 ~ 토 06:00 에만 열린다(일요일 밤·월요일 새벽은 휴장).
+ *  · 캐시: 60초 메모리 + CDN 60초 — 15초·30초 폴링이 KIS 초당 20건 한도를 건드리지 않게 한다.
+ */
+const FUT_TTL_MS = 60000;
+const FUT_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
+const FUT_LIVE_FRESH_MS = 15 * 60 * 1000; // 최근 체결이 15분 안이면 '실시간'으로 본다
+const futMemo = new Map();
+
+/** 지금이 어느 선물 세션인가 */
+function kospiFuturesSession(p) {
+  const mins = p.minutes;
+  const wd = p.wd;
+  const weekday = !(wd === 'Sat' || wd === 'Sun');
+  const inDay = weekday && mins >= 9 * 60 && mins < 15 * 60 + 45;
+  const nightActive =
+    ((wd === 'Mon' || wd === 'Tue' || wd === 'Wed' || wd === 'Thu' || wd === 'Fri') && mins >= 18 * 60) ||
+    ((wd === 'Tue' || wd === 'Wed' || wd === 'Thu' || wd === 'Fri' || wd === 'Sat') && mins < 6 * 60);
+  if (inDay) {
+    return { phase: '주간장', inSession: true, marketDiv: 'F', primary: 'F', label: '주간장 실시간 (09:00~15:45)' };
+  }
+  if (nightActive) {
+    return { phase: '야간장', inSession: true, marketDiv: 'CM', primary: 'CM', label: '야간장 실시간 (18:00~익일 06:00)' };
+  }
+  // 장외 — 06:00~09:00 은 방금 끝난 야간장, 그 밖에는 주간장 마감값이 가장 최근 값이다
+  return {
+    phase: '장외',
+    inSession: false,
+    marketDiv: null,
+    primary: weekday && mins >= 9 * 60 && mins < 18 * 60 ? 'F' : mins < 9 * 60 ? 'CM' : 'F',
+    label: '장외 시간 — 직전 마감값(시각 표기)',
+  };
+}
+
+function futQuoteLabel(q, marketDiv, live) {
+  if (!q || q.price === null || q.price === undefined) return '—';
+  if (live) return marketDiv === 'CM' ? '18:00~06:00 실시간' : '09:00~15:45 실시간';
+  if (q.lastTradeAt) {
+    const d = new Date(q.lastTradeAt);
+    const k = new Date(d.getTime() + 9 * 3600 * 1000);
+    return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${pad2(k.getUTCHours())}:${pad2(k.getUTCMinutes())} 마감`;
+  }
+  return '마감값';
+}
+
+async function buildFuturesKis(now, wantRaw) {
+  const p = kstParts(now);
+  const sess = kospiFuturesSession(p);
+  const contract = kisLib && kisLib.kospi200FrontContract ? kisLib.kospi200FrontContract(now.getTime()) : null;
+  const head = {
+    ok: false,
+    mode: 'futures-kis',
+    source: 'kis',
+    trId: 'FHMIF10000000',
+    api: '/uapi/domestic-futureoption/v1/quotations/inquire-price',
+    generatedAt: now.toISOString(),
+    generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}:${pad2(p.ss)}`,
+    contract,
+    session: sess,
+    configured: Boolean(kisLib && kisLib.isConfigured && kisLib.isConfigured()),
+    libVersion: kisLib ? kisLib.LIB_VERSION : null,
+    day: null,
+    night: null,
+    errors: [],
+  };
+  if (!head.configured) {
+    head.errors.push('KIS_APP_KEY / KIS_APP_SECRET 환경변수가 없습니다.');
+    return head;
+  }
+  if (!contract) {
+    head.errors.push('코스피200 근월물을 계산하지 못했습니다.');
+    return head;
+  }
+
+  const cacheKey = `fut:${contract.code}:${wantRaw ? 'raw' : 'std'}`;
+  if (!wantRaw) {
+    const hit = futMemo.get(cacheKey);
+    if (hit && Date.now() - hit.at < FUT_TTL_MS) return hit.value;
+  }
+
+  const [dayR, nightR] = await Promise.allSettled([
+    kisLib.fetchFuturesQuote({ marketDiv: 'F', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 }),
+    kisLib.fetchFuturesQuote({ marketDiv: 'CM', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 }),
+  ]);
+
+  const pick = (r, marketDiv) => {
+    if (r.status !== 'fulfilled') {
+      const e = r.reason || {};
+      const err = {
+        ok: false,
+        marketDiv,
+        error: String((e && e.message) || e),
+        msgCd: (e && e.msgCd) || null,
+        msg1: (e && e.msg1) || null,
+        code: contract.code,
+      };
+      head.errors.push(`${marketDiv}(${contract.code}): ${err.msgCd || ''} ${err.msg1 || err.error}`.trim());
+      return err;
+    }
+    const q = r.value;
+    const ageMs = q.lastTradeAt ? Date.now() - Date.parse(q.lastTradeAt) : null;
+    const live = Boolean(sess.inSession && sess.marketDiv === marketDiv && ageMs !== null && ageMs <= FUT_LIVE_FRESH_MS);
+    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live) });
+  };
+
+  head.day = pick(dayR, 'F');
+  head.night = pick(nightR, 'CM');
+  head.ok = Boolean((head.day && head.day.ok) || (head.night && head.night.ok));
+  head.primary = sess.primary;
+  head.primaryQuote = sess.primary === 'CM' ? head.night : head.day;
+  head.note =
+    'KIS 실전 국내선물옵션 시세(FHMIF10000000) · 주간 F / 야간 CM · 근월물 자동 롤오버(만기 둘째 목요일 15:45) · 60초 캐시';
+
+  if (!wantRaw && head.ok) futMemo.set(cacheKey, { at: Date.now(), value: head });
+  return head;
+}
+
 /* -------------------------------- handler -------------------------------- */
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -4216,6 +4338,74 @@ module.exports = async function handler(req, res) {
   }
 
   const q = getQuery(req);
+
+  /* ------------------------------------------------------------------
+   * ?mode=futures_test — KIS 국내선물옵션(주간 F · 야간 CM) 실측 진단
+   * ------------------------------------------------------------------
+   *  · 로컬에 KIS 키가 없으므로 실제 코드 표기(5자리/6자리/8자리)와 F·CM 조합이
+   *    rt_cd '0' 으로 응답하는지 Vercel 실전 서버에서 직접 확인한다(추정 금지).
+   *  · ?div=F,CM  ?codes=A016C,A01612,A016C000  ?raw=1
+   */
+  if (q.mode === 'futures_test') {
+    const p0 = kstParts(new Date());
+    const contract = kisLib && kisLib.kospi200FrontContract ? kisLib.kospi200FrontContract(Date.now()) : null;
+    const divs = String(q.div || 'F,CM')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => s === 'F' || s === 'CM');
+    const codes = String(q.codes || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const list = [];
+    const targets = codes.length ? codes : contract ? [contract.code, contract.code6, contract.code8] : [];
+    divs.forEach((div) => targets.forEach((code) => list.push({ marketDiv: div, code })));
+
+    const head = {
+      mode: 'futures-test',
+      at: new Date().toISOString(),
+      atKst: `${pad2(p0.hh)}:${pad2(p0.mi)}:${pad2(p0.ss)}`,
+      configured: Boolean(kisLib && kisLib.isConfigured && kisLib.isConfigured()),
+      libVersion: kisLib ? kisLib.LIB_VERSION : null,
+      contract,
+      session: kospiFuturesSession(p0),
+      candidates: list,
+      ok: false,
+      results: [],
+      errors: [],
+    };
+    if (!head.configured) {
+      return sendJson(res, 200, Object.assign(head, { ok: false, error: 'KIS 미설정' }), 'no-store');
+    }
+
+    let results = [];
+    if (q.div || q.codes) {
+      results = await kisLib.probeFuturesCandidates(list);
+    } else if (q.fast === '1') {
+      // 기본 진단 —대표 표기(5자리)만 먼저 찍고, 실패할 때만 다른 표기를 시도한다
+      results = await kisLib.probeFuturesCandidates([
+        { marketDiv: 'CM', code: contract.code },
+        { marketDiv: 'F', code: contract.code },
+      ]);
+      if (!results.some((r) => r.ok)) results = await kisLib.probeFuturesCandidates(list);
+    } else {
+      results = await kisLib.probeFuturesCandidates(list);
+    }
+    head.results = results;
+    head.ok = results.some((r) => r.ok);
+    if (!head.ok) {
+      head.errors = results.map((r) => `${r.marketDiv}(${r.code}): ${r.msgCd || ''} ${r.msg1 || r.error || ''}`.trim());
+    }
+    // 성공한 조합이 있으면 정규화 결과까지 같이 내려 준다(등락률·시각·누적거래량 검증)
+    if (head.ok) {
+      try {
+        head.futures = await buildFuturesKis(new Date(), q.raw === '1');
+      } catch (e) {
+        head.futuresError = String((e && e.message) || e);
+      }
+    }
+    return sendJson(res, 200, head, 'no-store');
+  }
 
   /* ------------------------------------------------------------------
    * ?mode=program_test — KIS 종목별 프로그램매매추이(0465) 단독 확인용
@@ -4492,6 +4682,16 @@ module.exports = async function handler(req, res) {
    *  아래 네이버 수집(수 초)과 병렬로 끝나 10초 함수 예산에 보태지 않는다(5분 캐시). */
   const cpMembersPromise = fetchClosingThemeMembers().catch((e) => ({
     ok: false, rows: [], themeCount: 0, errors: ['테마 풀 확장: ' + String((e && e.message) || e)],
+  }));
+  /* 🌙 코스피200 주간·야간선물(KIS · FHMIF10000000)도 미리 띄워 둔다 — 60초 캐시라 대부분 즉시 끝나고,
+   *    콜드 스타트에서만 KIS 왕복이 붙는다. 함수 예산(10초)을 넘기지 않도록 2.5초만 기다리고,
+   *    늦으면 이번 응답은 비우고(null) 다음 30초 폴링에서 캐시된 값을 받는다. */
+  const futuresPromise = buildFuturesKis(now, false).catch((e) => ({
+    ok: false,
+    mode: 'futures-kis',
+    day: null,
+    night: null,
+    errors: [String((e && e.message) || e)],
   }));
   const premarket = overSession.phase === '프리마켓';
   /* 08:50~09:00(정규장 개장 전)에도 네이버 테마 랭킹은 아직 오늘 값을 내지 않는다 →
@@ -4797,6 +4997,22 @@ module.exports = async function handler(req, res) {
     tvBuckets = null;
   }
 
+  /* 🌙 선물 실시간 — 위에서 띄운 KIS 호출을 최대 2.5초만 기다린다. */
+  let futuresKis = null;
+  let futuresKisTimedOut = false;
+  try {
+    futuresKis = await Promise.race([
+      futuresPromise,
+      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 2500)),
+    ]);
+    if (futuresKis === 'TIMEOUT') {
+      futuresKisTimedOut = true;
+      futuresKis = null;
+    }
+  } catch (e) {
+    futuresKis = null;
+  }
+
   const body = {
     ok:
       themes.length > 0 ||
@@ -4811,6 +5027,12 @@ module.exports = async function handler(req, res) {
     sessionLabel: session.label,
     marketStatus: naverStatus,
     tvBuckets,
+    futuresKis,
+    futuresKisNote: futuresKisTimedOut
+      ? 'KIS 선물 시세 응답 지연으로 이번 응답에서 생략 — 다음 폴링에서 60초 캐시값을 받습니다.'
+      : futuresKis
+        ? futuresKis.note || null
+        : null,
     themes,
     searchTop,
     searchTopBasis: 'naver stock.naver.com KRX searchTop Top 30 (실시간 검색순위)',
