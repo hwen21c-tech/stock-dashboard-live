@@ -809,7 +809,7 @@
     }, 2500);
   }
 
-  /* ------------------ RN존 실시간 종목 조회 (60일봉 + RN) ------------------ */
+  /* ------------------ RN존 실시간 종목 조회 (250일봉 + RN) ------------------ */
 
   function setSearchStatus(text, kind) {
     var el = byId('liveSearchStatus');
@@ -910,7 +910,7 @@
       setSearchStatus('차트 엔진을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', 'err');
       return;
     }
-    setSearchStatus('⏳ ' + q + ' 실시간 조회 중… (60일봉 + RN 지지/저항)', null);
+    setSearchStatus('⏳ ' + q + ' 실시간 조회 중… (250일봉 + RN 지지/저항)', null);
 
     var controller = null;
     var timer = null;
@@ -2165,7 +2165,7 @@
       esc(n.impactNote) + '</div>';
   }
 
-  /* 종목 칩 → RN존 실전 차트(실시간 60일봉 + RN 지지/저항). 실패 시 네이버 호가창으로 대체. */
+  /* 종목 칩 → RN존 실전 차트(실시간 250일봉 + RN 지지/저항). 실패 시 네이버 호가창으로 대체. */
   function openStockFromNews(name, code) {
     var fallback = function () {
       try { window.open('https://m.stock.naver.com/item/' + encodeURIComponent(code), '_blank', 'noopener'); } catch (e) { /* noop */ }

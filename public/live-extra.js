@@ -1,7 +1,7 @@
 /* ============================================================================
  * ⚡ 1·2·3번 탭 잔여 실시간 고도화  (/api/stock-live · RN존 실측 데이터 재사용)
  * ----------------------------------------------------------------------------
- *  1) 1번 탭 상단 '실전 타점 신호등' 6칩을 RN존 60일봉 실측값으로 자동 생성
+ *  1) 1번 탭 상단 '실전 타점 신호등' 6칩을 RN존 250일봉 실측값으로 자동 생성
  *       - 하드코딩 문구/가격을 지우고, RN 지지·저항 존 터치 / 1차 타점 근접 /
  *         상한가·52주 신고가 대금주 / 통합대금 상위를 실측 기준으로 다시 만든다.
  *       - 칩은 6개까지만 만들고, 근거가 없는 칩은 억지로 만들지 않는다.
@@ -272,7 +272,7 @@
           : '하단RN ' + fmtInt(n.lower) + '원 터치 → ' + fmtInt(n.price) + '원' + pctPhrase(n.changePct),
         detail: (n.last && n.last.date ? n.last.date + ' ' : '') + '저가 ' + fmtInt(n.last && n.last.low) + '원으로 하단RN ' + fmtInt(n.lower) + '원 존(±' + fmtInt(n.band) + ') 진입, 현재가 ' +
           (held ? '존 안 유지' : '존 위 ' + n.lowerGapPct + '%'),
-        basis: 'RN 60일봉 실측'
+        basis: 'RN 250일봉 실측'
       });
     });
 
@@ -286,7 +286,7 @@
           tag: '[상단 RN 터치 후 눌림]',
           body: '상단RN ' + fmtInt(n.upper) + '원 터치 → ' + fmtInt(n.price) + '원' + pctPhrase(n.changePct),
           detail: (n.last && n.last.date ? n.last.date + ' ' : '') + '고가 ' + fmtInt(n.last && n.last.high) + '원으로 상단RN ' + fmtInt(n.upper) + '원 존까지 올라간 뒤 ' + n.upperGapPct + '% 아래로 밀림',
-          basis: 'RN 60일봉 실측'
+          basis: 'RN 250일봉 실측'
         });
       });
 
@@ -335,7 +335,7 @@
           tag: '[RN 1차 타점 근접]',
           body: '1차 타점 ' + fmtInt(n.buy1) + '원 = 하단RN ' + fmtInt(n.lower) + '원+4% · 현재 ' + fmtInt(n.price) + '원' + pctPhrase(n.changePct),
           detail: '하단RN ' + fmtInt(n.lower) + '원 +4% = ' + fmtInt(n.buy1) + '원 기준 (2차 ' + fmtInt(Math.round(n.buy1 * 0.8)) + '원)',
-          basis: 'RN 60일봉 실측'
+          basis: 'RN 250일봉 실측'
         });
       });
 
@@ -370,7 +370,7 @@
           tag: tag,
           body: fmtInt(n.price) + '원' + pctPhrase(n.changePct) + ' · RN ' + fmtInt(n.lower) + '~' + fmtInt(n.upper),
           detail: '하단RN ' + fmtInt(n.lower) + '원까지 ' + n.lowerGapPct + '% · 상단RN ' + fmtInt(n.upper) + '원까지 ' + n.upperGapPct,
-          basis: 'RN 60일봉 실측'
+          basis: 'RN 250일봉 실측'
         });
       });
 
@@ -637,7 +637,7 @@
     try { lastRn = root.LiveAPI && root.LiveAPI.rnState ? root.LiveAPI.rnState.lastAt : null; } catch (e) { lastRn = null; }
     var basis = lastRn
       ? 'RN 실측 ' + lastRn + ' 갱신 · ' + chips.length + '칩'
-      : 'RN 내장 60일봉 기준 · 실측 갱신 대기 · ' + chips.length + '칩';
+      : 'RN 내장 250일봉 기준 · 실측 갱신 대기 · ' + chips.length + '칩';
     setText(stampEl, basis, lastRn ? '#34d399' : '#94a3b8');
     return chips.length;
   }
