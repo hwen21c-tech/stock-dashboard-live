@@ -3713,7 +3713,7 @@
     var lowLiq = !!t.lowLiquidity;
     /* 대장 대금 300억 미만 — '테마 강도'로 오해하지 않게 카드에 그대로 적는다 */
     var lowBadge = lowLiq
-      ? '<span style="font-size:9px; font-weight:900; color:#fcd34d; background:rgba(245,158,11,0.16); border:1px solid rgba(180,83,9,0.7); border-radius:4px; padding:1px 4px; margin-left:4px; letter-spacing:-0.2px;" title="기준주(대금 300억↑ 최고 상승) 거래대금이 300억 미만입니다">⚠ 저유동성</span>'
+      ? '<span style="font-size:9px; font-weight:900; color:#fcd34d; background:rgba(245,158,11,0.16); border:1px solid rgba(180,83,9,0.7); border-radius:4px; padding:1px 4px; margin-left:4px; letter-spacing:-0.2px;" title="거래대금 300억↑ 종목이 아직 없어 100억↑ 종목 평균으로 순위를 매겼습니다(장 초반 폴백)">⚠ 저유동성</span>'
       : '';
     var joinBadge = t.seJoined
       ? '<span style="font-size:9px; font-weight:900; color:#c4b5fd; background:rgba(124,58,237,0.18); border:1px solid rgba(167,139,250,0.4); border-radius:4px; padding:1px 4px; margin-left:4px; letter-spacing:-0.2px;" title="스탁이지 실시간 테마 구성종목이 이 카드에 함께 들어왔습니다">🔗 구성 합류</span>'
