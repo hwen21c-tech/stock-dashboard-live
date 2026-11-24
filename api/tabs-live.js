@@ -3456,13 +3456,28 @@ const CP_CHIM_HINT = '13시 이후 프로그램 방어 확인 후 분할 · 매�
 const CP_CHIM_INDEX_TTL_MS = 60000;
 const cpIndexCache = new Map();
 
-const CP_CHIM_TREND_LABEL = {
-  up: '오후 순매수 증가',
-  flat: '순매수 유지(증가 둔화)',
-  flip: '오전 매도 → 오후 순매수 전환',
-  down: '순매도 지속',
-  unknown: '추세 미확인',
-};
+/* 0465 응답은 최근 30행만 준다 → 추세 라벨도 '오후(13시)' 또는 '최근 N분' 창을 그대로 적는다. */
+function chimHourText(h) {
+  const s = String(h === null || h === undefined ? '' : h).replace(/\D/g, '');
+  if (s.length < 3) return null;
+  const mm = Number(s.slice(-2));
+  const hh = Number(s.length >= 5 ? s.slice(-4, -2) : s.slice(0, s.length - 2));
+  if (!isFinite(hh) || !isFinite(mm)) return null;
+  return pad2(hh) + ':' + pad2(mm);
+}
+
+function chimTrendLabel(trend) {
+  if (!trend || !trend.kind || trend.kind === 'unknown') return '추세 미확인';
+  const span = trend.baseLabel || '';
+  const when = span.indexOf('오후') === 0 ? '오후 ' : span ? span + ' ' : '';
+  if (trend.kind === 'up') return when + '순매수 증가';
+  if (trend.kind === 'flat') return '순매수 유지(증가 둔화)';
+  if (trend.kind === 'flip') {
+    return trend.baseLabel === '오후(13시)' ? '오전 매도 → 오후 순매수 전환' : when + '순매수 전환';
+  }
+  if (trend.kind === 'down') return '순매도 지속';
+  return '추세 미확인';
+}
 
 const CP_CHIM_RULES = {
   select:
@@ -3692,7 +3707,7 @@ async function buildChimchakhae(ctx) {
     if (!hasProg) drop.noProg += 1;
 
     const trend = hasProg ? prog.trend || { kind: 'unknown' } : { kind: 'unknown' };
-    const trendLabel = CP_CHIM_TREND_LABEL[trend.kind] || CP_CHIM_TREND_LABEL.unknown;
+    const trendLabel = hasProg ? chimTrendLabel(trend) : '—';
     const programStatus = hasProg ? state : '미수신';
     const tag =
       state === '순매수'
@@ -3706,7 +3721,7 @@ async function buildChimchakhae(ctx) {
     /* 선정 사유 — 프로그램 방향·지속성·규모 → 외인·기관 → 지수 대비 → 경고 */
     const why = [];
     if (state === '순매수') {
-      const when = trend.kind === 'flip' ? '오후' : idxPct !== null ? '오후' : '당일';
+      const when = trend.baseLabel ? trend.baseLabel : '최근';
       const how =
         trend.kind === 'flip' ? '순매수 전환' : trend.kind === 'up' ? '순매수 지속·증가' : '순매수 유지';
       why.push(when + ' 프로그램 ' + chimSignedEok(programEok) + ' ' + how);
@@ -3752,12 +3767,12 @@ async function buildChimchakhae(ctx) {
       programNetValue: typeof netValue === 'number' ? netValue : null,
       programTrend: trend.kind,
       programTrendLabel: hasProg ? trendLabel : '—',
-      programAfterDeltaQty: hasProg ? trend.afterDeltaQty : null,
+      programAfterDeltaQty: hasProg ? trend.deltaQty : null,
       programAfterDeltaEok:
-        hasProg && typeof trend.afterDeltaValue === 'number'
-          ? Math.round((trend.afterDeltaValue / 1e8) * 10) / 10
-          : null,
-      programAsOfHour: hasProg && prog.latest ? prog.latest.hour : null,
+        hasProg && typeof trend.deltaValue === 'number' ? Math.round((trend.deltaValue / 1e8) * 10) / 10 : null,
+      programTrendBase: hasProg ? trend.baseLabel || null : null,
+      programWindowMin: hasProg ? trend.windowMin : null,
+      programAsOfHour: hasProg && prog.latest ? chimHourText(prog.latest.hour) : null,
       programNote: hasProg ? null : pr && pr.error ? pr.error : 'KIS 응답 없음',
       foreignEok: f,
       organEok: o,
