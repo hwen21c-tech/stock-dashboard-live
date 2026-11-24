@@ -2791,6 +2791,8 @@ module.exports = async function handler(req, res) {
         FID_ETC_CLS_CODE: { foreign: '1', organ: '2' },
       },
       basis: 'KIS 장중 가집계(15:30 이후·휴장일에는 비거나 0) · 확정 수급은 FHKST01010900',
+      valueUnit: '백만원',
+      netValueEokRule: 'netValueEok = netValueRaw / 100 (응답 단위 백만원)',
       usingKis: (() => { try { return kisLib ? kisLib.isConfigured() : false; } catch (e) { return false; } })(),
       libVersion: (() => { try { return kisLib ? kisLib.LIB_VERSION : null; } catch (e) { return null; } })(),
       groups: {},
@@ -2805,18 +2807,20 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 503, body, 'no-store');
     }
 
+    /* 순매수 금액 단위 — 11/24 14:56 실측으로 확정: frgn_ntby_tr_pbmn 218,885 ↔ 삼성전자
+       1,143,000주 × 191,500원 = 218,884,500,000원 → 응답 값의 단위는 **백만원**.
+       그래서 억 환산은 raw / 100 이다. */
+    const SUPPLY_VALUE_UNIT = '백만원';
+    const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
     const trimmed = (r) => ({
-      ok: r.ok, role: r.role, count: r.count,
+      ok: r.ok, role: r.role, count: r.count, valueUnit: SUPPLY_VALUE_UNIT,
       rawKeys: wantRaw ? r.rawKeys : undefined,
       rawFirstRow: wantRaw ? r.rawFirstRow : undefined,
       top: r.rows.slice(0, top).map((x) => ({
         rank: x.rank, code: x.code, name: x.name, price: x.price, changePct: x.changePct,
-        tradeValueRaw: x.tradeValueRaw, netQty: x.netQty, netValueRaw: x.netValueRaw,
-        // 단위 확인 전 임시 환산 — 원/백만원 가정을 나란히 두어 실측으로 확정한다
-        netValueEokIfWon: x.netValueRaw == null ? null : Math.round((x.netValueRaw / 1e8) * 10) / 10,
-        netValueEokIfMillion: x.netValueRaw == null ? null : Math.round((x.netValueRaw / 1e2) * 10) / 10,
+        netQty: x.netQty, netValueRaw: x.netValueRaw, netValueEok: toEok(x.netValueRaw),
       })),
-      rows: wantRaw ? r.rows : undefined,
+      rows: wantRaw ? r.rows.map((x) => ({ ...x, netValueEok: toEok(x.netValueRaw) })) : undefined,
       fetchedAt: r.fetchedAt,
     });
 
