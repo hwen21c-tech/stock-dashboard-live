@@ -329,11 +329,14 @@ const SUPPLY_TTL_MS = 60000;
  *    테마·유니버스 종목 풀(knownMap)과 KIS 장중 가집계(60초 캐시)를 그대로 쓴다.
  *  · 트랙 ①  🔥 테마주도주 (신정재·만쥬 결)
  *      당일 거래대금 300억↑ · 등락률 +3%↑ · 윗꼬리 5% 이내(상한가 포함) · ETF·ETN·스팩·우선주 제외
- *      정렬: 등락률 ↓ → 거래대금 ↓
+ *      정렬: 테마 강도 ↓(테마 1위 > 2~3위 > 그 외, 상한가는 한 단계 가점) → 상한가·등락률 ↓ → 거래대금 ↓
+ *      후보 풀: 상위 주도 테마 10개의 **전체 구성종목**(네이버 테마 상세, 5분 캐시) + 52주 신고가·상한가·NXT 랭킹
  *  · 트랙 ②  💰 수급주도주 (침착해·홍인기 결)
  *      KIS 가집계 외인·기관 양매수, 또는 한쪽 300억↑ & 반대쪽 매도 20% 이내
  *      + 거래대금 500억↑ (또는 등락률 -1% 이상 방어 + 거래대금 100억↑)
  *      정렬: 외인+기관 순매수 합산 ↓
+ *      표시: 외인·기관 **양쪽 금액**을 모두 적는다 — 반대쪽은 KIS 순매도 상위 목록에서 교차 조회해
+ *            매도 금액까지 채우고, 어느 목록에도 없어 확인할 수 없을 때만 '미확인'으로 남긴다(임의 숫자 금지).
  *  · 기준을 채우려 임의로 완화하지 않는다(사용자 철칙) — 충족 종목이 없으면 빈 배열과 사유를 남긴다.
  *  · 임계값 중 '한쪽 강한 매수(300억)·반대쪽 매도 20%·방어 100억'은 이 카드가 처음 만들 때
  *    정한 값이다. 바꿀 때는 사용자 확인을 받고 여기와 CP_RULES 를 함께 고친다.
@@ -348,6 +351,12 @@ const CP_SUPPLY_DEFENSE_MIN_VALUE_EOK = 100;
 const CP_SUPPLY_STRONG_EOK = 300;
 const CP_SUPPLY_WEAK_SELL_RATIO = 0.2;
 const CP_SUPPLY_CACHE_KEY = 'closing_supply:v1';
+/* 테마 후보 풀 확장 — 상위 주도 테마 10개의 전체 구성종목을 본다.
+ *  테마 랭킹·상세는 자주 바뀌지 않으니 5분 캐시한다(Vercel 콜드스타트에서도 캐시가 없으면 한 번만 받는다). */
+const CP_POOL_THEMES = 10;
+const CP_POOL_CACHE_KEY = 'closing_theme_pool:v1';
+const CP_POOL_TTL_MS = 5 * 60 * 1000;
+const CP_POOL_MAX_POLL = 60; // 풀에서 조건을 통과한 종목의 시고저 보강 조회 상한(네이버 polling 1회)
 const CP_THEME_HINT = '15:18~20 저점지지 확인 · 갭상승 시 분할익절';
 const CP_SUPPLY_HINT = '오후 수급·프로그램 방어 확인 · 익일 10시 기관 대응';
 
@@ -359,7 +368,7 @@ const CP_RULES = {
     'KIS 가집계 외인·기관 양매수(또는 한쪽 ' + CP_SUPPLY_STRONG_EOK + '억↑ + 반대쪽 매도 ' +
     Math.round(CP_SUPPLY_WEAK_SELL_RATIO * 100) + '% 이내) · 거래대금 ' + CP_SUPPLY_MIN_VALUE_EOK +
     '억↑(또는 ' + CP_SUPPLY_DEFENSE_PCT + '% 이상 방어 + ' + CP_SUPPLY_DEFENSE_MIN_VALUE_EOK + '억↑)',
-  themeSort: '등락률 ↓ → 거래대금 ↓',
+  themeSort: '테마 강도 ↓(테마 1위 > 2~3위 > 그 외 · 상한가 가점) → 상한가·등락률 ↓ → 거래대금 ↓',
   supplySort: '외인+기관 순매수 합산 ↓',
   maxRows: CP_MAX_ROWS,
 };
@@ -3148,7 +3157,7 @@ async function fetchClosingSupplyRank(limit) {
   const p0 = kstParts(new Date());
   const out = {
     ok: false, confirmed: false, source: 'kis', rows: [], asOfLabel: '',
-    basisDate: null, errors: [], fallbackReason: null,
+    basisDate: null, errors: [], fallbackReason: null, sides: {},
   };
   const put = (v) => { supplyCache.set(CP_SUPPLY_CACHE_KEY, { at: Date.now(), value: v }); return v; };
   const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
@@ -3190,25 +3199,43 @@ async function fetchClosingSupplyRank(limit) {
     return put(out);
   };
 
-  const settled = await Promise.allSettled([
-    kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode: '1', sortCode: '0' }),
-    kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode: '1', sortCode: '0' }),
-  ]);
+  /* 외국인·기관계 각각 **순매수 상위와 순매도 상위를 모두** 받는다(4회) —
+   *  한쪽 매수 상위에만 잡힌 종목의 반대쪽(매도) 금액을 다른 목록에서 교차 조회해 채우기 위해서다.
+   *  (예: 기관 +1,184억 매수지만 외국인은 순매도 상위 → 외국인 매도액을 그대로 적는다. 임의 0 금지) */
+  const LIST_CALLS = [
+    { key: 'foreignBuy', side: 'foreign', sortCode: '0' },
+    { key: 'foreignSell', side: 'foreign', sortCode: '1' },
+    { key: 'organBuy', side: 'organ', sortCode: '0' },
+    { key: 'organSell', side: 'organ', sortCode: '1' },
+  ];
+  const settled = await Promise.allSettled(
+    LIST_CALLS.map((c) =>
+      kisLib.fetchForeignInstitutionTotal({
+        etcClsCode: c.side === 'foreign' ? '1' : '2',
+        divCode: '1',
+        sortCode: c.sortCode,
+      }),
+    ),
+  );
   const got = {};
+  const sideCounts = {};
   settled.forEach((s, i) => {
-    const key = i === 0 ? 'foreign' : 'organ';
+    const c = LIST_CALLS[i];
     if (s.status === 'fulfilled') {
-      got[key] = s.value;
+      got[c.key] = s.value;
+      sideCounts[c.key] = (s.value.rows || []).length;
       return;
     }
-    got[key] = null;
+    got[c.key] = null;
+    sideCounts[c.key] = 0;
     out.errors.push(
-      (key === 'foreign' ? '외국인' : '기관계') + ': ' + String((s.reason && s.reason.message) || s.reason),
+      (c.key === 'foreignBuy' ? '외국인 순매수' : c.key === 'foreignSell' ? '외국인 순매도' : c.key === 'organBuy' ? '기관 순매수' : '기관 순매도') +
+        ': ' + String((s.reason && s.reason.message) || s.reason),
     );
   });
 
   const merged = new Map();
-  const mergeRows = (r, side) => {
+  const mergeRows = (r, side, negate) => {
     if (!r || !r.rows || !r.rows.length) return;
     r.rows.forEach((x) => {
       if (!x || !x.code) return;
@@ -3216,16 +3243,23 @@ async function fetchClosingSupplyRank(limit) {
         code: x.code, name: x.name, price: x.price, changePct: x.changePct,
         foreignEok: null, organEok: null,
       };
-      const eok = toEok(x.netValueRaw);
-      if (side === 'foreign') cur.foreignEok = eok; else cur.organEok = eok;
+      let eok = toEok(x.netValueRaw);
+      /* 순매도 상위 목록은 매도액이므로 부호를 음수로 맞춘다(응답이 이미 음수면 그대로). */
+      if (eok !== null && negate && eok > 0) eok = -eok;
+      if (side === 'foreign') {
+        /* 같은 쪽 값이 이미 있으면 순매수 목록 값을 우선한다(한 종목은 둘 중 한 목록에만 잡힌다) */
+        if (cur.foreignEok === null) cur.foreignEok = eok;
+      } else if (cur.organEok === null) cur.organEok = eok;
       if (cur.name == null) cur.name = x.name;
       if (cur.price == null) cur.price = x.price;
       if (cur.changePct == null) cur.changePct = x.changePct;
       merged.set(x.code, cur);
     });
   };
-  mergeRows(got.foreign, 'foreign');
-  mergeRows(got.organ, 'organ');
+  mergeRows(got.foreignBuy, 'foreign', false);
+  mergeRows(got.foreignSell, 'foreign', true);
+  mergeRows(got.organBuy, 'organ', false);
+  mergeRows(got.organSell, 'organ', true);
 
   const rows = [...merged.values()]
     .map((x) => ({ ...x, totalEok: round1((x.foreignEok || 0) + (x.organEok || 0)) }))
@@ -3233,7 +3267,7 @@ async function fetchClosingSupplyRank(limit) {
     .slice(0, Math.max(limit, CP_MAX_ROWS));
 
   const anyNonZero = rows.some((x) => (x.foreignEok || 0) !== 0 || (x.organEok || 0) !== 0);
-  const bothOk = !!(got.foreign && got.foreign.ok && got.organ && got.organ.ok);
+  const bothOk = !!(got.foreignBuy && got.foreignBuy.ok && got.organBuy && got.organBuy.ok);
   if (!bothOk || !rows.length || !anyNonZero) {
     return onFail(!bothOk ? 'kis_api_error' : 'kis_empty_or_zero');
   }
@@ -3241,6 +3275,7 @@ async function fetchClosingSupplyRank(limit) {
   out.ok = true;
   out.confirmed = false;
   out.rows = rows;
+  out.sides = sideCounts;
   /* 15:30 이 지나면 KIS 가집계는 그 시점 값으로 멈춘다 → 요청 시각이 아니라 마감 시각으로 적는다 */
   out.asOfLabel = p0.minutes >= AFTER_START
     ? '15:30 마감 기준'
@@ -3248,9 +3283,81 @@ async function fetchClosingSupplyRank(limit) {
   return put(out);
 }
 
-/** 🔥 테마주도주 후보 풀 — 이 응답에서 이미 받아 둔 테마·유니버스 종목에서 모은다.
- *  같은 종목이 여러 테마에 있으면 통합 거래대금이 큰 쪽(그 테마 이름)을 남긴다. */
-function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up }) {
+/** 상위 주도 테마(최대 CP_POOL_THEMES개)의 **전체 구성종목** — 종가베팅 테마 후보 풀(5분 캐시).
+ *  · 1번 탭 테마맵과 같은 랭킹 규칙(등락률 ↓ → 상승종목 비율 ↓ → 구성종목 수 ↓)으로 상위 테마를 고르고,
+ *    테마 상세(구성종목 최대 100)를 통째로 받는다 — 카드에 그리는 4종목만 보면 5번째 이하 대장주
+ *    (11/24 유진로봇 +20.38% · 375억)이 후보에서 빠졌다.
+ *  · 값은 네이버가 준 그대로만 쓴다. 실패한 테마는 빼고 errors 에 남긴다(추정 금지).
+ *  · 랭킹·상세는 5분 캐시 — 30초 폴링마다 네이버를 10번씩 때리지 않는다.
+ */
+async function fetchClosingThemeMembers() {
+  const hit = supplyCache.get(CP_POOL_CACHE_KEY);
+  if (hit && Date.now() - hit.at < CP_POOL_TTL_MS) return hit.value;
+
+  const out = {
+    ok: false, rows: [], themeCount: 0, errors: [], fetchedAt: new Date().toISOString(),
+  };
+  const put = (v) => { supplyCache.set(CP_POOL_CACHE_KEY, { at: Date.now(), value: v }); return v; };
+
+  let groups = [];
+  try {
+    const data = await fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
+      headers: NAVER_HEADERS,
+      timeout: THEME_TIMEOUT,
+    });
+    groups = (data && data.groups) || [];
+    if (!groups.length) throw new Error('테마 랭킹 목록이 비었습니다');
+  } catch (e) {
+    out.errors.push('테마 풀 랭킹: ' + String((e && e.message) || e));
+    return put(out);
+  }
+
+  const ranks = groups
+    .map((g) => {
+      const total = parseNum(g.totalCount) || 0;
+      const rise = parseNum(g.riseCount) || 0;
+      return {
+        no: parseNum(g.no),
+        name: String(g.name || '').replace(/\s+/g, ' ').trim(),
+        changeRate: parseNum(g.changeRate),
+        totalCount: total,
+        riseRatio: total ? (rise / total) * 100 : 0,
+      };
+    })
+    .filter((g) => g.no && g.name && !THEME_EXCLUDE_RE.test(g.name))
+    .filter((g) => typeof g.changeRate === 'number' && g.totalCount >= 3)
+    .sort((a, b) => b.changeRate - a.changeRate || b.riseRatio - a.riseRatio || b.totalCount - a.totalCount)
+    .slice(0, CP_POOL_THEMES);
+
+  const settled = await Promise.allSettled(ranks.map((g) => fetchThemeStocks(g.no)));
+  ranks.forEach((g, i) => {
+    const r = settled[i];
+    if (r.status !== 'fulfilled' || !r.value.length) {
+      out.errors.push('테마 풀 ' + g.name + ': ' + String((r.reason && r.reason.message) || '구성종목 없음'));
+      return;
+    }
+    out.themeCount += 1;
+    r.value.forEach((s) => {
+      out.rows.push({
+        code: s.code,
+        name: s.name,
+        price: s.price,
+        changePct: s.changePct,
+        value: s.value,
+        upperLimit: Boolean(s.upperLimit),
+        valueBasis: s.valueBasis || null,
+        themeName: g.name,
+        themeRank: i + 1,
+      });
+    });
+  });
+  out.ok = out.rows.length > 0;
+  return put(out);
+}
+
+/** 🔥 테마주도주 후보 풀 — 이 응답에서 이미 받아 둔 테마·유니버스 종목 + 상위 주도 테마 전체 구성종목.
+ *  같은 종목이 여러 테마에 있으면 **더 강한 테마(랭킹 작은 쪽)** 를 남기고, 거래대금은 큰 값을 쓴다. */
+function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up, members }) {
   const pool = new Map();
   const push = (code, name, themeName, themeRank, base) => {
     const c = String(code || '');
@@ -3274,7 +3381,8 @@ function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up }) {
       pool.set(c, rec);
       return;
     }
-    if (!prev.themeName && rec.themeName) {
+    /* 테마 이름·순위는 더 강한(작은 순위) 테마로 바꾸되, 테마가 없던 자리(신고가·상한가)는 채워만 준다 */
+    if (rec.themeName && (prev.themeRank === null || (rec.themeRank !== null && rec.themeRank < prev.themeRank))) {
       prev.themeName = rec.themeName;
       prev.themeRank = rec.themeRank;
     }
@@ -3283,14 +3391,17 @@ function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up }) {
       if (rec.price !== null) prev.price = rec.price;
       if (rec.changePct !== null) prev.changePct = rec.changePct;
       if (rec.high !== null) prev.high = rec.high;
-      if (rec.upperLimit) prev.upperLimit = true;
       if (rec.valueBasis) prev.valueBasis = rec.valueBasis;
     }
+    if (rec.upperLimit) prev.upperLimit = true;
+    if (prev.name === null && rec.name) prev.name = rec.name;
   };
 
   (themes || []).forEach((t) => {
     (t.stocks || []).forEach((s) => push(s.code, s.name, t.name, t.rank, s));
   });
+  /* 확장 풀 — 상위 주도 테마 10개의 전체 구성종목(카드 노출 4종목 밖 포함) */
+  (members || []).forEach((m) => push(m.code, m.name, m.themeName, m.themeRank, m));
   const h = h52 || {};
   [].concat(h.byPct || [], h.byValue || []).forEach((x) => push(x.code, x.name, '52주 신고가', null, x));
   const u = up || {};
@@ -3328,16 +3439,47 @@ async function buildClosingPicks(ctx) {
   };
 
   /* ---------------- 🔥 트랙 1: 테마주도주 ---------------- */
-  const pool = cpThemePool(ctx || {});
-  /* 시세가 비어 있는 후보만 추가 조회 — knownMap 에 통합 시세가 있으면 네이버를 다시 때리지 않는다 */
+  /* 상위 주도 테마 10개의 전체 구성종목(5분 캐시)을 풀에 합친다.
+   *  실패해도 카드 노출 4종목·52주·상한가·NXT 풀만으로 계산한다(빈 카드보다 좁은 풀이 낫다). */
+  let memberPool = { rows: [], themeCount: 0, errors: [] };
+  try {
+    memberPool = await (ctx && ctx.membersPromise ? ctx.membersPromise : fetchClosingThemeMembers());
+    if (memberPool.errors && memberPool.errors.length) out.errors.push(...memberPool.errors);
+  } catch (e) {
+    out.errors.push('테마 풀 확장: ' + String((e && e.message) || e));
+  }
+  /* 확장 풀의 테마 순위는 **1번 탭 테마맵의 순위**(사용자가 카드에서 보는 '테마 N위')를 그대로 쓴다.
+   *  네이버 테마 랭킹 순서와 테마맵 순위는 기준이 달라(테마맵 = 대금 300억↑ 평균 등락률) 번호를 섞으면
+   *  같은 종목이 두 목록에서 다른 순위로 계산된다 → 테마맵에 없는 테마는 순위 없음(null)으로 둔다. */
+  const normThemeName = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+  const themeRankByName = new Map();
+  (ctx && ctx.themes ? ctx.themes : []).forEach((t) => {
+    const k = normThemeName(t && t.name);
+    if (k && !themeRankByName.has(k)) themeRankByName.set(k, t.rank || null);
+  });
+  const memberRows = (memberPool.rows || []).map((m) => ({
+    ...m,
+    themeRank: themeRankByName.get(normThemeName(m.themeName)) || null,
+  }));
+  const pool = cpThemePool({ ...(ctx || {}), members: memberRows });
+  out.themePool = {
+    themes: memberPool.themeCount || 0,
+    members: (memberPool.rows || []).length,
+    source: 'naver-theme top' + CP_POOL_THEMES + ' 전체 구성종목(5분 캐시)',
+  };
+  /* 시세가 비어 있는 후보만 추가 조회 — knownMap 에 통합 시세가 있으면 네이버를 다시 때리지 않는다.
+   *  · 대금·등락률이 이미 기준 미달인 종목은 조회하지 않는다(확장 풀이라 대상이 많다).
+   *  · 윗꼬리 계산에 필요한 고가(high)를 모르는 종목은 조회한다 — 1회 polling(최대 60종목)으로 끝낸다. */
   const needQuote = [...pool.values()]
     .filter((r) => {
-      if (r.price !== null && r.changePct !== null && r.value !== null && r.high !== null) return false;
-      if (r.changePct !== null && r.changePct < CP_THEME_MIN_PCT) return false;
-      return true;
+      if (r.changePct === null) return false;
+      if (r.changePct + 1e-9 < CP_THEME_MIN_PCT) return false;
+      if (r.value !== null && r.value / 1e8 + 1e-9 < CP_THEME_MIN_VALUE_EOK) return false;
+      return r.price === null || r.value === null || r.high === null;
     })
+    .sort((a, b) => (b.value || 0) - (a.value || 0))
     .map((r) => r.code)
-    .slice(0, 16);
+    .slice(0, CP_POOL_MAX_POLL);
   if (needQuote.length) {
     try {
       const extra = await pollQuotes(needQuote);
@@ -3361,20 +3503,42 @@ async function buildClosingPicks(ctx) {
   }
 
   const themePassed = [];
+  /* 탈락 사유 카운터 — "후보가 왜 비었나"를 카드 밖(응답)에서 확인할 수 있게 남긴다. */
+  const drop = { noQuote: 0, fund: 0, value: 0, pct: 0, tail: 0 };
   pool.forEach((r) => {
-    if (!r.code || r.price === null || r.changePct === null || r.value === null) return;
+    if (!r.code || r.price === null || r.changePct === null || r.value === null) { drop.noQuote += 1; return; }
     const nm = String(r.name || '');
-    if (FUND_NAME_RE.test(nm)) return;
-    if (isPreferredStock({ code: r.code, name: nm })) return;
+    if (FUND_NAME_RE.test(nm)) { drop.fund += 1; return; }
+    if (isPreferredStock({ code: r.code, name: nm })) { drop.fund += 1; return; }
     const valueEok = r.value / 1e8;
-    if (valueEok + 1e-9 < CP_THEME_MIN_VALUE_EOK) return;
-    if (r.changePct + 1e-9 < CP_THEME_MIN_PCT) return;
+    if (valueEok + 1e-9 < CP_THEME_MIN_VALUE_EOK) { drop.value += 1; return; }
+    if (r.changePct + 1e-9 < CP_THEME_MIN_PCT) { drop.pct += 1; return; }
     const tail = r.high && r.price && r.high > 0 ? ((r.high - r.price) / r.high) * 100 : null;
-    if (tail !== null && tail > CP_THEME_MAX_UPPER_PCT + 1e-9 && !r.upperLimit) return;
+    if (tail !== null && tail > CP_THEME_MAX_UPPER_PCT + 1e-9 && !r.upperLimit) { drop.tail += 1; return; }
     themePassed.push({ ...r, valueEok, tail });
   });
-  themePassed.sort((a, b) => b.changePct - a.changePct || b.valueEok - a.valueEok);
+  out.themeDrop = drop;
+  out.themePoolSize = pool.size;
+  /* 테마 강도 — 테마 랭킹 1위 = +3, 2~3위 = +2, 4~10위 = +1, 테마 없음 = 0.
+   *  상한가 종목은 한 단계 가점한다(상한가 자체가 가장 강한 주도 신호이므로).
+   *  → 11/24처럼 테마 1위 대장주(휴림로봇)가 등락률 3위여도 맨 위로 온다. */
+  const strengthOf = (r) => {
+    const tr = numOrNull(r.themeRank);
+    let s = tr === null ? 0 : tr === 1 ? 3 : tr <= 3 ? 2 : tr <= CP_POOL_THEMES ? 1 : 0;
+    if (r.upperLimit) s += 1;
+    return s;
+  };
+  themePassed.forEach((r) => { r.strength = strengthOf(r); });
+  themePassed.sort(
+    (a, b) =>
+      b.strength - a.strength ||
+      (b.upperLimit ? 1 : 0) - (a.upperLimit ? 1 : 0) ||
+      b.changePct - a.changePct ||
+      b.valueEok - a.valueEok ||
+      (a.themeRank || 99) - (b.themeRank || 99),
+  );
   out.themeCandidates = themePassed.length;
+  out.themeSortMode = 'theme-strength';
   out.themeTrack = themePassed.slice(0, CP_MAX_ROWS).map((r, i) => ({
     rank: i + 1,
     code: r.code,
@@ -3386,6 +3550,7 @@ async function buildClosingPicks(ctx) {
     upperLimit: Boolean(r.upperLimit),
     themeName: r.themeName || null,
     themeRank: r.themeRank || null,
+    themeStrength: r.strength,
     valueBasis: r.valueBasis || null,
     ruleHint: CP_THEME_HINT,
   }));
@@ -3437,6 +3602,13 @@ async function buildClosingPicks(ctx) {
     if (price === null) return;
     const nm = String(r.name || q.name || '');
     if (FUND_NAME_RE.test(nm) || isPreferredStock({ code: r.code, name: nm })) return;
+    /* 표기 — 외인·기관 양쪽을 모두 적는다. 반대쪽을 확인하지 못한 경우만 '미확인'으로 남긴다. */
+    const totalKnown = f !== null && o !== null;
+    const supplyKind = bothBuy
+      ? '쌍끌이'
+      : other < 0
+        ? '한쪽 매수(반대 매도)'
+        : '한쪽 매수·반대 미확인';
     supplyPassed.push({
       code: r.code,
       name: nm || null,
@@ -3445,8 +3617,11 @@ async function buildClosingPicks(ctx) {
       valueEok,
       foreignEok: f,
       organEok: o,
-      totalEok: typeof r.totalEok === 'number' ? r.totalEok : round2(fs + os),
-      supplyKind: bothBuy ? '쌍끌이' : '한쪽 매수',
+      foreignSide: f === null ? 'unknown' : f > 0 ? 'buy' : f < 0 ? 'sell' : 'flat',
+      organSide: o === null ? 'unknown' : o > 0 ? 'buy' : o < 0 ? 'sell' : 'flat',
+      totalEok: round2(fs + os),
+      totalKnown,
+      supplyKind,
       /* 카드마다 어느 집계의 수급인지 적는다 — 전일 확정치가 오늘 시세 옆에 앉을 때
        * 기준을 카드에서 바로 알 수 있어야 한다. */
       basis: sup.confirmed ? (sup.asOfLabel || '확정 기준') : 'KIS 가집계',
@@ -3455,6 +3630,7 @@ async function buildClosingPicks(ctx) {
   });
   supplyPassed.sort((a, b) => (b.totalEok || 0) - (a.totalEok || 0));
   out.supplyCandidates = supplyPassed.length;
+  out.supplySides = sup.sides || null;
   out.supplyTrack = supplyPassed.slice(0, CP_MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r }));
 
   /* ---------------- 기준 시각 표기 ---------------- */
@@ -3754,6 +3930,11 @@ module.exports = async function handler(req, res) {
   /* 💸 5분 거래대금 버킷 읽기는 여기서 먼저 띄워 둔다 — 아래 네이버 수집(수 초)과 병렬로 끝나
    *    응답 시간에 거의 보태지 않는다. 실패하면 null(기록 없음과 같은 취급). */
   const tvDocPromise = tvReadDoc();
+  /* 🌙 종가베팅 테마 후보 풀(상위 주도 테마 10개 전체 구성종목)도 미리 띄워 둔다 —
+   *  아래 네이버 수집(수 초)과 병렬로 끝나 10초 함수 예산에 보태지 않는다(5분 캐시). */
+  const cpMembersPromise = fetchClosingThemeMembers().catch((e) => ({
+    ok: false, rows: [], themeCount: 0, errors: ['테마 풀 확장: ' + String((e && e.message) || e)],
+  }));
   const premarket = overSession.phase === '프리마켓';
   /* 08:50~09:00(정규장 개장 전)에도 네이버 테마 랭킹은 아직 오늘 값을 내지 않는다 →
    *  프리마켓과 같은 기준(직전 거래일 강세 Top 8 유지 + 오늘 체결 덧씌우기)으로 그린다. */
@@ -3971,7 +4152,7 @@ module.exports = async function handler(req, res) {
    *   여기서 실패해도 본 응답(테마·전략·수급·시간외)은 그대로 내려간다. */
   let closingPicks = null;
   try {
-    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session });
+    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session, membersPromise: cpMembersPromise });
   } catch (e) {
     closingPicks = {
       ok: false, themeTrack: [], supplyTrack: [],
