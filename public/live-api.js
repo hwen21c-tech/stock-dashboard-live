@@ -3303,7 +3303,7 @@
     return out;
   }
 
-  function slHongCardsHtml(cards) {
+  function slHongCardsHtml(cards, afterHours) {
     if (!cards || !cards.length) {
       return '<div style="font-size:10.5px;color:#94a3b8;padding:3px 2px;">홍인기 카드가 없습니다(재스캔 JSON 미포함).</div>';
     }
@@ -3312,19 +3312,20 @@
         return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신(폴링 대기)</div>', c.name, c.code, 'hong');
       }
       var L = c.live;
-      var stateColor = L.stateKey === 'tp10' ? '#34d399' : L.stateKey === 'tp5' ? '#6ee7b7' : L.stateKey === 'above' ? '#e2e8f0' : L.stateKey === 'dip' ? '#7dd3fc' : '#fca5a5';
+      var stateColor = afterHours ? '#93c5fd' : L.stateKey === 'tp10' ? '#34d399' : L.stateKey === 'tp5' ? '#6ee7b7' : L.stateKey === 'above' ? '#e2e8f0' : L.stateKey === 'dip' ? '#7dd3fc' : '#fca5a5';
+      var stateTxt = afterHours ? '🌙 시간외 체결(판정 아님)' : L.stateLabel;
       var ladder = (L.ladder || []).map(function (l) {
         return l.step + (l.hit === true ? ' ✅' : '') + ' ' + l.label;
       }).join(' · ');
       var right =
-        '<b style="color:' + stateColor + ';">' + esc(L.stateLabel) + '</b>' +
+        '<b style="color:' + stateColor + ';">' + esc(stateTxt) + '</b>' +
         ' · 기준선 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + esc(slPct(L.vsBasePct)) + '</b>' +
         (isNum(L.gapPct) ? ' · 시초 ' + esc(slPct(L.gapPct)) : '') +
         '<br>시 ' + slWon(L.open) + ' · 고 ' + slWon(L.high) + ' · 저 ' + slWon(L.low) + ' · 현재 ' + slWon(L.price) +
         '<br>' + esc(ladder) +
         '<br>익절 +5% ' + slWon(L.tp5) + ' / +10% ' + slWon(L.tp10) +
         ' · 손절 −3% ' + slWon(L.stopLine) +
-        (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
+        (!afterHours && L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '')
       ;
       var dayTag = c.dayLabel ? '[기준봉 → 오늘 ' + c.dayLabel + '] ' : c.kind ? '[' + c.kind + '] ' : '';
       return slRow(slHeadRow(dayTag + c.name, c.code, L.price, L.vsBasePct, right), c.name, c.code, 'hong', L.price, L.vsBasePct);
@@ -3461,11 +3462,14 @@
         (hong.basisStale
           ? '<br><span style="color:#fbbf24;font-weight:800;">⚠️ 기준일이 오늘의 전일이 아닙니다 — 카드의 기준선(전일 종가)이 실제 전일 종가와 다를 수 있어 재스캔이 필요합니다.</span>'
           : '') +
+        (sl.afterHours
+          ? '<br><span style="color:#7dd3fc;font-weight:800;">🌙 정규장 마감 후 — 현재가는 NXT 시간외 체결가입니다. −3% 손절·+5%/+10% 익절은 <u>정규장 종가</u>로 판정하고, 이 패널의 위치는 참고값입니다.</span>'
+          : '') +
         '</div>' +
       '<div style="font-size:11px;font-weight:800;color:#fca5a5;margin:6px 0 4px;">🔥 당일 D+0 포착 — 등락률 +10%↑ · 120일 전고점 첫 돌파 · 대금 상위</div>' +
       slHongFreshHtml(hong.fresh, hong.near) +
       '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 카드 · 기준선 대비 실시간 위치 · 5단 타점</div>' +
-      slHongCardsHtml(hong.cards) +
+      slHongCardsHtml(hong.cards, sl.afterHours) +
       '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">※ 전고점은 일봉 실측(당일 봉 제외)이고, 5단 타점의 ✅는 1차 시초가 확인 · 2차 전일 종가 터치 · 3차 기준선 아래 · 4~5차 5일선 이탈 여부입니다. 투자 권유가 아닙니다.</div>'
     );
 
@@ -4396,6 +4400,25 @@
     if (nq && fnum(nq.price) !== null) {
       var res = manjuMoodWithFutures(nq.price, fnum(nq.changePct), nq.live ? '한투 KIS 실시간(CM)' : '한투 KIS 야간선물 마감값');
       if (res) applied += manjuMoodDom(res.closeScore, res.nightScore, nq.price, fnum(nq.changePct), nq.live);
+    }
+    // 애프터마켓 탭 요약의 '선물·글로벌' 문장 — 옛날 확정치 대신 지금 실측값으로
+    var afEl = document.getElementById('afFutText');
+    if (afEl) {
+      var seg = [];
+      var dq = fk.day && fk.day.ok ? fk.day : null;
+      var nq2 = fk.night && fk.night.ok ? fk.night : null;
+      function seg1(name, q) {
+        if (!q || fnum(q.price) === null) return;
+        var p = fnum(q.changePct);
+        seg.push(name + ' ' + q.price.toFixed(2) + (p === null ? '' : ' (' + (p > 0 ? '+' : '') + p.toFixed(2) + '%)') + (q.live ? ' 실시간' : ' ' + (q.badge || '마감')));
+      }
+      seg1('주간선물', dq);
+      seg1('야간선물', nq2);
+      if (seg.length) {
+        var txt = seg.join(' · ');
+        if (afEl.textContent !== txt) afEl.textContent = txt;
+        applied += 1;
+      }
     }
     return applied;
   }
