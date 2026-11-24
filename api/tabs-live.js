@@ -3502,7 +3502,12 @@ async function fetchIndexGate() {
     const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
     const rows = (data && data.datas) || [];
     rows.forEach((d) => {
-      const pct = numOrNull(String(d.fluctuationsRatio === undefined ? '' : d.fluctuationsRatio).replace(/,/g, ''));
+      const rawPct = String(
+        d.fluctuationsRatio === undefined || d.fluctuationsRatio === null ? '' : d.fluctuationsRatio,
+      )
+        .replace(/[%,\s]/g, '');
+      const parsed = rawPct === '' ? NaN : Number(rawPct);
+      const pct = isFinite(parsed) ? parsed : null;
       if (d.itemCode === 'KOSPI' || d.symbolCode === 'KOSPI') value.kospiPct = pct;
       if (d.itemCode === 'KOSDAQ' || d.symbolCode === 'KOSDAQ') value.kosdaqPct = pct;
       if (d.localTradedAt) value.asOf = d.localTradedAt;
@@ -3720,11 +3725,16 @@ async function buildChimchakhae(ctx) {
 
     /* 선정 사유 — 프로그램 방향·지속성·규모 → 외인·기관 → 지수 대비 → 경고 */
     const why = [];
+    const deltaEok =
+      hasProg && typeof trend.deltaValue === 'number' ? Math.round((trend.deltaValue / 1e8) * 10) / 10 : null;
+    const span = trend.baseLabel || '최근';
     if (state === '순매수') {
-      const when = trend.baseLabel ? trend.baseLabel : '최근';
-      const how =
-        trend.kind === 'flip' ? '순매수 전환' : trend.kind === 'up' ? '순매수 지속·증가' : '순매수 유지';
-      why.push(when + ' 프로그램 ' + chimSignedEok(programEok) + ' ' + how);
+      if (trend.kind === 'flip') {
+        why.push('오전 매도 → ' + span + ' ' + chimSignedEok(deltaEok) + ' 순매수 전환(당일 누적 ' + chimSignedEok(programEok) + ')');
+      } else {
+        why.push('당일 프로그램 ' + chimSignedEok(programEok) + ' 순매수 · ' + span + ' ' + chimSignedEok(deltaEok) +
+          (trend.kind === 'up' ? ' 유입' : ' (증가 둔화)'));
+      }
     } else if (state === '소폭매도(방어)') {
       why.push('프로그램 ' + chimSignedEok(programEok) + ' 소폭 순매도 · 기관·외인 방어');
     } else {
