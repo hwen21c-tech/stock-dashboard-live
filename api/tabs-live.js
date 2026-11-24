@@ -2666,8 +2666,11 @@ const STRAT_CARD_CODES = strategyCardCodes();
 /* packStrat 이 참조하는 '이번 호출의 시세 map' — buildStrategyLive 진입 때 채우고 끝나면 비운다 */
 let STRAT_QUOTE_MAP = null;
 
-/** 장중 실시간 전략 판정을 통으로 만든다. */
-async function buildStrategyLive(map) {
+/** 장중 실시간 전략 판정을 통으로 만든다.
+ *  phase: sessionOf() 의 phase — '장마감'이면 현재가가 NXT 시간외 체결가라
+ *  기준선(정규장 종가) 대비 손절/익절 '판정'을 켜면 안 된다(11/24 실측: 삼현 63,000 기준선 vs 60,300 시간외 → 전 카드 이탈로 오인).
+ */
+async function buildStrategyLive(map, phase) {
   const errors = [];
   const [upR, valR] = await Promise.allSettled([
     fetchKrxRank('up', KRX_PCT_TOP),
@@ -2804,8 +2807,10 @@ async function buildStrategyLive(map) {
       basisDate,
       basisLabel: (data && data.basisLabel) || null,
       dayNo,
-      // 기준일이 오늘이 아니면 '전일 종가 기준선'이 실제 전일 종가와 다르다 — 화면에 그대로 알린다
-      basisStale: dayNo !== null && dayNo !== 1,
+      /* 기준일이 '전일'보다 더 과거일 때만 기준선이 실제 전일 종가와 어긋난다.
+       *  dayNo 0 = 기준일이 오늘(정규장 마감 후 재스캔) · 1 = 어제(정상).
+       *  예전엔 dayNo!==1 이라 0(오늘 마감 종가로 갱신된 정상 상태)까지 '재스캔 필요'로 경고했다(11/24). */
+      basisStale: dayNo !== null && dayNo > 1,
       dayLabel:
         dayNo === null
           ? null
@@ -2866,6 +2871,8 @@ async function buildStrategyLive(map) {
   return {
     ok: byPct.length + byVal.length > 0,
     today,
+    sessionPhase: phase || null,
+    afterHours: phase === '장마감',
     universe: {
       pctTop: byPct.length,
       valueTop: byVal.length,
@@ -4244,16 +4251,18 @@ function kospiFuturesSession(p) {
   };
 }
 
-function futQuoteLabel(q, marketDiv, live, asOfKst) {
+function futQuoteLabel(q, marketDiv, live, asOfKst, inSession) {
   if (!q || q.price === null || q.price === undefined) return '—';
   if (live) return marketDiv === 'CM' ? '18:00~06:00 실시간' : '09:00~15:45 실시간';
+  if (inSession) return marketDiv === 'CM' ? '18:00~06:00 · 체결 대기' : '09:00~15:45 · 체결 대기';
   if (q.lastTradeAt) {
     const d = new Date(q.lastTradeAt);
     const k = new Date(d.getTime() + 9 * 3600 * 1000);
     return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${pad2(k.getUTCHours())}:${pad2(k.getUTCMinutes())} 마감`;
   }
-  /* 체결 시각을 주지 않는 응답 — 값을 읽은 시각을 붙인다(지어내지 않는다) */
-  return `${asOfKst ? asOfKst.slice(0, 5) : ''} 마감 기준`;
+  /* 마지막 체결 시각을 주지 않는 응답 — 그 값을 만든 세션의 마감 시각으로만 적는다.
+     (조회 시각은 툴팁·모달의 '조회 HH:MM:SS KST' 에 그대로 남는다) */
+  return marketDiv === 'CM' ? '06:00 마감' : '15:45 마감';
 }
 
 async function buildFuturesKis(now, wantRaw) {
@@ -4325,7 +4334,11 @@ async function buildFuturesKis(now, wantRaw) {
     const live = Boolean(
       sess.inSession && sess.marketDiv === marketDiv && q.ok && q.hasTrade && (q.price !== null),
     );
-    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live, head.generatedAtKst), asOfKst: head.generatedAtKst });
+    return Object.assign({}, q, {
+      live,
+      badge: futQuoteLabel(q, marketDiv, live, head.generatedAtKst, Boolean(sess.inSession && sess.marketDiv === marketDiv)),
+      asOfKst: head.generatedAtKst,
+    });
   };
 
   head.day = pick(dayR, 'F');
@@ -4894,7 +4907,7 @@ module.exports = async function handler(req, res) {
   /* ---- 장중 전략 실시간 판정 (비중법사 · 홍인기) ---- */
   let strategyLive = null;
   try {
-    strategyLive = await buildStrategyLive(knownMap);
+    strategyLive = await buildStrategyLive(knownMap, session && session.phase);
     sources.push({
       name: 'strategy-live',
       ok: Boolean(strategyLive && strategyLive.ok),
