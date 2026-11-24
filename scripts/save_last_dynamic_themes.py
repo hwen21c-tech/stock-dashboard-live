@@ -45,8 +45,9 @@ TOP_N = 8
 STOCK_TOP = 4
 CANDIDATES = 20
 OUTLIER_ABS_PCT = 100.0   # ±100% 이상은 평균·순위에서 뺀다(신규상장·상한가 첫날 왜곡)
-MIN_LEADER_EOK = 300.0    # 실질 대장 하한(억)
-MIN_FILL_EOK = 100.0      # 대장이 없을 때 쓰는 저유동성 하한(억)
+MIN_LEADER_EOK = 300.0    # 기준주(테마 강도) 하한(억)
+MIN_FILL_EOK = 100.0      # 기준주가 없을 때 쓰는 저유동성 하한(억)
+VALUE_LEADER_MIN_PCT = 3.0  # '실질 거래대금 대장' 최소 상승률(사용자 확정 2026-11-23)
 
 EXCLUDE_RE = re.compile(r"(스팩|SPAC|우선주|ETF|ETN|리츠|인버스|레버리지)", re.I)
 SPAC_RE = re.compile(r"(스팩|SPAC)", re.I)
@@ -84,11 +85,21 @@ def norm_name(s):
 
 
 def pick_stocks(rows, top=STOCK_TOP):
-    """tabs-live.js pickThemeStocks() 와 같은 규칙 — 상승 대장 우선, 하락 종목은 하락 대금 상위로만."""
-    rising = [r for r in rows if isinstance(r.get("changePct"), (int, float)) and r["changePct"] > 0]
-    falling = [r for r in rows if not (isinstance(r.get("changePct"), (int, float)) and r["changePct"] > 0)]
+    """tabs-live.js pickThemeStocks() · lib/theme-roles.js 와 같은 규칙.
+
+    (2026-11-24 전수 점검) 예전 코드는 '상승 종목 중 거래대금 1위'에게 무조건 '실질 거래대금 대장'을 달았고,
+    그 종목이 이미 상승률 대장이면 **두 번째로 대금이 큰 종목**에 그 딱지가 옮겨 붙었다 +
+    +3% 기준·±100% 이상치 제외도 빠져 있었다.
+      · 👑 상승률 대장 = 상승 종목 중 등락률 1위 (동률이면 거래대금)
+      · 💰 실질 거래대금 대장 = **+3% 이상 오른 종목 중** 거래대금 1위 — 둘이 같은 종목이면 👑만 단다.
+      · 하락 종목은 '하락 대금 상위'로만 맨 뒤에 붙인다.
+    """
+    kept = [r for r in (rows or [])
+            if isinstance(r.get("changePct"), (int, float)) and abs(r["changePct"]) < OUTLIER_ABS_PCT]
+    rising = [r for r in kept if r["changePct"] > 0]
+    falling = [r for r in kept if r["changePct"] <= 0]
     by_pct = sorted(rising, key=lambda r: (-r["changePct"], -(r.get("value") or 0)))
-    by_val = sorted(rising, key=lambda r: -(r.get("value") or 0))
+    by_val = sorted(rising, key=lambda r: (-(r.get("value") or 0), -r["changePct"]))
     by_val_fall = sorted(falling, key=lambda r: -(r.get("value") or 0))
     out, seen = [], set()
 
@@ -98,10 +109,11 @@ def pick_stocks(rows, top=STOCK_TOP):
         seen.add(s["code"])
         out.append({**s, "role": role})
 
-    if by_pct:
-        push(by_pct[0], "상승률 대장")
-    if by_val:
-        push(by_val[0], "실질 거래대금 대장")
+    pct_leader = by_pct[0] if by_pct else None
+    value_leader = next((r for r in by_val if r["changePct"] >= VALUE_LEADER_MIN_PCT
+                         and (not pct_leader or r["code"] != pct_leader["code"])), None)
+    push(pct_leader, "상승률 대장")
+    push(value_leader, "실질 거래대금 대장")
     for s in by_pct:
         push(s, "동반 상승")
     for s in by_val:
@@ -112,11 +124,11 @@ def pick_stocks(rows, top=STOCK_TOP):
 
 
 def make_theme(no, name, rows):
-    """테마 1건 — 화면 4종목 + 실질 대장(대금 300억↑ → 100억↑ 저유동성) + 정확한 테마 평균.
+    """테마 1건 — 화면 4종목 + 기준주(대금 300억↑ → 100억↑ 저유동성) + 정확한 테마 평균.
 
     2026-11-23 수리: 예전에는 순위를 '노출 4종목 평균(top4Avg)'으로 매겨, 타임X AI +182.71%
     한 종목이 낀 '탈모 치료 +50.48%'가 1위로 남았다(실제 테마 평균 +4.66%). 이제 순위·막대는
-    실질 대장 등락률이고, top4Avg 는 참고값으로만 남긴다(스튜디오·성적표와 같은 잣대).
+    기준주 등락률이고, top4Avg 는 참고값으로만 남긴다(스튜디오·성적표와 같은 잣대).
     """
     picked = pick_stocks(rows)
     if not picked:
@@ -128,7 +140,7 @@ def make_theme(no, name, rows):
     fall = len([x for x in allp if x < 0])
     steady = max(0, total - rise - fall)
     sum_value = sum((s.get("value") or 0) for s in picked)
-    # ── 실질 대장 후보: ±100% 이상 이상치 제외, 대금 300억↑ 상승 → 100억↑(저유동성) 상승
+    # ── 기준주 후보: ±100% 이상 이상치 제외, 대금 300억↑ 상승 → 100억↑(저유동성) 상승
     cands = []
     for r in rows:
         chg = r.get("changePct")
@@ -175,10 +187,19 @@ def make_theme(no, name, rows):
 
 
 def rank_themes(themes, top_n=TOP_N):
-    """실질 대장(대금 300억↑ → 100억↑ 저유동성)을 테마마다 하나씩 배정하고 그 등락률로 줄을 세운다."""
+    """기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승)를 테마마다 하나씩 배정하고 그 등락률로 줄을 세운다."""
     themes = [t for t in themes if t and t.get("top4Avg") is not None]
     # 대장 후보가 강한 테마부터 훑으며 서로 다른 종목을 대장으로 잡는다(같은 종목 중복 대장 금지)
-    order = sorted(themes, key=lambda t: -((t.get("_cands") or [(({"changePct": -999},),)])[0][0]["changePct"]))
+    def _top_cand_chg(t):
+        """그 테마 1순위 대장 후보의 등락률 — 후보가 없으면 -999.
+        (2026-11-24) 예전엔 `_cands` 가 빈 테마에서 튜플 인덱스 오류로 이 함수 전체가 죽었다."""
+        for c in (t.get("_cands") or [])[:1]:
+            r = c[0] if isinstance(c, (tuple, list)) else c
+            if isinstance(r, dict) and isinstance(r.get("changePct"), (int, float)):
+                return r["changePct"]
+        return -999
+
+    order = sorted(themes, key=lambda t: -_top_cand_chg(t))
     used, out = set(), []
     for t in order:
         pick, low = None, False
@@ -198,7 +219,7 @@ def rank_themes(themes, top_n=TOP_N):
         t["leaderValueEok"] = round((pick.get("value") or 0) / 1e8, 1)
         t["lowLiquidity"] = low
         t["baselinePct"] = t["leaderPct"]
-        t["baselineRule"] = "실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외"
+        t["baselineRule"] = "기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승) 등락률 · ±100% 이상 제외"
         out.append(t)
     out.sort(key=lambda t: (-(t.get("baselinePct") or -999), -(t.get("top4Sum") or 0)))
     out = out[:top_n]
@@ -215,7 +236,7 @@ def write_snapshot(themes, as_of, basis_label, source, rank_total=None, write=Tr
         "generatedAt": now_kst().strftime("%Y-%m-%d %H:%M:%S"),
         "source": source,
         "rankTotal": rank_total,
-        "rule": "실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 → 합산 대금 · 테마 평균 = 구성종목 평균(±100% 이상 제외)",
+        "rule": "기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승) 등락률 → 합산 대금 · 테마 평균 = 구성종목 평균(±100% 이상 제외)",
         "themes": themes,
     }
     if write:

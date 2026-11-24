@@ -42,6 +42,7 @@ const {
   getQuery,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
+const { assignThemeRoles, themeRoleMap } = require('../lib/theme-roles');
 
 /* 전략 실시간 판정(비중법사 · 홍인기)이 보는 종목은 재스캔 결과 파일과 같은 기준을 쓴다.
  *  public/data/*.json 은 배포 산출물에 그대로 포함되므로 require 로 읽어 기준봉 종가를 가져온다.
@@ -116,7 +117,11 @@ const THEME_TOP = 8; // 화면에 그릴 테마 수
 //  14종목 중 대장 4개가 폭등한 테마보다 위로 올라오는 착시가 생긴다. 후보를 넉넉히 받아 상세를 본다.
 const THEME_CANDIDATES = 20;
 const THEME_STOCK_TOP = 4; // 테마당 그릴 종목 수
-const THEME_STOCK_PAGE = 30; // 테마 구성종목 조회 수(상위 4개를 뽑는다)
+// 구성종목은 **테마 전체**를 받는다(최대 100종목 · 네이버 테마 구성 상한 100).
+//  (2026-11-24) 30종목만 받으면 '테마 내 실질 거래대금 1위'가 목록 밖에 있을 때
+//  카드가 1위가 아닌 종목에 💰 대금 대장 딱지를 달 수 있다 — 등락률 정렬 30개 안에
+//  +3% 종목이 30개 넘게 들어오는 날이 실제로 있다. 100개 응답은 20테마 합쳐 1초 안쪽(실측 1.02s).
+const THEME_STOCK_PAGE = 100;
 const THEME_TIMEOUT = 4500;
 // 테마 이름에 이런 말이 들어가면 주도 테마 랭킹에서 뺀다(스팩·우선주·ETF 계열)
 const THEME_EXCLUDE_RE = /(스팩|SPAC|우선주|ETF|ETN|리츠|인버스|레버리지)/i;
@@ -686,44 +691,10 @@ async function fetchThemeStocks(no) {
  * 남은 자리는 상승률·대금 순으로 채운다(같은 종목은 한 번만).
  */
 function pickThemeStocks(stocks) {
-  const list = Array.isArray(stocks) ? stocks.filter((s) => s && s.code) : [];
-  /* 📌 대장은 '당일 상승 중인 종목'에서만 뽑는다.
-     거래대금만 큰 하락 종목(예: 인텔리빅스 -2%)이 (실질 거래대금 대장)으로 올라가면
-     테마가 강한 것처럼 보이는 착시가 생긴다 — 하락 종목은 (하락 대금 상위)로만 분류한다. */
-  const rising = list.filter((s) => typeof s.changePct === 'number' && s.changePct > 0);
-  const falling = list.filter((s) => !(typeof s.changePct === 'number' && s.changePct > 0));
-  const byPctRise = rising
-    .slice()
-    .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999) || (b.value ?? 0) - (a.value ?? 0));
-  const byValueRise = rising.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-  const byValueFall = falling.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-  /* 📌 '실질 거래대금 대장'은 **+3% 이상 오른 종목 중** 거래대금이 가장 큰 종목만 (사용자 확정 2026-11-23).
-     +1%대 종목(예: 원익홀딩스)이 대금이 크다는 이유로 '대장' 딱지를 달면 테마 강도가 과장된다.
-     +3% 이상 종목이 하나도 없으면 이 역할은 비우고, 그 종목은 아래 '거래대금 상위'로만 채운다. */
-  const VALUE_LEADER_MIN_PCT = 3.0;
-  const strongByValue = list
-    .filter((s) => typeof s.changePct === 'number' && s.changePct >= VALUE_LEADER_MIN_PCT)
-    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-  const out = [];
-  const push = (s, role) => {
-    if (!s || out.length >= THEME_STOCK_TOP) return;
-    if (out.some((x) => x.code === s.code)) return;
-    out.push({ ...s, role, tileName: s.name });
-  };
-  push(byPctRise[0], '상승률 대장');
-  const valueLeader = strongByValue.find((s) => !out.some((x) => x.code === s.code));
-  if (valueLeader) {
-    push(valueLeader, '실질 거래대금 대장');
-  } else {
-    /* +3% 이상 종목이 없거나, 그 종목이 이미 '상승률 대장'으로 올라간 경우 —
-       거래대금 1위 상승주는 '대장' 딱지 없이 '거래대금 상위'로만 채운다. */
-    const topValueRiser = byValueRise.find((s) => !out.some((x) => x.code === s.code));
-    if (topValueRiser) push(topValueRiser, '거래대금 상위');
-  }
-  byPctRise.forEach((s) => push(s, '동반 상승'));
-  byValueRise.forEach((s) => push(s, '거래대금 상위'));
-  byValueFall.forEach((s) => push(s, '하락 대금 상위'));
-  return out;
+  /* 역할 규칙(상승률 대장 · +3%↑ 실질 거래대금 대장 · 이상치 ±100% 제외 · 같은 종목이면 '상승률 대장'만)은
+     lib/theme-roles.js 한 곳에 있다 — 정적 렌더·프리마켓 스냅샷·저장 스크립트와 같은 규칙을 쓰기 위해 옮겼다(2026-11-24).
+     ※ 30종목만 넘기면 '테마 내 1위'가 목록 밖일 수 있으니 호출부는 테마 전체를 넘긴다. */
+  return assignThemeRoles(stocks, THEME_STOCK_TOP);
 }
 
 /**
@@ -1136,6 +1107,12 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
         missing: !q,
       };
     });
+    /* 역할(👑 상승률 대장 · 💰 실질 거래대금 대장)은 파일에 적힌 값을 그대로 믿지 않고
+     *  화면에 실린 종목으로 다시 계산한다(lib/theme-roles.js).
+     *  → 11/23 이전 스냅샷처럼 '등락률 1위'에 '실질 거래대금 대장'이 적힌 파일이 남아 있어도
+     *    화면에는 바른 역할이 나간다(2026-11-24 전수 점검). */
+    const roleMap = themeRoleMap(stocks);
+    stocks.forEach((s) => { s.role = roleMap[s.code] || s.role || null; });
     const livePcts = stocks.map((s) => s.livePct).filter((v) => typeof v === 'number');
     const prevPcts = stocks.map((s) => s.prevDayPct).filter((v) => typeof v === 'number');
     const needLive = Math.max(2, Math.ceil(stocks.length / 2));
@@ -1179,7 +1156,7 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
       /* 헤더 등락률·정렬 = 실질 대장 등락률(스튜디오와 같은 잣대).
        *  테마 평균은 themeAvgPct 로 함께 내려 화면이 옆에 병기한다. */
       avgPctCalc: baselinePct === null ? avgPrev : baselinePct,
-      avgPctBasisLabel: baselinePct === null ? label + ' 종가 평균' : label + ' 대장 ' + (leaderName || '등락'),
+      avgPctBasisLabel: baselinePct === null ? label + ' 종가 평균' : label + ' 기준주 ' + (leaderName || '등락'),
       baselinePct: baselinePct === null ? null : baselinePct,
       baselineRule: t.baselineRule || '실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외',
       sortPct: baselinePct === null ? avgPrev : baselinePct,
@@ -1333,7 +1310,7 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themeSeCards: seCards,
     themeSeUpdatedAt: se.ok ? se.updatedAt || null : null,
     themeSeError: se.ok ? null : se.error || null,
-    themeBaselineRule: prevDayList ? '실질 대장(대금 300억↑ → 100억↑ 저유동성) 등락률 · ±100% 이상 제외' : null,
+    themeBaselineRule: prevDayList ? '기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승) 등락률 · ±100% 이상 제외' : null,
   };
 }
 
@@ -3106,8 +3083,10 @@ module.exports = async function handler(req, res) {
   return sendJson(res, 200, body, fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL);
 };
 
-// 테스트(test_local.mjs)에서 우선주 판별 규칙을 직접 검증할 수 있게 내보낸다.
+// 테스트(test_local.mjs · test_theme_snapshot.js)에서 규칙을 직접 검증할 수 있게 내보낸다.
 module.exports.isPreferredStock = isPreferredStock;
 module.exports.PREFERRED_NAME_RE = PREFERRED_NAME_RE;
 module.exports.fetchSearchTopKRX = fetchSearchTopKRX;
 module.exports.attachSearchBadges = attachSearchBadges;
+module.exports.pickThemeStocks = pickThemeStocks;
+module.exports.mapPrevDayThemes = mapPrevDayThemes;
