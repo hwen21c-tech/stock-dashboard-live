@@ -4244,7 +4244,7 @@ function kospiFuturesSession(p) {
   };
 }
 
-function futQuoteLabel(q, marketDiv, live) {
+function futQuoteLabel(q, marketDiv, live, asOfKst) {
   if (!q || q.price === null || q.price === undefined) return '—';
   if (live) return marketDiv === 'CM' ? '18:00~06:00 실시간' : '09:00~15:45 실시간';
   if (q.lastTradeAt) {
@@ -4252,11 +4252,8 @@ function futQuoteLabel(q, marketDiv, live) {
     const k = new Date(d.getTime() + 9 * 3600 * 1000);
     return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${pad2(k.getUTCHours())}:${pad2(k.getUTCMinutes())} 마감`;
   }
-  if (q.lastTradeDate && /^\d{8}$/.test(String(q.lastTradeDate))) {
-    const s = String(q.lastTradeDate);
-    return `${Number(s.slice(4, 6))}/${Number(s.slice(6, 8))} 마감`;
-  }
-  return '마감값';
+  /* 체결 시각을 주지 않는 응답 — 값을 읽은 시각을 붙인다(지어내지 않는다) */
+  return `${asOfKst ? asOfKst.slice(0, 5) : ''} 마감 기준`;
 }
 
 async function buildFuturesKis(now, wantRaw) {
@@ -4300,6 +4297,7 @@ async function buildFuturesKis(now, wantRaw) {
       .fetchFuturesQuote({ marketDiv: 'F', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 })
       .then((v) => ({ status: 'fulfilled', value: v }))
       .catch((e) => ({ status: 'rejected', reason: e }));
+    await new Promise((r) => setTimeout(r, 400));
     const night = await kisLib
       .fetchFuturesQuote({ marketDiv: 'CM', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 })
       .then((v) => ({ status: 'fulfilled', value: v }))
@@ -4327,7 +4325,7 @@ async function buildFuturesKis(now, wantRaw) {
     const live = Boolean(
       sess.inSession && sess.marketDiv === marketDiv && q.ok && q.hasTrade && (q.price !== null),
     );
-    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live), asOfKst: head.generatedAtKst });
+    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live, head.generatedAtKst), asOfKst: head.generatedAtKst });
   };
 
   head.day = pick(dayR, 'F');
@@ -5017,7 +5015,7 @@ module.exports = async function handler(req, res) {
   try {
     futuresKis = await Promise.race([
       futuresPromise,
-      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 2500)),
+      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 3200)),
     ]);
     if (futuresKis === 'TIMEOUT') {
       futuresKisTimedOut = true;
