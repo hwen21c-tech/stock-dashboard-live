@@ -1925,12 +1925,22 @@ def patch_rn_live(html, rn_stocks, counts):
 
 
 def patch_jongbe_live(html, jb_stocks):
-    """Jongbe 엔진 안의 `const STOCKS = [...]` 를 새 자동선정 목록으로 바꾼다."""
+    """Jongbe 엔진 안의 `const STOCKS = [...]` 를 새 자동선정 목록으로 바꾸고,
+       탭 버튼의 트랙 개수 라벨(전체·신정재·강창권)도 실제 목록 수로 맞춘다.
+       (예전에는 '전체 (10) · 강창권 (5)'가 HTML 에 박혀 있어 목록이 2종목이어도 5로 보였다)"""
     m = re.search(r'(window\.Jongbe\s*=\s*\(function\(\)\s*\{[\s\S]*?const STOCKS = )(\[.*?\])(;)', html)
     if not m:
         return html, False
     payload = json.dumps(jb_stocks, ensure_ascii=False, separators=(',', ':'))
-    return html[:m.start(2)] + payload + html[m.end(2):], True
+    html = html[:m.start(2)] + payload + html[m.end(2):]
+    n_all = len(jb_stocks or [])
+    n_shin = len([x for x in (jb_stocks or []) if x.get('track') == 'shin'])
+    n_kang = len([x for x in (jb_stocks or []) if x.get('track') == 'kang'])
+    labs = [('all', '전체 ({})'.format(n_all)), ('shin', '⚡ 신정재 ({})'.format(n_shin)), ('kang', '🏆 강창권 ({})'.format(n_kang))]
+    for key, txt in labs:
+        pat = r"(onclick=\"Jongbe\.filterStocks\('" + key + r"', this\)\">)[^<]*(</button>)"
+        html = re.subn(pat, lambda mm, t=txt: mm.group(1) + t + mm.group(2), html)[0]
+    return html, True
 
 
 def jongbe_badge_text(jb_stocks):
