@@ -1444,6 +1444,54 @@
 
   function toggleAfterFilter() { return setAfterFilter(!afterFilterOn()); }
 
+  /* --- 3·5번 탭 '📡 실시간 최신 증시 속보' 박스 접기/펼치기 (11/24 사용자 요청) ----------
+   *  · 이 박스는 host.innerHTML 을 30초 폴링마다 통째로 다시 그린다 → 접힘 상태를 DOM 에만 두면
+   *    다음 갱신에서 펼쳐진다. 그래서 접힘을 렌더 HTML 자체(display:none)에 넣고 data-sig 에도
+   *    포함시켜, 다시 그려져도 사용자가 접어 둔 상태가 그대로 유지되게 한다.
+   *  · 상태는 localStorage 에 남겨 새로고침·재방문에도 유지된다.
+   */
+  var NEWS_FOLD_KEY = 'tabs_news_fold_v1';
+
+  function newsFoldMap() {
+    try {
+      var raw = window.localStorage ? window.localStorage.getItem(NEWS_FOLD_KEY) : null;
+      var o = raw ? JSON.parse(raw) : {};
+      return (o && typeof o === 'object') ? o : {};
+    } catch (e) { return {}; }
+  }
+
+  function newsBoxFolded(key) {
+    var m = newsFoldMap();
+    return m[key] === true || m[key] === 1 || m[key] === '1';
+  }
+
+  function setNewsBoxFolded(key, folded) {
+    var m = newsFoldMap();
+    m[key] = Boolean(folded);
+    try { if (window.localStorage) window.localStorage.setItem(NEWS_FOLD_KEY, JSON.stringify(m)); } catch (e) { /* 저장소 없음 */ }
+    return Boolean(folded);
+  }
+
+  function applyNewsFoldDom(key, folded) {
+    var bodies = document.querySelectorAll('[data-news-body="' + key + '"]');
+    for (var i = 0; i < bodies.length; i += 1) bodies[i].style.display = folded ? 'none' : '';
+    var btns = document.querySelectorAll('[data-news-toggle="' + key + '"]');
+    for (var j = 0; j < btns.length; j += 1) {
+      btns[j].textContent = folded ? '펼치기 ▾' : '접기 ▴';
+      btns[j].setAttribute('aria-expanded', folded ? 'false' : 'true');
+    }
+  }
+
+  /* 버튼이 누르는 함수 — 상태를 뒤집고 지금 화면의 두 탭 박스를 즉시 바꾼다.
+     다음 폴링은 newsBoxHtml 이 저장된 상태로 다시 그리므로 접힘이 풀리지 않는다. */
+  function toggleNewsBox(key) {
+    if (!key) return false;
+    var next = !newsBoxFolded(key);
+    setNewsBoxFolded(key, next);
+    applyNewsFoldDom(key, next);
+    return next;
+  }
+
   var state = {
     polling: false,
     ok: null,
@@ -2302,27 +2350,42 @@
       '</div>';
   }
 
-  function newsBoxHtml(inner, list, stamp, titleSuffix, accent) {
+  function newsBoxHtml(inner, list, stamp, titleSuffix, accent, boxKey) {
     var c = impactCounts(list);
+    var folded = boxKey ? newsBoxFolded(boxKey) : false;
+    /* 접기/펼치기 버튼 — 이 HTML 이 data-sig 로 통째 비교되므로, 누른 뒤에도 다음 갱신이 같은 상태로 그린다 */
+    var foldBtn = boxKey
+      ? '<button type="button" data-news-toggle="' + esc(boxKey) + '" aria-expanded="' + (folded ? 'false' : 'true') + '"' +
+        ' onclick="if(window.TabsLive){TabsLive.toggleNewsBox(this.getAttribute(&#39;data-news-toggle&#39;))}"' +
+        ' title="' + esc('실시간 속보 목록을 접거나 페칩니다 — 접힘 상태는 이 기기에 저장됩니다') + '"' +
+        ' style="font-size:10px; font-weight:800; padding:2px 8px; border-radius:4px; cursor:pointer; white-space:nowrap;' +
+        ' background:rgba(148,163,184,0.16); color:#cbd5e1; border:1px solid rgba(148,163,184,0.35);">' +
+        (folded ? '펼치기 ▾' : '접기 ▴') + '</button>'
+      : '';
     return '' +
       '<div class="panel-box" style="background:#111827; border-color:' + accent.border + '; margin-bottom:12px;">' +
-        '<div class="sec-head" style="border-bottom-color:' + accent.border + '; color:' + accent.color + '; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">' +
+        '<div class="sec-head" style="border-bottom-color:' + accent.border + '; color:' + accent.color + '; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">' +
           '<span style="font-weight:800; font-size:12.5px;">📡 실시간 최신 증시 속보 ' + list.length + '건 ' + esc(titleSuffix) + '</span>' +
-          '<span class="sub" style="color:' + accent.color + ';">⚡ ' + esc(stamp) + ' 갱신 · 네이버 증권</span>' +
+          '<span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+            '<span class="sub" style="color:' + accent.color + ';">⚡ ' + esc(stamp) + ' 갱신 · 네이버 증권</span>' +
+            foldBtn +
+          '</span>' +
         '</div>' +
-        '<div style="font-size:10px; color:#94a3b8; margin-bottom:8px;">' +
-          '🔎 키워드 자동 분석 — 영향도 <strong style="color:#fb7185;">상 ' + c['상'] + '</strong> · ' +
-          '<strong style="color:#fbbf24;">중 ' + c['중'] + '</strong> · ' +
-          '<strong style="color:#94a3b8;">참고 ' + c['참고'] + '</strong> / 테마·수혜주는 매칭된 기사에만 표기' +
-        '</div>' +
-        inner +
-        '<div style="font-size:10px; color:#64748b; margin-top:6px;">' +
-          '※ 네이버 증권 실시간 뉴스 목록에서 방금 받아온 최신 속보입니다. 영향도·테마·수혜주는 제목·요약 키워드 자동 분석 결과이며(정시 AI 심층 분석과 구분), 섹터 키워드가 없는 기사는 종목을 붙이지 않고 수혜·관련주를 비웁니다. 아래 정적 타임라인은 기사 제목·시각·원문 링크만 표시합니다(과거 유사사례·수혜주 추정 문구는 2026-11-22 제거).' +
+        '<div' + (boxKey ? ' data-news-body="' + esc(boxKey) + '"' : '') + (folded ? ' style="display:none;"' : '') + '>' +
+          '<div style="font-size:10px; color:#94a3b8; margin-bottom:8px;">' +
+            '🔎 키워드 자동 분석 — 영향도 <strong style="color:#fb7185;">상 ' + c['상'] + '</strong> · ' +
+            '<strong style="color:#fbbf24;">중 ' + c['중'] + '</strong> · ' +
+            '<strong style="color:#94a3b8;">참고 ' + c['참고'] + '</strong> / 테마·수혜주는 매칭된 기사에만 표기' +
+          '</div>' +
+          inner +
+          '<div style="font-size:10px; color:#64748b; margin-top:6px;">' +
+            '※ 네이버 증권 실시간 뉴스 목록에서 방금 받아온 최신 속보입니다. 영향도·테마·수혜주는 제목·요약 키워드 자동 분석 결과이며(정시 AI 심층 분석과 구분), 섹터 키워드가 없는 기사는 종목을 붙이지 않고 수혜·관련주를 비웁니다. 아래 정적 타임라인은 기사 제목·시각·원문 링크만 표시합니다(과거 유사사례·수혜주 추정 문구는 2026-11-22 제거).' +
+          '</div>' +
         '</div>' +
       '</div>';
   }
 
-  function renderNewsInto(tabEl, mountId, list, stamp, buildCard, accent, titleSuffix) {
+  function renderNewsInto(tabEl, mountId, list, stamp, buildCard, accent, titleSuffix, boxKey) {
     if (!tabEl || !list.length) return 0;
     var host = document.getElementById(mountId);
     if (!host) {
@@ -2331,7 +2394,7 @@
       tabEl.insertBefore(host, tabEl.firstChild);
     }
     var inner = list.map(buildCard).join('');
-    var html = newsBoxHtml(inner, list, stamp, titleSuffix, accent);
+    var html = newsBoxHtml(inner, list, stamp, titleSuffix, accent, boxKey);
     if (host.getAttribute('data-sig') !== html) {
       host.innerHTML = html;
       host.setAttribute('data-sig', html);
@@ -2350,7 +2413,8 @@
       stamp,
       afNewsCard,
       { border: '#9333ea', color: '#c084fc' },
-      '(애프터마켓 · 장마감 후)'
+      '(애프터마켓 · 장마감 후)',
+      'aftermarket'
     );
     var b = renderNewsInto(
       document.getElementById('tabNews'),
@@ -2359,7 +2423,8 @@
       stamp,
       newsNewsCard,
       { border: '#9333ea', color: '#c084fc' },
-      '(시간별 뉴스)'
+      '(시간별 뉴스)',
+      'news'
     );
     state.mounted.after = a > 0;
     state.mounted.news = b > 0;
@@ -2371,14 +2436,25 @@
   function afterPanelEl() {
     var tab = document.getElementById('tabAftermarket');
     if (!tab) return null;
+    /* ① 고정 앵커 — 한 번 찾은 패널에 data-live-after-panel 을 붙여 다음부터는 즉시 잡는다 */
+    var fixed = tab.querySelector('[data-live-after-panel]');
+    if (fixed) return fixed;
     var boxes = $$('.panel-box', tab);
-    for (var i = 0; i < boxes.length; i += 1) {
-      var head = boxes[i].querySelector('.sec-head');
-      if (head && (head.textContent || '').indexOf('시간외) 실시간 체결') >= 0) return boxes[i];
-    }
-    for (var j = 0; j < boxes.length; j += 1) {
-      var h2 = boxes[j].querySelector('.sec-head');
-      if (h2 && (h2.textContent || '').indexOf('3. 애프터마켓') >= 0) return boxes[j];
+    var headTxt = function (i) {
+      var h = boxes[i].querySelector('.sec-head');
+      return h ? (h.textContent || '') : '';
+    };
+    /* ② 제목 문구 후보를 넓힌다 — 정적(Pages)·동적(sd_live) 본문이 서로 다른 제목을 써도 잡히게.
+     *    11/24 사고: sd_live 본문 제목이 '🚀 3. NXT 20:00 최종 마감' 이라 기존 두 문구로는
+     *    null 이 되어 renderAftermarket 이 한 번도 돌지 않았고, 11/20 정적 종목이 그대로 남았다. */
+    var needles = ['시간외) 실시간 체결', '3. 애프터마켓', '3. NXT', '애프터마켓(시간외)'];
+    for (var n = 0; n < needles.length; n += 1) {
+      for (var i = 0; i < boxes.length; i += 1) {
+        if (headTxt(i).indexOf(needles[n]) >= 0) {
+          boxes[i].setAttribute('data-live-after-panel', '1');
+          return boxes[i];
+        }
+      }
     }
     return null;
   }
@@ -2562,6 +2638,111 @@
     }
     host.setAttribute('data-live', '1');
     return byValue.length + byTop.length + byBottom.length;
+  }
+
+  /* ---------------- [3탭] 상단 NXT 애프터마켓 Top 6 랭킹 ----------------
+   *  · 11/14 정적 카드(고정 6종목·옛 날짜 라벨)는 이 렌더러가 통째로 덮는다.
+   *  · 소스는 /api/tabs-live 의 nxtLeaders.byValue(NXT 체결 거래대금 상위) — 없는 값을 만들지 않는다.
+   *  · 카드에는 data-nxt-code 를 붙여, 15초 stock-live 가격 갱신(live-extra.js applyNxtRanking)이 계속돼도
+   *    종목 구성이 옛 카드로 돌아가지 않게 한다(구성이 같을 때는 카드를 다시 그리지 않는다).
+   */
+
+  function kstMarketLabel() {
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
+      }).formatToParts(new Date());
+      var g = function (t) {
+        for (var i = 0; i < parts.length; i += 1) { if (parts[i].type === t) return parts[i].value; }
+        return '';
+      };
+      var y = Number(g('year'));
+      var m = Number(g('month'));
+      var d = Number(g('day'));
+      if (!y || !m || !d) return '';
+      var base = new Date(Date.UTC(y, m - 1, d, 12));
+      // 주말엔 오늘 애프터마켓이 없다 — 직전 거래일(금) 라벨로 적는다
+      while (base.getUTCDay() === 0 || base.getUTCDay() === 6) base.setUTCDate(base.getUTCDate() - 1);
+      var wd = ['일', '월', '화', '수', '목', '금', '토'][base.getUTCDay()];
+      return (base.getUTCMonth() + 1) + '/' + base.getUTCDate() + ' ' + wd;
+    } catch (e) { return ''; }
+  }
+
+  function nxtRankStateTxt(pct) {
+    if (!isNum(pct)) return '— 등락률 없음';
+    if (pct >= 1) return '🟢 종가 지지 안착';
+    if (pct > 0) return '🟢 보합권 지지';
+    if (pct > -1) return '🟡 매물 소화 중';
+    return '🔵 약세 조정';
+  }
+
+  function nxtRankCardHtml(it, i) {
+    var pct = isNum(it.changePct) ? it.changePct : null;
+    var col = colFor(pct);
+    var onclick = inPlaceOpenJs(it.name, it.code,
+      isNum(it.price) ? fmt(it.price) + '원' : '', pct === null ? '' : pctTxt(pct));
+    return '<div data-nxt-code="' + esc(it.code || '') + '" data-nxt-order="' + i + '" data-live="1"' +
+      ' style="background:#0f172a; border:1px solid rgba(168,85,247,0.3); border-radius:6px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;"' +
+      ' title="' + esc('NXT 체결 실시간 · 눌러서 이 자리에서 차트 팝업(탭 이동 없음)') + '"' +
+      ' onclick="' + esc(onclick) + '">' +
+      '<div>' +
+        '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+          '<span class="nxt-rank" style="font-size:10px; font-weight:800; background:#581c87; color:#f3e8ff; padding:1px 6px; border-radius:4px;">TOP ' + (i + 1) + '</span>' +
+          '<strong style="color:#fff; font-size:12.5px;">' + esc(it.name || '') + '</strong>' +
+          '<span class="nxt-state" style="font-size:10px; color:#94a3b8; font-weight:700;">' + esc(nxtRankStateTxt(pct)) + '</span>' +
+        '</div>' +
+        '<div style="font-size:10.5px; color:#94a3b8; margin-top:3px;">NXT 체결 대금: <strong class="nxt-value" style="color:#c084fc;">' + esc(it.valueText || '—') + '</strong></div>' +
+      '</div>' +
+      '<div style="text-align:right;">' +
+        '<div class="nxt-price" style="font-size:13px; font-weight:800; color:' + col + ';">' + esc(isNum(it.price) ? fmt(it.price) + '원' : '—') + '</div>' +
+        '<div class="nxt-pct" style="font-size:11px; font-weight:700; color:' + col + ';">' + esc(pct === null ? '—' : pctTxt(pct).replace(/[()]/g, '')) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderNxtRankPanel(body, stamp) {
+    var tab = document.getElementById('tabAftermarket');
+    if (!tab) return 0;
+    var panel = tab.querySelector('#nxtRankPanel') || tab.querySelector('[data-nxt-rank-panel]');
+    if (!panel) return 0;
+    panel.setAttribute('data-nxt-rank-panel', '1');
+    var nl = body.nxtLeaders || {};
+    var list = (nl.byValue || []).filter(function (x) { return x && x.name; }).slice(0, 6);
+    var src = 'NXT 체결 대금';
+    if (!list.length) {
+      list = (nl.byPct || []).filter(function (x) { return x && x.name; }).slice(0, 6);
+      src = 'NXT 상승률';
+    }
+    var label = kstMarketLabel();
+    var titleEl = panel.querySelector('#nxtRankTitle') || panel.querySelector('[data-nxt-rank-title]');
+    if (titleEl) {
+      var title = (label ? '🌙 [' + label + '] ' : '🌙 ') + 'NXT 애프터마켓 체결 대금 Top ' + (list.length || 6) + ' 랭킹' +
+        (src === 'NXT 상승률' ? ' (상승률 기준)' : '');
+      if (titleEl.textContent !== title) titleEl.textContent = title;
+    }
+    var stampEl = panel.querySelector('#nxtRankStamp') || panel.querySelector('[data-nxt-rank-stamp]');
+    if (stampEl) {
+      var stampTxt = '⚡ ' + stamp + ' 조회 · NXT 체결 실시간 (응답이 없으면 옛 종목을 대신 쓰지 않습니다)';
+      if (stampEl.textContent !== stampTxt) stampEl.textContent = stampTxt;
+    }
+    var grid = panel.querySelector('#nxtRankGrid') || panel.querySelector('[data-nxt-rank-grid]');
+    if (!grid) return 0;
+    if (!list.length) {
+      if (grid.getAttribute('data-codes') !== '') {
+        grid.innerHTML = '<div style="grid-column:1/-1; font-size:11px; color:#94a3b8; padding:6px 2px; line-height:1.5;">' +
+          '⚠️ NXT 랭킹 응답이 없습니다 — 옛 종목·옛 날짜를 대신 보여주지 않습니다.</div>';
+        grid.setAttribute('data-codes', '');
+      }
+      return 0;
+    }
+    var codes = list.map(function (x) { return x.code; }).join(',');
+    if (grid.getAttribute('data-codes') !== codes) {
+      grid.innerHTML = list.map(nxtRankCardHtml).join('');
+      grid.setAttribute('data-codes', codes);
+    }
+    grid.setAttribute('data-live', '1');
+    grid.setAttribute('data-nxt-rank-grid', '1');
+    return list.length;
   }
 
   /* ---------------- [1탭] NXT 실시간 주도주 트랙 ----------------
@@ -4044,6 +4225,9 @@
       return afCount;
     });
 
+    // 3번 탭 — 상단 NXT 애프터마켓 Top 6 랭킹 (11/14 옛 날짜·옛 종목 → 오늘 실시간 NXT 랭킹)
+    step('nxtRank', ['aftermarket'], function () { return renderNxtRankPanel(body, stamp); });
+
     // 비중법사·홍인기 탭 — 장중 실시간 기준봉/타점 판정 패널
     step('strategy', ['bijoong', 'honginki', 'kkangto', 'supply', 'manju', 'jongbe', 'rnzone', 'ipo'],
       function () { return renderStrategyLive(body, stamp); });
@@ -4265,6 +4449,8 @@
     _renderStrategyLive: renderStrategyLive,
     _renderDynamicThemes: renderDynamicThemes,
     toggleAfterFilter: toggleAfterFilter,
+    toggleNewsBox: toggleNewsBox,
+    newsBoxFolded: newsBoxFolded,
     setAfterFilter: setAfterFilter,
     afterFilterOn: afterFilterOn,
     _folds: function () { return state.folds; },
