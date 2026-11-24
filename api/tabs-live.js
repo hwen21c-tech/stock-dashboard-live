@@ -3913,7 +3913,8 @@ async function fetchProgramBatch(codes, deadline) {
 
 function chimSignedEok(v) {
   if (typeof v !== 'number' || !isFinite(v)) return '미확인';
-  const abs = Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 10) / 10);
+  const a = Math.abs(v);
+  const abs = a >= 1000 ? Math.round(a).toLocaleString('en-US') : String(Math.round(a * 10) / 10);
   return (v > 0 ? '+' : v < 0 ? '-' : '') + abs + '억';
 }
 
