@@ -187,9 +187,14 @@ def make_theme(no, name, rows):
 
 
 def rank_themes(themes, top_n=TOP_N):
-    """기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승)를 테마마다 하나씩 배정하고 그 등락률로 줄을 세운다."""
+    """기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승)를 테마마다 배정하고 그 등락률로 줄을 세운다.
+
+    (2026-11-24 사용자 확정 — 대장 중복 허용) 한 종목이 두 개 이상 테마의 기준주를 겸할 수 있다.
+    예전에는 `used` 집합으로 중복을 막아 11/23 지능형로봇 기준선이 휴림로봇 +30.0%가 아니라
+    피앤에스로보틱스 +9.93%로 왜곡됐다. 중복을 막는 자리는 화면의 '👀 지금 봐야 할 섹터 & 종목'이다.
+    """
     themes = [t for t in themes if t and t.get("top4Avg") is not None]
-    # 대장 후보가 강한 테마부터 훑으며 서로 다른 종목을 대장으로 잡는다(같은 종목 중복 대장 금지)
+
     def _top_cand_chg(t):
         """그 테마 1순위 대장 후보의 등락률 — 후보가 없으면 -999.
         (2026-11-24) 예전엔 `_cands` 가 빈 테마에서 튜플 인덱스 오류로 이 함수 전체가 죽었다."""
@@ -200,17 +205,14 @@ def rank_themes(themes, top_n=TOP_N):
         return -999
 
     order = sorted(themes, key=lambda t: -_top_cand_chg(t))
-    used, out = set(), []
+    out = []
     for t in order:
         pick, low = None, False
         for r, lo, _eok in (t.get("_cands") or []):
-            if r["code"] in used:
-                continue
             pick, low = r, lo
             break
         if pick is None:
             continue
-        used.add(pick["code"])
         t = dict(t)
         t.pop("_cands", None)
         t["leaderCode"] = pick["code"]

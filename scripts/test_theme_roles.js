@@ -8,7 +8,13 @@
  * 이 파일은 그 규칙이 다시 흐트러지지 않게 11/23 실데이터 케이스와 경계값을 고정한다.
  */
 const assert = require('assert');
-const { assignThemeRoles, themeRoleMap, pickThemeLeaders } = require('../lib/theme-roles');
+const {
+  assignThemeRoles,
+  themeRoleMap,
+  pickThemeLeaders,
+  liquidAvgPct,
+  liquidBasisLabel,
+} = require('../lib/theme-roles');
 
 const S = (name, code, changePct, valueEok) => ({ name, code, changePct, value: valueEok * 1e8 });
 const roles = (list) => list.map((s) => `${s.name}:${s.role}`);
@@ -138,6 +144,45 @@ check('themeRoleMap: 11/23 옛 스냅샷(휴림로봇=대금 대장)을 바로�
   assert.strictEqual(map['439960'], '동반 상승');
   assert.strictEqual(map['0035S0'], '실질 거래대금 대장'); // 카드 안 대금 1위(1,412.3억 · +17.50%)
   assert.strictEqual(map['290550'], '동반 상승');
+});
+
+/* ── 8) 테마 순위 기준 = '거래대금 300억↑ 종목(최대 4) 평균 등락률' (2026-11-24 사용자 확정) ──
+ *  동적(api/tabs-live)과 정적(scripts/auto_update_all_tabs.py pm_theme_basis)이 같은 값을 내야 한다. */
+check('300억↑ 종목만 모아 평균 — 20억짜리 +90% 소형주는 순위를 못 흔든다', () => {
+  const rows = [
+    S('휴림로봇', '090710', 30.0, 563.5),
+    S('원익홀딩스', '030530', 4.82, 1514.9),
+    S('에이엘로봇', '471800', 4.4, 1446.5),
+    S('빅웨이브로보틱스', '0035S0', 17.5, 1412.3),
+    S('잡주', '000001', 90.0, 20),
+  ];
+  const r = liquidAvgPct(rows);
+  assert.strictEqual(r.lowLiquidity, false);
+  assert.strictEqual(r.count, 4);
+  assert.deepStrictEqual(r.codes, ['030530', '471800', '0035S0', '090710']); // 대금 내림차순 4종목
+  assert.strictEqual(r.pct, 14.18); // (4.82+4.4+17.5+30.0)/4
+  assert.strictEqual(liquidBasisLabel(r), '대금 300억↑ 4종목 평균');
+});
+
+check('300억↑가 없으면 100억↑ 평균으로 폴백 + 저유동성 표시', () => {
+  const r = liquidAvgPct([S('a', '000002', 3.0, 150), S('b', '000003', 1.0, 120), S('c', '000004', 9.0, 50)]);
+  assert.strictEqual(r.pct, 2.0);
+  assert.strictEqual(r.lowLiquidity, true);
+  assert.strictEqual(r.count, 2);
+  assert.strictEqual(liquidBasisLabel(r), '대금 100억↑ 저유동성 2종목 평균');
+});
+
+check('100억↑도 없으면 순위 제외(pct=null)', () => {
+  const r = liquidAvgPct([S('a', '000005', 5.0, 80), S('b', '000006', 30.0, 20)]);
+  assert.strictEqual(r.pct, null);
+  assert.strictEqual(r.count, 0);
+  assert.strictEqual(liquidBasisLabel(r), '대금 100억↑ 없음 · 순위 제외');
+});
+
+check('±100% 이상 이상치는 300억↑여도 평균에서 뺀다', () => {
+  const r = liquidAvgPct([S('신규상장', '999999', 180.0, 900), S('b', '000007', 5.0, 400)]);
+  assert.strictEqual(r.count, 1);
+  assert.strictEqual(r.pct, 5.0);
 });
 
 console.log(`\n테마 역할 규칙 ${pass}건 통과 — lib/theme-roles.js`);

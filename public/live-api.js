@@ -2640,8 +2640,8 @@
   }
 
   function pmThemeRowHtml(t) {
-    /* 등락률·합산 대금은 '노출 상위 4종목' 기준(테마 전체 평균은 순위를 왜곡한다).
-     *  상승 X/Y (Z%) 는 테마 전체 확산도 — 분위기 비교용으로 그대로 남긴다. */
+    /* 등락률·합산 대금 기준 = 대금 300억↑ 종목 평균(없으면 100억↑ 저유동성).
+     *  노출 상위 4종목 평균(top4Avg)·테마 전체 평균(avgPct)은 참고값으로만 둔다. */
     var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : (isNum(t.avgPct) ? t.avgPct : null));
     var sumTxt = t.sumValueText || (isNum(t.top4Sum) ? pmEok(t.top4Sum) : '');
     var stocks = (t.stocks || []).slice(0, 2);
@@ -2651,7 +2651,7 @@
       ? stocks.map(function (s) { return pmQuoteHtml(s, true); }).join(' · ')
       : '<span style="color:#64748b;">구성종목 응답 없음</span>';
     return '<div style="font-size:10.5px; color:#cbd5e1; margin-top:3px; line-height:1.5;">' +
-      '• <strong style="color:#fff;" title="노출 상위 4종목 평균 등락률 · 합산 거래대금">' + esc(t.rank) + '위 ' +
+      '• <strong style="color:#fff;" title="' + esc(t.avgPctBasisLabel || '대금 300억↑ 종목 평균 등락률 · 합산 거래대금') + '">' + esc(t.rank) + '위 ' +
       esc(t.name) + ' ' + esc(pctTxt(avg)) + (sumTxt ? ' · ' + esc(sumTxt) : '') + '</strong>' +
       (total ? ' <span style="color:#94a3b8;">(상승 ' + rise + '/' + total + ')</span>' : '') +
       ': ' + stxt + '</div>';
@@ -3699,7 +3699,7 @@
   }
 
   function dynThemeHtml(t) {
-    /* 헤더 등락률은 '화면에 노출된 상위 4종목' 평균(avg) — 전체 종목 평균(avgPct)은 참고값으로만 둔다.
+    /* 헤더 등락률은 대금 300억↑ 종목 평균(avg) — 전체 종목 평균(avgPct)은 참고값으로만 둔다.
      *  테마 순위도 같은 기준으로 /api/tabs-live 가 매겨서 내려준다. */
     var avg = isNum(t.avgPctCalc) ? t.avgPctCalc : (isNum(t.top4Avg) ? t.top4Avg : (isNum(t.avgPct) ? t.avgPct : null));
     var stocks = t.stocks || [];

@@ -42,7 +42,7 @@ const {
   getQuery,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
-const { assignThemeRoles, themeRoleMap } = require('../lib/theme-roles');
+const { assignThemeRoles, themeRoleMap, liquidAvgPct, liquidBasisLabel } = require('../lib/theme-roles');
 
 /* 전략 실시간 판정(비중법사 · 홍인기)이 보는 종목은 재스캔 결과 파일과 같은 기준을 쓴다.
  *  public/data/*.json 은 배포 산출물에 그대로 포함되므로 require 로 읽어 기준봉 종가를 가져온다.
@@ -766,7 +766,13 @@ async function buildDynamicThemes() {
     picked.forEach((s) => {
       if (!codes.includes(s.code)) codes.push(s.code);
     });
-    /* 노출 상위 4종목 기준 — 테마 강도를 '화면에 보이는 종목'으로 판단한다 */
+    /* 📊 테마 순위·막대 기준 = **거래대금 300억↑ 종목들(최대 4) 평균 등락률** (2026-11-24 사용자 확정).
+     *  예전엔 '화면 노출 4종목 평균'이라, 20억짜리 소형 1개가 +90% 튀면 다른 테마보다 위로 올라왔다.
+     *  300억↑만 모아 평균을 내면 '큰 돈이 여러 종목에 함께 들어온 테마'가 위로 온다.
+     *  장 초반(09:00~09:30)에 300억↑가 없으면 100억↑ 평균으로 폴백하고 저유동성으로 표시한다.
+     *  ※ 테마 **전체 구성종목**(r.value)으로 계산한다 — 노출 4종목만 넘기면 '테마 내'가 아니라 '카드 안' 평균이 된다. */
+    const basis = liquidAvgPct(r.value);
+    /* 노출 상위 4종목 평균 — 순위에는 쓰지 않고 참고값으로만 남긴다 */
     const shown = picked.slice(0, THEME_STOCK_TOP);
     const shownPcts = shown.map((x) => x.changePct).filter((v) => typeof v === 'number');
     const top4Avg = shownPcts.length
@@ -780,8 +786,15 @@ async function buildDynamicThemes() {
       themeNo: g.no,
       avgPct: g.changeRate,       // 네이버 공식 테마 평균(전체 종목) — 참고용
       avgPctLive: null,
-      top4Avg,                    // 화면 노출 상위 4종목 평균 등락률 — 순위·표시 기준
+      top4Avg,                    // 노출 상위 4종목 평균 — 참고값
       top4Sum,
+      /* 순위·막대 = 대금 300억↑ 평균(없으면 100억↑ 저유동성) */
+      basisPct: basis.pct,
+      basisCount: basis.count,
+      basisSampleCodes: basis.codes,
+      lowLiquidity: basis.lowLiquidity,
+      avgPctCalc: basis.pct,
+      avgPctBasisLabel: liquidBasisLabel(basis),
       riseCount: g.riseCount,
       fallCount: g.fallCount,
       steadyCount: g.steadyCount,
@@ -791,10 +804,11 @@ async function buildDynamicThemes() {
       stocks: picked,
     });
   });
-  /* 순위 = 노출 Top4 평균 등락률 우선, 동률이면 Top4 합산 대금 */
+  /* 순위 = 대금 300억↑ 종목 평균 등락률 → 동률이면 노출 4종목 합산 대금.
+   * 100억↑도 없는 테마(소형주만 있는 테마)는 맨 뒤로 밀린다. */
   themes.sort(
     (a, b) =>
-      (b.top4Avg ?? -999) - (a.top4Avg ?? -999) || (b.top4Sum ?? 0) - (a.top4Sum ?? 0),
+      (b.basisPct ?? -999) - (a.basisPct ?? -999) || (b.top4Sum ?? 0) - (a.top4Sum ?? 0),
   );
   const limited = themes.slice(0, THEME_TOP);
   limited.forEach((t, i) => {
@@ -831,13 +845,19 @@ function mergeThemeQuotes(themes, map, premarket) {
     const pcts = priced.map((s) => s.changePct).filter((v) => typeof v === 'number');
     const sumValue = stocks.reduce((acc, s) => acc + (typeof s.value === 'number' ? s.value : 0), 0);
     const top4Pcts = stocks.slice(0, THEME_STOCK_TOP).map((x) => x.changePct).filter((v) => typeof v === 'number');
+    /* 순위 기준도 바뀬 통합(KRX+NXT) 대금으로 다시 섬다 — 테마 **전체** 종목으로 계산(노출 4종목만이 아니다).
+     *  (2026-11-24 사용자 확정: 대금 300억↑ 종목 평균 → 없으면 100억↑ 저유동성) */
+    const basis = liquidAvgPct(merged.length ? merged : t.stocks || []);
     return {
       ...t,
       stocks,
       pricedCount: priced.length,
-      avgPctCalc: pcts.length
-        ? Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2))
-        : null,
+      avgPctCalc: basis.pct,
+      basisPct: basis.pct,
+      basisCount: basis.count,
+      basisSampleCodes: basis.codes,
+      lowLiquidity: basis.lowLiquidity,
+      avgPctBasisLabel: liquidBasisLabel(basis),
       top4Avg: top4Pcts.length
         ? Number((top4Pcts.reduce((a, b) => a + b, 0) / top4Pcts.length).toFixed(2))
         : t.top4Avg,
@@ -980,6 +1000,13 @@ function buildStockEasyThemes(se, map, premarket) {
     if (!pcts.length) return;
     const top4Avg = Number((pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(2));
     const top4Sum = shown.reduce((acc, x) => acc + (typeof x.value === 'number' ? x.value : 0), 0);
+    /* 순위 기준은 네이버 테마와 같다 — 대금 300억↑ 종목(최대 4) 평균 → 없으면 100억↑ 저유동성.
+     *  프리마켓에는 정규장 0.00%가 섞이지 않게 '오늘 체결값(livePct)'으로만 샌다. */
+    const basis = liquidAvgPct(
+      stocks.map((s) =>
+        premarket ? { ...s, changePct: typeof s.livePct === 'number' ? s.livePct : null } : s,
+      ),
+    );
     out.push({
       rank: 0,
       name: String(t.name).trim(),
@@ -992,8 +1019,12 @@ function buildStockEasyThemes(se, map, premarket) {
       avgPctLive: null,
       top4Avg,
       top4Sum,
-      avgPctCalc: top4Avg,
-      avgPctBasisLabel: premarket ? '프리마켓 체결 평균' : null,
+      basisPct: basis.pct,
+      basisCount: basis.count,
+      basisSampleCodes: basis.codes,
+      lowLiquidity: basis.lowLiquidity,
+      avgPctCalc: basis.pct,
+      avgPctBasisLabel: premarket ? '프리마켓 ' + liquidBasisLabel(basis) : liquidBasisLabel(basis),
       sumValue: top4Sum,
       sumValueText: formatKoreanMoney(top4Sum),
       riseCount: shown.filter((x) => typeof pctOf(x) === 'number' && pctOf(x) > 0).length,
@@ -1052,7 +1083,13 @@ function lastDynamicSnapshotThemes() {
 function dynamicThemesFlat(dyn) {
   if (!dyn || !dyn.ok || !Array.isArray(dyn.themes) || !dyn.themes.length) return true;
   return dyn.themes.every((t) => {
-    const v = typeof t.top4Avg === 'number' ? t.top4Avg : typeof t.avgPct === 'number' ? t.avgPct : null;
+    const v = typeof t.basisPct === 'number'
+      ? t.basisPct
+      : typeof t.top4Avg === 'number'
+        ? t.top4Avg
+        : typeof t.avgPct === 'number'
+          ? t.avgPct
+          : null;
     return v === null || Math.abs(v) < 0.005;
   });
 }
@@ -1264,22 +1301,22 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     }
   } else if (dyn.ok) {
     themes = mergeThemeQuotes(dyn.themes, map, premarket);
-    /* 시세가 붙은 뒤 한 번 더 — 화면에 보이는 Top4 기준으로 순위를 확정한다 */
+    /* 시세가 붙은 뒤 한 번 더 — 대금 300억↑ 종목 평균 등락률(동률이면 노출 4종목 합산 대금)로 순위를 확정한다 */
     themes = themes
       .slice()
       .sort(
         (a, b) =>
-          (b.avgPctCalc ?? b.top4Avg ?? -999) - (a.avgPctCalc ?? a.top4Avg ?? -999) ||
+          ((b.basisPct ?? b.avgPctCalc ?? -999) - (a.basisPct ?? a.avgPctCalc ?? -999)) ||
           (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
       );
-    /* 🔗 스탁이지 테마도 같은 잣대(노출 종목 평균 등락률 → 합산 대금)로 Top 8 경쟁에 넣는다.
+    /* 🔗 스탁이지 테마도 같은 잣대(대금 300억↑ 종목 평균 등락률 → 합산 대금)로 Top 8 경쟁에 넣는다.
      *   네이버 테마와 이름·구성종목이 80% 이상 겹치면 중복 노출하지 않는다. */
     if (se.ok && se.themes.length) {
       const seBuilt = buildStockEasyThemes(se, map, premarket).filter((t) => !stockEasyDuplicates(t, themes));
       if (seBuilt.length) {
         themes = themes.concat(seBuilt).sort(
           (a, b) =>
-            (b.avgPctCalc ?? b.top4Avg ?? -999) - (a.avgPctCalc ?? a.top4Avg ?? -999) ||
+            ((b.basisPct ?? b.avgPctCalc ?? -999) - (a.basisPct ?? a.avgPctCalc ?? -999)) ||
             (b.sumValue ?? b.top4Sum ?? 0) - (a.sumValue ?? a.top4Sum ?? 0),
         );
         themes = themes.slice(0, THEME_TOP);
@@ -1310,7 +1347,9 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     themeSeCards: seCards,
     themeSeUpdatedAt: se.ok ? se.updatedAt || null : null,
     themeSeError: se.ok ? null : se.error || null,
-    themeBaselineRule: prevDayList ? '기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승) 등락률 · ±100% 이상 제외' : null,
+    themeBaselineRule: prevDayList
+      ? '기준주(대금 300억↑ → 100억↑ 저유동성 최고 상승) 등락률 · ±100% 이상 제외'
+      : '테마 순위 = 대금 300억↑ 종목(최대 4) 평균 등락률 → 없으면 100억↑ 저유동성 · ±100% 이상 제외',
   };
 }
 
