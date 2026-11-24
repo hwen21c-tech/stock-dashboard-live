@@ -320,6 +320,51 @@ const MEM_TTL_MS = 5000;
 const supplyCache = new Map();
 const SUPPLY_TTL_MS = 60000;
 
+/* ============================================================================
+ * 🌙 오늘 종가베팅 공략 후보 (2트랙) — 2026-11-24 신설 (사용자 승인)
+ * ----------------------------------------------------------------------------
+ *  1번 메인 탭 「🌅 오늘 시초가 공략 후보」 바로 아래 카드가 이 값을 그린다.
+ *
+ *  · 새 api 파일을 만들지 않는다(Vercel Hobby 12함수 한도) — 이 응답에서 이미 받아 둔
+ *    테마·유니버스 종목 풀(knownMap)과 KIS 장중 가집계(60초 캐시)를 그대로 쓴다.
+ *  · 트랙 ①  🔥 테마주도주 (신정재·만쥬 결)
+ *      당일 거래대금 300억↑ · 등락률 +3%↑ · 윗꼬리 5% 이내(상한가 포함) · ETF·ETN·스팩·우선주 제외
+ *      정렬: 등락률 ↓ → 거래대금 ↓
+ *  · 트랙 ②  💰 수급주도주 (침착해·홍인기 결)
+ *      KIS 가집계 외인·기관 양매수, 또는 한쪽 300억↑ & 반대쪽 매도 20% 이내
+ *      + 거래대금 500억↑ (또는 등락률 -1% 이상 방어 + 거래대금 100억↑)
+ *      정렬: 외인+기관 순매수 합산 ↓
+ *  · 기준을 채우려 임의로 완화하지 않는다(사용자 철칙) — 충족 종목이 없으면 빈 배열과 사유를 남긴다.
+ *  · 임계값 중 '한쪽 강한 매수(300억)·반대쪽 매도 20%·방어 100억'은 이 카드가 처음 만들 때
+ *    정한 값이다. 바꿀 때는 사용자 확인을 받고 여기와 CP_RULES 를 함께 고친다.
+ * ========================================================================== */
+const CP_MAX_ROWS = 4;
+const CP_THEME_MIN_VALUE_EOK = 300;
+const CP_THEME_MIN_PCT = 3.0;
+const CP_THEME_MAX_UPPER_PCT = 5.0;
+const CP_SUPPLY_MIN_VALUE_EOK = 500;
+const CP_SUPPLY_DEFENSE_PCT = -1.0;
+const CP_SUPPLY_DEFENSE_MIN_VALUE_EOK = 100;
+const CP_SUPPLY_STRONG_EOK = 300;
+const CP_SUPPLY_WEAK_SELL_RATIO = 0.2;
+const CP_SUPPLY_CACHE_KEY = 'closing_supply:v1';
+const CP_THEME_HINT = '15:18~20 저점지지 확인 · 갭상승 시 분할익절';
+const CP_SUPPLY_HINT = '오후 수급·프로그램 방어 확인 · 익일 10시 기관 대응';
+
+const CP_RULES = {
+  theme:
+    '당일 거래대금 ' + CP_THEME_MIN_VALUE_EOK + '억↑ · 등락률 +' + CP_THEME_MIN_PCT +
+    '%↑ · 윗꼬리 ' + CP_THEME_MAX_UPPER_PCT + '% 이내(상한가 포함) · ETF·ETN·스팩·우선주 제외',
+  supply:
+    'KIS 가집계 외인·기관 양매수(또는 한쪽 ' + CP_SUPPLY_STRONG_EOK + '억↑ + 반대쪽 매도 ' +
+    Math.round(CP_SUPPLY_WEAK_SELL_RATIO * 100) + '% 이내) · 거래대금 ' + CP_SUPPLY_MIN_VALUE_EOK +
+    '억↑(또는 ' + CP_SUPPLY_DEFENSE_PCT + '% 이상 방어 + ' + CP_SUPPLY_DEFENSE_MIN_VALUE_EOK + '억↑)',
+  themeSort: '등락률 ↓ → 거래대금 ↓',
+  supplySort: '외인+기관 순매수 합산 ↓',
+  maxRows: CP_MAX_ROWS,
+};
+
+
 const pad2 = (n) => (n < 10 ? '0' : '') + n;
 const WEEKDAY_KO = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
 
@@ -3048,6 +3093,374 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
   return tvResponse(next, nowBucket);
 }
 
+/* ============================================================================
+ * 🌙 종가베팅 2트랙 계산기
+ * ========================================================================== */
+
+/** 확정 수급 폴백 — public/data/supply-latest.json (재스캔이 매일 갱신).
+ *  supply_live 모드 핸들러 안의 같은 취지 함수와 데이터 규칙은 같지만, 이미 검증·배포된
+ *  모드 응답을 건드리지 않으려고 별도로 둔다(코드로 병합 → (외+기) 합산 순).
+ */
+function cpConfirmedSupplyRows(n) {
+  let d = null;
+  try {
+    d = require('../public/data/supply-latest.json');
+  } catch (e) {
+    return null;
+  }
+  const groups = (d && d.groups) || {};
+  const m = new Map();
+  ['foreignBuy', 'organBuy', 'dualBuy'].forEach((gk) => {
+    (groups[gk] || []).forEach((x) => {
+      if (!x || !x.code) return;
+      const cur = m.get(x.code) || {
+        code: x.code, name: x.name, price: x.price, changePct: x.pct,
+        foreignEok: null, organEok: null,
+      };
+      if (x.foreignEok != null) cur.foreignEok = x.foreignEok;
+      if (x.organEok != null) cur.organEok = x.organEok;
+      if (cur.name == null) cur.name = x.name;
+      if (cur.price == null) cur.price = x.price;
+      if (cur.changePct == null) cur.changePct = x.pct;
+      m.set(x.code, cur);
+    });
+  });
+  const rows = [...m.values()]
+    .map((x) => ({ ...x, totalEok: Math.round(((x.foreignEok || 0) + (x.organEok || 0)) * 10) / 10 }))
+    .sort((a, b) => b.totalEok - a.totalEok);
+  if (!rows.length) return null;
+  const bd = String(d.basisDate || '');
+  const md = bd.length === 8 ? Number(bd.slice(4, 6)) + '/' + Number(bd.slice(6, 8)) : '';
+  return {
+    rows: rows.slice(0, n),
+    basisDate: bd,
+    asOfLabel: md ? '확정 ' + md + ' 기준' : '확정 ' + String(d.basisLabel || '').trim() + ' 기준',
+  };
+}
+
+/** KIS 장중 외인·기관 가집계 — 종가베팅 수급 트랙용. 60초 캐시(초당 20건 제한 보호).
+ *  · 장전·주말·KIS 미설정·오류·0건이면 supply-latest.json 확정치로 폴백하고 confirmed=true.
+ *  · 가집계를 확정치처럼, 확정치를 가집계처럼 적지 않는다(asOfLabel 로 구분). */
+async function fetchClosingSupplyRank(limit) {
+  const hit = supplyCache.get(CP_SUPPLY_CACHE_KEY);
+  if (hit && Date.now() - hit.at < SUPPLY_TTL_MS) return hit.value;
+
+  const p0 = kstParts(new Date());
+  const out = {
+    ok: false, confirmed: false, source: 'kis', rows: [], asOfLabel: '',
+    basisDate: null, errors: [], fallbackReason: null,
+  };
+  const put = (v) => { supplyCache.set(CP_SUPPLY_CACHE_KEY, { at: Date.now(), value: v }); return v; };
+  const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
+  const round1 = (x) => Math.round(x * 10) / 10;
+  const fallback = (why) => {
+    const fb = cpConfirmedSupplyRows(limit);
+    out.source = 'confirmed';
+    out.confirmed = true;
+    out.fallbackReason = why;
+    if (!fb) {
+      out.ok = false;
+      out.asOfLabel = '확정 수급 없음';
+      out.rows = [];
+      return out;
+    }
+    out.ok = true;
+    out.rows = fb.rows;
+    out.asOfLabel = fb.asOfLabel;
+    out.basisDate = fb.basisDate;
+    return out;
+  };
+
+  if (p0.wd === 'Sat' || p0.wd === 'Sun') return put(fallback('weekend_use_confirmed'));
+  if (p0.minutes < 9 * 60) return put(fallback('preopen_use_confirmed'));
+  if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) return put(fallback('kis_not_configured'));
+
+  const settled = await Promise.allSettled([
+    kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode: '1', sortCode: '0' }),
+    kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode: '1', sortCode: '0' }),
+  ]);
+  const got = {};
+  settled.forEach((s, i) => {
+    const key = i === 0 ? 'foreign' : 'organ';
+    if (s.status === 'fulfilled') {
+      got[key] = s.value;
+      return;
+    }
+    got[key] = null;
+    out.errors.push(
+      (key === 'foreign' ? '외국인' : '기관계') + ': ' + String((s.reason && s.reason.message) || s.reason),
+    );
+  });
+
+  const merged = new Map();
+  const mergeRows = (r, side) => {
+    if (!r || !r.rows || !r.rows.length) return;
+    r.rows.forEach((x) => {
+      if (!x || !x.code) return;
+      const cur = merged.get(x.code) || {
+        code: x.code, name: x.name, price: x.price, changePct: x.changePct,
+        foreignEok: null, organEok: null,
+      };
+      const eok = toEok(x.netValueRaw);
+      if (side === 'foreign') cur.foreignEok = eok; else cur.organEok = eok;
+      if (cur.name == null) cur.name = x.name;
+      if (cur.price == null) cur.price = x.price;
+      if (cur.changePct == null) cur.changePct = x.changePct;
+      merged.set(x.code, cur);
+    });
+  };
+  mergeRows(got.foreign, 'foreign');
+  mergeRows(got.organ, 'organ');
+
+  const rows = [...merged.values()]
+    .map((x) => ({ ...x, totalEok: round1((x.foreignEok || 0) + (x.organEok || 0)) }))
+    .sort((a, b) => b.totalEok - a.totalEok)
+    .slice(0, Math.max(limit, CP_MAX_ROWS));
+
+  const anyNonZero = rows.some((x) => (x.foreignEok || 0) !== 0 || (x.organEok || 0) !== 0);
+  const bothOk = !!(got.foreign && got.foreign.ok && got.organ && got.organ.ok);
+  if (!bothOk || !rows.length || !anyNonZero) {
+    return put(fallback(!bothOk ? 'kis_api_error' : 'kis_empty_or_zero'));
+  }
+
+  out.ok = true;
+  out.confirmed = false;
+  out.rows = rows;
+  /* 15:30 이 지나면 KIS 가집계는 그 시점 값으로 멈춘다 → 요청 시각이 아니라 마감 시각으로 적는다 */
+  out.asOfLabel = p0.minutes >= AFTER_START
+    ? '15:30 마감 기준'
+    : '실시간 ' + pad2(p0.hh) + ':' + pad2(p0.mi) + ' 기준';
+  return put(out);
+}
+
+/** 🔥 테마주도주 후보 풀 — 이 응답에서 이미 받아 둔 테마·유니버스 종목에서 모은다.
+ *  같은 종목이 여러 테마에 있으면 통합 거래대금이 큰 쪽(그 테마 이름)을 남긴다. */
+function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up }) {
+  const pool = new Map();
+  const push = (code, name, themeName, themeRank, base) => {
+    const c = String(code || '');
+    if (!c) return;
+    const q = knownMap[c] || {};
+    const b = base || {};
+    const rec = {
+      code: c,
+      name: q.name || name || b.name || null,
+      themeName: themeName || null,
+      themeRank: themeRank || null,
+      price: numOrNull(q.price) !== null ? numOrNull(q.price) : numOrNull(b.price),
+      changePct: numOrNull(q.changePct) !== null ? numOrNull(q.changePct) : numOrNull(b.changePct),
+      high: numOrNull(q.high) !== null ? numOrNull(q.high) : numOrNull(b.high),
+      value: numOrNull(q.value) !== null ? numOrNull(q.value) : numOrNull(b.value),
+      upperLimit: Boolean(q.upperLimit || b.upperLimit),
+      valueBasis: q.valueBasis || b.valueBasis || null,
+    };
+    const prev = pool.get(c);
+    if (!prev) {
+      pool.set(c, rec);
+      return;
+    }
+    if (!prev.themeName && rec.themeName) {
+      prev.themeName = rec.themeName;
+      prev.themeRank = rec.themeRank;
+    }
+    if ((rec.value || 0) > (prev.value || 0)) {
+      prev.value = rec.value;
+      if (rec.price !== null) prev.price = rec.price;
+      if (rec.changePct !== null) prev.changePct = rec.changePct;
+      if (rec.high !== null) prev.high = rec.high;
+      if (rec.upperLimit) prev.upperLimit = true;
+      if (rec.valueBasis) prev.valueBasis = rec.valueBasis;
+    }
+  };
+
+  (themes || []).forEach((t) => {
+    (t.stocks || []).forEach((s) => push(s.code, s.name, t.name, t.rank, s));
+  });
+  const h = h52 || {};
+  [].concat(h.byPct || [], h.byValue || []).forEach((x) => push(x.code, x.name, '52주 신고가', null, x));
+  const u = up || {};
+  [].concat(u.confirmed || [], u.near || [], u.watch || []).forEach((x) => push(x.code, x.name, '상한가·임박', null, x));
+  const nx = nxt && nxt.ok ? nxt : {};
+  [].concat(nx.byPct || [], nx.byValue || []).forEach((x) => push(x.code, x.name, 'NXT 상승률 상위', null, x));
+  return pool;
+}
+
+/** 🌙 종가베팅 2트랙 — 응답 본문에 담을 closingPicks 를 만든다.
+ *  실패해도 본 응답(테마·전략·수급 등)은 그대로 내려가도록 호출부에서 try/catch 로 감싼다. */
+async function buildClosingPicks(ctx) {
+  const started = Date.now();
+  const { themes, knownMap, nxt, high52: h52, upperLimit: up, session } = ctx || {};
+  const p0 = kstParts(new Date());
+  const weekend = p0.wd === 'Sat' || p0.wd === 'Sun';
+  const preopen = !weekend && p0.minutes < 9 * 60;
+  const afterClose = !weekend && p0.minutes >= AFTER_START;
+
+  const out = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    generatedAtKst: pad2(p0.hh) + ':' + pad2(p0.mi),
+    sessionPhase: session ? session.phase : null,
+    themeTrack: [],
+    supplyTrack: [],
+    themeAsOfLabel: '',
+    supplyAsOfLabel: '',
+    asOfLabel: '',
+    confirmed: false,
+    rules: CP_RULES,
+    sourceLabel: '/api/tabs-live closingPicks (네이버 통합 시세 + KIS 가집계)',
+    notes: [],
+    errors: [],
+  };
+
+  /* ---------------- 🔥 트랙 1: 테마주도주 ---------------- */
+  const pool = cpThemePool(ctx || {});
+  /* 시세가 비어 있는 후보만 추가 조회 — knownMap 에 통합 시세가 있으면 네이버를 다시 때리지 않는다 */
+  const needQuote = [...pool.values()]
+    .filter((r) => {
+      if (r.price !== null && r.changePct !== null && r.value !== null && r.high !== null) return false;
+      if (r.changePct !== null && r.changePct < CP_THEME_MIN_PCT) return false;
+      return true;
+    })
+    .map((r) => r.code)
+    .slice(0, 16);
+  if (needQuote.length) {
+    try {
+      const extra = await pollQuotes(needQuote);
+      needQuote.forEach((c) => {
+        const r = pool.get(c);
+        const q = extra[c];
+        if (!r || !q) return;
+        if (r.price === null) r.price = numOrNull(q.price);
+        if (r.changePct === null) r.changePct = numOrNull(q.changePct);
+        if (r.high === null) r.high = numOrNull(q.high);
+        if ((r.value === null || !r.valueBasis || r.valueBasis === 'NXT 체결') && typeof q.value === 'number') {
+          r.value = q.value;
+          r.valueBasis = q.valueBasis || r.valueBasis;
+        }
+        if (!r.name && q.name) r.name = q.name;
+        if (q.upperLimit) r.upperLimit = true;
+      });
+    } catch (e) {
+      out.errors.push('테마 후보 시세 보강: ' + String((e && e.message) || e));
+    }
+  }
+
+  const themePassed = [];
+  pool.forEach((r) => {
+    if (!r.code || r.price === null || r.changePct === null || r.value === null) return;
+    const nm = String(r.name || '');
+    if (FUND_NAME_RE.test(nm)) return;
+    if (isPreferredStock({ code: r.code, name: nm })) return;
+    const valueEok = r.value / 1e8;
+    if (valueEok + 1e-9 < CP_THEME_MIN_VALUE_EOK) return;
+    if (r.changePct + 1e-9 < CP_THEME_MIN_PCT) return;
+    const tail = r.high && r.price && r.high > 0 ? ((r.high - r.price) / r.high) * 100 : null;
+    if (tail !== null && tail > CP_THEME_MAX_UPPER_PCT + 1e-9 && !r.upperLimit) return;
+    themePassed.push({ ...r, valueEok, tail });
+  });
+  themePassed.sort((a, b) => b.changePct - a.changePct || b.valueEok - a.valueEok);
+  out.themeCandidates = themePassed.length;
+  out.themeTrack = themePassed.slice(0, CP_MAX_ROWS).map((r, i) => ({
+    rank: i + 1,
+    code: r.code,
+    name: r.name,
+    price: Math.round(r.price),
+    changePct: round2(r.changePct),
+    valueEok: Math.round(r.valueEok * 10) / 10,
+    upperTailPct: r.tail === null ? null : Math.round(r.tail * 100) / 100,
+    upperLimit: Boolean(r.upperLimit),
+    themeName: r.themeName || null,
+    themeRank: r.themeRank || null,
+    valueBasis: r.valueBasis || null,
+    ruleHint: CP_THEME_HINT,
+  }));
+
+  /* ---------------- 💰 트랙 2: 수급주도주 ---------------- */
+  let sup = { ok: false, rows: [], asOfLabel: '', confirmed: false, source: 'kis', errors: [] };
+  try {
+    sup = await fetchClosingSupplyRank(12);
+    if (sup.errors && sup.errors.length) out.errors.push(...sup.errors);
+  } catch (e) {
+    out.errors.push('KIS 가집계: ' + String((e && e.message) || e));
+  }
+  const supRows = sup.rows || [];
+  const needSupply = supRows
+    .filter((r) => !knownMap[r.code] || typeof knownMap[r.code].value !== 'number')
+    .map((r) => r.code)
+    .slice(0, 12);
+  let qmap = knownMap || {};
+  if (needSupply.length) {
+    try {
+      const extra = await pollQuotes(needSupply);
+      qmap = { ...qmap, ...extra };
+    } catch (e) {
+      out.errors.push('수급 후보 시세 보강: ' + String((e && e.message) || e));
+    }
+  }
+
+  const supplyPassed = [];
+  supRows.forEach((r) => {
+    const q = qmap[r.code] || {};
+    const price = numOrNull(q.price) !== null ? numOrNull(q.price) : numOrNull(r.price);
+    const changePct = numOrNull(q.changePct) !== null ? numOrNull(q.changePct) : numOrNull(r.changePct);
+    const valueEok = typeof q.value === 'number' ? Math.round((q.value / 1e8) * 10) / 10 : null;
+    const f = numOrNull(r.foreignEok);
+    const o = numOrNull(r.organEok);
+    const fs = f === null ? 0 : f;
+    const os = o === null ? 0 : o;
+    const bothBuy = fs > 0 && os > 0;
+    const strong = Math.max(fs, os);
+    const other = Math.min(fs, os);
+    const oneStrong = strong >= CP_SUPPLY_STRONG_EOK && other >= -strong * CP_SUPPLY_WEAK_SELL_RATIO;
+    if (!bothBuy && !oneStrong) return;
+    /* 거래대금을 확인할 수 없으면 카드를 만들지 않는다(추정 금지) */
+    if (valueEok === null) return;
+    const valueOK = valueEok >= CP_SUPPLY_MIN_VALUE_EOK;
+    const defendOK =
+      valueEok >= CP_SUPPLY_DEFENSE_MIN_VALUE_EOK && changePct !== null && changePct >= CP_SUPPLY_DEFENSE_PCT;
+    if (!valueOK && !defendOK) return;
+    if (price === null) return;
+    const nm = String(r.name || q.name || '');
+    if (FUND_NAME_RE.test(nm) || isPreferredStock({ code: r.code, name: nm })) return;
+    supplyPassed.push({
+      code: r.code,
+      name: nm || null,
+      price: Math.round(price),
+      changePct: round2(changePct),
+      valueEok,
+      foreignEok: f,
+      organEok: o,
+      totalEok: typeof r.totalEok === 'number' ? r.totalEok : round2(fs + os),
+      supplyKind: bothBuy ? '쌍끌이' : '한쪽 매수',
+      ruleHint: CP_SUPPLY_HINT,
+    });
+  });
+  supplyPassed.sort((a, b) => (b.totalEok || 0) - (a.totalEok || 0));
+  out.supplyCandidates = supplyPassed.length;
+  out.supplyTrack = supplyPassed.slice(0, CP_MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r }));
+
+  /* ---------------- 기준 시각 표기 ---------------- */
+  out.themeAsOfLabel = weekend
+    ? '직전 거래일 마감 기준'
+    : preopen
+      ? '장전 — 직전 거래일 마감 기준'
+      : afterClose
+        ? '15:30 마감 기준'
+        : '실시간 ' + pad2(p0.hh) + ':' + pad2(p0.mi);
+  out.supplyAsOfLabel = sup.asOfLabel || (sup.confirmed ? '확정 기준' : '');
+  out.asOfLabel =
+    out.supplyAsOfLabel && out.supplyAsOfLabel !== out.themeAsOfLabel
+      ? out.themeAsOfLabel + ' · 수급 ' + out.supplyAsOfLabel
+      : out.themeAsOfLabel;
+  out.confirmed = Boolean(sup.confirmed);
+  out.supplySource = sup.source || 'kis';
+  out.supplyFallbackReason = sup.fallbackReason || null;
+  out.empty = { theme: out.themeTrack.length === 0, supply: out.supplyTrack.length === 0 };
+  if (out.empty.theme && out.empty.supply) out.note = '조건 충족 종목 없음 — 기준을 임의로 완화하지 않습니다.';
+  out.elapsedMs = Date.now() - started;
+  return out;
+}
+
 /** Vercel CDN 캐시 헤더까지 같이 내려준다.
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
@@ -3531,6 +3944,19 @@ module.exports = async function handler(req, res) {
   const liveUniverse = WATCH.concat(dynamicUniverse);
   const aftermarket = buildAftermarket(knownMap, overSession, liveUniverse);
 
+  /* 🌙 종가베팅 2트랙 — 이미 받은 종목 풀 + KIS 가집계(60초 캐시)로 계산한다.
+   *   여기서 실패해도 본 응답(테마·전략·수급·시간외)은 그대로 내려간다. */
+  let closingPicks = null;
+  try {
+    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session });
+  } catch (e) {
+    closingPicks = {
+      ok: false, themeTrack: [], supplyTrack: [],
+      error: String((e && e.message) || e), rules: CP_RULES,
+    };
+    errors.push('closingPicks: ' + String((e && e.message) || e));
+  }
+
   const nxtLeaders = {
     ok: nxt.ok,
     source: 'naver NXT 랭킹 (stock.naver.com · tradeType=NXT)',
@@ -3638,6 +4064,7 @@ module.exports = async function handler(req, res) {
     themePrevAsOf: themeData.themePrevAsOf || null,
     themeErrors: themeData.themeErrors || [],
     strategyLive,
+    closingPicks,
     high52,
     upperLimit,
     aftermarket,
@@ -3677,3 +4104,6 @@ module.exports.fetchSearchTopKRX = fetchSearchTopKRX;
 module.exports.attachSearchBadges = attachSearchBadges;
 module.exports.pickThemeStocks = pickThemeStocks;
 module.exports.mapPrevDayThemes = mapPrevDayThemes;
+// 🌙 종가베팅 2트랙(테마·수급) 규칙을 테스트에서 직접 검증할 수 있게 내보낸다.
+module.exports.buildClosingPicks = buildClosingPicks;
+module.exports.CP_RULES = CP_RULES;
