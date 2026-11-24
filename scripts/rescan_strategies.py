@@ -2179,9 +2179,11 @@ def main():
             log("! live-kkangto.js 의 const DATA 블록을 찾지 못했습니다 — 파일을 건드리지 않습니다")
     for path, obj in ((os.path.join(DATA_DIR, "rnzone-latest.json"),
                        {"generatedAt": payload["generatedAt"], "basisDate": rn_basis,
+                        "basisLabel": dlong(rn_basis),
                         "counts": rn_counts, "stocks": rn_stocks}),
                       (os.path.join(DATA_DIR, "jongbe-latest.json"),
                        {"generatedAt": payload["generatedAt"], "basisDate": jb_basis,
+                        "basisLabel": dlong(jb_basis),
                         "stocks": jb_stocks})):
         open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
 
