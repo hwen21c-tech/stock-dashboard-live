@@ -3649,7 +3649,7 @@ async function buildClosingPicks(ctx) {
   supplyPassed.sort((a, b) => (b.totalEok || 0) - (a.totalEok || 0));
   out.supplyCandidates = supplyPassed.length;
   out.supplySides = sup.sides || null;
-  if (ctx && ctx.debug) out.supplyRows = (sup._all || []).slice(0, 80);
+  if (ctx && ctx.debug) out.supplyRows = sup._all || [];
   out.supplyTrack = supplyPassed.slice(0, CP_MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r }));
 
   /* ---------------- 기준 시각 표기 ---------------- */
