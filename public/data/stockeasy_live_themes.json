@@ -3,9 +3,9 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-24 09:48:01",
- "updatedAt": "2026-11-24T09:48:01.645998+09:00",
- "updatedAgeMin": -0.0,
+ "fetchedAt": "2026-11-24 10:10:46",
+ "updatedAt": "2026-11-24T10:10:27.559727+09:00",
+ "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
  "codes": [
@@ -13,15 +13,14 @@
   "084850",
   "448900",
   "307950",
-  "108490",
+  "466100",
   "129920",
   "077360",
   "009150",
-  "053610",
+  "000660",
   "090710",
   "056080",
-  "396300",
-  "125490"
+  "066570"
  ],
  "themes": [
   {
@@ -33,21 +32,21 @@
      "code": "060720",
      "name": "KH바텍",
      "chg": 30.0,
-     "value_eok": 309.92,
+     "value_eok": 314.72,
      "verified": true
     },
     {
      "code": "084850",
      "name": "아이티엠반도체",
      "chg": 29.9,
-     "value_eok": 24.97,
+     "value_eok": 25.02,
      "verified": true
     },
     {
      "code": "448900",
      "name": "한국피아이엠",
      "chg": 29.9,
-     "value_eok": 161.11,
+     "value_eok": 165.02,
      "verified": true
     }
    ]
@@ -55,27 +54,27 @@
   {
    "rank": 2,
    "name": "피지컬 AI",
-   "avgRS": 88,
+   "avgRS": 67,
    "stocks": [
     {
      "code": "448900",
      "name": "한국피아이엠",
      "chg": 29.9,
-     "value_eok": 161.11,
+     "value_eok": 165.02,
      "verified": true
     },
     {
      "code": "307950",
      "name": "현대오토에버",
-     "chg": 22.2,
-     "value_eok": 502.45,
+     "chg": 22.8,
+     "value_eok": 675.1,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 14.6,
-     "value_eok": 1369.89,
+     "code": "466100",
+     "name": "클로봇",
+     "chg": 17.2,
+     "value_eok": 95.75,
      "verified": true
     }
    ]
@@ -89,21 +88,21 @@
      "code": "084850",
      "name": "아이티엠반도체",
      "chg": 29.9,
-     "value_eok": 24.97,
+     "value_eok": 25.02,
      "verified": true
     },
     {
      "code": "129920",
      "name": "대성하이텍",
-     "chg": 24.6,
-     "value_eok": 23.72,
+     "chg": 28.8,
+     "value_eok": 38.28,
      "verified": true
     },
     {
      "code": "077360",
      "name": "덕산하이메탈",
-     "chg": 18.0,
-     "value_eok": 34.84,
+     "chg": 20.6,
+     "value_eok": 45.84,
      "verified": true
     }
    ]
@@ -111,76 +110,76 @@
   {
    "rank": 4,
    "name": "아이폰",
-   "avgRS": 67,
+   "avgRS": 66,
    "stocks": [
     {
      "code": "084850",
      "name": "아이티엠반도체",
      "chg": 29.9,
-     "value_eok": 24.97,
+     "value_eok": 25.02,
      "verified": true
     },
     {
      "code": "009150",
      "name": "삼성전기",
-     "chg": 11.2,
-     "value_eok": 6939.72
+     "chg": 12.3,
+     "value_eok": 7727.47
     },
     {
-     "code": "053610",
-     "name": "프로텍",
-     "chg": 10.3,
-     "value_eok": 20.54
+     "code": "000660",
+     "name": "SK하이닉스",
+     "chg": 10.6,
+     "value_eok": 35334.11
     }
    ]
   },
   {
    "rank": 5,
    "name": "지능형로봇/인공지능",
-   "avgRS": 88,
+   "avgRS": 68,
    "stocks": [
     {
      "code": "090710",
      "name": "휴림로봇",
-     "chg": 25.4,
-     "value_eok": 876.22
+     "chg": 26.2,
+     "value_eok": 1054.56
     },
     {
      "code": "056080",
      "name": "유진로봇",
-     "chg": 15.3,
-     "value_eok": 56.95
+     "chg": 19.8,
+     "value_eok": 103.9
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 14.6,
-     "value_eok": 1369.89
+     "code": "466100",
+     "name": "클로봇",
+     "chg": 17.2,
+     "value_eok": 95.75
     }
    ]
   },
   {
    "rank": 6,
-   "name": "자동차부품",
-   "avgRS": 91,
+   "name": "자율주행차",
+   "avgRS": 90,
    "stocks": [
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 29.9,
-     "value_eok": 161.11
+     "code": "307950",
+     "name": "현대오토에버",
+     "chg": 22.8,
+     "value_eok": 675.1
     },
     {
-     "code": "396300",
-     "name": "HT로보틱스",
-     "chg": 15.4,
-     "value_eok": 64.17
+     "code": "056080",
+     "name": "유진로봇",
+     "chg": 19.8,
+     "value_eok": 103.9
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 13.6,
-     "value_eok": 107.37
+     "code": "066570",
+     "name": "LG전자",
+     "chg": 15.9,
+     "value_eok": 1107.32
     }
    ]
   }
