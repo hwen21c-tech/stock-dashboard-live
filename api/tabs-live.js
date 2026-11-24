@@ -3152,14 +3152,14 @@ function cpConfirmedSupplyRows(n) {
  *  · 가집계를 확정치처럼, 확정치를 가집계처럼 적지 않는다(asOfLabel 로 구분). */
 async function fetchClosingSupplyRank(limit) {
   const hit = supplyCache.get(CP_SUPPLY_CACHE_KEY);
-  if (hit && Date.now() - hit.at < SUPPLY_TTL_MS) return hit.value;
+  if (hit && Date.now() - hit.at < (hit.ttl || SUPPLY_TTL_MS)) return hit.value;
 
   const p0 = kstParts(new Date());
   const out = {
     ok: false, confirmed: false, source: 'kis', rows: [], asOfLabel: '',
     basisDate: null, errors: [], fallbackReason: null, sides: {},
   };
-  const put = (v) => { supplyCache.set(CP_SUPPLY_CACHE_KEY, { at: Date.now(), value: v }); return v; };
+  const put = (v, ttl) => { supplyCache.set(CP_SUPPLY_CACHE_KEY, { at: Date.now(), ttl, value: v }); return v; };
   const toEok = (raw) => (raw == null ? null : Math.round((raw / 100) * 10) / 10);
   const round1 = (x) => Math.round(x * 10) / 10;
   const fallback = (why) => {
@@ -3210,11 +3210,25 @@ async function fetchClosingSupplyRank(limit) {
   ];
   const settled = await Promise.allSettled(
     LIST_CALLS.map((c) =>
-      kisLib.fetchForeignInstitutionTotal({
-        etcClsCode: c.side === 'foreign' ? '1' : '2',
-        divCode: '1',
-        sortCode: c.sortCode,
-      }),
+      /* 초당 제한(EGW00201)은 다른 화면·스케줄 호출과 겹칠 때 난다 — lib 이 한 번 더 시도한 뒤에도
+       * 막히면 0.6초 쉬었다 한 번 더 시도한다(한쪽 매도 목록이 비면 카드가 '미확인'으로 남기 때문). */
+      (async () => {
+        const call = () =>
+          kisLib.fetchForeignInstitutionTotal({
+            etcClsCode: c.side === 'foreign' ? '1' : '2',
+            divCode: '1',
+            sortCode: c.sortCode,
+          });
+        try {
+          return await call();
+        } catch (e) {
+          if (e && (e.code === 'KIS_RATE_LIMIT' || String(e.msgCd || '') === 'EGW00201')) {
+            await new Promise((r) => setTimeout(r, 600));
+            return await call();
+          }
+          throw e;
+        }
+      })(),
     ),
   );
   const got = {};
@@ -3280,7 +3294,10 @@ async function fetchClosingSupplyRank(limit) {
   out.asOfLabel = p0.minutes >= AFTER_START
     ? '15:30 마감 기준'
     : '실시간 ' + pad2(p0.hh) + ':' + pad2(p0.mi) + ' 기준';
-  return put(out);
+  /* 한쪽(특히 반대쪽 매도) 목록을 못 받았으면 60초씩 캐시해 두지 않는다 — 15초 뒤 다시 시도해
+   *  다음 폴링에서 매도 금액을 채운다(실패를 1분간 '미확인'으로 고정하지 않기 위해서). */
+  const complete = LIST_CALLS.every((c) => got[c.key] && got[c.key].ok);
+  return put(out, complete ? undefined : 15000);
 }
 
 /** 상위 주도 테마(최대 CP_POOL_THEMES개)의 **전체 구성종목** — 종가베팅 테마 후보 풀(5분 캐시).
