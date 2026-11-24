@@ -2722,8 +2722,12 @@
     }
     var stampEl = panel.querySelector('#nxtRankStamp') || panel.querySelector('[data-nxt-rank-stamp]');
     if (stampEl) {
-      var stampTxt = '⚡ ' + stamp + ' 조회 · NXT 체결 실시간 (응답이 없으면 옛 종목을 대신 쓰지 않습니다)';
-      if (stampEl.textContent !== stampTxt) stampEl.textContent = stampTxt;
+      /* 15초 stock-live 갱신(live-extra.js stampBadges)이 이 배지를 직접 쓴다.
+       * 여기서는 '정적 생성 시각(파서 가동 중 …)' 문구만 한 번 바로잡아, 두 문구가 번갈아 깜박이지 않게 한다. */
+      var cur = stampEl.textContent || '';
+      if (!cur || cur.indexOf('파서 가동') >= 0) {
+        stampEl.textContent = '⚡ ' + stamp + ' 조회 · NXT 체결 실시간 (응답이 없으면 옛 종목을 대신 쓰지 않습니다)';
+      }
     }
     var grid = panel.querySelector('#nxtRankGrid') || panel.querySelector('[data-nxt-rank-grid]');
     if (!grid) return 0;
