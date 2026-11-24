@@ -5028,7 +5028,7 @@ module.exports = async function handler(req, res) {
   try {
     futuresKis = await Promise.race([
       futuresPromise,
-      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 3200)),
+      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 2500)),
     ]);
     if (futuresKis === 'TIMEOUT') {
       futuresKisTimedOut = true;
