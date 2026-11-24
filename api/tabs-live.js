@@ -3429,7 +3429,437 @@ function cpThemePool({ themes, knownMap, nxt, high52: h52, upperLimit: up, membe
   return pool;
 }
 
-/** 🌙 종가베팅 2트랙 — 응답 본문에 담을 closingPicks 를 만든다.
+/** 🌙 종가베팅 2트랙 — 응답 본문에 담을 closingPicks 를 만든다./* ============================================================================
+ * 📘 침착해 종가베팅 (프로그램 수급 · 오후장 방어) — 2026-11-24 신설
+ * ----------------------------------------------------------------------------
+ *  「🌙 오늘 종가베팅 공략 후보 (2트랙)」 바로 아래 섹션. 사용자 확정(11/24).
+ *
+ *  근거: 침착해 「실전매매일지」 4·5·6강(2024-01-30~05-02, 60일 471p) 정밀 분석
+ *   → 1순위 신호는 외인·기관이 아니라 **프로그램 수급**이다(프로그램 관련 문장 365개).
+ *     판독 5축: ① 방향 ② 지속성(종일/오후 전환) ③ 규모(주식 수, 아침·전일 대비)
+ *                ④ 가격과의 관계(밀릴 때 받아주는가) ⑤ 외인·기관과 같은 방향인가
+ *   → 진입은 13시 이후~종가, 청산은 '당일 고점 부근 프로그램 매도 전환',
+ *     손절은 '프로그램 매도세로 당일 저점 이탈'.
+ *
+ *  ⚠️ 원전에는 '거래대금 500억↑' 같은 수치 임계값이 없다. 여기서 쓰는 수치(소폭 순매도
+ *     20% 이내 등)는 **관제탑 자체 기준**이며 카드·응답에 그 사실을 함께 적는다(원전 왜곡 금지).
+ *
+ *  · 프로그램 값은 KIS 종목별 프로그램매매추이(0465 · FHPPG04650100) 실시간 — 60초 캐시.
+ *  · 후보는 상위 14종목(수급 트랙 통과분 + 테마 트랙 상위)만 조회한다(초당 20건 제한 보호).
+ *  · 응답이 비면 추정치를 만들지 않고 programStatus '미수신'으로 내린다.
+ * ========================================================================== */
+const CP_CHIM_MAX_ROWS = 6;
+const CP_CHIM_POOL_MAX = 14;
+const CP_CHIM_DEADLINE_MS = 12000;
+const CP_CHIM_SMALL_SELL_RATIO = 0.2; // 프로그램 순매도가 (외+기) 순매수의 20% 이내면 '소폭'(관제탑 자체 기준)
+const CP_CHIM_HINT = '13시 이후 프로그램 방어 확인 후 분할 · 매도 전환 시 청산 · 저점 이탈 즉시 손절';
+const CP_CHIM_INDEX_TTL_MS = 60000;
+const cpIndexCache = new Map();
+
+const CP_CHIM_TREND_LABEL = {
+  up: '오후 순매수 증가',
+  flat: '순매수 유지(증가 둔화)',
+  flip: '오전 매도 → 오후 순매수 전환',
+  down: '순매도 지속',
+  unknown: '추세 미확인',
+};
+
+const CP_CHIM_RULES = {
+  select:
+    '프로그램 순매수(당일 누적 · KIS 0465) 최우선 · 프로그램이 소폭 순매도여도 외인·기관 양매수면 방어 종목으로 포함(뱃지) · ETF·ETN·스팩·우선주 제외',
+  sort: '프로그램 순매수 ↓ · 오후(13시 이후) 순증 → 추세 → 외인+기관 합산 ↓',
+  entry: '13시 이후 지수 대비 눌림 구간에서 프로그램이 받아주는 것을 확인 후 분할매수',
+  exit: '당일 고점 부근 프로그램 매도 전환 시 분할 청산 · 시간외 3~5% 상승 시 분할 익절',
+  stop: '프로그램 매도세로 당일 저점 이탈 시 즉시 손절 · 블록딜·유증·자사주 처분 등 악재 공시 시 즉시 정리',
+  caveat:
+    '침착해 원전에는 거래대금·억원 임계값이 없다 — 수치 기준(소폭 순매도 20% 등)은 관제탑 자체 기준이고, 판정은 프로그램 방향·지속성·가격과의 관계로 한다.',
+};
+
+/** 코스피·코스닥 지수 등락 — 시장 게이트용(60초 캐시, 네이버 폴링) */
+async function fetchIndexGate() {
+  const key = 'index:gate';
+  const hit = cpIndexCache.get(key);
+  if (hit && Date.now() - hit.at < CP_CHIM_INDEX_TTL_MS) return hit.value;
+  const value = { ok: false, kospiPct: null, kosdaqPct: null, asOf: null, note: '' };
+  try {
+    const url =
+      'https://polling.finance.naver.com/api/realtime/domestic/index/KOSPI,KOSDAQ?_=' + Date.now();
+    const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
+    const rows = (data && data.datas) || [];
+    rows.forEach((d) => {
+      const pct = numOrNull(String(d.fluctuationsRatio === undefined ? '' : d.fluctuationsRatio).replace(/,/g, ''));
+      if (d.itemCode === 'KOSPI' || d.symbolCode === 'KOSPI') value.kospiPct = pct;
+      if (d.itemCode === 'KOSDAQ' || d.symbolCode === 'KOSDAQ') value.kosdaqPct = pct;
+      if (d.localTradedAt) value.asOf = d.localTradedAt;
+    });
+    value.ok = value.kospiPct !== null || value.kosdaqPct !== null;
+    if (!value.ok) value.note = '지수 응답에 등락률이 없습니다.';
+  } catch (e) {
+    value.note = '지수 조회 실패: ' + String((e && e.message) || e);
+  }
+  cpIndexCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** 지수 방향 → 시장 게이트. 외인 선물은 공개 실시간 소스가 없어 미수신으로 남긴다. */
+function chimMarketGate(idx) {
+  const k = numOrNull(idx && idx.kospiPct);
+  const q = numOrNull(idx && idx.kosdaqPct);
+  const vals = [k, q].filter((v) => v !== null);
+  const min = vals.length ? Math.min.apply(null, vals) : null;
+  let advice = 'normal';
+  let label = '정상';
+  let reason = '지수 방향 양호 — 기본 비중으로 진행 가능';
+  if (min !== null && min <= -3) {
+    advice = 'hedge';
+    label = '비중 축소 권고';
+    reason = '지수 급락 — 종베 자리 아님(헷지·관망 검토)';
+  } else if (min !== null && min <= -1) {
+    advice = 'reduce';
+    label = '비중 축소 권고';
+    reason = '지수 약세 — 비중 축소·1~2종목';
+  } else if (min === null) {
+    label = '지수 미수신';
+    reason = '지수 응답이 없어 시장 게이트를 판정하지 못했습니다.';
+  }
+  return {
+    ok: Boolean(idx && idx.ok),
+    kospiPct: k,
+    kosdaqPct: q,
+    advice,
+    label,
+    reason,
+    asOf: (idx && idx.asOf) || null,
+    foreignFut: null,
+    foreignFutNote: '외인 선물 실시간 수급은 공개 API가 없어 미수신 — 지수 방향으로만 게이트를 판정합니다.',
+  };
+}
+
+/** 후보 코드별 프로그램 추이 병렬 조회(4개씩 · 마감시각 보호) */
+async function fetchProgramBatch(codes, deadline) {
+  const out = new Map();
+  for (let i = 0; i < codes.length; i += 4) {
+    if (Date.now() > deadline) break;
+    const slice = codes.slice(i, i + 4);
+    const settled = await Promise.allSettled(slice.map((c) => kisLib.fetchProgramTradeByStock(c)));
+    settled.forEach((s, idx) => {
+      const code = slice[idx];
+      if (s.status === 'fulfilled' && s.value) out.set(code, { ok: true, data: s.value });
+      else {
+        out.set(code, {
+          ok: false,
+          error: String((s.reason && (s.reason.message || s.reason)) || 'KIS 응답 없음'),
+        });
+      }
+    });
+  }
+  return out;
+}
+
+function chimSignedEok(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return '미확인';
+  const abs = Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-US') : String(Math.round(v * 10) / 10);
+  return (v > 0 ? '+' : v < 0 ? '-' : '') + abs + '억';
+}
+
+/** 📘 침착해 종가베팅 트랙 — buildClosingPicks 안에서 호출한다. */
+async function buildChimchakhae(ctx) {
+  const started = Date.now();
+  const { supplyPassed, themePassed, session } = ctx || {};
+  const p0 = kstParts(new Date());
+  const weekend = p0.wd === 'Sat' || p0.wd === 'Sun';
+  const preopen = !weekend && p0.minutes < 9 * 60;
+  const afterClose = !weekend && p0.minutes >= AFTER_START;
+
+  const out = {
+    ok: true,
+    generatedAtKst: pad2(p0.hh) + ':' + pad2(p0.mi),
+    programSource: 'KIS 종목별 프로그램매매추이(0465 · FHPPG04650100) 실시간',
+    programAsOfLabel: '',
+    asOfLabel: '',
+    marketGate: null,
+    rows: [],
+    rules: CP_CHIM_RULES,
+    notes: [],
+    errors: [],
+  };
+
+  /* ① 시장 게이트 */
+  try {
+    out.marketGate = chimMarketGate(await fetchIndexGate());
+  } catch (e) {
+    out.errors.push('시장 게이트: ' + String((e && e.message) || e));
+    out.marketGate = chimMarketGate(null);
+  }
+
+  if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+    out.ok = false;
+    out.notes.push('KIS API 키가 없어 프로그램 수급을 조회하지 못했습니다(programStatus 미수신).');
+    return out;
+  }
+
+  /* ② 후보 풀 — 수급 트랙 통과분(외인·기관) + 테마 트랙 상위(거래대금) */
+  const cands = new Map();
+  const pushCand = (r, src) => {
+    if (!r || !/^\d{6}$/.test(String(r.code || ''))) return;
+    const cur = cands.get(r.code);
+    if (cur) {
+      cur.sources.push(src);
+      if (cur.price === null) cur.price = numOrNull(r.price);
+      if (typeof cur.foreignEok !== 'number' && typeof r.foreignEok === 'number') cur.foreignEok = r.foreignEok;
+      if (typeof cur.organEok !== 'number' && typeof r.organEok === 'number') cur.organEok = r.organEok;
+      if (!cur.name && r.name) cur.name = r.name;
+      return;
+    }
+    cands.set(r.code, {
+      code: String(r.code),
+      name: r.name || null,
+      price: numOrNull(r.price),
+      changePct: numOrNull(r.changePct),
+      valueEok: numOrNull(r.valueEok),
+      foreignEok: numOrNull(r.foreignEok),
+      organEok: numOrNull(r.organEok),
+      supplyKind: r.supplyKind || null,
+      themeName: r.themeName || null,
+      sources: [src],
+    });
+  };
+  (supplyPassed || []).forEach((r) => pushCand(r, 'supply'));
+  (themePassed || []).slice(0, 12).forEach((r) => pushCand(r, 'theme'));
+  const pool = Array.from(cands.values())
+    .filter((r) => r.price !== null && r.changePct !== null)
+    .sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
+  out.poolSize = pool.length;
+  const targets = pool.slice(0, CP_CHIM_POOL_MAX);
+
+  /* ③ 프로그램 수급 조회 */
+  const progMap = await fetchProgramBatch(
+    targets.map((t) => t.code),
+    started + CP_CHIM_DEADLINE_MS,
+  );
+  out.programStats = {
+    requested: targets.length,
+    received: Array.from(progMap.values()).filter((x) => x.ok).length,
+    failed: Array.from(progMap.values()).filter((x) => !x.ok).length,
+  };
+
+  const gate = out.marketGate || {};
+  const idxPct = (() => {
+    const v = [gate.kospiPct, gate.kosdaqPct].filter((x) => typeof x === 'number');
+    return v.length ? Math.min.apply(null, v) : null;
+  })();
+
+  /* ④ 분류 — 프로그램 순매수 최우선, 소폭 순매도 + 외인·기관 방어는 뱃지로 포함 */
+  const drop = { noProg: 0, programSell: 0, noQuote: 0, fund: 0 };
+  const prelim = [];
+  targets.forEach((c) => {
+    const nm = String(c.name || '');
+    if (FUND_NAME_RE.test(nm) || isPreferredStock({ code: c.code, name: nm })) {
+      drop.fund += 1;
+      return;
+    }
+    const pr = progMap.get(c.code);
+    const prog = pr && pr.ok ? pr.data : null;
+    const hasProg = Boolean(prog && prog.ok && prog.latest);
+    const netQty = hasProg ? prog.latest.netQty : null;
+    const netValue = hasProg ? prog.latest.netValue : null;
+    const programEok =
+      typeof netValue === 'number' && isFinite(netValue) ? Math.round((netValue / 1e8) * 10) / 10 : null;
+    const f = numOrNull(c.foreignEok);
+    const o = numOrNull(c.organEok);
+    const fPos = f !== null && f > 0;
+    const oPos = o !== null && o > 0;
+    const support = (f === null ? 0 : f) + (o === null ? 0 : o);
+
+    let state;
+    if (!hasProg) state = '미수신';
+    else if (typeof netQty === 'number' && netQty > 0) state = '순매수';
+    else if (
+      programEok !== null &&
+      programEok < 0 &&
+      fPos &&
+      oPos &&
+      support > 0 &&
+      Math.abs(programEok) <= support * CP_CHIM_SMALL_SELL_RATIO
+    )
+      state = '소폭매도(방어)';
+    else state = '매도';
+
+    if (state === '매도') {
+      drop.programSell += 1;
+      return;
+    }
+    if (!hasProg) drop.noProg += 1;
+
+    const trend = hasProg ? prog.trend || { kind: 'unknown' } : { kind: 'unknown' };
+    const trendLabel = CP_CHIM_TREND_LABEL[trend.kind] || CP_CHIM_TREND_LABEL.unknown;
+    const programStatus = hasProg ? state : '미수신';
+    const tag =
+      state === '순매수'
+        ? trend.kind === 'flip'
+          ? '프로그램 순매수(오후 전환)'
+          : '프로그램 순매수'
+        : state === '소폭매도(방어)'
+          ? '프로그램 소폭매도(기관·외인 방어)'
+          : '프로그램 미수신';
+
+    /* 선정 사유 — 프로그램 방향·지속성·규모 → 외인·기관 → 지수 대비 → 경고 */
+    const why = [];
+    if (state === '순매수') {
+      const when = trend.kind === 'flip' ? '오후' : idxPct !== null ? '오후' : '당일';
+      const how =
+        trend.kind === 'flip' ? '순매수 전환' : trend.kind === 'up' ? '순매수 지속·증가' : '순매수 유지';
+      why.push(when + ' 프로그램 ' + chimSignedEok(programEok) + ' ' + how);
+    } else if (state === '소폭매도(방어)') {
+      why.push('프로그램 ' + chimSignedEok(programEok) + ' 소폭 순매도 · 기관·외인 방어');
+    } else {
+      why.push('프로그램 수급 미수신(KIS 0465 응답 없음) — 외인·기관으로만 판정');
+    }
+    if (fPos && oPos) why.push('외인 ' + chimSignedEok(f) + '·기관 ' + chimSignedEok(o) + ' 양매수');
+    else if (fPos) why.push('외인 ' + chimSignedEok(f) + ' 매수 · 기관 ' + chimSignedEok(o));
+    else if (oPos) why.push('기관 ' + chimSignedEok(o) + ' 매수 · 외인 ' + chimSignedEok(f));
+    else why.push('외인·기관 수급 ' + (f === null && o === null ? '미확인' : '약함'));
+    if (idxPct !== null && c.changePct !== null && c.changePct > idxPct) why.push('지수 대비 강세(밀림 방어)');
+
+    const gateReduce = gate.advice === 'reduce' || gate.advice === 'hedge';
+    const strategy = {
+      entry:
+        state === '순매수'
+          ? trend.kind === 'flip'
+            ? '오전 매도 → 오후 순매수 전환 확인된 자리에서 13시 이후 분할매수'
+            : '13시 이후 지수 대비 눌림 구간에서 프로그램이 받아주는 것을 확인 후 분할매수'
+          : '프로그램 방향이 확인될 때까지 관망 · 오후 순매수 전환 확인 후 소량 진입',
+      sizing: gateReduce
+        ? '시장 게이트 ' + (gate.label || '비중 축소') + ' — 기본 비중의 절반, 1~2종목'
+        : '기본 비중 유지 · 2~3회 분할 진입',
+      afterHours:
+        '시간외 단일가 3~5% 상승 시 분할 익절 · 익일 08:50 갭상승이면 절반 익절, 갭 실패(시가 이탈)면 잔량 정리',
+      stop:
+        '프로그램 매도 전환으로 당일 저점 이탈 시 즉시 손절 · 블록딜·유증·자사주 처분 공시 확인 시 즉시 정리',
+    };
+
+    prelim.push({
+      code: c.code,
+      name: c.name,
+      price: Math.round(c.price),
+      changePct: round2(c.changePct),
+      valueEok: Math.round((c.valueEok || 0) * 10) / 10,
+      programState: state,
+      programStatus,
+      tag,
+      programEok,
+      programQty: typeof netQty === 'number' ? netQty : null,
+      programNetValue: typeof netValue === 'number' ? netValue : null,
+      programTrend: trend.kind,
+      programTrendLabel: hasProg ? trendLabel : '—',
+      programAfterDeltaQty: hasProg ? trend.afterDeltaQty : null,
+      programAfterDeltaEok:
+        hasProg && typeof trend.afterDeltaValue === 'number'
+          ? Math.round((trend.afterDeltaValue / 1e8) * 10) / 10
+          : null,
+      programAsOfHour: hasProg && prog.latest ? prog.latest.hour : null,
+      programNote: hasProg ? null : pr && pr.error ? pr.error : 'KIS 응답 없음',
+      foreignEok: f,
+      organEok: o,
+      totalEok: f !== null && o !== null ? round2(f + o) : null,
+      supplyKind: c.supplyKind || null,
+      themeName: c.themeName || null,
+      sources: c.sources,
+      marketWarn: null,
+      warnLabel: null,
+      shortOver: false,
+      chimchakhaeReason: why.join(' · '),
+      strategy,
+      chimchakhaeStrategy:
+        '타점: ' +
+        strategy.entry +
+        ' · 비중: ' +
+        strategy.sizing +
+        ' · 시간외·익일: ' +
+        strategy.afterHours +
+        ' · 손절: ' +
+        strategy.stop,
+      nextDayGuide: strategy.afterHours,
+      ruleHint: CP_CHIM_HINT,
+      _stateScore: state === '순매수' ? 3 : state === '미수신' ? 2 : 1,
+      _trendScore: trend.kind === 'flip' ? 3 : trend.kind === 'up' ? 2 : trend.kind === 'flat' ? 1 : 0,
+    });
+  });
+
+  /* ⑤ 정렬 — 1순위 프로그램 순매수(+오후 순증), 그 다음 규모 */
+  prelim.sort(
+    (a, b) =>
+      b._stateScore - a._stateScore ||
+      b._trendScore - a._trendScore ||
+      (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok) ||
+      (b.totalEok || 0) - (a.totalEok || 0),
+  );
+
+  /* ⑥ 경보(투자경고·단기과열) — 상위 카드만 KIS 시세에서 확인해 뱃지로 반영 */
+  const WARN_LABEL = { '00': null, '01': '투자주의', '02': '투자경고', '03': '투자위험' };
+  const top = prelim.slice(0, CP_CHIM_MAX_ROWS + 2);
+  try {
+    const settled = await Promise.allSettled(top.map((r) => kisLib.fetchKisQuote(r.code)));
+    settled.forEach((s, i) => {
+      if (s.status !== 'fulfilled' || !s.value) return;
+      const q = s.value;
+      const codeWarn = q.marketWarn ? String(q.marketWarn) : null;
+      top[i].marketWarn = codeWarn;
+      top[i].warnLabel = codeWarn ? WARN_LABEL[codeWarn] || null : null;
+      top[i].shortOver = Boolean(q.shortOver);
+      if (top[i].warnLabel) top[i].chimchakhaeReason += ' · ⚠️ ' + top[i].warnLabel + ' — 비중 축소';
+      if (top[i].shortOver) top[i].chimchakhaeReason += ' · ⛔ 단기과열 지정';
+      if (top[i].warnLabel || top[i].shortOver) top[i].strategy.sizing += ' · 경고 단계는 비중 최소화(원전은 패스)';
+    });
+  } catch (e) {
+    out.errors.push('경보 확인: ' + String((e && e.message) || e));
+  }
+  top.sort(
+    (a, b) =>
+      b._stateScore - a._stateScore ||
+      b._trendScore - a._trendScore ||
+      (a.warnLabel ? 1 : 0) - (b.warnLabel ? 1 : 0) ||
+      (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok),
+  );
+
+  out.rows = top.slice(0, CP_CHIM_MAX_ROWS).map((r, i) => {
+    const copy = Object.assign({}, r);
+    delete copy._stateScore;
+    delete copy._trendScore;
+    copy.rank = i + 1;
+    return copy;
+  });
+  out.drop = drop;
+  out.candidates = prelim.length;
+
+  const progHours = out.rows.map((r) => r.programAsOfHour).filter(Boolean).sort();
+  const lastHour = progHours.length ? progHours[progHours.length - 1] : null;
+  out.programAsOfLabel = lastHour ? 'KIS 0465 · ' + lastHour + ' 기준' : 'KIS 0465 · 미수신';
+  out.afterHoursGuide =
+    '15:30 이후 시간외 단일가 +3~5%면 분할 익절 · 익일 08:50 프리마켓 갭 방향 확인 → 갭상승은 절반 익절, 갭 실패는 잔량 정리';
+  out.asOfLabel = weekend
+    ? '직전 거래일 마감 기준'
+    : preopen
+      ? '장전 — 직전 거래일 마감 기준'
+      : afterClose
+        ? '15:30 마감 기준'
+        : '실시간 ' + pad2(p0.hh) + ':' + pad2(p0.mi);
+  if (!out.rows.length) {
+    out.notes.push('프로그램 순매수·방어 조건을 통과한 종목이 없습니다(기준을 임의로 완화하지 않음).');
+  }
+  if (out.programStats.failed) {
+    out.notes.push(
+      '프로그램 수급 미수신 ' + out.programStats.failed + '종목 — 추정치로 채우지 않았습니다.',
+    );
+  }
+  out.elapsedMs = Date.now() - started;
+  return out;
+}
+
+/* CP_RULES 에도 같은 기준을 붙여 화면이 읽게 한다 */
+CP_RULES.chimchakhae = CP_CHIM_RULES;
+
+
  *  실패해도 본 응답(테마·전략·수급 등)은 그대로 내려가도록 호출부에서 try/catch 로 감싼다. */
 async function buildClosingPicks(ctx) {
   const started = Date.now();
@@ -3652,6 +4082,14 @@ async function buildClosingPicks(ctx) {
   if (ctx && ctx.debug) out.supplyRows = sup._all || [];
   out.supplyTrack = supplyPassed.slice(0, CP_MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r }));
 
+  /* ---------------- 📘 침착해 종가베팅 (프로그램 수급·오후장 방어) — 3번째 탭 ---------------- */
+  try {
+    out.chimchakhae = await buildChimchakhae({ supplyPassed, themePassed, session });
+  } catch (e) {
+    out.chimchakhae = { ok: false, rows: [], rules: CP_CHIM_RULES, error: String((e && e.message) || e) };
+    out.errors.push('침착해 트랙: ' + String((e && e.message) || e));
+  }
+
   /* ---------------- 기준 시각 표기 ---------------- */
   out.themeAsOfLabel = weekend
     ? '직전 거래일 마감 기준'
@@ -3698,6 +4136,27 @@ module.exports = async function handler(req, res) {
   }
 
   const q = getQuery(req);
+
+  /* ------------------------------------------------------------------
+   * ?mode=program_test — KIS 종목별 프로그램매매추이(0465) 단독 확인용
+   * ------------------------------------------------------------------
+   *  · 침착해 트랙의 원천 값(시간별 순매수 수량·대금·증감)을 그대로 내려 검증한다.
+   *  · 응답이 없으면 ok:false 와 msg_cd 를 그대로 적는다(추정 금지).
+   */
+  if (q.mode === 'program_test') {
+    const p0 = kstParts(new Date());
+    const code = String(q.code || '005930');
+    const head = { mode: 'program-test', code, at: new Date().toISOString(), atKst: pad2(p0.hh) + ':' + pad2(p0.mi) };
+    if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+      return sendJson(res, 200, Object.assign({}, head, { ok: false, error: 'KIS 미설정' }));
+    }
+    try {
+      const prog = await kisLib.fetchProgramTradeByStock(code, { noCache: q.fresh === '1' });
+      return sendJson(res, 200, Object.assign({}, head, { ok: prog.ok, libVersion: kisLib.LIB_VERSION }, prog, { rows: prog.rows.slice(-4) }));
+    } catch (e) {
+      return sendJson(res, 200, Object.assign({}, head, { ok: false, error: String((e && e.message) || e), msgCd: (e && e.msgCd) || null, msg1: (e && e.msg1) || null }));
+    }
+  }
 
   /* ------------------------------------------------------------------
    * ?mode=supply_live — KIS 장중 기관·외국인 순매수 상위(가집계) 단독 확인용
