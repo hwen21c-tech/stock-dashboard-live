@@ -1860,6 +1860,30 @@ def patch_jongbe_live(html, jb_stocks):
     return html[:m.start(2)] + payload + html[m.end(2):], True
 
 
+def jongbe_badge_text(jb_stocks):
+    """차트에 실제로 그려지는 캔들 수·기간 — 캡션이 차트보다 뒤처지지 않게 값을 그대로 센다."""
+    best = []
+    for s in jb_stocks or []:
+        cd = [c for c in (s.get('candles') or []) if c.get('date')]
+        if len(cd) > len(best):
+            best = cd
+    if len(best) < 2:
+        return None
+    return (f"최근 {len(best)}거래일 실제 팩트 일봉 데이터 "
+            f"({best[0]['date']} ~ {best[-1]['date']} 마감 확정)")
+
+
+def patch_jongbe_badge(html, jb_stocks):
+    """`#jongbeDateBadge` 캡션을 실제 캔들 범위로 바꾼다.
+       (11/24까지 '최근 40거래일 … 2026-11-12 마감 확정' 이 8거래일 뒤처져 있었다)"""
+    txt = jongbe_badge_text(jb_stocks)
+    if not txt:
+        return html, False
+    pat = re.compile(r'(<div id="jongbeDateBadge"[^>]*>)[^<]*(</div>)')
+    new, n = pat.subn(lambda m: m.group(1) + txt + m.group(2), html, count=1)
+    return new, bool(n)
+
+
 # ------------------------------------------------------------------ 8) HTML 갱신
 HONG_MARK = "<!-- 🎯 홍인기 탭 엔진 (HonginkiTab"
 BIJ_MARK = "<!-- 📊 비중법사 탭 엔진 (BijoongTab"
@@ -1910,6 +1934,12 @@ def patch_labels(html, hong, bij):
         (r"기준봉 20\d{2}-\d{2}-\d{2}", f"기준봉 {basis_long[:10]}"),
         (r"내장 fchart 일봉\(20\d{2}-\d{2}-\d{2}까지", f"내장 fchart 일봉({basis_long[:10]}까지"),
         (r"정적 미러는 20\d{2}-\d{2}-\d{2} 조회 스냅샷", f"정적 미러는 {now_kst().strftime('%Y-%m-%d')} 조회 스냅샷"),
+        # 11/24 — 도해 캡션의 '최근 3거래일(11/18~11/20)' 처럼 괄호 없이 시작하는 표기와,
+        #   실시간 라벨 툴팁에 박혀 있던 '11/13 종가(기준선)' 도 실제 기준일로 맞춘다.
+        (r"(최근 3거래일\()\d{1,2}/\d{1,2}~\d{1,2}/\d{1,2}(\))", rf"\g<1>{span}\g<2>"),
+        (r"\d{1,2}/\d{1,2} 종가\(기준선\) 대비 자체 계산", f"{basis_short} 종가(기준선) 대비 자체 계산"),
+        (r"\d{1,2}/\d{1,2} 일봉 확정 등락률", f"{basis_short} 일봉 확정 등락률"),
+        (r"(기준일 <b id=\"hiFootBasis\">)[^<]*(</b>)", rf"\g<1>{hong['basisLabel']}\g<2>"),
     ]
     n = 0
     for pat, rep in subs:
@@ -2211,8 +2241,9 @@ def main():
         html, nlab = patch_labels(html, hong, bij)
         html, rn_ok = patch_rn_live(html, rn_stocks, rn_counts)
         html, jb_ok = patch_jongbe_live(html, jb_stocks)
-        if not rn_ok or not jb_ok:
-            log(f"! RN존·종베 목록 블록을 찾지 못했습니다 (rn={rn_ok} jb={jb_ok}) — index.html을 쓰지 않습니다")
+        html, jb_badge = patch_jongbe_badge(html, jb_stocks)
+        if not rn_ok or not jb_ok or not jb_badge:
+            log(f"! RN존·종베 목록/일봉 캡션 블록을 찾지 못했습니다 (rn={rn_ok} jb={jb_ok} badge={jb_badge}) — index.html을 쓰지 않습니다")
             return 1
         open(HTML, "w", encoding="utf-8").write(html)
         rep = validate_html()
@@ -2223,6 +2254,8 @@ def main():
                 st = open(STATIC_HTML, encoding="utf-8").read()
                 st2, a1 = patch_rn_live(st, rn_stocks, rn_counts)
                 st2, b1 = patch_jongbe_live(st2, jb_stocks)
+                st2, b2 = patch_jongbe_badge(st2, jb_stocks)
+                b1 = b1 and b2
                 # 11/18 — 정적 미러에도 비중법사·홍인기 탭이 이식됐다. 내장 DATA(엔진 블록의
                 #   const DATA 한 줄)와 라벨도 같이 갈아끼우지 않으면 정적 페어지만 옛 기준봉이 남는다.
                 st2, p_st = patch_inline_data(st2, js_hong, js_bij)

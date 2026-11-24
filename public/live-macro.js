@@ -404,15 +404,20 @@
     var rx = document.getElementById('remainingBriefingText');
     if (rt && rx) {
       var isWeekend = t.wd === 'Sat' || t.wd === 'Sun';
+      /* 날짜는 '11/24' 짧은 표기 — mdLabel('11/24(화)') 를 쓰면 '오늘(11/24(화))' 로 괄호가 겹친다(11/24) */
+      var mdShort = (function (iso) {
+        var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return m ? Number(m[2]) + '/' + m[3] : '';
+      })(t.date);
       var rtitle = isWeekend ? '⏳ 다음 정규 브리핑 안내' : '⏳ 오늘 남은 정규 브리핑 안내';
       var rtext = isWeekend
-        ? '오늘(' + mdLabel(t.date) + ')은 주말 휴장입니다. 다음 정규 브리핑은 직전 거래일 종가·주말 뉴스를 정리한 뒤 평일 장전(07:30)부터 타임라인에 자동 등록됩니다.'
+        ? '오늘(' + mdShort + ')은 주말 휴장입니다. 다음 정규 브리핑은 직전 거래일 종가·주말 뉴스를 정리한 뒤 평일 장전(07:30)부터 타임라인에 자동 등록됩니다.'
         : (function () {
             var slotList = ['07:30','08:50','10:00','11:00','13:00','14:00','15:00','16:00','17:30','19:00','19:30','20:00','22:00','23:59'];
             var nowHM = (t.hh < 10 ? '0' : '') + t.hh + ':' + (t.mm < 10 ? '0' : '') + t.mm;
             var rest = slotList.filter(function (s) { return s > nowHM; });
-            if (!rest.length) return '오늘(' + mdLabel(t.date) + ') 정규 브리핑은 모두 마감됐습니다. 다음 정규 브리핑은 다음 평일 07:30 장전부터 타임라인에 자동 등록됩니다.';
-            return '오늘(' + mdLabel(t.date) + ') 남은 정규 브리핑은 ' + rest.join(' · ') + ' 순서로 해당 시각에 타임라인에 자동 등록됩니다.';
+            if (!rest.length) return '오늘(' + mdShort + ') 정규 브리핑은 모두 마감됐습니다. 다음 정규 브리핑은 다음 평일 07:30 장전부터 타임라인에 자동 등록됩니다.';
+            return '오늘(' + mdShort + ') 남은 정규 브리핑은 ' + rest.join(' · ') + ' 순서로 해당 시각에 타임라인에 자동 등록됩니다.';
           })();
       if (rt.textContent !== rtitle) { rt.textContent = rtitle; applied += 1; }
       if (rx.textContent !== rtext) { rx.textContent = rtext; applied += 1; }
