@@ -3753,6 +3753,51 @@ function chimMarketBanner(gate, flow, meta) {
   };
 }
 
+/** 🌙 배너용 야간선물 한 줄 — KIS 코스피200 야간선물(CM) 등락을 문장 하나로 만든다.
+ *  · 장전(개장 전)·주말·야간장(18:00~06:00)에만 보여준다. 정규장(09:00~15:30)에는
+ *    지수·수급만으로 판별하므로 야간선물 줄을 넣지 않는다(요청 #62644).
+ *  · 값이 없으면(미수신·KIS 미설정) null 로 두고 줄 자체를 생략한다 — 0%·추정으로 채우지 않는다.
+ *  · 판정(kind)에는 넣지 않는다. 판정 임계값은 관제탑 자체 기준 그대로다.
+ *  · 예: 🌙 간밤 야간선물 742.60 (-4.56%) — 시초 갭 변동 주의 · 06:00 마감 */
+function chimNightFutures(quote, meta) {
+  const m = meta || {};
+  if (!quote || !quote.ok) return null;
+  const price = numOrNull(quote.price);
+  const pct = numOrNull(quote.changePct);
+  if (price === null || pct === null) return null;
+  const live = Boolean(quote.live);
+  if (!m.preopen && !m.weekend && !live) return null;
+  const priceTxt = price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pctTxt = (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+  const gapWarn = Math.abs(pct) >= 0.5;
+  const tone = live ? '야간 흐름' : gapWarn ? '시초 갭 변동 주의' : '시초 갭 영향 제한적';
+  const badge = quote.badge || quote.asOfKst || null;
+  const head = live ? '🌙 야간선물' : '🌙 간밤 야간선물';
+  return {
+    ok: true,
+    price,
+    changePct: pct,
+    change: numOrNull(quote.change),
+    live,
+    badge,
+    asOfLabel: badge,
+    line: head + ' ' + priceTxt + ' (' + pctTxt + ') — ' + tone + (badge ? ' · ' + badge : ''),
+  };
+}
+
+/** 배너 사본에 야간선물 한 줄을 붙인다(원본 캐시는 건드리지 않는다). */
+function attachChimNightFutures(chim, futuresKis, meta) {
+  const banner = chim && chim.marketBanner;
+  if (!banner) return chim;
+  const night = chimNightFutures(futuresKis && futuresKis.night, meta);
+  const next = Object.assign({}, banner, { nightFutures: night });
+  if (night) {
+    next.nightLine = night.line;
+    next.nightAsOf = night.asOfLabel || null;
+  }
+  return Object.assign({}, chim, { marketBanner: next });
+}
+
 /** 시장경보 스냅샷(경고 예고·지정·관리종목·거래정지) — scripts/fetch_krx_warn.py 가 하루 1회 생성 */
 let _cpKrxWarnSnap = null;
 function loadKrxWarnSnapshot() {
@@ -5475,6 +5520,18 @@ module.exports = async function handler(req, res) {
     futuresKis = null;
   }
 
+  /* 🌙 침착해 시장 판별 배너에 야간선물 한 줄 — 이미 받은 KIS 야간선물(CM) 값을 그대로 붙인다
+   *  (추가 조회 없음). 장전·주말에만 보이고 정규장·야간장 밖에서는 줄이 사라지며,
+   *  미수신이면 억지로 채우지 않고 생략한다. */
+  const chimPreopen = p.wd !== 'Sat' && p.wd !== 'Sun' && p.minutes < 9 * 60;
+  const chimWeekend = p.wd === 'Sat' || p.wd === 'Sun';
+  if (closingPicks && closingPicks.chimchakhae) {
+    closingPicks.chimchakhae = attachChimNightFutures(closingPicks.chimchakhae, futuresKis, {
+      preopen: chimPreopen,
+      weekend: chimWeekend,
+    });
+  }
+
   const body = {
     ok:
       themes.length > 0 ||
@@ -5553,3 +5610,6 @@ module.exports.mapPrevDayThemes = mapPrevDayThemes;
 // 🌙 종가베팅 2트랙(테마·수급) 규칙을 테스트에서 직접 검증할 수 있게 내보낸다.
 module.exports.buildClosingPicks = buildClosingPicks;
 module.exports.CP_RULES = CP_RULES;
+// 🌙 배너 야간선물 한 줄(장전·주말 전용) — 문구·생략 규칙을 테스트에서 검증한다.
+module.exports.chimNightFutures = chimNightFutures;
+module.exports.attachChimNightFutures = attachChimNightFutures;
