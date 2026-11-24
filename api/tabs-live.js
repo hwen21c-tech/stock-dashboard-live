@@ -3666,6 +3666,16 @@ async function buildChimchakhae(ctx) {
     targets.map((t) => t.code),
     started + CP_CHIM_DEADLINE_MS,
   );
+  /* 한 번 실패한 종목은 한 번만 더 시도한다 — 다른 탭의 동시 호출로 초당 제한(EGW00201)이
+   *  걸려 '미수신'이 한 주기(60초) 동안 굳는 것을 줄인다. */
+  const retryCodes = Array.from(progMap.entries())
+    .filter(([, v]) => !v.ok)
+    .map(([k]) => k);
+  if (retryCodes.length && Date.now() < started + CP_CHIM_DEADLINE_MS) {
+    await new Promise((r) => setTimeout(r, 350));
+    const again = await fetchProgramBatch(retryCodes, started + CP_CHIM_DEADLINE_MS + 2500);
+    again.forEach((v, k) => { if (v && v.ok) progMap.set(k, v); });
+  }
   out.programStats = {
     requested: targets.length,
     received: Array.from(progMap.values()).filter((x) => x.ok).length,
