@@ -3458,10 +3458,11 @@ const cpIndexCache = new Map();
 
 /* 0465 응답은 최근 30행만 준다 → 추세 라벨도 '오후(13시)' 또는 '최근 N분' 창을 그대로 적는다. */
 function chimHourText(h) {
+  /* HHMMSS('181227' = 18:12:27) → '18:12' */
   const s = String(h === null || h === undefined ? '' : h).replace(/\D/g, '');
   if (s.length < 3) return null;
-  const mm = Number(s.slice(-2));
-  const hh = Number(s.length >= 5 ? s.slice(-4, -2) : s.slice(0, s.length - 2));
+  const hh = Number(s.length >= 5 ? s.slice(0, s.length - 4) : s.slice(0, s.length - 2));
+  const mm = Number(s.length >= 5 ? s.slice(s.length - 4, s.length - 2) : s.slice(-2));
   if (!isFinite(hh) || !isFinite(mm)) return null;
   return pad2(hh) + ':' + pad2(mm);
 }
