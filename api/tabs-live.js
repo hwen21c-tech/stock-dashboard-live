@@ -4151,7 +4151,7 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 200, Object.assign({}, head, { ok: false, error: 'KIS 미설정' }));
     }
     try {
-      const prog = await kisLib.fetchProgramTradeByStock(code, { noCache: q.fresh === '1' });
+      const prog = await kisLib.fetchProgramTradeByStock(code, { noCache: q.fresh === '1', raw: q.raw === '1' });
       return sendJson(res, 200, Object.assign({}, head, { ok: prog.ok, libVersion: kisLib.LIB_VERSION }, prog, { rows: prog.rows.slice(-4) }));
     } catch (e) {
       return sendJson(res, 200, Object.assign({}, head, { ok: false, error: String((e && e.message) || e), msgCd: (e && e.msgCd) || null, msg1: (e && e.msg1) || null }));
