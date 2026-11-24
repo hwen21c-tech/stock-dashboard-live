@@ -4331,3 +4331,103 @@
     boot();
   }
 })();
+
+/* ============================================================
+   🎯 1·7번 수급 이동 타임라인 — 장중 잠정 외국인·기관 배지 (KIS 대체)
+   ------------------------------------------------------------
+   · 네이버 stock.naver.com .../trend/trendForeignOrg 는 404(2026-11-24 실측)라
+     window.FLOW_TIMELINE 의 investor 가 비어 있었다.
+   · 그 자리를 한투 KIS 장중 가집계(/api/tabs-live?mode=supply_live)로 채운다.
+   · 이미 값이 있는 슬롯(네이버 응답 성공분)은 건드리지 않는다.
+   · 15:30 이후·휴장일·개장 전에는 서버가 확정치로 폴백(confirmed=true) → '확정'으로 표기하고
+     실시간 가집계처럼 쓰지 않는다.
+   · 60초마다 확인하되, 채울 슬롯이 없으면 요청하지 않는다(호출 낭비 없음).
+   ============================================================ */
+(function () {
+  'use strict';
+  var API = '/api/tabs-live?mode=supply_live&top=30';
+  var lastTry = 0, busy = false;
+
+  function needsFill() {
+    var d = window.FLOW_TIMELINE || {};
+    var slots = d.slots || [];
+    for (var i = 0; i < slots.length; i++) {
+      var s = slots[i];
+      if (!s || s.state !== 'done') continue;
+      var inv = s.investor || {};
+      if ((inv.foreign || []).length || (inv.organ || []).length) continue;
+      return true;
+    }
+    return false;
+  }
+
+  function build(d) {
+    var g = d.groups || {}, top = d.top || [];
+    var mm = String(d.asOfLabel || '').match(/(\d{1,2}:\d{2})/);
+    var out = { at: mm ? mm[1] : '', label: d.asOfLabel || '', foreign: [], organ: [],
+                note: '', source: 'kis', unit: '억', asOfLabel: d.asOfLabel || '',
+                confirmed: !!d.confirmed,
+                basis: 'KIS 장중 가집계(외국인·기관계 순매수 상위, 억 원)' };
+    var push = function (key, rows) {
+      (rows || []).forEach(function (r, i) {
+        if (!r || !r.code) return;
+        var net = (typeof r.netValueEok === 'number') ? r.netValueEok
+          : (key === 'foreign' ? r.foreignEok : r.organEok);
+        if (typeof net !== 'number') return;
+        out[key].push({ code: String(r.code), name: r.name || '', rank: r.rank || (i + 1),
+                        eok: Math.round(net * 10) / 10, price: r.price, chg: r.changePct });
+      });
+    };
+    push('foreign', (g.foreign || {}).top);
+    push('organ', (g.organ || {}).top);
+    if (!out.foreign.length && !out.organ.length) { push('foreign', top); push('organ', top); }
+    if (!out.foreign.length && !out.organ.length) return null;
+    out.note = out.confirmed
+      ? ('네이버 trendForeignOrg 404 → KIS 확정치 폴백(' + (d.asOfLabel || '') + ') — 장중 가집계가 아닙니다')
+      : ('네이버 trendForeignOrg 404 → KIS 장중 가집계로 대체(' + (d.asOfLabel || '') + ') · 금액은 억 원');
+    return out;
+  }
+
+  function apply(inv) {
+    var d = window.FLOW_TIMELINE;
+    if (!d || !d.slots) return 0;
+    var n = 0;
+    d.slots.forEach(function (s) {
+      if (!s || s.state !== 'done') return;
+      var cur = s.investor || {};
+      if ((cur.foreign || []).length || (cur.organ || []).length) return;
+      s.investor = { at: inv.at, label: inv.label, foreign: inv.foreign, organ: inv.organ,
+                     note: inv.note, source: 'kis', unit: '억', confirmed: inv.confirmed,
+                     asOfLabel: inv.asOfLabel, basis: inv.basis };
+      n += 1;
+    });
+    window.__KIS_INVESTOR_LIVE = { filled: n, at: inv.at, confirmed: inv.confirmed };
+    return n;
+  }
+
+  function run(force) {
+    if (busy || !needsFill()) return;
+    if (!force && Date.now() - lastTry < 55000) return;
+    busy = true; lastTry = Date.now();
+    fetch(API, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        busy = false;
+        if (!d || d.mode !== 'supply_live' || !d.ok) return;
+        var inv = build(d);
+        if (inv) apply(inv);
+      })
+      .catch(function () { busy = false; });
+  }
+
+  function boot() {
+    run(true);
+    setInterval(function () {
+      if (document.visibilityState !== 'visible') return;
+      run(false);
+    }, 60000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
