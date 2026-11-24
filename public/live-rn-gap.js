@@ -34,6 +34,20 @@ function nf(n) {
 }
 function pct(v) { return (v > 0 ? '+' : '') + v.toFixed(2) + '%'; }
 
+/* 공식 21선 사이가 너무 넓으면(3→5 = +66.7%) 그 구간 중간값을 '중간 보조'로 표기한다.
+   예) 현대모비스 344,500원 → 하단 300,000 / 중간 보조 400,000 / 상단 500,000
+   sd_live/scripts/rescan_strategies.py · index.html rnFor 와 같은 규칙(비공식 눈금). */
+var AUX_MIN_GAP_PCT = 40.0;
+function auxOf(lo, hi) {
+  var lv = Number(lo) || 0, uv = Number(hi) || 0;
+  if (lv <= 0 || uv <= lv) return null;
+  if ((uv / lv - 1) * 100 < AUX_MIN_GAP_PCT) return null;
+  var mid = (lv + uv) / 2;
+  var t = mid >= 500000 ? 1000 : (mid >= 200000 ? 500 : (mid >= 50000 ? 100 : (mid >= 20000 ? 50 : (mid >= 5000 ? 10 : (mid >= 2000 ? 5 : 1)))));
+  var v = Math.round(mid / t) * t;
+  return (v > lv && v < uv) ? v : null;
+}
+
 function bandOf(price) {
   var p = Number(price);
   if (!isFinite(p) || p <= 0) return null;
@@ -41,16 +55,20 @@ function bandOf(price) {
   for (var i = 0; i < RN_LINES.length; i++) {
     var v = RN_LINES[i][0];
     if (v <= p) lower = RN_LINES[i];
-    if (v >= p && !upper) upper = RN_LINES[i];
+    /* 현재가가 공식선과 정확히 같을 때 상단은 '그 다음 선' — 예전엔 같은 선을 상단으로 잡았다 */
+    if (v > p && !upper) upper = RN_LINES[i];
   }
   if (!lower) lower = RN_LINES[0];
   if (!upper) upper = lower;
+  var aux = auxOf(lower[0], upper[0]);
   return {
     lower: lower[0], upper: upper[0], step: stepOf(p),
+    aux: aux,
     lowerColor: RN_HEX[lower[1]], upperColor: RN_HEX[upper[1]],
     lowerKo: RN_KO[lower[1]], upperKo: RN_KO[upper[1]],
     toLower: (p - lower[0]) / p * 100,
-    toUpper: (upper[0] - p) / p * 100
+    toUpper: (upper[0] - p) / p * 100,
+    toAux: aux ? (aux - p) / p * 100 : null
   };
 }
 
@@ -94,6 +112,8 @@ function decorate(card) {
   }
   el.innerHTML =
     '<span class="g-s" style="color:' + b.lowerColor + '">하단 RN ' + nf(b.lower) + ' (' + b.lowerKo + ') ' + pct(b.toLower) + '</span>' +
+    (b.aux ? '<span class="g-m">·</span>' +
+      '<span class="g-a" style="color:#cbd5e1" title="공식 21선 구간이 넓어 표기용으로 둔 구간 중간값 — 매매 기준선 아님">중간 보조 ' + nf(b.aux) + ' ' + pct(b.toAux) + '</span>' : '') +
     '<span class="g-m">·</span>' +
     '<span class="g-r" style="color:' + b.upperColor + '">상단 RN ' + nf(b.upper) + ' (' + b.upperKo + ') ' + pct(b.toUpper) + '</span>' +
     '<span class="g-m" style="margin-left:auto">공식 21선</span>';
