@@ -3277,8 +3277,9 @@ async function fetchClosingSupplyRank(limit) {
 
   const rows = [...merged.values()]
     .map((x) => ({ ...x, totalEok: round1((x.foreignEok || 0) + (x.organEok || 0)) }))
-    .sort((a, b) => b.totalEok - a.totalEok)
-    .slice(0, Math.max(limit, CP_MAX_ROWS));
+    .sort((a, b) => b.totalEok - a.totalEok);
+  /* 진단용(?cp_debug=1)으로만 응답에 실린다 — 양쪽 값이 어떻게 채워졌는지 확인할 때 쓴다. */
+  out._all = rows;
 
   const anyNonZero = rows.some((x) => (x.foreignEok || 0) !== 0 || (x.organEok || 0) !== 0);
   const bothOk = !!(got.foreignBuy && got.foreignBuy.ok && got.organBuy && got.organBuy.ok);
@@ -3648,6 +3649,7 @@ async function buildClosingPicks(ctx) {
   supplyPassed.sort((a, b) => (b.totalEok || 0) - (a.totalEok || 0));
   out.supplyCandidates = supplyPassed.length;
   out.supplySides = sup.sides || null;
+  if (ctx && ctx.debug) out.supplyRows = (sup._all || []).slice(0, 80);
   out.supplyTrack = supplyPassed.slice(0, CP_MAX_ROWS).map((r, i) => ({ rank: i + 1, ...r }));
 
   /* ---------------- 기준 시각 표기 ---------------- */
@@ -4169,7 +4171,7 @@ module.exports = async function handler(req, res) {
    *   여기서 실패해도 본 응답(테마·전략·수급·시간외)은 그대로 내려간다. */
   let closingPicks = null;
   try {
-    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session, membersPromise: cpMembersPromise });
+    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session, membersPromise: cpMembersPromise, debug: q.cp_debug === '1' });
   } catch (e) {
     closingPicks = {
       ok: false, themeTrack: [], supplyTrack: [],
