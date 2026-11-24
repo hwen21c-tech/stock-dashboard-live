@@ -66,6 +66,26 @@ try {
 } catch (e) {
   HONG_DATA = null;
 }
+/* 깡토 · 종가베팅 · RN존 — 같은 재스캔 산출물(public/data)을 읽어 장중 현재가와 대조한다.
+ *  파일은 매일 15:35 재스캔이 갈아끼우고 배포본에 함께 들어간다(없으면 null → 카드 판정 생략). */
+let KKANGTO_DATA = null;
+let JONGBE_DATA = null;
+let RNZONE_DATA = null;
+try {
+  KKANGTO_DATA = require('../public/data/kkangto-latest.json');
+} catch (e) {
+  KKANGTO_DATA = null;
+}
+try {
+  JONGBE_DATA = require('../public/data/jongbe-latest.json');
+} catch (e) {
+  JONGBE_DATA = null;
+}
+try {
+  RNZONE_DATA = require('../public/data/rnzone-latest.json');
+} catch (e) {
+  RNZONE_DATA = null;
+}
 
 /* 직전 거래일 장마감 기준 강세 Top 8 테마 스냅샷(scripts/save_last_dynamic_themes.py 가 정규장 마감 뒤 저장).
  *  프리마켓(08:00~08:50)에는 네이버 테마 랭킹이 전 종목 0.00%(PREOPEN)로 내려오므로,
@@ -2336,6 +2356,242 @@ function judgeHongCard(card, q) {
   };
 }
 
+/* ============================================================================
+ * 📈 깡토 추세추종 · 💪 종가베팅 마스터 · 🎯 RN존 — 장중 실시간 판정
+ * ----------------------------------------------------------------------------
+ *  재스캔이 매일 장마감 확정치로 뽑아 둔 카드(stocks)의 기준선과 오늘 장중 현재가를
+ *  그대로 대조한다. 값을 만들어 내지 않고, 시세가 없으면 missing 으로 남긴다.
+ *   · 깡토   : 매수타점(전고점) · −8% 손절 · +24% 1차 익절 · 60일선
+ *   · 종베   : 신정재(기준가 ±0.5% 진입 · +3%/+5% 익절 · −0.8% 손절)
+ *              강창권(5일선 지지 매수 · +15% 목표 · 20일선 이탈 매도)
+ *   · RN존   : 하단 RN / 매수 1·2차 / 상단 RN 사이에서 지금 어디인지(구간 위치 %)
+ * ========================================================================== */
+
+function numOrNull(v) {
+  return typeof v === 'number' && isFinite(v) ? v : null;
+}
+
+function round2(v) {
+  return typeof v === 'number' && isFinite(v) ? Number(v.toFixed(2)) : null;
+}
+
+/** 장중 현재가 vs 기준일 종가 — 공통 필드 */
+function stratQuoteFields(q, base) {
+  const price = numOrNull(q && q.price);
+  return {
+    price,
+    pct: numOrNull(q && q.changePct),
+    open: numOrNull(q && q.open),
+    high: numOrNull(q && q.high),
+    low: numOrNull(q && q.low),
+    prevClose: numOrNull(q && q.prevClose),
+    vsBasePct: price && base ? round2((price / base - 1) * 100) : null,
+    valueEok: numOrNull(q && q.value) !== null ? round2((q.value / 1e8)) : null,
+    valueText: (q && (q.valueDispText || q.valueText)) || null,
+    valueBasis: (q && q.valueBasis) || null,
+    tradedAt: (q && q.tradedAt) || null,
+  };
+}
+
+/** 깡토 — 전고점(매수타점) 돌파 유지/접근, 손절선·익절선 도달 여부 */
+function judgeKkangtoCard(card, q) {
+  const base = numOrNull(card && card.close);
+  const f = stratQuoteFields(q, base);
+  if (!f.price) return null;
+  const pivot = numOrNull(card.basis);
+  const stop = numOrNull(card.stop);
+  const tp = numOrNull(card.tp);
+  const ma60 = numOrNull(card.ma60);
+  const hi60 = numOrNull(card.hi60);
+  const toPivotPct = pivot ? round2((pivot / f.price - 1) * 100) : null;
+  const stopBreach = stop !== null && f.price <= stop;
+  const tpReached = tp !== null && f.price >= tp;
+  const abovePivot = pivot !== null && f.price >= pivot;
+  const aboveMa60 = ma60 !== null && f.price >= ma60;
+  let stateKey;
+  let stateLabel;
+  if (stopBreach) {
+    stateKey = 'stop';
+    stateLabel = '−8% 손절선 이탈';
+  } else if (tpReached) {
+    stateKey = 'tp';
+    stateLabel = '+24% 1차 익절 도달';
+  } else if (abovePivot) {
+    stateKey = 'break';
+    stateLabel = '전고점 돌파 유지';
+  } else if (toPivotPct !== null && toPivotPct <= 5) {
+    stateKey = 'near';
+    stateLabel = '전고점 5% 이내 접근';
+  } else {
+    stateKey = 'below';
+    stateLabel = '전고점 아래';
+  }
+  return {
+    ...f,
+    section: (card && card.section) || null,
+    base,
+    pivot,
+    hi60,
+    toPivotPct,
+    stop,
+    tp,
+    ma60,
+    abovePivot,
+    aboveMa60,
+    stopBreach,
+    tpReached,
+    stateKey,
+    stateLabel,
+  };
+}
+
+/** 종가베팅 — 신정재·강창권 트랙별 익절·손절선 대비 오늘 위치 */
+function judgeJongbeStock(stock, q) {
+  const base = numOrNull(stock && stock.price);
+  const f = stratQuoteFields(q, base);
+  if (!f.price) return null;
+  const track = String((stock && stock.track) || '');
+  const isShin = track === 'shin';
+  const ma5 = numOrNull(stock && stock.ma5);
+  const ma20 = numOrNull(stock && stock.ma20);
+  const target1 =
+    numOrNull(stock && stock.target1) !== null
+      ? stock.target1
+      : base
+        ? Math.round(base * (isShin ? 1.03 : 1.15))
+        : null;
+  const target2 =
+    numOrNull(stock && stock.target2) !== null ? stock.target2 : base && isShin ? Math.round(base * 1.05) : null;
+  const stopPrice =
+    numOrNull(stock && stock.stopPrice) !== null
+      ? stock.stopPrice
+      : base && isShin
+        ? Math.round(base * 0.992)
+        : ma20; // 강창권 손절은 20일선 이탈
+  const stopBreach = stopPrice !== null && f.price <= stopPrice;
+  const tp1 = target1 !== null && f.price >= target1;
+  const tp2 = target2 !== null && f.price >= target2;
+  let stateKey;
+  let stateLabel;
+  if (stopBreach) {
+    stateKey = 'stop';
+    stateLabel = isShin ? '−0.8% 손절선 이탈' : '20일선 이탈(매도)';
+  } else if (tp2) {
+    stateKey = 'tp2';
+    stateLabel = '2차 익절(+5%) 도달';
+  } else if (tp1) {
+    stateKey = 'tp1';
+    stateLabel = isShin ? '1차 익절(+3%) 도달' : '목표(+15%) 도달';
+  } else if (!isShin && ma5 !== null && f.price >= ma5) {
+    stateKey = 'hold';
+    stateLabel = '5일선 위 지지(보유)';
+  } else if (isShin && f.vsBasePct !== null && Math.abs(f.vsBasePct) <= 0.5) {
+    stateKey = 'entry';
+    stateLabel = '진입존(기준가 ±0.5%)';
+  } else {
+    stateKey = f.vsBasePct !== null && f.vsBasePct > 0 ? 'above' : 'below';
+    stateLabel = f.vsBasePct !== null && f.vsBasePct > 0 ? '진입가 위' : '진입가 아래';
+  }
+  return {
+    ...f,
+    track: track || null,
+    base,
+    ma5,
+    ma20,
+    target1,
+    target2,
+    stopPrice,
+    stopBreach,
+    tp1,
+    tp2,
+    stateKey,
+    stateLabel,
+  };
+}
+
+/** RN존 — 하단·상단 RN 사이에서 지금 위치(구간 %), 매수 1·2차 도달 여부 */
+function judgeRnzoneStock(s, q) {
+  const basis = numOrNull(s && s.price);
+  const f = stratQuoteFields(q, basis);
+  if (!f.price) return null;
+  const lower = numOrNull(s.lowerRN);
+  const upper = numOrNull(s.upperRN);
+  const buy1 = numOrNull(s.buy1);
+  const buy2 = numOrNull(s.buy2);
+  const targetMin = numOrNull(s.targetMin);
+  const targetMax = numOrNull(s.targetMax);
+  const span = lower !== null && upper !== null && upper > lower ? upper - lower : null;
+  const zonePct = span ? round2(((f.price - lower) / span) * 100) : null;
+  const atLower = lower !== null && f.price <= lower;
+  const atUpper = upper !== null && f.price >= upper;
+  const nearLower = lower !== null && !atLower && f.price <= lower * 1.05;
+  const inBuy1 = buy1 !== null && f.price <= buy1;
+  const inBuy2 = buy2 !== null && f.price <= buy2;
+  const atTarget = targetMax !== null && f.price >= targetMax;
+  const toLowerPct = lower !== null ? round2((f.price / lower - 1) * 100) : null;
+  const toUpperPct = upper !== null ? round2((upper / f.price - 1) * 100) : null;
+  let stateKey;
+  let stateLabel;
+  if (atLower) {
+    stateKey = 'lower';
+    stateLabel = '하단 RN 도달(매수 1차)';
+  } else if (nearLower) {
+    stateKey = 'near_lower';
+    stateLabel = '하단 RN 5% 이내';
+  } else if (atTarget) {
+    stateKey = 'target';
+    stateLabel = '목표 상단 도달(익절)';
+  } else if (atUpper) {
+    stateKey = 'upper';
+    stateLabel = '상단 RN 도달';
+  } else {
+    stateKey = 'between';
+    stateLabel = '구간 중간';
+  }
+  return {
+    ...f,
+    category: (s && s.category) || null,
+    basis,
+    lowerRN: lower,
+    upperRN: upper,
+    buy1,
+    buy2,
+    targetMin,
+    targetMax,
+    zonePct,
+    atLower,
+    atUpper,
+    nearLower,
+    inBuy1,
+    inBuy2,
+    atTarget,
+    toLowerPct,
+    toUpperPct,
+    stateKey,
+    stateLabel,
+  };
+}
+
+/** 카드·종목 배열 → 실시간 판정 묶음(공통) */
+function packStrat(data, listKey, judgeFn) {
+  const list = (data && data[listKey]) || [];
+  const cards = list.map((c) => {
+    const q = STRAT_QUOTE_MAP ? STRAT_QUOTE_MAP[c.code] || null : null;
+    return {
+      code: c.code,
+      name: c.name,
+      market: c.market || null,
+      track: c.track || null,
+      category: c.category || null,
+      section: c.section || null,
+      base: numOrNull(c.close) !== null ? c.close : c.price,
+      missing: !q,
+      live: q ? judgeFn(c, q) : null,
+    };
+  });
+  return { cards, live: cards.filter((c) => c.live).length, total: cards.length };
+}
+
 /** 재스캔 JSON 의 기존 카드 코드(감시군 polling 에 함께 넣어 장중 시세를 받는다) */
 function strategyCardCodes() {
   const out = [];
@@ -2344,10 +2600,17 @@ function strategyCardCodes() {
   };
   ((BIJ_DATA && BIJ_DATA.cards) || []).forEach((c) => push(c.code));
   ((HONG_DATA && HONG_DATA.cards) || []).forEach((c) => push(c.code));
+  // 깡토 카드 · 종가베팅 픽 · RN존 목록도 같은 polling 에 넣어 장중 시세를 받는다(11/24)
+  ((KKANGTO_DATA && KKANGTO_DATA.cards) || []).forEach((c) => push(c.code));
+  ((JONGBE_DATA && JONGBE_DATA.stocks) || []).forEach((c) => push(c.code));
+  ((RNZONE_DATA && RNZONE_DATA.stocks) || []).forEach((c) => push(c.code));
   return out;
 }
 
 const STRAT_CARD_CODES = strategyCardCodes();
+
+/* packStrat 이 참조하는 '이번 호출의 시세 map' — buildStrategyLive 진입 때 채우고 끝나면 비운다 */
+let STRAT_QUOTE_MAP = null;
 
 /** 장중 실시간 전략 판정을 통으로 만든다. */
 async function buildStrategyLive(map) {
@@ -2506,6 +2769,46 @@ async function buildStrategyLive(map) {
   const bij = pack(BIJ_DATA, judgeBijDay1, 'bij');
   const hong = pack(HONG_DATA, judgeHongCard, 'hong');
 
+  /* 깡토 · 종가베팅 · RN존 — 같은 기준일 파일 + 오늘 장중 시세 */
+  STRAT_QUOTE_MAP = map;
+  const dayNoOf = (d) => {
+    const bd = (d && d.basisDate) || null;
+    return bd ? tradingDaysAfter(bd, today) : null;
+  };
+  const stratSection = (data, listKey, judgeFn, labels) => {
+    if (!data) return null;
+    const dayNo = dayNoOf(data);
+    const packed = packStrat(data, listKey, judgeFn);
+    const states = {};
+    packed.cards.forEach((c) => {
+      if (c.live) states[c.live.stateKey] = (states[c.live.stateKey] || 0) + 1;
+    });
+    return {
+      basisDate: data.basisDate || null,
+      basisLabel: data.basisLabel || null,
+      dayNo,
+      dayLabel:
+        dayNo === null ? null : dayNo === 0 ? labels.zero : labels.nth(dayNo),
+      basisStale: dayNo !== null && dayNo > 1,
+      live: packed.live,
+      total: packed.total,
+      states,
+      cards: packed.cards,
+    };
+  };
+  const kkangto = stratSection(KKANGTO_DATA, 'cards', judgeKkangtoCard, {
+    zero: '0일차(기준봉 당일)',
+    nth: (n) => `${n}일차`,
+  });
+  const jongbe = stratSection(JONGBE_DATA, 'stocks', judgeJongbeStock, {
+    zero: 'D+0(기준일 당일)',
+    nth: (n) => `D+${n}`,
+  });
+  const rnzone = stratSection(RNZONE_DATA, 'stocks', judgeRnzoneStock, {
+    zero: 'D+0(기준일 당일)',
+    nth: (n) => `D+${n}`,
+  });
+
   return {
     ok: byPct.length + byVal.length > 0,
     today,
@@ -2527,6 +2830,9 @@ async function buildStrategyLive(map) {
     },
     bij: { ...bij, fresh: bijFresh.slice(0, 6), near: bijNear.slice(0, 5) },
     hong: { ...hong, fresh: hongFresh.slice(0, 6), near: hongNear.slice(0, 5) },
+    kkangto,
+    jongbe,
+    rnzone,
     errors,
   };
 }

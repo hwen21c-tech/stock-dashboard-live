@@ -3146,6 +3146,91 @@
     }).join('');
   }
 
+  /* ---------- 깡토 · 종가베팅 · RN존 장중 실시간 판정 패널 (11/24) ----------
+   *  /api/tabs-live 의 strategyLive.kkangto · .jongbe · .rnzone 을 그린다.
+   *  카드 자체(전략 모달·캔들)는 각 탭 엔진이 그대로 그리고, 여기서는 '지금 조건을
+   *  채웠는지'만 기준선과 실시간 시세로 대조해 맨 위에 붙인다. 시세가 없으면 '미수신'.
+   */
+  function slStateColor(key) {
+    if (key === 'stop' || key === 'below') return '#fca5a5';
+    if (key === 'tp' || key === 'tp1' || key === 'tp2' || key === 'target' || key === 'upper') return '#fbbf24';
+    if (key === 'break' || key === 'lower' || key === 'hold' || key === 'entry') return '#34d399';
+    if (key === 'near' || key === 'near_lower') return '#93c5fd';
+    return '#94a3b8';
+  }
+
+  function slStateBadge(live) {
+    if (!live) return '<span style="color:#64748b;font-weight:800;">시세 미수신</span>';
+    return (
+      '<span style="color:' + slStateColor(live.stateKey) + ';font-weight:900;">' + esc(live.stateLabel || '—') + '</span>'
+    );
+  }
+
+  function slKkangtoRow(c) {
+    var L = c.live;
+    if (!L) return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신</div>', c.name, c.code, 'kkangto');
+    var right =
+      '매수타점(전고점) ' + slWon(L.pivot) +
+      (isNum(L.toPivotPct) ? ' · 거리 ' + (L.toPivotPct >= 0 ? '+' : '') + L.toPivotPct.toFixed(2) + '%' : '') +
+      ' · 손절 ' + slWon(L.stop) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '') +
+      ' · 익절 ' + slWon(L.tp) + (L.tpReached ? ' <span style="color:#fbbf24;font-weight:800;">도달</span>' : '') +
+      '<br>60일선 ' + slWon(L.ma60) + ' <b style="color:' + (L.aboveMa60 ? '#34d399' : '#fca5a5') + ';">' +
+      (L.aboveMa60 ? '위' : '아래') + '</b> · 대금 ' + slEok(L.valueEok) +
+      ' · 기준일 종가 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + slPct(L.vsBasePct) + '</b>';
+    return slRow(slHeadRow(esc(c.name) + ' <span style="font-size:9.5px;color:#64748b;">(' + esc(c.section === 'break' ? '돌파' : '접근') + ')</span> ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'kkangto', L.price, L.pct);
+  }
+
+  function slJongbeRow(c) {
+    var L = c.live;
+    var track = c.track === 'shin' ? '신정재' : c.track === 'kang' ? '강창권' : '';
+    if (!L) return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신</div>', c.name, c.code, 'jongbe');
+    var right =
+      (track ? '<b style="color:#fbbf24;">' + esc(track) + '</b> · ' : '') +
+      '기준가 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + slPct(L.vsBasePct) + '</b>' +
+      ' · 목표 ' + slWon(L.target1) + (isNum(L.target2) ? ' / ' + slWon(L.target2) : '') +
+      ' · 손절 ' + slWon(L.stopPrice) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '') +
+      (isNum(L.ma5) ? '<br>5일선 ' + slWon(L.ma5) + ' · 20일선 ' + slWon(L.ma20) : '') +
+      ' · 대금 ' + (L.valueText || slEok(L.valueEok));
+    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'jongbe', L.price, L.pct);
+  }
+
+  function slRnzoneRow(c) {
+    var L = c.live;
+    if (!L) return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신</div>', c.name, c.code, 'rnzone');
+    var right =
+      '하단 RN ' + slWon(L.lowerRN) + (isNum(L.toLowerPct) ? ' (' + (L.toLowerPct >= 0 ? '+' : '') + L.toLowerPct.toFixed(2) + '%)' : '') +
+      ' · 상단 RN ' + slWon(L.upperRN) + (isNum(L.toUpperPct) ? ' (' + (L.toUpperPct >= 0 ? '+' : '') + L.toUpperPct.toFixed(2) + '%)' : '') +
+      (isNum(L.zonePct) ? ' · 구간 ' + L.zonePct.toFixed(0) + '%' : '') +
+      (isNum(L.buy1) ? '<br>매수 1차 ' + slWon(L.buy1) + (L.inBuy1 ? ' <span style="color:#34d399;font-weight:800;">도달</span>' : '') : '') +
+      (isNum(L.buy2) ? ' · 2차 ' + slWon(L.buy2) + (L.inBuy2 ? ' <span style="color:#34d399;font-weight:800;">도달</span>' : '') : '') +
+      ' · 대금 ' + (L.valueText || slEok(L.valueEok));
+    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'rnzone', L.price, L.pct);
+  }
+
+  function slStratPanel(sec, title, accent, rowFn, extraNote) {
+    if (!sec || !sec.cards || !sec.cards.length) return null;
+    var states = sec.states || {};
+    var chips = Object.keys(states)
+      .sort(function (a, b) { return states[b] - states[a]; })
+      .map(function (k) {
+        return '<span style="font-size:9.6px;font-weight:800;color:' + slStateColor(k) + ';background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.22);border-radius:4px;padding:1px 5px;">' + esc(k) + ' ' + states[k] + '</span>';
+      })
+      .join(' ');
+    return slBox(
+      title,
+      '실시간 ' + (sec.live || 0) + '/' + (sec.total || 0) + '종목',
+      accent,
+      '<div style="font-size:10px;color:#94a3b8;margin:3px 0 6px;line-height:1.5;">' +
+        '기준 ' + esc(sec.basisLabel || sec.basisDate || '—') + ' · 오늘 <b style="color:#e2e8f0;">' + esc(sec.dayLabel || '—') + '</b>' +
+        (sec.basisStale ? ' <span style="color:#fbbf24;font-weight:800;">⚠️ 재스캔 필요(기준일 경과)</span>' : '') +
+        (chips ? '<br><span style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-top:3px;">' + chips + '</span>' : '') +
+        '</div>' +
+        sec.cards.map(rowFn).join('') +
+        '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">' +
+          (extraNote || '') + ' 투자 권유가 아닙니다.</div>'
+    );
+  }
+
   function renderStrategyLive(body, stamp) {
     var sl = body.strategyLive;
     if (!sl) return 0;
@@ -3206,6 +3291,32 @@
       hostH.setAttribute('data-live', '1');
       applied += 1;
     }
+
+    /* ---- 깡토 · 종가베팅 · RN존 : 기준선 대비 지금 조건 충족 상태 ---- */
+    var panels = [
+      ['tabKkangto', 'stratLiveKkangtoHost', sl.kkangto, '⚡ 깡토 추세추종 · 실시간 조건 판정', '#38bdf8', slKkangtoRow,
+        '전고점(매수타점) 돌파 유지 여부 · −8% 손절 · +24% 1차 익절 · 60일선 위/아래를 장중 현재가로 다시 판정합니다.'],
+      ['tabJongbe', 'stratLiveJongbeHost', sl.jongbe, '💪 종가베팅 마스터 · 실시간 조건 판정', '#fbbf24', slJongbeRow,
+        '신정재는 기준가 ±0.5% 진입존 · +3%/+5% 익절 · −0.8% 손절, 강창권은 5일선 지지 보유 · +15% 목표 · 20일선 이탈 매도 기준입니다.'],
+      ['tabRnzone', 'stratLiveRnzoneHost', sl.rnzone, '🎯 RN존 · 실시간 구간 판정', '#f472b6', slRnzoneRow,
+        '하단·상단 RN 사이에서 지금 위치(구간 %)와 매수 1·2차 도달 여부입니다. RN은 재스캔 기준일 일봉으로 계산된 값입니다.']
+    ];
+    panels.forEach(function (p) {
+      var html = slStratPanel(p[2], p[3], p[4], p[5], p[6]);
+      var host = ensureStratHost(p[0], p[1]);
+      if (!host) return;
+      if (html) {
+        if (host.getAttribute('data-sig') !== html) {
+          host.innerHTML = html;
+          host.setAttribute('data-sig', html);
+        }
+        host.setAttribute('data-live', '1');
+        applied += 1;
+      } else {
+        host.innerHTML = '';
+        host.setAttribute('data-sig', '');
+      }
+    });
     return applied;
   }
 

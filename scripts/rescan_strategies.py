@@ -1251,6 +1251,9 @@ def build_jongbe(uni, per, cache, days):
                 'entry': f"당일 종가 {int(c):,}원 ±0.5% (15:18~15:20 분할)",
                 'target': f"{to_tick(c * 1.03):,}원 (+3%) / {to_tick(c * 1.05):,}원 (+5%) · 익일 09:05 전 청산",
                 'stop': f"{to_tick(c * 0.992):,}원 (-0.8%) 이탈 시 즉시",
+                # 장중 실시간 판정(sd_live/api/tabs-live.js strategyLive.jongbe)이 쓰는 숫자
+                'basePrice': int(c), 'target1': to_tick(c * 1.03), 'target2': to_tick(c * 1.05),
+                'stopPrice': to_tick(c * 0.992), 'ma5': int(s5) if s5 else None, 'ma20': int(s20) if s20 else None,
 
                 'reason': (f"윗꼬리 없는 양봉(고가 대비 {upper:+.2f}%) · 몸통 {body:+.2f}% · {rec['pct']:+.2f}% 마감. "
                            f"신정재 규칙은 15:18~15:20 진입·익일 09:05 전 전량 청산입니다. "
@@ -1275,6 +1278,9 @@ def build_jongbe(uni, per, cache, days):
                 'entry': f"5일선 {int(s5):,}원 지지 확인 후 종가 매수",
                 'target': f"{to_tick(c * 1.15):,}원 (+15%)",
                 'stop': f"20일선 {int(s20):,}원 이탈 시 매도",
+                # 장중 실시간 판정용 숫자 — 손절은 20일선 이탈
+                'basePrice': int(c), 'target1': to_tick(c * 1.15), 'target2': None,
+                'stopPrice': int(s20), 'ma5': int(s5), 'ma20': int(s20),
 
                 'reason': (f"{big['date'][4:6]}/{big['date'][6:8]} 장대양봉(+{(big['c'] - big['o']) / big['o'] * 100:.2f}%) 이후 "
                            f"눌림 구간(오늘 {rec['pct']:+.2f}%). 5일선 {int(s5):,}원 · 20일선 {int(s20):,}원 위에서 지지. "
