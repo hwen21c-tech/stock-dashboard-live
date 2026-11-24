@@ -4217,7 +4217,6 @@ function applyCacheHeaders(res, policy) {
  */
 const FUT_TTL_MS = 60000;
 const FUT_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
-const FUT_LIVE_FRESH_MS = 15 * 60 * 1000; // 최근 체결이 15분 안이면 '실시간'으로 본다
 const futMemo = new Map();
 
 /** 지금이 어느 선물 세션인가 */
@@ -4252,6 +4251,10 @@ function futQuoteLabel(q, marketDiv, live) {
     const d = new Date(q.lastTradeAt);
     const k = new Date(d.getTime() + 9 * 3600 * 1000);
     return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${pad2(k.getUTCHours())}:${pad2(k.getUTCMinutes())} 마감`;
+  }
+  if (q.lastTradeDate && /^\d{8}$/.test(String(q.lastTradeDate))) {
+    const s = String(q.lastTradeDate);
+    return `${Number(s.slice(4, 6))}/${Number(s.slice(6, 8))} 마감`;
   }
   return '마감값';
 }
@@ -4291,10 +4294,18 @@ async function buildFuturesKis(now, wantRaw) {
     if (hit && Date.now() - hit.at < FUT_TTL_MS) return hit.value;
   }
 
-  const [dayR, nightR] = await Promise.allSettled([
-    kisLib.fetchFuturesQuote({ marketDiv: 'F', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 }),
-    kisLib.fetchFuturesQuote({ marketDiv: 'CM', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 }),
-  ]);
+  const [dayR, nightR] = await (async () => {
+    /* 주간(F)·야간(CM)은 순서대로 — 선물옵션 시세는 초당 제한이 박해서 동시 호출하면 EGW00201 이 난다. */
+    const day = await kisLib
+      .fetchFuturesQuote({ marketDiv: 'F', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 })
+      .then((v) => ({ status: 'fulfilled', value: v }))
+      .catch((e) => ({ status: 'rejected', reason: e }));
+    const night = await kisLib
+      .fetchFuturesQuote({ marketDiv: 'CM', code: contract.code, noCache: true, raw: wantRaw, timeout: 5000 })
+      .then((v) => ({ status: 'fulfilled', value: v }))
+      .catch((e) => ({ status: 'rejected', reason: e }));
+    return [day, night];
+  })();
 
   const pick = (r, marketDiv) => {
     if (r.status !== 'fulfilled') {
@@ -4311,9 +4322,12 @@ async function buildFuturesKis(now, wantRaw) {
       return err;
     }
     const q = r.value;
-    const ageMs = q.lastTradeAt ? Date.now() - Date.parse(q.lastTradeAt) : null;
-    const live = Boolean(sess.inSession && sess.marketDiv === marketDiv && ageMs !== null && ageMs <= FUT_LIVE_FRESH_MS);
-    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live) });
+    /* '실시간' 판정 — 지금 그 세션이 열려 있고, 이번 세션에 체결이 있었을 때만.
+     *  (KIS 현재가 응답은 조회 순간의 스냅샷이므로 조회 시각이 곷 asOf 다 — lastTradeAt 은 보증용) */
+    const live = Boolean(
+      sess.inSession && sess.marketDiv === marketDiv && q.ok && q.hasTrade && (q.price !== null),
+    );
+    return Object.assign({}, q, { live, badge: futQuoteLabel(q, marketDiv, live), asOfKst: head.generatedAtKst });
   };
 
   head.day = pick(dayR, 'F');
@@ -4358,7 +4372,7 @@ module.exports = async function handler(req, res) {
       .map((s) => s.trim())
       .filter(Boolean);
     const list = [];
-    const targets = codes.length ? codes : contract ? [contract.code, contract.code6, contract.code8] : [];
+    const targets = codes.length ? codes : contract ? [contract.code, contract.code5, contract.code8] : [];
     divs.forEach((div) => targets.forEach((code) => list.push({ marketDiv: div, code })));
 
     const head = {
