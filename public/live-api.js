@@ -3177,7 +3177,7 @@
       '<br>60일선 ' + slWon(L.ma60) + ' <b style="color:' + (L.aboveMa60 ? '#34d399' : '#fca5a5') + ';">' +
       (L.aboveMa60 ? '위' : '아래') + '</b> · 대금 ' + slEok(L.valueEok) +
       ' · 기준일 종가 ' + slWon(L.base) + ' 대비 <b style="color:' + colFor(L.vsBasePct) + ';">' + slPct(L.vsBasePct) + '</b>';
-    return slRow(slHeadRow(esc(c.name) + ' <span style="font-size:9.5px;color:#64748b;">(' + esc(c.section === 'break' ? '돌파' : '접근') + ')</span> ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'kkangto', L.price, L.pct);
+    return slRow(slHeadRow(esc(c.name) + ' <span style="font-size:9.5px;color:#64748b;">(' + esc(c.section === 'break' ? '돌파' : '접근') + ')</span> ' + slStateBadge(L), c.code, L.price, L.pct, right, true), c.name, c.code, 'kkangto', L.price, L.pct);
   }
 
   function slJongbeRow(c) {
@@ -3191,7 +3191,7 @@
       ' · 손절 ' + slWon(L.stopPrice) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '') +
       (isNum(L.ma5) ? '<br>5일선 ' + slWon(L.ma5) + ' · 20일선 ' + slWon(L.ma20) : '') +
       ' · 대금 ' + (L.valueText || slEok(L.valueEok));
-    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'jongbe', L.price, L.pct);
+    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right, true), c.name, c.code, 'jongbe', L.price, L.pct);
   }
 
   function slRnzoneRow(c) {
@@ -3204,18 +3204,30 @@
       (isNum(L.buy1) ? '<br>매수 1차 ' + slWon(L.buy1) + (L.inBuy1 ? ' <span style="color:#34d399;font-weight:800;">도달</span>' : '') : '') +
       (isNum(L.buy2) ? ' · 2차 ' + slWon(L.buy2) + (L.inBuy2 ? ' <span style="color:#34d399;font-weight:800;">도달</span>' : '') : '') +
       ' · 대금 ' + (L.valueText || slEok(L.valueEok));
-    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right), c.name, c.code, 'rnzone', L.price, L.pct);
+    return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right, true), c.name, c.code, 'rnzone', L.price, L.pct);
+  }
+
+  function slStratChips(sec) {
+    var counts = {};
+    var colorOf = {};
+    ((sec && sec.cards) || []).forEach(function (c) {
+      var L = c && c.live;
+      if (!L) return;
+      var lab = L.stateLabel || '—';
+      counts[lab] = (counts[lab] || 0) + 1;
+      if (!colorOf[lab]) colorOf[lab] = slStateColor(L.stateKey);
+    });
+    return Object.keys(counts)
+      .sort(function (a, b) { return counts[b] - counts[a]; })
+      .map(function (lab) {
+        return '<span style="font-size:9.6px;font-weight:800;color:' + colorOf[lab] + ';background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.22);border-radius:4px;padding:1px 5px;">' + esc(lab) + ' ' + counts[lab] + '</span>';
+      })
+      .join(' ');
   }
 
   function slStratPanel(sec, title, accent, rowFn, extraNote) {
     if (!sec || !sec.cards || !sec.cards.length) return null;
-    var states = sec.states || {};
-    var chips = Object.keys(states)
-      .sort(function (a, b) { return states[b] - states[a]; })
-      .map(function (k) {
-        return '<span style="font-size:9.6px;font-weight:800;color:' + slStateColor(k) + ';background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.22);border-radius:4px;padding:1px 5px;">' + esc(k) + ' ' + states[k] + '</span>';
-      })
-      .join(' ');
+    var chips = slStratChips(sec);
     return slBox(
       title,
       '실시간 ' + (sec.live || 0) + '/' + (sec.total || 0) + '종목',
