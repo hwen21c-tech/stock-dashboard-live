@@ -3,21 +3,21 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-24 11:12:36",
- "updatedAt": "2026-11-24T11:12:22.646954+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-24 13:13:55",
+ "updatedAt": "2026-11-24T13:13:33.264382+09:00",
+ "updatedAgeMin": 0.4,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "060720",
-  "084850",
-  "448900",
-  "307950",
-  "108490",
   "090710",
+  "084850",
+  "307950",
+  "448900",
+  "466100",
+  "056080",
   "125490",
   "129920",
-  "077360",
   "437730"
  ],
  "themes": [
@@ -30,21 +30,21 @@
      "code": "060720",
      "name": "KH바텍",
      "chg": 30.0,
-     "value_eok": 320.03,
+     "value_eok": 321.82,
+     "verified": true
+    },
+    {
+     "code": "090710",
+     "name": "휴림로봇",
+     "chg": 29.9,
+     "value_eok": 1501.49,
      "verified": true
     },
     {
      "code": "084850",
      "name": "아이티엠반도체",
      "chg": 29.9,
-     "value_eok": 25.28,
-     "verified": true
-    },
-    {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 29.9,
-     "value_eok": 168.06,
+     "value_eok": 25.42,
      "verified": true
     }
    ]
@@ -52,27 +52,27 @@
   {
    "rank": 2,
    "name": "피지컬 AI",
-   "avgRS": 88,
+   "avgRS": 67,
    "stocks": [
+    {
+     "code": "307950",
+     "name": "현대오토에버",
+     "chg": 29.9,
+     "value_eok": 1358.41,
+     "verified": true
+    },
     {
      "code": "448900",
      "name": "한국피아이엠",
      "chg": 29.9,
-     "value_eok": 168.06,
+     "value_eok": 171.57,
      "verified": true
     },
     {
-     "code": "307950",
-     "name": "현대오토에버",
-     "chg": 26.2,
-     "value_eok": 944.48,
-     "verified": true
-    },
-    {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 19.4,
-     "value_eok": 2398.82,
+     "code": "466100",
+     "name": "클로봇",
+     "chg": 22.7,
+     "value_eok": 202.99,
      "verified": true
     }
    ]
@@ -80,79 +80,79 @@
   {
    "rank": 3,
    "name": "지능형로봇/인공지능",
-   "avgRS": 85,
+   "avgRS": 68,
    "stocks": [
     {
      "code": "090710",
      "name": "휴림로봇",
-     "chg": 26.2,
-     "value_eok": 1316.27,
+     "chg": 29.9,
+     "value_eok": 1501.49,
      "verified": true
     },
     {
-     "code": "108490",
-     "name": "로보티즈",
-     "chg": 19.4,
-     "value_eok": 2398.82,
+     "code": "056080",
+     "name": "유진로봇",
+     "chg": 26.3,
+     "value_eok": 255.82,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 19.1,
-     "value_eok": 216.92,
+     "code": "466100",
+     "name": "클로봇",
+     "chg": 22.7,
+     "value_eok": 202.99,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "방위산업",
-   "avgRS": 55,
+   "name": "자율주행차",
+   "avgRS": 90,
    "stocks": [
     {
-     "code": "129920",
-     "name": "대성하이텍",
-     "chg": 30.0,
-     "value_eok": 46.06,
+     "code": "307950",
+     "name": "현대오토에버",
+     "chg": 29.9,
+     "value_eok": 1358.41,
      "verified": true
     },
     {
-     "code": "084850",
-     "name": "아이티엠반도체",
-     "chg": 29.9,
-     "value_eok": 25.28
+     "code": "056080",
+     "name": "유진로봇",
+     "chg": 26.3,
+     "value_eok": 255.82
     },
     {
-     "code": "077360",
-     "name": "덕산하이메탈",
-     "chg": 22.4,
-     "value_eok": 69.61
+     "code": "125490",
+     "name": "한라캐스트",
+     "chg": 20.8,
+     "value_eok": 311.41
     }
    ]
   },
   {
    "rank": 5,
-   "name": "자율주행차",
-   "avgRS": 91,
+   "name": "방위산업",
+   "avgRS": 63,
    "stocks": [
     {
-     "code": "307950",
-     "name": "현대오토에버",
-     "chg": 26.2,
-     "value_eok": 944.48
+     "code": "129920",
+     "name": "대성하이텍",
+     "chg": 30.0,
+     "value_eok": 54.6
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 19.1,
-     "value_eok": 216.92
+     "code": "084850",
+     "name": "아이티엠반도체",
+     "chg": 29.9,
+     "value_eok": 25.42
     },
     {
      "code": "437730",
      "name": "삼현",
-     "chg": 16.7,
-     "value_eok": 1349.05
+     "chg": 20.0,
+     "value_eok": 1735.13
     }
    ]
   },
@@ -165,19 +165,19 @@
      "code": "448900",
      "name": "한국피아이엠",
      "chg": 29.9,
-     "value_eok": 168.06
+     "value_eok": 171.57
     },
     {
      "code": "125490",
      "name": "한라캐스트",
-     "chg": 19.1,
-     "value_eok": 216.92
+     "chg": 20.8,
+     "value_eok": 311.41
     },
     {
      "code": "437730",
      "name": "삼현",
-     "chg": 16.7,
-     "value_eok": 1349.05
+     "chg": 20.0,
+     "value_eok": 1735.13
     }
    ]
   }
