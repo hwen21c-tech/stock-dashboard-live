@@ -1,0 +1,104 @@
+name: intraday-telegram-gemini
+
+# 🦊 폭스시그널 장중 속보 (Gemini → 텔레그램) — 평일 10:00 · 11:00 · 13:00 · 14:00 KST
+#   10:00 KST = 01:00 UTC   (cron '0 1,2,4,5 * * 1-5')
+#   11:00 KST = 02:00 UTC
+#   13:00 KST = 04:00 UTC
+#   14:00 KST = 05:00 UTC
+#
+#  · 데이터: 관제탑 /api/tabs-live + 네이버 증권(지수·수급·업종) 실측
+#  · 본문: Gemini Flash 가 5단 양식으로 작성 (숫자 창작은 스크립트가 검증·차단)
+#  · 발송: 텔레그램 @fox_signal_stock
+#  · 휴장일·장외에는 스크립트가 스스로 발송을 건너뛴다(빈 발송 없음)
+#
+#  필요한 GitHub Secrets (Settings → Secrets and variables → Actions)
+#   GEMINI_API_KEY · TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID
+#   (TELEGRAM_CHAT_ID 값 예: @fox_signal_stock — 따옴표 없이)
+
+on:
+  schedule:
+    - cron: '0 1,2,4,5 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: '헤더 시각 표기 (예: 10:00). 비우면 실행 시각'
+        required: false
+        default: ''
+      dry_run:
+        description: '발송하지 않고 본문만 확인'
+        type: boolean
+        default: false
+      force:
+        description: '휴장·장외에도 실행 (테스트용)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intraday-telegram-gemini
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Seoul
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SLOT: ${{ inputs.slot }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      FORCE: ${{ inputs.force }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 문법 검사
+        run: python3 -m py_compile scripts/intraday_gemini_telegram.py && echo "syntax OK"
+
+      - name: 장중 속보 생성·발송
+        run: |
+          set -u
+          ARGS="--out artifacts/intraday.json --out-text artifacts/intraday.txt"
+          if [ -n "${SLOT:-}" ]; then ARGS="$ARGS --slot ${SLOT}"; fi
+          if [ "${DRY_RUN:-}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "${FORCE:-}" = "true" ]; then ARGS="$ARGS --force"; fi
+          echo "args: $ARGS"
+          python3 scripts/intraday_gemini_telegram.py $ARGS
+
+      - name: 결과 요약 (Actions 화면)
+        if: always()
+        run: |
+          {
+            echo "### 🦊 장중 속보 결과"
+            echo ""
+            if [ -f artifacts/intraday.txt ]; then
+              echo '```'
+              cat artifacts/intraday.txt
+              echo '```'
+            else
+              echo "본문 파일 없음 (휴장·장외로 생략되었거나 실행 실패)"
+            fi
+            echo ""
+            if [ -f artifacts/intraday.json ]; then
+              python3 scripts/intraday_gemini_telegram.py --summary artifacts/intraday.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 산출물 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intraday-telegram-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 7
