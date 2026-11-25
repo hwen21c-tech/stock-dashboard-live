@@ -1334,9 +1334,10 @@ def normalize_headers(body):
     out = []
     for ln in body.splitlines():
         s = ln.strip()
+        probe = re.sub(r"^[-•*]\s*", "", s)   # '- 📊 ...' 처럼 불릿이 붙은 헤더도 잡는다
         replaced = False
         for emoji, header in BLOCK_HEADERS:
-            if s.startswith(emoji):
+            if probe.startswith(emoji):
                 out.append(header)
                 replaced = True
                 break
