@@ -1382,8 +1382,11 @@
  *  예전에는 이 블록이 window.openLiveBriefingModal 을 감싸서(monkey patch)
  *  모달을 '실시간 팩트 + 정시 브리핑 스냅샷'으로 다시 그렸다. 그 래퍼가 새 모달을
  *  덮어써 화면이 두 번 바뀌고 옛 스냅샷이 남았으므로 **래퍼를 걷어냈다**.
- *  버튼 클릭 → 그 시각 실측 즉석 브리핑(/api/content-ai live_briefing)과
- *  '🔄 지금 다시 생성' 재호출은 index.html 의 openLiveBriefingModal / runLiveBriefing 이 맡는다.
+ *  버튼 클릭 → 그 시각 실측 팩트(🧮 실측 팩트 탭)와, 탭을 누를 때만 만드는
+ *  '🤖 Gemini AI 브리핑'(/api/live-briefing?ai=1 · 우리 양식 4블록)은
+ *  index.html 의 openLiveBriefingModal / runLiveBriefing / runAiBriefing 이 맡는다.
+ *  (2026-11-26: 예전 content-ai live_briefing 자동 호출은 모달을 열기만 해도
+ *   Gemini 할당량을 쓰고 팩트 화면을 덮어써서 걷어냈다.)
  * ==========================================================================*/
 (function () {
   'use strict';
