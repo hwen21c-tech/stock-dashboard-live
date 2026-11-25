@@ -507,7 +507,7 @@
           usedTrack[track] = true;
           out.push({
             idx: idx, name: s.name, code: s.code,
-            track: track === 'kang' ? '강창권' : '신정재',
+            track: '신정재' + (s.patternLabel ? ' ' + String(s.patternLabel).trim().slice(0, 1) : ''),  /* 강창권 트랙은 2026-11-25 폐지 — p1~p4 패턴 번호만 표기 */
             pct: num(s.changeRatio) === null ? null : (s.changeRatio > 0 ? '+' : '') + Number(s.changeRatio).toFixed(2) + '%',
             value: s.valueText || null
           });
