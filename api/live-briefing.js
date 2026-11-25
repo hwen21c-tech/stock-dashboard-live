@@ -1068,13 +1068,18 @@ async function aiCallGemini(prompt, deadline) {
   const models = [AI_PRIMARY_MODEL].concat(AI_FALLBACK_MODELS).filter((m, i, a) => m && a.indexOf(m) === i);
   const tries = [];
   let sawQuota = true;
-  for (const model of models) {
+  for (let idx = 0; idx < models.length; idx++) {
+    const model = models[idx];
+    const isLast = idx === models.length - 1;
     const remaining = deadline - Date.now();
     if (remaining < 5000) {
       tries.push({ model, status: 0, message: '건너뜀(남은 시간 부족)' });
       sawQuota = false;
       continue;
     }
+    // 3.8 Flash 가 과부하로 '응답 없이 매달리는' 경우가 있어(실측) 첫 시도에 시간을 다 쓰지 않는다.
+    //   마지막 모델이 아니면 다음 모델 몫을 남기도록 8초 안쪽으로 제한한다.
+    const attemptMs = isLast ? remaining : Math.max(5000, Math.min(9000, remaining - 6000));
     const gen = {
       temperature: prompt.temperature,
       maxOutputTokens: prompt.maxTokens,
@@ -1092,7 +1097,7 @@ async function aiCallGemini(prompt, deadline) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        timeout: Math.min(18000, Math.max(5000, remaining)),
+        timeout: attemptMs,
       });
       const cand = ((data && data.candidates) || [])[0] || {};
       const parts = (cand.content && cand.content.parts) || [];
