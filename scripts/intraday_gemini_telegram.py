@@ -28,6 +28,8 @@
       주도 테마·300억↑ 대장주·선물(KIS)·뉴스·상한가·수급 참고
   · https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI,KOSDAQ
       코스피·코스닥 지수/등락/시고저/거래대금
+  · https://stock-dashboard-live-6frm.vercel.app/api/live-briefing
+      (네이버 폴링이 막힌 경우 지수 대체용)
   · https://m.stock.naver.com/api/index/{KOSPI,KOSDAQ}/integration
       전일 종가 · 상승/하락 종목수 · 프로그램 매매
   · https://m.stock.naver.com/api/index/{KOSPI,KOSDAQ,FUT}/trend
@@ -39,6 +41,11 @@
   · public/data/daily_levels.json (있으면)
       {"date":"2026-11-26","kospi":{"s1":4700,"s2":4650},"kosdaq":{"s1":645,"s2":635}}
       없으면 전일 종가를 기준선으로 쓴다.
+
+Gemini 모델
+  기본 체인 gemini-3.8-flash → 3.5-flash → 3.1-flash-lite → 3.1-flash-lite-preview.
+  2026-11 기준 2.5 계열은 신규 사용자에게 닫혀 있고(404), 3.8/3.5 는 429·503 이 잦아
+  실제로는 flash-lite 가 먼저 성공하는 날이 많다. 모두 실패하면 실측 대체 본문으로 보낸다.
 """
 
 import argparse
@@ -63,6 +70,9 @@ NAVER_POLL_URL = "https://polling.finance.naver.com/api/realtime?query="
 NAVER_MOBILE = "https://m.stock.naver.com/api/index/"
 NAVER_THEME_LIST = "https://m.stock.naver.com/api/stocks/theme?page=1&pageSize=100"
 NAVER_THEME_ONE = "https://m.stock.naver.com/api/stocks/theme/"
+LIVE_BRIEFING_URL = os.environ.get(
+    "LIVE_BRIEFING_URL", "https://stock-dashboard-live-6frm.vercel.app/api/live-briefing"
+)
 
 CHECKER_URL = "https://hwen21c-tech.github.io/foxsignal-checker/"
 
@@ -210,6 +220,28 @@ def fetch_index_live():
                 "value_won": (item.get("aa") or 0) * 1e6 or None,
                 "market_status": item.get("ms"),
             }
+    return out
+
+
+def fetch_index_via_api():
+    """네이버 폴링이 막힌 경우 — 관제탑 /api/live-briefing 의 지수(같은 네이버 실측값)."""
+    d = http_json(LIVE_BRIEFING_URL + "?fresh=1", timeout=25, retries=1)
+    out = {}
+    for r in d.get("indices") or []:
+        key = r.get("key")
+        if key not in ("KOSPI", "KOSDAQ"):
+            continue
+        out[key] = {
+            "price": r.get("price"),
+            "change": r.get("change"),
+            "pct": r.get("changePct"),
+            "open": r.get("open"),
+            "high": r.get("high"),
+            "low": r.get("low"),
+            "volume": r.get("volume"),
+            "value_won": r.get("value"),
+            "market_status": r.get("status"),
+        }
     return out
 
 
@@ -489,6 +521,12 @@ def collect(script_dir, use_fixture=None, verbose=True):
         except Exception as e:  # noqa: BLE001
             facts["errors"].append(f"index-live: {e}")
             log(f"⚠️ 지수 실패 — {e}")
+            try:
+                idx = fetch_index_via_api()
+                log(f"↺ 관제탑 API로 지수 대체 {[(k, v['price'], v['pct']) for k, v in idx.items()]}")
+            except Exception as e2:  # noqa: BLE001
+                facts["errors"].append(f"index-api: {e2}")
+                log(f"⚠️ 관제탑 지수도 실패 — {e2}")
 
         for market in ("KOSPI", "KOSDAQ"):
             try:
@@ -814,6 +852,7 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 속�
 - 💰 는 시장 전체 투자자별 수급(현물 억원, 선물 계약). 기준일이 오늘이 아니면 '(기준 M/D)'를 붙인다.
 - 🔄 받는 쪽은 FACTS의 주도 테마와 300억↑ 대장주, 빠지는 쪽은 하락 업종, 약한 종목은 하락 대표주에서 고른다.
 - 🧭 은 FACTS의 [기준선] 또는 전일 종가와 현재 지수를 비교해 판단한다. 지지선이 없으면 전일 종가를 기준으로 쓴다.
+- 🧭 둘째 줄은 행동 지침을 15자 이상으로 쓴다(예: '전일 종가 회복 전까지 추격 금지·비중 축소'). 한 단어로 끝내지 않는다.
 - 선물이 '실시간 아님'이면 표기 그대로 두고, 실시간인 것처럼 쓰지 않는다.
 - 문장은 짧게. 이모지는 형식에 있는 것만 쓴다."""
 
@@ -898,6 +937,14 @@ def validate_body(body, ftext, phase=None):
             problems.append(f"섹션 누락: {sec}")
     if CHECKER_URL not in body:
         problems.append("체커 링크 누락")
+    # 🧭 대응 문장이 한 단어로 끝나지 않았는지
+    try:
+        gi = next(i for i, ln in enumerate(lines) if ln.startswith("🧭"))
+        tail = [ln for ln in lines[gi + 1:] if ln and not ln.startswith("http")]
+        if len(tail) < 2 or len(tail[-1]) < 10:
+            problems.append("🧭 판단·대응 문장 부족")
+    except StopIteration:
+        pass
     if "**" in body or "##" in body:
         problems.append("마크다운 금지 위반")
     if phase in ("장전", "정규장") and re.search(r"(?:상승|하락|급락|급등|보합)\s*마감|마감했", body):
