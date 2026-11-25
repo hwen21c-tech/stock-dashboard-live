@@ -3,182 +3,185 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-24 21:59:18",
- "updatedAt": "2026-11-24T21:59:06.149639+09:00",
- "updatedAgeMin": 0.2,
+ "fetchedAt": "2026-11-25 09:05:25",
+ "updatedAt": "2026-11-25T09:05:21.670174+09:00",
+ "updatedAgeMin": 0.1,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "060720",
-  "090710",
+  "338220",
+  "328130",
+  "376900",
+  "123690",
+  "257720",
+  "439090",
   "084850",
-  "307950",
   "448900",
-  "475400",
-  "056080",
-  "012860",
-  "125490",
+  "079550",
   "129920",
-  "437730"
+  "005490",
+  "024720",
+  "128940",
+  "068270"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "로봇",
-   "avgRS": 66,
+   "name": "의료기기",
+   "avgRS": 43,
    "stocks": [
     {
-     "code": "060720",
-     "name": "KH바텍",
-     "chg": 30.0,
-     "value_eok": 325.87,
+     "code": "338220",
+     "name": "뷰노",
+     "chg": 26.2,
+     "value_eok": 163.95,
      "verified": true
     },
     {
-     "code": "090710",
-     "name": "휴림로봇",
-     "chg": 29.9,
-     "value_eok": 1515.2,
+     "code": "328130",
+     "name": "루닛",
+     "chg": 9.2,
+     "value_eok": 532.55,
      "verified": true
     },
     {
-     "code": "084850",
-     "name": "아이티엠반도체",
-     "chg": 29.9,
-     "value_eok": 25.48,
+     "code": "376900",
+     "name": "로킷헬스케어",
+     "chg": 7.9,
+     "value_eok": 76.61,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "피지컬 AI",
-   "avgRS": 77,
+   "name": "화장품",
+   "avgRS": 50,
    "stocks": [
     {
-     "code": "307950",
-     "name": "현대오토에버",
-     "chg": 29.9,
-     "value_eok": 1405.83,
+     "code": "123690",
+     "name": "한국화장품",
+     "chg": 8.4,
+     "value_eok": 21.72,
      "verified": true
     },
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 29.9,
-     "value_eok": 175.24,
+     "code": "257720",
+     "name": "실리콘투",
+     "chg": 7.2,
+     "value_eok": 252.9,
      "verified": true
     },
     {
-     "code": "475400",
-     "name": "씨메스로보틱스",
-     "chg": 20.0,
-     "value_eok": 49.33,
+     "code": "439090",
+     "name": "마녀공장",
+     "chg": 7.1,
+     "value_eok": 273.56,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "지능형로봇/인공지능",
-   "avgRS": 77,
+   "name": "로봇",
+   "avgRS": 58,
    "stocks": [
     {
-     "code": "090710",
-     "name": "휴림로봇",
-     "chg": 29.9,
-     "value_eok": 1515.2,
+     "code": "084850",
+     "name": "아이티엠반도체",
+     "chg": 22.4,
+     "value_eok": 123.88,
      "verified": true
     },
     {
-     "code": "056080",
-     "name": "유진로봇",
-     "chg": 20.6,
-     "value_eok": 371.23,
+     "code": "448900",
+     "name": "한국피아이엠",
+     "chg": 5.7,
+     "value_eok": 137.6,
      "verified": true
     },
     {
-     "code": "475400",
-     "name": "씨메스로보틱스",
-     "chg": 20.0,
-     "value_eok": 49.33,
+     "code": "079550",
+     "name": "LIG디펜스앤에어로스페이스",
+     "chg": 1.0,
+     "value_eok": 11.92,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "자동차부품",
-   "avgRS": 94,
+   "name": "방위산업",
+   "avgRS": 57,
    "stocks": [
     {
-     "code": "012860",
-     "name": "모베이스전자",
-     "chg": 30.0,
-     "value_eok": 243.93,
+     "code": "084850",
+     "name": "아이티엠반도체",
+     "chg": 22.4,
+     "value_eok": 123.88,
      "verified": true
     },
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 29.9,
-     "value_eok": 175.24
+     "code": "129920",
+     "name": "대성하이텍",
+     "chg": 2.7,
+     "value_eok": 14.81
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 17.4,
-     "value_eok": 381.31
+     "code": "079550",
+     "name": "LIG디펜스앤에어로스페이스",
+     "chg": 1.0,
+     "value_eok": 11.92
     }
    ]
   },
   {
    "rank": 5,
-   "name": "자율주행차",
-   "avgRS": 93,
+   "name": "2차전지",
+   "avgRS": 53,
    "stocks": [
     {
-     "code": "307950",
-     "name": "현대오토에버",
-     "chg": 29.9,
-     "value_eok": 1405.83
+     "code": "084850",
+     "name": "아이티엠반도체",
+     "chg": 22.4,
+     "value_eok": 123.88
     },
     {
-     "code": "056080",
-     "name": "유진로봇",
-     "chg": 20.6,
-     "value_eok": 371.23
+     "code": "129920",
+     "name": "대성하이텍",
+     "chg": 2.7,
+     "value_eok": 14.81
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 17.4,
-     "value_eok": 381.31
+     "code": "005490",
+     "name": "POSCO홀딩스",
+     "chg": -1.2,
+     "value_eok": 27.23
     }
    ]
   },
   {
    "rank": 6,
-   "name": "방위산업",
-   "avgRS": 68,
+   "name": "밸류업",
+   "avgRS": 72,
    "stocks": [
     {
-     "code": "129920",
-     "name": "대성하이텍",
-     "chg": 30.0,
-     "value_eok": 56.18
+     "code": "024720",
+     "name": "콜마홀딩스",
+     "chg": 3.3,
+     "value_eok": 13.11
     },
     {
-     "code": "084850",
-     "name": "아이티엠반도체",
-     "chg": 29.9,
-     "value_eok": 25.48
+     "code": "128940",
+     "name": "한미약품",
+     "chg": 2.1,
+     "value_eok": 184.66
     },
     {
-     "code": "437730",
-     "name": "삼현",
-     "chg": 16.9,
-     "value_eok": 2104.4
+     "code": "068270",
+     "name": "셀트리온",
+     "chg": 1.9,
+     "value_eok": 169.88
     }
    ]
   }
