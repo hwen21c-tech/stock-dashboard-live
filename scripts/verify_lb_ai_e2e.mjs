@@ -134,6 +134,7 @@ await page.screenshot({ path: `${OUT}/${label}_facts_400.png` });
 
 /* ② AI 탭 */
 await page.click('#lbTabAiBtn');
+const aiT0 = Date.now();
 await page.waitForFunction(
   () => {
     const b = document.getElementById('liveModalBody');
@@ -159,6 +160,7 @@ const aiState = await page.evaluate(() => {
     fails: /lb-fail/.test(document.getElementById('liveModalBody')?.innerHTML || ''),
   };
 });
+check('AI 응답 시간 기록', true, `${((Date.now() - aiT0) / 1000).toFixed(1)}초`);
 check('AI 탭 전환', aiState.tab === 'ai', aiState.title);
 check('4블록 렌더', aiState.blocks.length >= 4, aiState.blocks.map((b) => b.t).join(' / '));
 check('한줄 요약·행동 표시', !!(aiState.blocks[0]?.sum && aiState.blocks[0]?.act), (aiState.blocks[0]?.sum || '').slice(0, 60));
