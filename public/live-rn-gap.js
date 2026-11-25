@@ -89,7 +89,9 @@ function ensureCss() {
 }
 
 function priceOf(card) {
-  var row = card.querySelector('.card-price-row span');
+  var dp = card.getAttribute('data-live-price');
+  if (dp && /^[0-9]+$/.test(dp)) return Number(dp);
+  var row = card.querySelector('.card-price-row span, .su-px .p');
   var t = row ? row.textContent : (card.textContent || '');
   var m = String(t).replace(/,/g, '').match(/(\d{3,})/);
   return m ? Number(m[1]) : null;
@@ -106,8 +108,9 @@ function decorate(card) {
   if (!el) {
     el = document.createElement('div');
     el.className = 'rn-gap';
-    var metrics = card.querySelector('.card-metrics');
-    if (metrics && metrics.parentNode === card) card.insertBefore(el, metrics.nextSibling);
+    /* 공통 카드 양식(11/26): 지표 줄(.su-rows) 바로 아래에 붙인다 — 없으면 예전 .card-metrics, 그것도 없으면 끝 */
+    var anchor = card.querySelector(':scope > .su-rows') || card.querySelector('.card-metrics');
+    if (anchor && anchor.parentNode === card) card.insertBefore(el, anchor.nextSibling);
     else card.appendChild(el);
   }
   el.innerHTML =

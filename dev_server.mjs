@@ -29,7 +29,7 @@ const api = {
   '/api/econ-calendar': require('./api/econ-calendar.js'),
   '/api/stock-trend': require('./api/stock-trend.js'),
   '/api/tts': require('./api/tts.js'),
-  '/api/content-studio': require('./api/content-studio.js'),
+  '/api/content-ai': require('./api/content-ai.js'),
   '/api/picks-search': require('./api/picks-search.js'),
 };
 

@@ -1,0 +1,125 @@
+{
+  "url": "http://127.0.0.1:8898/index.html",
+  "tag": "final_static",
+  "checks": [
+    {
+      "name": "6개 전략 탭 렌더 · 가로 넘침 0",
+      "ok": true,
+      "detail": "{}"
+    },
+    {
+      "name": "kkangto: 접기 버튼 · 기본 펼침 · 헤더 한 줄",
+      "ok": true,
+      "detail": "{\"key\": \"kkangto\", \"label\": \"접기 ▾\", \"expanded\": \"true\", \"bodyShown\": true, \"headerH\": 23, \"headerW\": 344, \"hostW\": 368}"
+    },
+    {
+      "name": "kkangto: 접기 동작 · 상태 저장",
+      "ok": true,
+      "detail": "{\"label\": \"펼치기 ▸\", \"expanded\": \"false\", \"display\": \"none\", \"store\": \"{\\\"kkangto\\\":1}\"}"
+    },
+    {
+      "name": "kkangto: 다시 펼치기 · 저장 해제",
+      "ok": true,
+      "detail": "{\"label\": \"접기 ▾\", \"display\": \"block\", \"store\": \"{}\"}"
+    },
+    {
+      "name": "jongbe: 접기 버튼 · 기본 펼침 · 헤더 한 줄",
+      "ok": true,
+      "detail": "{\"key\": \"jongbe\", \"label\": \"접기 ▾\", \"expanded\": \"true\", \"bodyShown\": true, \"headerH\": 23, \"headerW\": 344, \"hostW\": 368}"
+    },
+    {
+      "name": "jongbe: 접기 동작 · 상태 저장",
+      "ok": true,
+      "detail": "{\"label\": \"펼치기 ▸\", \"expanded\": \"false\", \"display\": \"none\", \"store\": \"{\\\"jongbe\\\":1}\"}"
+    },
+    {
+      "name": "jongbe: 다시 펼치기 · 저장 해제",
+      "ok": true,
+      "detail": "{\"label\": \"접기 ▾\", \"display\": \"block\", \"store\": \"{}\"}"
+    },
+    {
+      "name": "rnzone: 접기 버튼 · 기본 펼침 · 헤더 한 줄",
+      "ok": true,
+      "detail": "{\"key\": \"rnzone\", \"label\": \"접기 ▾\", \"expanded\": \"true\", \"bodyShown\": true, \"headerH\": 23, \"headerW\": 344, \"hostW\": 368}"
+    },
+    {
+      "name": "rnzone: 접기 동작 · 상태 저장",
+      "ok": true,
+      "detail": "{\"label\": \"펼치기 ▸\", \"expanded\": \"false\", \"display\": \"none\", \"store\": \"{\\\"rnzone\\\":1}\"}"
+    },
+    {
+      "name": "rnzone: 다시 펼치기 · 저장 해제",
+      "ok": true,
+      "detail": "{\"label\": \"접기 ▾\", \"display\": \"block\", \"store\": \"{}\"}"
+    },
+    {
+      "name": "신정재: 종목 리스트 → 차트 → 4대 패턴 → 도해",
+      "ok": true,
+      "detail": "{\"list\": 1515.4375, \"chart\": 4646.90625, \"patterns\": 6287.15625, \"diagram\": 6721.359375, \"tabs\": [\"전체 (8)\", \"① 위꼬리 (2)\", \"② 5일선 지지 (1)\", \"③ 마른 양봉 (2)\", \"④ 20일선 눌림 (3)\"]}"
+    },
+    {
+      "name": "신정재: 도해 한 줄 요약 · 3단계 · 색 구분",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "RN존: 종목 카드 → 차트(범례 포함) → 원칙",
+      "ok": true,
+      "detail": "{\"list\": 1663.125, \"chart\": 5797.4375, \"principle\": 6518.5625, \"legend\": 6}"
+    },
+    {
+      "name": "rnzone: 카드 공통 양식(헤더·가격·지표·타점·미니차트)",
+      "ok": true,
+      "detail": "{\"count\": 11, \"hasTop\": true, \"hasPrice\": true, \"hasRows\": true, \"hasPlan\": true, \"hasMini\": true, \"painted\": true, \"cw\": 316, \"ch\": 96, \"allHaveMini\": true}"
+    },
+    {
+      "name": "rnzone: 카드 클릭 → 큰 차트 전환",
+      "ok": true,
+      "detail": "{\"want\": \"\\n                            삼성전기009150\\n                        \", \"got\": \"삼성전기\"}"
+    },
+    {
+      "name": "jongbe: 카드 공통 양식(헤더·가격·지표·타점·미니차트)",
+      "ok": true,
+      "detail": "{\"count\": 8, \"hasTop\": true, \"hasPrice\": true, \"hasRows\": true, \"hasPlan\": true, \"hasMini\": true, \"painted\": true, \"cw\": 316, \"ch\": 96, \"allHaveMini\": true}"
+    },
+    {
+      "name": "jongbe: 카드 클릭 → 큰 차트 전환",
+      "ok": true,
+      "detail": "{\"want\": \"대한항공코스피 003490\", \"got\": \"대한항공\"}"
+    },
+    {
+      "name": "신정재: 4패턴 · 6대 팁 · 엔벨로프 범례 · DART·계산기 유지",
+      "ok": true,
+      "detail": "{\"patternCards\": 4, \"tipScore\": \"5/6\", \"legend\": 8, \"dart\": true, \"calc\": true}"
+    },
+    {
+      "name": "RN존: 캔버스 차트 · 줌 · 분할 계산기 유지(검색은 동적 전용)",
+      "ok": true,
+      "detail": "{\"before\": 1843, \"after\": 1477, \"calc\": \"3,000,000원\", \"searchBar\": false, \"calcBox\": true}"
+    },
+    {
+      "name": "콘솔 오류 0건",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screens": [
+    "/workspace/sd_live/screenshots/strat_unify/final_static_bijoong_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_honginki_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_kkangto_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_jongbe_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_rnzone_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_manju_top_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_kkangto_box_folded_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_jongbe_box_folded_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_rnzone_box_folded_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_jongbe_diagram_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_rnzone_cards_400.png",
+    "/workspace/sd_live/screenshots/strat_unify/final_static_jongbe_cards_400.png"
+  ],
+  "fails": [],
+  "skipped_boxes": [
+    "bijoong",
+    "honginki"
+  ]
+}

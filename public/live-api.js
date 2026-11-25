@@ -3168,13 +3168,69 @@
     );
   }
 
-  function slBox(title, sub, accent, bodyHtml) {
+  /* ---------- 실시간 판정 상자 접기/펼치기 (11/26) ----------
+   *  · 헤더 오른쪽 [접기 ▾] / [펼치기 ▸] 한 개. 기본은 펼침.
+   *  · 접힘 상태는 localStorage(sd_strat_box_fold_v1)에 남겨 15초 폴링 재렌더·새로고침 뒤에도 유지한다.
+   *  · 접어도 아래 종목 카드·차트는 그대로 — 상자 본문만 숨긴다.
+   *  · 400px: 제목은 한 줄 말줄임, 버튼은 flex:0 0 auto 라 헤더가 깨지지 않는다.
+   */
+  var BOX_FOLD_STORE = 'sd_strat_box_fold_v1';
+
+  function slBoxFolds() {
+    try {
+      var raw = window.localStorage ? window.localStorage.getItem(BOX_FOLD_STORE) : null;
+      var o = raw ? JSON.parse(raw) : {};
+      return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+    } catch (e) { return {}; }
+  }
+
+  function slBoxCollapsed(key) {
+    if (!key) return false;
+    return Boolean(slBoxFolds()[key]);
+  }
+
+  function slBoxSetCollapsed(key, on) {
+    if (!key) return;
+    var all = slBoxFolds();
+    if (on) all[key] = 1; else delete all[key];
+    try { if (window.localStorage) window.localStorage.setItem(BOX_FOLD_STORE, JSON.stringify(all)); } catch (e) { /* 저장 실패 — 이번 화면에서만 접힌다 */ }
+  }
+
+  function slBoxToggle(key) {
+    var next = !slBoxCollapsed(key);
+    slBoxSetCollapsed(key, next);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sl-box="' + key + '"]'), function (el) {
+      el.style.display = next ? 'none' : 'block';
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-sl-boxtog="' + key + '"]'), function (btn) {
+      btn.textContent = next ? '펼치기 ▸' : '접기 ▾';
+      btn.setAttribute('aria-expanded', next ? 'false' : 'true');
+      btn.title = next ? '이 판정 상자를 펼칩니다' : '이 판정 상자를 접습니다(접어도 아래 종목 카드·차트는 그대로)';
+    });
+    return next;
+  }
+  window.slBoxToggle = slBoxToggle;
+
+  function slBoxToggleBtn(key, accent, collapsed) {
+    if (!key) return '';
+    var label = collapsed ? '펼치기 ▸' : '접기 ▾';
+    return '<button type="button" data-sl-boxtog="' + esc(key) + '" aria-expanded="' + (collapsed ? 'false' : 'true') + '"' +
+      ' title="' + (collapsed ? '이 판정 상자를 펼칩니다' : '이 판정 상자를 접습니다(접어도 아래 종목 카드·차트는 그대로)') + '"' +
+      ' onclick="' + esc("if(window.slBoxToggle){slBoxToggle('" + key + "')}") + '"' +
+      ' style="flex:0 0 auto;padding:3px 9px;border-radius:6px;background:rgba(148,163,184,0.10);border:1px solid ' + accent +
+      ';color:' + accent + ';font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;line-height:1.5;">' + label + '</button>';
+  }
+
+  function slBox(title, sub, accent, bodyHtml, foldKey) {
+    var collapsed = slBoxCollapsed(foldKey);
     return (
       '<div class="panel-box" style="background:#0b1220;border:1px solid ' + accent + ';border-radius:10px;padding:10px 11px;margin:12px 0;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">' +
-          '<span style="font-size:12px;font-weight:800;color:' + accent + ';">' + title + '</span>' +
-          '<span style="font-size:10px;color:#94a3b8;font-weight:700;">' + sub + '</span>' +
-        '</div>' + bodyHtml +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">' +
+          '<span style="font-size:12px;font-weight:800;color:' + accent + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + title + '</span>' +
+          slBoxToggleBtn(foldKey, accent, collapsed) +
+        '</div>' +
+        '<div style="font-size:10px;color:#94a3b8;font-weight:700;margin-top:2px;line-height:1.4;">' + sub + '</div>' +
+        '<div data-sl-box="' + esc(foldKey || '') + '" style="display:' + (collapsed ? 'none' : 'block') + ';">' + bodyHtml + '</div>' +
       '</div>'
     );
   }
@@ -3423,7 +3479,7 @@
       .join(' ');
   }
 
-  function slStratPanel(sec, title, accent, rowFn, extraNote) {
+  function slStratPanel(sec, title, accent, rowFn, extraNote, foldKey) {
     if (!sec || !sec.cards || !sec.cards.length) return null;
     var chips = slStratChips(sec);
     return slBox(
@@ -3437,7 +3493,8 @@
         '</div>' +
         sec.cards.map(rowFn).join('') +
         '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">' +
-          (extraNote || '') + ' 투자 권유가 아닙니다.</div>'
+          (extraNote || '') + ' 투자 권유가 아닙니다.</div>',
+      foldKey
     );
   }
 
@@ -3460,7 +3517,8 @@
       '<div style="font-size:11px;font-weight:800;color:#fca5a5;margin:6px 0 4px;">🔥 당일 실시간 기준봉(0일차) — 몸통 +10%↑ · 대금 300억↑ · 60일 전고점 돌파</div>' +
       slBijFreshHtml(bij.fresh, bij.near) +
       '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 기준봉 카드 · 오늘 1일차 실시간 판정 · 4분할 타점</div>' +
-      slBijCardsHtml(bij.cards, bij)
+      slBijCardsHtml(bij.cards, bij),
+      'bij'
     );
 
     var hong = sl.hong || {};
@@ -3482,7 +3540,8 @@
       slHongFreshHtml(hong.fresh, hong.near) +
       '<div style="font-size:11px;font-weight:800;color:#c7d2fe;margin:10px 0 4px;">📊 기존 카드 · 기준선 대비 실시간 위치 · 5단 타점</div>' +
       slHongCardsHtml(hong.cards, sl.afterHours) +
-      '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">※ 전고점은 일봉 실측(당일 봉 제외)이고, 5단 타점의 ✅는 1차 시초가 확인 · 2차 전일 종가 터치 · 3차 기준선 아래 · 4~5차 5일선 이탈 여부입니다. 투자 권유가 아닙니다.</div>'
+      '<div style="font-size:9.6px;color:#64748b;margin-top:6px;line-height:1.5;">※ 전고점은 일봉 실측(당일 봉 제외)이고, 5단 타점의 ✅는 1차 시초가 확인 · 2차 전일 종가 터치 · 3차 기준선 아래 · 4~5차 5일선 이탈 여부입니다. 투자 권유가 아닙니다.</div>',
+      'hong'
     );
 
     var hostB = ensureStratHost('tabBijoong', 'stratLiveBijoongHost');
@@ -3508,14 +3567,14 @@
     /* ---- 깡토 · 종가베팅 · RN존 : 기준선 대비 지금 조건 충족 상태 ---- */
     var panels = [
       ['tabKkangto', 'stratLiveKkangtoHost', sl.kkangto, '⚡ 깡토 추세추종 · 실시간 조건 판정', '#38bdf8', slKkangtoRow,
-        '전고점(매수타점) 돌파 유지 여부 · −8% 손절 · +24% 1차 익절 · 60일선 위/아래를 장중 현재가로 다시 판정합니다.'],
+        '전고점(매수타점) 돌파 유지 여부 · −8% 손절 · +24% 1차 익절 · 60일선 위/아래를 장중 현재가로 다시 판정합니다.', 'kkangto'],
       ['tabJongbe', 'stratLiveJongbeHost', sl.jongbe, '💪 종가베팅 마스터 · 실시간 조건 판정', '#fbbf24', slJongbeRow,
-        '신정재 4대 패턴 — ①~③은 15:18~15:20 종가매수 · 익일 09:05 전 청산(손절선 이탈 즉시), ④는 5일선을 깬 자리라 엔벨로프 중심선(20일선) 스윙 손절 기준입니다.'],
+        '신정재 4대 패턴 — ①~③은 15:18~15:20 종가매수 · 익일 09:05 전 청산(손절선 이탈 시 즉시), ④는 5일선을 깬 자리라 엔벨로프 중심선(20일선) 스윙 손절 기준입니다.', 'jongbe'],
       ['tabRnzone', 'stratLiveRnzoneHost', sl.rnzone, '🎯 RN존 · 실시간 구간 판정', '#f472b6', slRnzoneRow,
-        '하단·상단 RN 사이에서 지금 위치(구간 %)와 매수 1·2차 도달 여부입니다. RN은 재스캔 기준일 일봉으로 계산된 값입니다.']
+        '하단·상단 RN 사이에서 지금 위치(구간 %)와 매수 1·2차 도달 여부입니다. RN은 재스캔 기준일 일봉으로 계산된 값입니다.', 'rnzone']
     ];
     panels.forEach(function (p) {
-      var html = slStratPanel(p[2], p[3], p[4], p[5], p[6]);
+      var html = slStratPanel(p[2], p[3], p[4], p[5], p[6], p[7]);
       var host = ensureStratHost(p[0], p[1]);
       if (!host) return;
       if (html) {
