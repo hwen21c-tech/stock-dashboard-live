@@ -1023,7 +1023,7 @@ RN_BIG_MIN_VALUE = 300.0   # 단, 시총 10조라도 하루 대금 300억 미만
 RN_MIN_PCT = 0.0
 RN_PICK = 12
 JB_MIN_VALUE = 300.0
-JB_PICK_PER_TRACK = 5
+JB_PICK_PER_PATTERN = 3
 
 # ── 차트박사 공식 21개 라운드넘버(RN)선 ────────────────────────────────────
 #   붉은색(핵심 8): 500 · 1,000 · 5,000 · 10,000 · 50,000 · 100,000 · 500,000 · 1,000,000
@@ -1271,103 +1271,412 @@ def build_rnzone(uni, per, cache, days):
     return out, counts, basis
 
 
-def build_jongbe(uni, per, cache, days):
-    """대가별 종가베팅 조건으로 매일 자동 선정.
-       · shin(신정재): 윗꼬리 없는 양봉(고가 밀착) + 대금 — 15:18~15:20 매수·익일 09:05 전 청산 트랙
-       · kang(강창권): 최근 장대양봉(+10%↑) 뒤 5·20일선 위 눌림 — 4음1양 5일선 지지 트랙"""
+JB_PICK_PER_PATTERN = 3       # 패턴별 최대 픽 수
+JB_CAND_FOR_SUPPLY = 16       # 수급(투자자별 매매동향) 2차 조회 대상 수
+JB_TIP_TOTAL = 6
+
+JB_PATTERNS = (
+    ('p1', '① 위꼬리-위꼬리-깔끔양봉', '#f59e0b'),
+    ('p2', '② 음봉 후 5일선 지지 턴', '#38bdf8'),
+    ('p3', '③ 거래량 마른 깔끔 양봉', '#a855f7'),
+    ('p4', '④ 5일선 이탈 20일선 엔벨로프 스윙', '#10b981'),
+)
+JB_TRACK_LABEL = {k: v for k, v, _c in JB_PATTERNS}
+# 400px 외부액정에서도 한 줄에 들어가는 버튼용 짧은 이름
+JB_TRACK_SHORT = {'p1': '① 위꼬리', 'p2': '② 5일선 지지',
+                  'p3': '③ 마른 양봉', 'p4': '④ 20일선 눌림'}
+JB_TRACK_COLOR = {k: c for k, _v, c in JB_PATTERNS}
+
+
+def jb_tail_pct(bar):
+    """윗꼬리 비율(%) — 고가 대비 종가. (고가-종가)/종가."""
+    c = bar['c']
+    return round((bar['h'] - c) / c * 100, 2) if c else 0.0
+
+
+def jb_lower_pct(bar):
+    """아래꼬리 비율(%) — (시·종 중 낮은 값 - 저가)/저가."""
+    body_low = min(bar['o'], bar['c'])
+    return round((body_low - bar['l']) / bar['l'] * 100, 2) if bar['l'] else 0.0
+
+
+def jb_body_pct(bar):
+    return round((bar['c'] - bar['o']) / bar['o'] * 100, 2) if bar['o'] else 0.0
+
+
+def jb_metrics(cs):
+    """오늘 봉 포함 일봉에서 4패턴·6팁 근거로 쓰는 실측 지표만 만든다(추정값 생성 없음)."""
+    n = len(cs)
+    today = cs[-1]
+    prev = cs[:-1]
+    if n < 45 or not prev:
+        return None
+    avg20 = sum(b['v'] for b in prev[-20:]) / 20.0 if len(prev) >= 20 else None
+    m = {
+        'o': today['o'], 'h': today['h'], 'l': today['l'], 'c': today['c'], 'v': today['v'],
+        'date': today['date'],
+        'body': jb_body_pct(today), 'upper': jb_tail_pct(today), 'lower': jb_lower_pct(today),
+        'avg20': avg20,
+        'volRatio': round(today['v'] / avg20, 2) if avg20 else None,
+    }
+    closes = [b['c'] for b in cs]
+    def _sma(k):
+        if len(closes) < k:
+            return None
+        return sum(closes[-k:]) / k
+    m['sma5'] = _sma(5)
+    m['sma20'] = _sma(20)
+    m['sma60'] = _sma(60)
+    m['sma20Prev5'] = (sum(closes[-25:-5]) / 20.0) if len(closes) >= 25 else None
+    # 전고점(오늘 제외 60·120거래일 최고가)
+    for span, key in ((60, 'hi60'), (120, 'hi120')):
+        win = prev[-span:]
+        if win:
+            top = max(win, key=lambda b: b['h'])
+            m[key] = top['h']
+            m[key + 'Date'] = top['date']
+    m['gap60'] = round((m['hi60'] - today['c']) / today['c'] * 100, 2) if m.get('hi60') else None
+    m['gap120'] = round((m['hi120'] - today['c']) / today['c'] * 100, 2) if m.get('hi120') else None
+    # '끼' — 최근 90거래일 상한가(+29%↑) · +20%↑ · 연속 양봉(+5% 이상 2일 연속)
+    pcts = [0.0] + [round((cs[k]['c'] - cs[k - 1]['c']) / cs[k - 1]['c'] * 100, 2)
+                    for k in range(1, len(cs)) if cs[k - 1]['c']]
+    win_idx = range(max(1, len(cs) - 90), len(cs))
+    limit_up = sum(1 for k in win_idx if pcts[k] >= 29.0)
+    up20 = sum(1 for k in win_idx if 20.0 <= pcts[k] < 29.0)
+    chain = 0
+    for k in win_idx:
+        if pcts[k] >= 5.0 and pcts[k - 1] >= 5.0:
+            chain += 1
+    m['limitUp90'] = limit_up
+    m['up20_90'] = up20
+    m['chain2_90'] = chain
+    m['kk'] = limit_up + up20 + chain
+    # 기간 조정 — 120거래일 내 1차 고점 이후 조정일수, 조정 전반부 저점 vs 후반부 저점
+    win = cs[-121:-1] if len(cs) >= 121 else (cs[-60:-1] if len(cs) >= 61 else cs)
+    peak_i = max(range(len(win)), key=lambda k: win[k]['h'])
+    after = win[peak_i + 1:]
+    m['adjustDays'] = len(after)
+    if len(after) >= 6:
+        half = len(after) // 2
+        low1 = min(b['l'] for b in after[:half])
+        low2 = min(b['l'] for b in after[half:])
+        m['low1'], m['low2'] = low1, low2
+        m['lowRising'] = low2 > low1
+    else:
+        m['low1'] = m['low2'] = None
+        m['lowRising'] = False
+    m['peakDate'] = win[peak_i]['date']
+    return m
+
+
+def jb_theme_index(themes):
+    """테마 구성종목 — 코드 → [(테마명, 테마 구성종목 수)] · 테마명 → [코드]."""
+    theme_of, members_of = {}, {}
+    for g in themes or []:
+        name = g.get('name')
+        mem = [x.get('code') for x in (g.get('members') or []) if x.get('code')]
+        if not name or not mem:
+            continue
+        members_of[name] = mem
+        for c in mem:
+            theme_of.setdefault(c, []).append(name)
+    return theme_of, members_of
+
+
+def build_jongbe(uni, per, cache, days, themes=None):
+    """신정재 종가매매 4대 패턴 + 6대 팁 자동 선정 (2026-11-25 개편 · 강창권 트랙 제거).
+
+    원전: 신정재특강정리노트 21p · 신정재 종가매매 실전 매뉴얼
+      ① 위꼬리-위꼬리-깔끔양봉 : 악성 매물대를 윗꼬리 봉으로 두 번 이상 소화한 뒤
+                                 전고점 바로 아래에서 윗꼬리 없는 양봉으로 마감
+      ② 음봉 후 5일선 지지 턴  : 대량 거래 음봉을 맞고도 5일선을 깨지 않고 버틴 뒤
+                                 다시 윗꼬리 없는 양봉으로 방향을 트는 자리
+      ③ 거래량 마른 깔끔 양봉  : 대량 거래 뒤 윗꼬리 봉으로 탈출 기회를 두 번 준 다음
+                                 거래량이 줄어든 깔끔한 양봉
+      ④ 5일선 이탈 → 20일선 눌림: 5일선을 깬 종가는 종베를 접고, 엔벨로프 중심선(20일선)
+                                 부근에서 아래꼬리를 말아 올리며 지지할 때만 스윙 타점
+    6대 팁은 종목별 X/6 점수 + 항목별 근거로 남긴다. 조건을 채운 종목이 없으면 0종목 그대로 둔다.
+    """
     basis = days[2]
-    shin, kang = [], []
+    theme_of, members_of = jb_theme_index(themes)
+
+    def theme_strength(name):
+        """테마 안에서 오늘 +5%↑ 종목 수(유니버스 실측 기준)."""
+        cnt = 0
+        for c2 in members_of.get(name, []):
+            r2 = (per.get(c2) or {}).get(basis)
+            if r2 and r2['pct'] >= 5.0:
+                cnt += 1
+        return cnt
+
+    strength_cache = {}
+    def theme_hits(code):
+        out = []
+        for name in theme_of.get(code, [])[:4]:
+            if name not in strength_cache:
+                strength_cache[name] = theme_strength(name)
+            out.append({'theme': name, 'up5': strength_cache[name], 'members': len(members_of.get(name, []))})
+        out.sort(key=lambda x: -x['up5'])
+        return out
+
+    cands = []
     for u in uni:
         code = u['code']
         rec = (per.get(code) or {}).get(basis)
         cs = cache.get(code)
-        if not rec or not cs or len(cs) < 25:
+        if not rec or not cs or len(cs) < 45:
             continue
         if rec['valueEok'] < JB_MIN_VALUE or rec['c'] < 1000:
             continue
-        c, o, h = rec['c'], rec['o'], rec['h']
-        body = (c - o) / o * 100 if o else 0.0
-        upper = (h - c) / c * 100 if c else 99.0
-        s5, s20 = rec.get('sma5'), rec.get('sma20')
+        m = jb_metrics(cs)
+        if not m:
+            continue
+        if abs(m['c'] - rec['c']) > 0.5:     # 지표는 캐시 마지막 봉(기준일)로 계산 — 어긋나면 건너뛴다
+            continue
+        cands.append({'u': u, 'rec': rec, 'cs': cs, 'm': m})
 
-        # 신정재 — 윗꼬리 없는 양봉(고가 밀착) · 당일 상승
-        if rec['pct'] >= 3.0 and body > 0 and upper <= 1.2:
-            shin.append({
-                'name': u['name'], 'code': code, 'track': 'shin',
-                'price': int(c), 'changeRatio': rec['pct'],
-                'valueText': f"{rec['valueEok']:,.0f}억",
-                'badge': f"⚡ 신정재 픽: 대금 {rec['valueEok']:,.0f}억 · 고가 밀착 양봉",
-                'entry': f"당일 종가 {int(c):,}원 ±0.5% (15:18~15:20 분할)",
-                'target': f"{to_tick(c * 1.03):,}원 (+3%) / {to_tick(c * 1.05):,}원 (+5%) · 익일 09:05 전 청산",
-                'stop': f"{to_tick(c * 0.992):,}원 (-0.8%) 이탈 시 즉시",
-                # 장중 실시간 판정(sd_live/api/tabs-live.js strategyLive.jongbe)이 쓰는 숫자
-                'basePrice': int(c), 'target1': to_tick(c * 1.03), 'target2': to_tick(c * 1.05),
-                'stopPrice': to_tick(c * 0.992), 'ma5': int(s5) if s5 else None, 'ma20': int(s20) if s20 else None,
+    picks = []
+    for cand in cands:
+        u, rec, cs, m = cand['u'], cand['rec'], cand['cs'], cand['m']
+        code = u['code']
+        matches = []
 
-                'reason': (f"윗꼬리 없는 양봉(고가 대비 {upper:+.2f}%) · 몸통 {body:+.2f}% · {rec['pct']:+.2f}% 마감. "
-                           f"신정재 규칙은 15:18~15:20 진입·익일 09:05 전 전량 청산입니다. "
-                           f"당일 고가 {int(h):,}원 / 종가 {int(c):,}원."),
-                'candles': rn_candles(cs, 45), '_score': rec['valueEok'] * (1 + rec['pct'] / 100),
-            })
-        # 강창권(4음 1양 눌림목) — 원전 조건으로 엄격하게 (2026-11-25 사용자 지시)
-        #   ① 장대양봉은 3~5번째 봉(오늘 제외 · 3~5거래일 전) · 몸통 +10%↑ — 11/25 사용자 지시로 1거래일 전 봉 제외
-        #   ② 정배열 — 5일선 > 20일선 (역배열 제외: 예전 에이피알처럼 역배열 통과 결함)
-        #   ③ 오늘은 눌림 — 등락률 -4%~+4%, 몸통 +3% 이하(또 장대양봉 제외), 장대양봉 고점 아래
-        #   ④ 5·20일선 위 지지 + 5일선 이격 5% 이내 (이격이 크면 추격)
-        #   ⑤ 눌림 구간 거래량 < 장대양봉 거래량 × 80%
-        big = None
-        for k in range(3, 6):              # k=1(오늘)·k=2(1거래일 전)은 제외 — 당일·전일 급등봉을 '눌림'으로 오인하지 않는다
-            if len(cs) < k:
+        # ── ① 위꼬리-위꼬리-깔끔양봉 (전고점 돌파 직전)
+        prev5 = cs[-6:-1] if len(cs) >= 6 else []
+        tails = [b for b in prev5 if jb_tail_pct(b) >= 1.5 and b['h'] >= m['h'] * 0.96]
+        ok1 = (m['body'] > 0 and m['upper'] <= 1.2 and rec['pct'] >= 2.0
+               and len(tails) >= 2
+               and m['gap120'] is not None and -1.0 <= m['gap120'] <= 8.0)
+        if ok1:
+            matches.append(('p1', {
+                'entry': f"15:18~15:20 종가 {int(m['c']):,}원 부근 분할 매수 (윗꼬리 재발 여부 최종 확인)",
+                'target': f"{to_tick(m['c'] * 1.03):,}원 (+3%) / {to_tick(m['c'] * 1.05):,}원 (+5%) · 익일 09:05 전 청산",
+                'stop': f"{to_tick(m['c'] * 0.992):,}원 (-0.8%) 이탈 시 즉시",
+                'stopPrice': to_tick(m['c'] * 0.992),
+                'target1': to_tick(m['c'] * 1.03), 'target2': to_tick(m['c'] * 1.05),
+                'reason': (f"최근 5봉 중 윗꼬리 봉 {len(tails)}개가 전고점 {int(m['h'] * 0.96):,}원 부근에서 "
+                           f"매물을 소화했고, 오늘은 윗꼬리 {m['upper']:.2f}%의 깔끔한 양봉(몸통 {m['body']:+.2f}%)으로 "
+                           f"120일 고점 {int(m['hi120']):,}원까지 {m['gap120']:+.2f}% 남았습니다. "
+                           f"신정재 원전 ①번 패턴 — 15:18~15:20 진입·익일 09:05 전 전량 청산."),
+                'patternNote': f"윗꼬리 소화 {len(tails)}봉 · 120일 고점 이격 {m['gap120']:+.2f}%",
+            }))
+
+        # ── ② 음봉 후 5일선 지지 턴
+        bigdown = None
+        for k in range(len(cs) - 1, max(len(cs) - 12, 0), -1):
+            b = cs[k - 1] if k >= 1 else None
+            if not b:
                 break
-            b = cs[-k]
-            if b['o'] and (b['c'] - b['o']) / b['o'] * 100 >= 10.0:
-                big = b
+            vol_ok = m['avg20'] and b['v'] >= m['avg20'] * 1.5
+            if jb_body_pct(b) < 0 and vol_ok:
+                bigdown = (k - 1, b)
                 break
-        if big and s5 and s20:
-            big_body = (big['c'] - big['o']) / big['o'] * 100 if big['o'] else 0.0
-            big_high = max(big['h'], big['c'])
-            vol_ratio = (rec['v'] / big['v']) if big.get('v') else 9.9
-            today_body = (c - o) / o * 100 if o else 0.0
-            ma5_gap = abs(c / s5 - 1) * 100 if s5 else 99.0
-            ok_kang = (s5 > s20                                   # ② 정배열
-                       and -4.0 <= rec['pct'] <= 4.0              # ③ 과도한 급등 추격 제외
-                       and today_body <= 3.0                      #   오늘 또 장대양봉이면 눌림 아님
-                       and c < big_high                           #   장대양봉 고점을 넘지 않은 눌림
-                       and c >= s20 and c >= s5 * 0.985           # ④ 5·20일선 위 지지
-                       and ma5_gap <= 5.0                         #   5일선 이격 5% 이내
-                       and vol_ratio < 0.8)                       # ⑤ 눌림 구간 거래량 감소
-        else:
-            ok_kang = False
-            big_body = vol_ratio = ma5_gap = 0.0
-        if ok_kang:
-            kang.append({
-                'name': u['name'], 'code': code, 'track': 'kang',
-                'price': int(c), 'changeRatio': rec['pct'],
-                'valueText': f"{rec['valueEok']:,.0f}억",
-                'badge': f"🏆 강창권 픽: 장대양봉 후 눌림 · 5일선 {int(s5):,}원 지지",
-                'entry': f"5일선 {int(s5):,}원 지지 확인 후 종가 매수",
-                'target': f"{to_tick(c * 1.15):,}원 (+15%)",
-                'stop': f"20일선 {int(s20):,}원 이탈 시 매도",
-                # 장중 실시간 판정용 숫자 — 손절은 20일선 이탈
-                'basePrice': int(c), 'target1': to_tick(c * 1.15), 'target2': None,
-                'stopPrice': int(s20), 'ma5': int(s5), 'ma20': int(s20),
-                'bigDate': big['date'], 'bigBody': round(big_body, 2), 'volRatio': round(vol_ratio, 2),
+        ok2 = False
+        hold_note = ''
+        if bigdown and m['sma5']:
+            bi, b = bigdown
+            held = 0
+            for j in range(bi + 1, len(cs)):
+                closes = [x['c'] for x in cs[:j + 1]]
+                s5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
+                if s5 and cs[j]['c'] >= s5 * 0.985:
+                    held += 1
+            ok2 = (m['body'] > 0 and m['upper'] <= 1.5 and rec['pct'] >= 1.0
+                   and m['c'] >= m['sma5']
+                   and held >= (len(cs) - bi - 1) - 1)
+            hold_note = (f"{b['date'][4:6]}/{b['date'][6:8]} 대량 음봉(몸통 {jb_body_pct(b):+.2f}% · "
+                         f"거래량 20일 평균의 {b['v'] / m['avg20']:.1f}배) 이후 5일선을 깨지 않고 "
+                         f"{held}거래일 버팀")
+        if ok2 and m['kk'] >= 1:
+            matches.append(('p2', {
+                'entry': f"5일선 {int(m['sma5']):,}원 지지 확인 후 15:18~15:20 종가 {int(m['c']):,}원 매수",
+                'target': f"{to_tick(m['c'] * 1.05):,}원 (+5%) · 익일 09:05 전 청산(5일선 깨면 즉시)",
+                'stop': f"5일선 {int(m['sma5']):,}원 이탈 시 즉시 (원전: 5일선을 깨면 종베 접기)",
+                'stopPrice': to_tick(m['sma5'] * 0.995),
+                'target1': to_tick(m['c'] * 1.03), 'target2': to_tick(m['c'] * 1.05),
+                'reason': (f"{hold_note} 뒤 오늘 윗꼬리 {m['upper']:.2f}%·몸통 {m['body']:+.2f}% 양봉으로 "
+                           f"5일선 {int(m['sma5']):,}원 위에서 방향을 틀었습니다. 90거래일 '끼' "
+                           f"{m['kk']}회(상한가 {m['limitUp90']}·+20%↑ {m['up20_90']}·연속 양봉 {m['chain2_90']}). "
+                           f"신정재 원전 ②번 패턴."),
+                'patternNote': f"5일선 지지 {held}일 · 끼 {m['kk']}회",
+            }))
 
-                'reason': (f"{big['date'][4:6]}/{big['date'][6:8]} 장대양봉(몸통 +{big_body:.2f}%) 이후 "
-                           f"눌림(오늘 {rec['pct']:+.2f}% · 몸통 {today_body:+.2f}%) — 장대양봉 고점 "
-                           f"{int(big_high):,}원 아래에서 거래량 {vol_ratio * 100:.0f}%로 줄며 5일선 이격 "
-                           f"{ma5_gap:.2f}%. 정배열(5일선 {int(s5):,}원 > 20일선 {int(s20):,}원) · "
-                           f"강창권 규칙은 5일선 지지 종가 매수·20일선 이탈 매도입니다."),
-                'candles': rn_candles(cs, 45), '_score': rec['valueEok'],
-            })
+        # ── ③ 거래량 마른 깔끔 양봉
+        ok3 = False
+        big_vol = None
+        for k in range(len(cs) - 2, max(len(cs) - 25, 0), -1):
+            b = cs[k]
+            if m['avg20'] and b['v'] >= m['avg20'] * 2.0:
+                big_vol = (k, b)
+                break
+        if big_vol and m['volRatio'] is not None:
+            bi, b = big_vol
+            tail_after = sum(1 for x in cs[bi + 1:len(cs) - 1] if jb_tail_pct(x) >= 1.0)
+            ok3 = (tail_after >= 2 and m['body'] > 0 and m['upper'] <= 1.2
+                   and rec['pct'] >= 1.0 and m['volRatio'] <= 0.8)
+            if ok3:
+                matches.append(('p3', {
+                    'entry': f"거래량 마른 깔끔 양봉 — 15:18~15:20 종가 {int(m['c']):,}원 매수",
+                    'target': f"{to_tick(m['c'] * 1.08):,}원 (+8%) · 익일 09:05 전 청산",
+                    'stop': f"{to_tick(m['c'] * 0.985):,}원 (-1.5%) 이탈 시 즉시",
+                    'stopPrice': to_tick(m['c'] * 0.985),
+                    'target1': to_tick(m['c'] * 1.05), 'target2': to_tick(m['c'] * 1.08),
+                    'reason': (f"{b['date'][4:6]}/{b['date'][6:8]} 20일 평균의 {b['v'] / m['avg20']:.1f}배 대량 거래 뒤 "
+                               f"윗꼬리 봉 {tail_after}개로 물린 사람에게 탈출 기회를 주며 매물대를 소화했고, "
+                               f"오늘은 거래량이 20일 평균의 {m['volRatio'] * 100:.0f}%로 줄어든 깔끔한 양봉"
+                               f"(윗꼬리 {m['upper']:.2f}%)입니다. 신정재 원전 ③번 패턴."),
+                    'patternNote': f"매물대 소화 {tail_after}봉 · 거래량 {m['volRatio'] * 100:.0f}%",
+                }))
 
-    shin.sort(key=lambda x: -x['_score'])
-    kang.sort(key=lambda x: -x['_score'])
-    picks = shin[:JB_PICK_PER_TRACK] + kang[:JB_PICK_PER_TRACK]
+        # ── ④ 5일선 이탈 → 20일선 엔벨로프 눌림 (스윙)
+        ok4 = False
+        if m['sma5'] and m['sma20'] and m['sma60']:
+            ok4 = (m['c'] < m['sma5']
+                   and m['l'] <= m['sma20'] * 1.01
+                   and m['c'] >= m['sma20'] * 0.97
+                   and m['lower'] >= 0.8)
+            if ok4:
+                matches.append(('p4', {
+                    'entry': f"20일선 {int(m['sma20']):,}원 지지 확인 후 분할 (스윙 — 종베 아님)",
+                    'target': f"{to_tick(m['sma20'] * 1.10):,}원 (엔벨로프 상한 +10%) · 5일선 회복 시 홀딩",
+                    'stop': f"20일선 {int(m['sma20']):,}원 -3% 이탈 시 손절",
+                    'stopPrice': to_tick(m['sma20'] * 0.97),
+                    'target1': to_tick(m['sma20'] * 1.05), 'target2': to_tick(m['sma20'] * 1.10),
+                    'reason': (f"오늘 종가가 5일선 {int(m['sma5']):,}원을 밑돌아 종베는 보수적으로 접는 자리입니다. "
+                               f"다만 저가 {int(m['l']):,}원이 엔벨로프 중심선(20일선) {int(m['sma20']):,}원 부근까지 "
+                               f"눌린 뒤 아래꼬리 {m['lower']:.2f}%로 되돌렸고 20일선 위에서 마감했습니다. "
+                               f"신정재 원전 ④번 패턴 — 종가베팅이 아니라 스윙 타점입니다."),
+                    'patternNote': f"20일선 {int(m['sma20']):,}원 지지 · 아래꼬리 {m['lower']:.2f}%",
+                }))
+
+        if not matches:
+            continue
+
+        # ── 6대 팁 (원전 체크포인트) ──────────────────────────────────
+        th = theme_hits(code)
+        strong = [t for t in th if t['up5'] >= 3]
+        tips = []
+        tips.append({
+            'key': 'material', 'label': '① 재료(테마)',
+            'pass': bool(strong),
+            'evidence': (f"주도 테마 '{strong[0]['theme']}' 소속 — 같은 테마 +5%↑ {strong[0]['up5']}종목"
+                         f"/{strong[0]['members']}종목 동반" if strong else
+                         (f"테마 '{th[0]['theme']}' 소속이나 +5%↑ 동반 {th[0]['up5']}종목(3종목 미만)"
+                          if th else '테마 미확인 — 당일 뉴스·공시(0778·DART)에서 직접 확인 필요')),
+        })
+        tips.append({
+            'key': 'value', 'label': '② 거래대금·거래량',
+            'pass': rec['valueEok'] >= JB_MIN_VALUE,
+            'evidence': (f"거래대금 {rec['valueEok']:,.0f}억(기준 300억{' 충족' if rec['valueEok'] >= JB_MIN_VALUE else ' 미달'})"
+                         + (f" · 20일 평균 거래량 대비 {m['volRatio'] * 100:.0f}%" if m['volRatio'] is not None else '')),
+        })
+        tips.append({
+            'key': 'gap', 'label': '③ 전고점 이격',
+            'pass': m['gap120'] is not None and m['gap120'] <= 5.0,
+            'evidence': (f"120일 고점 {int(m['hi120']):,}원 대비 {m['gap120']:+.2f}%" if m.get('hi120')
+                         else '120일 고점 미확인')
+                        + (f" · 60일 고점 {int(m['hi60']):,}원 대비 {m['gap60']:+.2f}%" if m.get('hi60') else ''),
+        })
+        tips.append({
+            'key': 'candle', 'label': '④ 캔들 형태',
+            'pass': m['body'] > 0 and m['upper'] <= 1.2,
+            'evidence': f"양봉 몸통 {m['body']:+.2f}% · 윗꼬리 {m['upper']:.2f}% (기준 1.2% 이내)",
+        })
+        tips.append({
+            'key': 'adjust', 'label': '⑤ 기간 조정·저점 상승',
+            'pass': bool(m['lowRising']) and m['adjustDays'] >= 6,
+            'evidence': (f"1차 고점 {m['peakDate'][4:6]}/{m['peakDate'][6:8]} 이후 {m['adjustDays']}거래일 조정 · "
+                         f"조정 후반 저점 {int(m['low2']):,}원 {'>' if m['lowRising'] else '≤'} 전반 저점 {int(m['low1']):,}원"
+                         if m.get('low1') else f"1차 고점 이후 {m['adjustDays']}거래일 조정(저점 비교 불가)"),
+        })
+        tips.append({'key': 'supply', 'label': '⑥ 수급(외인·기관)', 'pass': False, 'evidence': '수급 미조회'})
+
+        first = matches[0]
+        score = sum(1 for t in tips[:5] if t['pass'])
+        picks.append({
+            'code': code, 'name': u['name'], 'market': u.get('market') or '',
+            'basisLabel': dlong(basis),
+            'track': first[0], 'tracks': [x[0] for x in matches],
+            'patternLabel': JB_TRACK_LABEL[first[0]],
+            'price': int(m['c']), 'changeRatio': rec['pct'],
+            'valueEok': rec['valueEok'], 'valueText': f"{rec['valueEok']:,.0f}억",
+            'capText': (f"{u['cap'] / 10000:,.1f}조" if (u.get('cap') or 0) >= 10000 else
+                        (f"{u.get('cap', 0):,.0f}억" if u.get('cap') else '')),
+            'basePrice': int(m['c']),
+            'ma5': int(m['sma5']) if m['sma5'] else None,
+            'ma20': int(m['sma20']) if m['sma20'] else None,
+            'ma60': int(m['sma60']) if m['sma60'] else None,
+            'hi60': int(m['hi60']) if m.get('hi60') else None,
+            'hi120': int(m['hi120']) if m.get('hi120') else None,
+            'hi120Date': m.get('hi120Date'),
+            'gap120': m.get('gap120'), 'gap60': m.get('gap60'),
+            'upperPct': m['upper'], 'bodyPct': m['body'], 'lowerPct': m['lower'],
+            'volRatio': m['volRatio'], 'kk': m['kk'], 'adjustDays': m['adjustDays'],
+            'entry': first[1]['entry'], 'target': first[1]['target'], 'stop': first[1]['stop'],
+            'stopPrice': first[1]['stopPrice'],
+            'target1': first[1]['target1'], 'target2': first[1]['target2'],
+            'reason': first[1]['reason'], 'patternNote': first[1]['patternNote'],
+            'tips': tips, 'tipScore': score, 'tipTotal': JB_TIP_TOTAL,
+            'badge': f"{JB_TRACK_LABEL[first[0]]} · 팁 {score}/6",
+            'candles': rn_candles(cs, 90),
+            '_score': score,
+        })
+
+    # 수급 6번째 팁 — 상위 후보만 투자자별 매매동향(거래소 확정)을 2차 조회한다
+    picks.sort(key=lambda x: (-x['tipScore'], -x['valueEok']))
+    top = picks[:JB_CAND_FOR_SUPPLY]
+    if top:
+        codes = [p['code'] for p in top]
+        trend = {}
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for code, rows in ex.map(lambda c: (c, fetch_trend_one(c)), codes):
+                if rows:
+                    trend[code] = rows
+        for p in top:
+            rows = trend.get(p['code'])
+            tip = p['tips'][-1] if p['tips'] and p['tips'][-1]['key'] == 'supply' else None
+            if not tip:
+                continue
+            if not rows:
+                tip['pass'] = False
+                tip['evidence'] = '투자자별 매매동향 미수신 — 1051(투자자별 매매추이)에서 직접 확인'
+                continue
+            row = rows[0]
+            close = row.get('close') or p['price']
+            f_amt = round((row.get('f') or 0) * close / 1e8, 1)
+            o_amt = round((row.get('o') or 0) * close / 1e8, 1)
+            tip['pass'] = f_amt > 0 and o_amt > 0
+            tip['evidence'] = (f"외인 {f_amt:+,.0f}억 · 기관계 {o_amt:+,.0f}억 ({dshort(row['d'])} 확정) "
+                               f"— 투신·연기금 세부는 KIS TR 미제공, 1051에서 확인")
+            p['foreignEok'] = f_amt
+            p['organEok'] = o_amt
+            p['supplyDate'] = row['d']
+            p['tipScore'] = sum(1 for t in p['tips'] if t['pass'])
+            p['badge'] = f"{p['patternLabel']} · 팁 {p['tipScore']}/6"
+
+    picks.sort(key=lambda x: (-x['tipScore'], -x['valueEok']))
+    per_pattern = {k: [] for k, _v, _c in JB_PATTERNS}
     for p in picks:
+        for tk in p['tracks']:
+            if len(per_pattern[tk]) < JB_PICK_PER_PATTERN and p not in per_pattern[tk]:
+                per_pattern[tk].append(p)
+    chosen, seen = [], set()
+    for tk, items in per_pattern.items():
+        for p in items:
+            if p['code'] in seen:
+                continue
+            seen.add(p['code'])
+            p['track'] = tk
+            p['patternLabel'] = JB_TRACK_LABEL[tk]
+            p['badge'] = f"{JB_TRACK_LABEL[tk]} · 팁 {p['tipScore']}/6"
+            chosen.append(p)
+    for p in chosen:
         p.pop('_score', None)
-    log(f"  종가베팅 자동선정 {len(picks)}종목 (신정재 {len(shin[:JB_PICK_PER_TRACK])} · 강창권 {len(kang[:JB_PICK_PER_TRACK])})")
-    return picks, basis
+    got = {k: sum(1 for p in chosen if p['track'] == k) for k, _v, _c in JB_PATTERNS}
+    log("  종가베팅(신정재 4패턴) 자동선정 {}종목 — ".format(len(chosen))
+        + " · ".join(f"{JB_TRACK_LABEL[k].split(' ')[0]} {got[k]}" for k, _v, _c in JB_PATTERNS)
+        + f" (패턴 일치 후보 {len(picks)} · 수급 2차 조회 {len(top)})")
+    return chosen, basis
 
 
 # ------------------------------------------------------------------ 7c) 📈 깡토 추세추종 · 💰 수급주도주 (일일 자동 교체)
@@ -1926,7 +2235,7 @@ def patch_rn_live(html, rn_stocks, counts):
 
 def patch_jongbe_live(html, jb_stocks):
     """Jongbe 엔진 안의 `const STOCKS = [...]` 를 새 자동선정 목록으로 바꾸고,
-       탭 버튼의 트랙 개수 라벨(전체·신정재·강창권)도 실제 목록 수로 맞춘다.
+       탭 버튼의 트랙 개수 라벨(전체 + 4패턴)도 실제 목록 수로 맞춘다.
        (예전에는 '전체 (10) · 강창권 (5)'가 HTML 에 박혀 있어 목록이 2종목이어도 5로 보였다)"""
     m = re.search(r'(window\.Jongbe\s*=\s*\(function\(\)\s*\{[\s\S]*?const STOCKS = )(\[.*?\])(;)', html)
     if not m:
@@ -1934,9 +2243,10 @@ def patch_jongbe_live(html, jb_stocks):
     payload = json.dumps(jb_stocks, ensure_ascii=False, separators=(',', ':'))
     html = html[:m.start(2)] + payload + html[m.end(2):]
     n_all = len(jb_stocks or [])
-    n_shin = len([x for x in (jb_stocks or []) if x.get('track') == 'shin'])
-    n_kang = len([x for x in (jb_stocks or []) if x.get('track') == 'kang'])
-    labs = [('all', '전체 ({})'.format(n_all)), ('shin', '⚡ 신정재 ({})'.format(n_shin)), ('kang', '🏆 강창권 ({})'.format(n_kang))]
+    labs = [('all', '전체 ({})'.format(n_all))]
+    for k, _v, _c in JB_PATTERNS:
+        n_k = len([x for x in (jb_stocks or []) if x.get('track') == k])
+        labs.append((k, '{} ({})'.format(JB_TRACK_SHORT[k], n_k)))
     for key, txt in labs:
         pat = r"(onclick=\"Jongbe\.filterStocks\('" + key + r"', this\)\">)[^<]*(</button>)"
         html = re.subn(pat, lambda mm, t=txt: mm.group(1) + t + mm.group(2), html)[0]
@@ -2247,7 +2557,7 @@ def main():
     log(f"  비중법사 기준봉 {bij['baseCount']} · 카드 {len(bij['cards'])} · 탈락 {len(bij['rejects'])}")
     # 5개 전략 탭 통일 — RN존·종가베팅도 같은 장마감 일봉으로 매일 새로 선정한다.
     rn_stocks, rn_counts, rn_basis = build_rnzone(uni, per, cache, days)
-    jb_stocks, jb_basis = build_jongbe(uni, per, cache, days)
+    jb_stocks, jb_basis = build_jongbe(uni, per, cache, days, themes)
     # 📈 깡토 추세추종 · 💰 수급주도주 — 같은 장마감 일봉으로 매일 새로 뽑는다
     kk = build_kkangto(uni, per, cache, days, themes)
     sup = build_supply(uni, per, cache, days)
@@ -2260,7 +2570,8 @@ def main():
         "universe": len(uni), "scanned": len(per),
         "honginki": hong, "bijoong": bij,
         "rnzone": {"count": len(rn_stocks), "counts": rn_counts, "basisDate": rn_basis},
-        "jongbe": {"count": len(jb_stocks), "basisDate": jb_basis},
+        "jongbe": {"count": len(jb_stocks), "basisDate": jb_basis,
+                   "patterns": [{"key": k, "label": v, "color": c} for k, v, c in JB_PATTERNS]},
         "kkangto": {"near": kk["kpi"]["near"], "breakout": kk["kpi"]["breakout"], "cards": len(kk["cards"])},
         "supply": {"count": (sup or {}).get("candidates", 0), "basisDate": (sup or {}).get("basisDate")},
         "krx": {"basisDate": basis, "stat": krx_stat, "errors": krx_errors[:3]},
@@ -2297,6 +2608,9 @@ def main():
                       (os.path.join(DATA_DIR, "jongbe-latest.json"),
                        {"generatedAt": payload["generatedAt"], "basisDate": jb_basis,
                         "basisLabel": dlong(jb_basis),
+                        "source": "신정재 종가매매 4대 패턴 + 6대 팁 (신정재특강정리노트 21p 원전)",
+                        "patterns": [{"key": k, "label": v, "color": c} for k, v, c in JB_PATTERNS],
+                        "tipTotal": JB_TIP_TOTAL,
                         "stocks": jb_stocks})):
         open(path, "w", encoding="utf-8").write(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
 

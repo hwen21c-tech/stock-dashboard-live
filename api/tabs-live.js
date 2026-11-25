@@ -167,6 +167,38 @@ const CANDLE_TTL_MS = 10 * 60 * 1000; // 일봉(과거 봉)은 장중에 변하�
 const STRAT_MAX_CANDLES = 36; // 일봉을 실제로 조회할 최대 후보 수(10초 함수 예산)
 const BIJ_LIVE = { bodyRate: 10, valueEok: 300, breakDays: 60, upperMax: 12, chg: 5 };
 const HONG_LIVE = { pct: 10, breakDays: 120, valueEok: 300 };
+
+/* ⚡ 1번 탭 '오늘 장중매매 후보 — 홍인기 D+0 · 하락장 역발상' (2026-11-25 신설)
+ *  원전: 홍인기 데이트레이딩 D+0/D+1 매뉴얼 — 09:30 이전 매매 자제 · 거래대금 상위 15위 이내
+ *        · +5%↑ · 같은 테마 3종목 이상 동반 · 120일(6개월) 전고점 돌파/근접 · '끼' 이력
+ *        · 1분봉 당일 고점 대비 절반 이상 밀리면 주도주 탈락(손절) */
+const HONG_D0 = {
+  openMinute: 9 * 60 + 30,   // 09:30 이후부터 D+0 탐색
+  valueRankMax: 15,
+  valueEok: 500,
+  pct: 5,
+  themeStocks: 3,
+  nearHighPct: 5,
+  kkDays: 90,
+};
+const HONG_DOWN = {
+  indexPct: -1.5,      // 지수 급락장 판정
+  minValueEok: 100,
+  minRelPct: 0.5,      // 지수 대비 초과 성과(%p)
+};
+const HONG_SUPPLY_TTL_MS = 60000;
+
+/** 직전 거래일 강세 테마 Top 8 — 재스캔이 남긴 스냅샷(public/data/last-dynamic-themes.json).
+ *  하락장 역발상 트랙에서 '직전까지 강했던 섹터'를 가려내는 데만 쓴다(없으면 빈 배열). */
+function lastStrongThemes() {
+  try {
+    const d = require('../public/data/last-dynamic-themes.json');
+    const list = (d && d.themes) || [];
+    return list.slice(0, 8).map((t) => String(t.name || '')).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
 // ETF·ETN·스팩류(지수 추종 상품)는 전략 후보에서 뺀다
 const FUND_NAME_RE = /(KODEX|TIGER|ARIRANG|KBSTAR|HANARO|TIMEFOLIO|히어로즈|ETN|레버리지|인버스|스팩|SPAC|리츠)/i;
 
@@ -2207,6 +2239,27 @@ function judgeMover(q, bars, valueRank) {
   }
   if (!bijChecks.upper) bijReasons.push(`위꼬리 ${upper === null ? '—' : upper.toFixed(1) + '%'} — ${BIJ_LIVE.upperMax}% 초과`);
 
+  /* '끼' — 최근 90거래일 상한가(+29%↑) · +20%↑ · +5%↑ 2일 연속(연속 양봉) 이력.
+   *  홍인기 원전: 끼 있는 종목은 09:30 확인 즉시 지지·저항 매매 + 전고점 돌파 양봉이면 오버나잇까지 간다. */
+  const kkWin = hist.slice(-HONG_D0.kkDays);
+  let kkLimit = 0;
+  let kkUp20 = 0;
+  let kkChain = 0;
+  for (let i = 1; i < kkWin.length; i += 1) {
+    const prevC = kkWin[i - 1].c;
+    if (!prevC) continue;
+    const d = ((kkWin[i].c - prevC) / prevC) * 100;
+    if (d >= 29) kkLimit += 1;
+    else if (d >= 20) kkUp20 += 1;
+    if (i >= 2) {
+      const prevPrevC = kkWin[i - 2].c;
+      if (prevPrevC) {
+        const dPrev = ((prevC - prevPrevC) / prevPrevC) * 100;
+        if (d >= 5 && dPrev >= 5) kkChain += 1;
+      }
+    }
+  }
+
   const hongChecks = {
     pct: typeof pct === 'number' && pct >= HONG_LIVE.pct,
     break120,
@@ -2250,6 +2303,7 @@ function judgeMover(q, bars, valueRank) {
     break120,
     firstBreak120,
     priorBreakCount,
+    kk: { limitUp: kkLimit, up20: kkUp20, chain: kkChain, count: kkLimit + kkUp20 + kkChain, days: HONG_D0.kkDays },
     tradedAt: q.tradedAt || null,
     bij: {
       checks: bijChecks,
@@ -2266,6 +2320,295 @@ function judgeMover(q, bars, valueRank) {
 }
 
 /** 비중법사 1일차(기준봉 다음 거래일) 실시간 판정 — 패턴 · 4분할선 · 손절선 */
+/* ============================================================================
+ * ⚡ 오늘 장중매매 후보 — 홍인기 D+0 · 하락장 역발상 (2026-11-25 신설)
+ * ----------------------------------------------------------------------------
+ *  트랙 ① 홍인기 D+0 주도주 (09:30 이후)
+ *    · 거래대금 상위 15위 이내 · 500억↑ · +5%↑
+ *    · 같은 테마 +5%↑ 3종목 이상 동반
+ *    · 120일(6개월) 전고점 돌파 또는 근접(5% 이내) + 90거래일 '끼' 이력 표시
+ *    · 당일 고점 상승폭의 절반을 밀면 '탈락' — 원전 손절 기준
+ *  트랙 ② 하락장 역발상 (지수 -1.5% 이하 급락장)
+ *    · 직전/최근 강세 테마 안에서 지수보다 덜 빠지거나 역행 상승 중인 종목
+ *    · 화면에는 항상 함께 계산해 두고, 급락장이 아니면 '대기'로 표시한다
+ *  수급: KIS 장중 가집계(외국인·기관계) — 없으면 '미집계'로 정직 표기(가짜 수치 금지).
+ * ========================================================================== */
+function hongHalfDrop(q, prevClose) {
+  const high = numOrNull(q && q.high);
+  const price = numOrNull(q && q.price);
+  const prev = numOrNull(prevClose);
+  if (high === null || price === null || prev === null || high <= prev) {
+    return { level: null, state: 'unknown', dropPct: null, label: '당일 고가·전일 종가 미확인' };
+  }
+  const rise = high - prev;
+  const level = high - rise * 0.5;
+  const dropPct = round2(((high - price) / high) * 100);
+  let state = 'hold';
+  let label = `고점 ${Math.round(high).toLocaleString('ko-KR')}원 → 지금 ${Math.round(price).toLocaleString('ko-KR')}원(-${dropPct.toFixed(2)}%) · 절반선 위`;
+  if (price <= level * 0.995) {
+    state = 'drop';
+    label = `주도주 탈락 — 고점 상승폭 절반(${Math.round(level).toLocaleString('ko-KR')}원) 이탈`;
+  } else if (price <= level * 1.02) {
+    state = 'warn';
+    label = `고점 절반 이탈 주의 — 절반선 ${Math.round(level).toLocaleString('ko-KR')}원`;
+  }
+  return { level: Math.round(level), state, dropPct, label };
+}
+
+/** KIS 장중 기관·외국인 가집계(60초 캐시) — 종목코드 → 외인·기관계 순매수(억) */
+const hongSupplyCache = new Map();
+async function hongSupplyMap() {
+  const hit = hongSupplyCache.get('kis');
+  if (hit && Date.now() - hit.at < HONG_SUPPLY_TTL_MS) return hit.value;
+  const value = { ok: false, map: {}, asOfLabel: '', note: '', errors: [] };
+  const finish = () => { hongSupplyCache.set('kis', { at: Date.now(), value }); return value; };
+  if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+    value.note = 'KIS 미설정 — 수급 미집계';
+    return finish();
+  }
+  const p0 = kstParts(new Date());
+  if (p0.wd === 'Sat' || p0.wd === 'Sun' || p0.minutes < 9 * 60) {
+    value.note = '장외(휴장·개장 전) — 장중 가집계 없음';
+    return finish();
+  }
+  try {
+    const settled = await Promise.allSettled([
+      kisLib.fetchForeignInstitutionTotal({ etcClsCode: '1', divCode: '1', sortCode: '0' }),
+      kisLib.fetchForeignInstitutionTotal({ etcClsCode: '2', divCode: '1', sortCode: '0' }),
+    ]);
+    const put = (r, side) => {
+      if (!r || !r.rows) return;
+      r.rows.forEach((x) => {
+        if (!x || !x.code) return;
+        const cur = value.map[x.code] || { foreignEok: null, organEok: null };
+        cur[side] = x.netValueRaw == null ? null : Math.round((x.netValueRaw / 100) * 10) / 10;
+        value.map[x.code] = cur;
+      });
+    };
+    if (settled[0].status === 'fulfilled') put(settled[0].value, 'foreignEok');
+    else value.errors.push('외국인: ' + String((settled[0].reason && settled[0].reason.message) || settled[0].reason));
+    if (settled[1].status === 'fulfilled') put(settled[1].value, 'organEok');
+    else value.errors.push('기관계: ' + String((settled[1].reason && settled[1].reason.message) || settled[1].reason));
+    value.ok = Object.keys(value.map).length > 0;
+    value.asOfLabel = `${pad2(p0.hh)}:${pad2(p0.mi)} 가집계`;
+    if (!value.ok) value.note = '가집계 응답이 비었습니다(장 마감 후·휴장일에는 비는 것이 정상)';
+  } catch (e) {
+    value.note = 'KIS 가집계 실패: ' + String((e && e.message) || e);
+  }
+  return finish();
+}
+
+function hongSupplyBadge(supply, code) {
+  const row = supply && supply.map ? supply.map[code] : null;
+  if (!row || (row.foreignEok == null && row.organEok == null)) {
+    return { kind: 'none', label: '미집계', note: (supply && supply.note) || 'KIS 장중 가집계에 없는 종목' };
+  }
+  const f = numOrNull(row.foreignEok);
+  const o = numOrNull(row.organEok);
+  const both = f !== null && o !== null && f > 0 && o > 0;
+  const label = `외인 ${f === null ? '—' : (f > 0 ? '+' : '') + f.toFixed(0) + '억'} · 기관 ${o === null ? '—' : (o > 0 ? '+' : '') + o.toFixed(0) + '억'}`;
+  return { kind: both ? 'both' : 'one', label, note: (supply && supply.asOfLabel) || '' };
+}
+
+async function buildIntradayHong(ctx) {
+  const c = ctx || {};
+  const p0 = kstParts(new Date());
+  const weekend = p0.wd === 'Sat' || p0.wd === 'Sun';
+  const minutes = p0.minutes;
+  const beforeOpen = !weekend && minutes < 9 * 60;
+  const beforeD0 = !weekend && minutes < HONG_D0.openMinute;
+  const afterClose = !weekend && minutes >= 15 * 60 + 30;
+  const supply = (c.supply ? await c.supply : null) || (await hongSupplyMap());
+  const indexGate = (c.indexGate ? await c.indexGate : null) || null;
+  const memberRowsRaw = c.memberRows ? await c.memberRows : [];
+  const memberRows = (memberRowsRaw && memberRowsRaw.rows) || memberRowsRaw || [];
+  const kospi = numOrNull(indexGate && indexGate.kospiPct);
+  const kosdaq = numOrNull(indexGate && indexGate.kosdaqPct);
+  const indexMin = [kospi, kosdaq].filter((v) => v !== null).length
+    ? Math.min(...[kospi, kosdaq].filter((v) => v !== null))
+    : null;
+
+  const out = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    generatedAtKst: `${pad2(p0.hh)}:${pad2(p0.mi)}`,
+    sessionPhase: c.phase || null,
+    gate: {
+      ready: !weekend && !beforeD0 && !afterClose,
+      beforeD0: !weekend && beforeD0,
+      afterClose: !weekend && afterClose,
+      weekend,
+      minute: minutes,
+      text: weekend
+        ? '휴장일 — 다음 거래일 09:30 이후 D+0 탐색'
+        : beforeD0
+          ? '09:30 이후 D+0 탐색 대기 (원전: 9시 30분 이전 매매 자제)'
+          : afterClose
+            ? '정규장 마감(15:30) — 오늘 D+0 판정 종료'
+            : '09:30 이후 D+0 탐색 구간',
+    },
+    thresholds: {
+      valueRank: HONG_D0.valueRankMax,
+      valueEok: HONG_D0.valueEok,
+      pct: HONG_D0.pct,
+      themeStocks: HONG_D0.themeStocks,
+      nearHighPct: HONG_D0.nearHighPct,
+      halfDrop: '당일 고점 상승폭의 50%',
+    },
+    leader: [],
+    leaderStats: { judged: (c.pool || []).length, rank: 0, value: 0, pct: 0, theme: 0, picked: 0, candleMissing: 0 },
+    downside: { active: false, index: { kospiPct: kospi, kosdaqPct: kosdaq, asOf: (indexGate && indexGate.asOf) || null }, items: [], note: '' },
+    supply: {
+      ok: Boolean(supply && supply.ok),
+      asOfLabel: (supply && supply.asOfLabel) || '',
+      note: (supply && supply.note) || '',
+      errors: (supply && supply.errors) || [],
+    },
+    notes: [],
+    sourceLabel: '/api/tabs-live intradayHong (KRX 거래대금·등락률 상위 + 네이버 테마 구성종목 + KIS 장중 가집계)',
+  };
+
+  /* ---- 테마 동반 상승 — 코드 → 같은 테마에서 +5%↑ 종목 수 */
+  const themeCount = new Map();     // themeName → +5%↑ 종목 수
+  const themeTotal = new Map();     // themeName → 구성종목 수
+  const themesOf = new Map();       // code → [{theme, rank}]
+  memberRows.forEach((r) => {
+    if (!r || !r.code) return;
+    const th = r.themeName || '';
+    if (!th) return;
+    themeTotal.set(th, (themeTotal.get(th) || 0) + 1);
+    if (typeof r.changePct === 'number' && r.changePct >= HONG_D0.pct) {
+      themeCount.set(th, (themeCount.get(th) || 0) + 1);
+    }
+    const arr = themesOf.get(r.code) || [];
+    arr.push({ theme: th, rank: r.themeRank || null });
+    themesOf.set(r.code, arr);
+  });
+
+  const prevStrong = new Set((c.prevStrongThemes || []).map((t) => String(t).replace(/\s+/g, '')));
+
+  (c.pool || []).forEach((j) => {
+    const st = out.leaderStats;
+    const rank = j.valueRank === null || j.valueRank === undefined ? null : j.valueRank;
+    if (rank !== null && rank <= HONG_D0.valueRankMax) st.rank += 1;
+    if (j.valueEok !== null && j.valueEok >= HONG_D0.valueEok) st.value += 1;
+    if (typeof j.pct === 'number' && j.pct >= HONG_D0.pct) st.pct += 1;
+
+    if (rank === null || rank > HONG_D0.valueRankMax) return;
+    if (j.valueEok === null || j.valueEok < HONG_D0.valueEok) return;
+    if (typeof j.pct !== 'number' || j.pct < HONG_D0.pct) return;
+    if (j.hi120 === null || j.hi120 === undefined) { st.candleMissing += 1; return; }
+
+    const gap120 = round2(((j.hi120 - j.price) / j.price) * 100);
+    const near = j.break120 || (gap120 !== null && gap120 <= HONG_D0.nearHighPct);
+    /* 120일 전고점 돌파도 근접도 아니면 주도주 트랙에서 뺀다(원전 5번 '끼'·전고점 조건) */
+    if (!near) return;
+
+    const th = themesOf.get(j.code) || [];
+    let best = null;
+    th.forEach((t) => {
+      const n = themeCount.get(t.theme) || 0;
+      if (!best || n > best.up5) best = { theme: t.theme, up5: n, total: themeTotal.get(t.theme) || 0 };
+    });
+    const themeOk = Boolean(best && best.up5 >= HONG_D0.themeStocks);
+    if (themeOk) st.theme += 1;
+
+    const half = hongHalfDrop(j, j.prevClose);
+    const sup = hongSupplyBadge(supply, j.code);
+    out.leader.push({
+      code: j.code,
+      name: j.name,
+      market: j.market || null,
+      price: j.price,
+      pct: j.pct,
+      open: j.open,
+      high: j.high,
+      low: j.low,
+      prevClose: j.prevClose,
+      valueEok: j.valueEok,
+      valueText: j.valueDispText || j.valueText || null,
+      valueRank: rank,
+      upper: j.upper,
+      bodyRate: j.bodyRate,
+      volX: j.volX,
+      hi120: j.hi120,
+      hi120Date: j.hi120Date,
+      gap120,
+      break120: Boolean(j.break120),
+      firstBreak120: Boolean(j.firstBreak120),
+      theme: best ? best.theme : null,
+      themeUp5: best ? best.up5 : 0,
+      themeMembers: best ? best.total : 0,
+      themeOk,
+      half,
+      supply: sup,
+      kk: j.kk || { limitUp: null, up20: null, chain: null, count: null },
+      badges: [],
+    });
+  });
+
+  out.leader.sort((a, b) => {
+    if (a.themeOk !== b.themeOk) return a.themeOk ? -1 : 1;
+    if (a.half.state !== b.half.state) {
+      const w = { hold: 0, warn: 1, drop: 2, unknown: 3 };
+      return (w[a.half.state] || 9) - (w[b.half.state] || 9);
+    }
+    return (b.pct || 0) - (a.pct || 0) || (b.valueEok || 0) - (a.valueEok || 0);
+  });
+  out.leader = out.leader.slice(0, 6);
+  out.leaderStats.picked = out.leader.length;
+
+  if (!out.leader.length) {
+    out.notes.push(
+      `조건(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑ · 120일 전고점 돌파/근접)을 모두 채운 종목이 없습니다 — 기준을 임의로 완화하지 않았습니다.`,
+    );
+  }
+  if (out.leaderStats.judged === 0) {
+    out.notes.push('등락 +5%↑ 후보 일봉 판정이 0건입니다 — 장전·휴장일이거나 KRX 순위 응답이 비었습니다.');
+  }
+
+  /* ---- 트랙 ② 하락장 역발상 — 직전/최근 강세 테마 안에서 지수보다 강한 종목 */
+  const down = out.downside;
+  down.active = indexMin !== null && indexMin <= HONG_DOWN.indexPct;
+  const seen = new Set();
+  memberRows.forEach((r) => {
+    if (!r || !r.code || seen.has(r.code)) return;
+    const pct = numOrNull(r.changePct);
+    const valueEok = numOrNull(r.value) !== null ? r.value / 1e8 : null;
+    if (pct === null || valueEok === null || valueEok < HONG_DOWN.minValueEok) return;
+    if (indexMin !== null && pct - indexMin < HONG_DOWN.minRelPct) return;
+    if (pct < -1.0) return;                                  // 지수보다 덜 빠지는 것까지는 인정, -1% 아래는 제외
+    const thKey = String(r.themeName || '').replace(/\s+/g, '');
+    const isPrev = prevStrong.has(thKey);
+    if (!isPrev && (r.themeRank || 99) > 5) return;           // 직전 강세 테마가 아니면 '오늘 강세 Top 5'만
+    seen.add(r.code);
+    down.items.push({
+      code: r.code,
+      name: r.name,
+      theme: r.themeName,
+      themeRank: r.themeRank || null,
+      prevStrong: isPrev,
+      price: r.price,
+      pct,
+      valueEok: round2(valueEok),
+      relPct: indexMin === null ? null : round2(pct - indexMin),
+      supply: hongSupplyBadge(supply, r.code),
+    });
+  });
+  down.items.sort((a, b) => (b.relPct || 0) - (a.relPct || 0));
+  down.items = down.items.slice(0, 6);
+  down.note = down.active
+    ? `지수 급락(${kospi === null ? '—' : (kospi > 0 ? '+' : '') + kospi.toFixed(2)}% / ${kosdaq === null ? '—' : (kosdaq > 0 ? '+' : '') + kosdaq.toFixed(2)}%) — D+0 확인 → 익일 D+1 반등장 집중 공략 후보`
+    : `지수 급락장 아님(코스피 ${kospi === null ? '—' : kospi.toFixed(2)}% · 코스닥 ${kosdaq === null ? '—' : kosdaq.toFixed(2)}%) — 오늘은 참고용 대기. 급락장(-1.5% 이하)이 되면 같은 목록이 공략 후보로 바뀝니다`;
+  if (!down.items.length) {
+    down.note += ' · 조건(강세 테마 소속 · 대금 100억↑ · 지수 대비 +0.5%p 이상)을 채운 종목 없음';
+  }
+  if (!prevStrong.size) {
+    out.notes.push('직전 거래일 강세 테마 스냅샷이 없어 오늘 강세 Top 5 테마로만 비교했습니다.');
+  }
+  return out;
+}
+
 function judgeBijDay1(card, q) {
   const base = card && card.c;
   if (!base || !q || q.price === null || q.price === undefined) return null;
@@ -2502,27 +2845,19 @@ function judgeKkangtoCard(card, q) {
 
 /** 종가베팅 — 신정재·강창권 트랙별 익절·손절선 대비 오늘 위치 */
 function judgeJongbeStock(stock, q) {
-  const base = numOrNull(stock && stock.price);
+  /* 신정재 4대 패턴(2026-11-25 개편) — 트랙별 목표·손절선 대비 오늘 위치만 판정한다.
+   *  p1·p2·p3 : 15:18~15:20 종가매수 → 익일 09:05 전 청산 (초단기)
+   *  p4        : 5일선을 깬 자리 — 종베가 아니라 엔벨로프 중심선 스윙 타점
+   *  값이 없는 카드는 null 을 그대로 남긴다(추정 금지). */
+  const base = numOrNull(stock && (stock.basePrice || stock.price));
   const f = stratQuoteFields(q, base);
   if (!f.price) return null;
   const track = String((stock && stock.track) || '');
-  const isShin = track === 'shin';
   const ma5 = numOrNull(stock && stock.ma5);
   const ma20 = numOrNull(stock && stock.ma20);
-  const target1 =
-    numOrNull(stock && stock.target1) !== null
-      ? stock.target1
-      : base
-        ? Math.round(base * (isShin ? 1.03 : 1.15))
-        : null;
-  const target2 =
-    numOrNull(stock && stock.target2) !== null ? stock.target2 : base && isShin ? Math.round(base * 1.05) : null;
-  const stopPrice =
-    numOrNull(stock && stock.stopPrice) !== null
-      ? stock.stopPrice
-      : base && isShin
-        ? Math.round(base * 0.992)
-        : ma20; // 강창권 손절은 20일선 이탈
+  const target1 = numOrNull(stock && stock.target1);
+  const target2 = numOrNull(stock && stock.target2);
+  const stopPrice = numOrNull(stock && stock.stopPrice);
   const stopBreach = stopPrice !== null && f.price <= stopPrice;
   const tp1 = target1 !== null && f.price >= target1;
   const tp2 = target2 !== null && f.price >= target2;
@@ -2530,26 +2865,26 @@ function judgeJongbeStock(stock, q) {
   let stateLabel;
   if (stopBreach) {
     stateKey = 'stop';
-    stateLabel = isShin ? '−0.8% 손절선 이탈' : '20일선 이탈(매도)';
+    stateLabel = track === 'p4' ? '20일선 이탈(스윙 손절)' : '손절선 이탈';
   } else if (tp2) {
     stateKey = 'tp2';
-    stateLabel = '2차 익절(+5%) 도달';
+    stateLabel = track === 'p4' ? '엔벨로프 상한 도달' : '2차 목표 도달';
   } else if (tp1) {
     stateKey = 'tp1';
-    stateLabel = isShin ? '1차 익절(+3%) 도달' : '목표(+15%) 도달';
-  } else if (!isShin && ma5 !== null && f.price >= ma5) {
-    stateKey = 'hold';
-    stateLabel = '5일선 위 지지(보유)';
-  } else if (isShin && f.vsBasePct !== null && Math.abs(f.vsBasePct) <= 0.5) {
+    stateLabel = '1차 목표 도달';
+  } else if (f.vsBasePct !== null && Math.abs(f.vsBasePct) <= 0.5) {
     stateKey = 'entry';
     stateLabel = '진입존(기준가 ±0.5%)';
   } else {
     stateKey = f.vsBasePct !== null && f.vsBasePct > 0 ? 'above' : 'below';
-    stateLabel = f.vsBasePct !== null && f.vsBasePct > 0 ? '진입가 위' : '진입가 아래';
+    stateLabel = f.vsBasePct !== null && f.vsBasePct > 0 ? '기준가 위' : '기준가 아래';
   }
   return {
     ...f,
     track: track || null,
+    patternLabel: (stock && stock.patternLabel) || null,
+    tipScore: numOrNull(stock && stock.tipScore),
+    tipTotal: numOrNull(stock && stock.tipTotal),
     base,
     ma5,
     ma20,
@@ -2564,7 +2899,6 @@ function judgeJongbeStock(stock, q) {
   };
 }
 
-/** RN존 — 하단·상단 RN 사이에서 지금 위치(구간 %), 매수 1·2차 도달 여부 */
 function judgeRnzoneStock(s, q) {
   const basis = numOrNull(s && s.price);
   const f = stratQuoteFields(q, basis);
@@ -2671,7 +3005,7 @@ let STRAT_QUOTE_MAP = null;
  *  phase: sessionOf() 의 phase — '장마감'이면 현재가가 NXT 시간외 체결가라
  *  기준선(정규장 종가) 대비 손절/익절 '판정'을 켜면 안 된다(11/24 실측: 삼현 63,000 기준선 vs 60,300 시간외 → 전 카드 이탈로 오인).
  */
-async function buildStrategyLive(map, phase) {
+async function buildStrategyLive(map, phase, ctx) {
   const errors = [];
   const [upR, valR] = await Promise.allSettled([
     fetchKrxRank('up', KRX_PCT_TOP),
@@ -2730,6 +3064,7 @@ async function buildStrategyLive(map, phase) {
   const bijNear = [];
   const hongFresh = [];
   const hongNear = [];
+  const d0Pool = [];        // ⚡ D+0 박스 후보 — 등락 +5%↑ 후보 전부(대금·순위·테마로 다시 거른다)
   let scanned = 0;
   need.forEach((c, i) => {
     const r = settledBars[i];
@@ -2770,6 +3105,7 @@ async function buildStrategyLive(map, phase) {
       if (j.hong.isD0) hongFresh.push(j);
       else if (j.hong.checks.break120) hongNear.push(j);
     }
+    if (typeof j.pct === 'number' && j.pct >= HONG_D0.pct) d0Pool.push(j);
   });
   bijFresh.sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
   hongFresh.sort((a, b) => (b.pct || 0) - (a.pct || 0));
@@ -2895,6 +3231,15 @@ async function buildStrategyLive(map, phase) {
     kkangto,
     jongbe,
     rnzone,
+    intradayHong: await buildIntradayHong({
+      pool: d0Pool,
+      valueRank,
+      memberRows: (ctx && ctx.memberRows) || [],
+      indexGate: (ctx && ctx.indexGate) || null,
+      supply: (ctx && ctx.supply) || null,
+      phase,
+      prevStrongThemes: (ctx && ctx.prevStrongThemes) || [],
+    }),
     errors,
   };
 }
@@ -5665,7 +6010,13 @@ module.exports = async function handler(req, res) {
   /* ---- 장중 전략 실시간 판정 (비중법사 · 홍인기) ---- */
   let strategyLive = null;
   try {
-    strategyLive = await buildStrategyLive(knownMap, session && session.phase);
+    strategyLive = await buildStrategyLive(knownMap, session && session.phase, {
+      /* ⚡ D+0 박스용 — 테마 구성종목·지수·KIS 가집계를 미리 띄워 두고 판정 뒤에 합류시킨다 */
+      memberRows: cpMembersPromise,
+      indexGate: fetchIndexGate().catch(() => null),
+      supply: hongSupplyMap(),
+      prevStrongThemes: lastStrongThemes(),
+    });
     sources.push({
       name: 'strategy-live',
       ok: Boolean(strategyLive && strategyLive.ok),
@@ -5844,6 +6195,7 @@ module.exports = async function handler(req, res) {
     themeErrors: themeData.themeErrors || [],
     strategyLive,
     closingPicks,
+    intradayHong: (strategyLive && strategyLive.intradayHong) || null,
     high52,
     upperLimit,
     aftermarket,
