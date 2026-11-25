@@ -622,23 +622,51 @@ def _theme_key(name):
     return s.lower()
 
 
-def attach_news_to_themes(themes, news):
-    """뉴스 matchedThemes ↔ 테마 이름을 느슨하게 맞춰 테마별 재료 헤드라인을 붙인다.
+def _theme_tokens(name):
+    """테마 이름을 뉴스 제목과 맞춰 볼 토큰으로 나눈다(보안주/재택근무/2차전지 등)."""
+    s = re.sub(r"\([^)]*\)", " ", str(name or ""))
+    raw = re.split(r"[\s·,/&]+", s)
+    out = []
+    for t in raw:
+        t = t.strip()
+        if len(t) < 2:
+            continue
+        if t in ("관련", "기타", "테마", "업종", "증시", "종목"):
+            continue
+        out.append(t)
+    return out
 
-    확실히 맞는 것만 붙인다(없으면 None). 재료를 지어내지 않기 위한 장치.
+
+def attach_news_to_themes(themes, news):
+    """뉴스 ↔ 테마를 맞춰 테마별 재료 헤드라인을 붙인다.
+
+    ① 뉴스의 matchedThemes 가 테마 이름과 같거나 포함하면
+    ② 테마 이름 토큰이 뉴스 제목에 나오면
+    ③ 테마 대장주 이름이 뉴스 제목·수해 종목에 나오면
+    위 경우에만 붙인다(없으면 None). 재료를 지어내지 않기 위한 장치.
     """
     for t in themes:
         keys = {_theme_key(t.get("name"))}
+        keys.discard("")
+        tokens = _theme_tokens(t.get("name"))
+        leader_names = [s.get("name") for s in (t.get("leaders") or []) if s.get("name")]
         hit = None
         for n in news or []:
+            title = n.get("title") or ""
+            matched = False
             for mt in n.get("themes") or []:
                 mk = _theme_key(mt)
-                if not mk:
-                    continue
-                if mk in keys or any(k and (k in mk or mk in k) for k in keys):
-                    hit = n
+                if mk and (mk in keys or any(k and (k in mk or mk in k) for k in keys)):
+                    matched = True
                     break
-            if hit:
+            if not matched:
+                matched = any(tok in title for tok in tokens)
+            if not matched:
+                matched = any(lname in title for lname in leader_names)
+            if not matched and n.get("beneficiaries"):
+                matched = any(lname in n["beneficiaries"] for lname in leader_names)
+            if matched:
+                hit = n
                 break
         t["news"] = hit
     return themes
@@ -1046,8 +1074,8 @@ def facts_text(f):
             else:
                 strength = pct_text(t.get("calc_pct"))
                 basis = f"{t.get('basis_label') or ''}, "
-            head = (f"{t['rank']}위 {t['name']} {strength} ({basis}구성 {int(t.get('total') or 0)}"
-                    f" · 상승 {int(t.get('rise') or 0)}/하락 {int(t.get('fall') or 0)})")
+            head = (f"{t['rank']}위 {t['name']} {strength} ({basis}구성 {int(t.get('total') or 0)}종목"
+                    f" · 상승 {int(t.get('rise') or 0)} / 하락 {int(t.get('fall') or 0)})")
             L.append(head)
             for s in t.get("leaders") or []:
                 extra = " · 상한가" if s.get("upper_limit") else ""
@@ -1067,6 +1095,8 @@ def facts_text(f):
         line = f"{t['name']} {pct_text(t['pct'])} (구성 {int(t.get('total') or 0)} · 상승 {int(t.get('up') or 0)}/하락 {int(t.get('down') or 0)})"
         if t.get("leader"):
             line += f" · 대표 {t['leader']['name']} {pct_text(t['leader']['pct'])} 대금 {money_text_eok(t['leader']['value_eok'])}"
+        else:
+            line += " · 대표 종목 미수신"
         L.append(line)
     if not f.get("weak_themes"):
         L.append("하락 업종 미수신")
@@ -1149,13 +1179,14 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 4. FACTS가 '미수신'·'미집계'·'실시간 아님'이라고 하면 숨기지 말고 그대로 적는다.
 5. FACTS의 날짜·시각을 바꾸지 않는다. 수급 기준일이 오늘이 아니면 '기준 11/25'처럼 기준일을 밝힌다.
 6. 출력은 맨 첫 줄 헤드라인 + 아래 5개 블록만. 인사·서론·면책·맺음말·마크다운(**·##·표·```) 금지.
-7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄 / 📊 5~7줄 / 💰 6~8줄(해석 2~3줄 포함)
-   / 🔥 10~14줄(테마당 3~4줄) / 🧭 5~7줄. 한 줄은 40~70자로 끊어 폰 화면에서 읽히게 하고,
+7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄(약 100자) / 📊 약 450자 / 💰 약 600자
+   / 🔥 약 900자 / 🧭 약 500자. 한 줄은 40~80자로 끊어 폰 화면에서 읽히게 하고,
    한 줄에 몰아 쓰지 말고 항목마다 '- '로 시작하는 줄로 나눈다.
 8. 매수·매도 '추천'이 아니라 조건부 대응만 쓴다. '반드시·무조건·수익 보장' 금지.
 9. 원인·재료는 FACTS의 [뉴스·재료]·[수급 종목]에 적힌 것만 쓴다. FACTS에 없는 원인 추정
-   ('패닉', '실망 매물', '차익실현', '기관 매도', '외인 환헤지')을 새로 만들지 않는다.
-   해석을 붙이는 줄은 반드시 '[해석]'으로 시작한다.
+   ('패닉', '실망 매물', '차익실현', '기관 매도', '외인 환헤지', '기대감', '수혜', '순환매')을 새로 만들지 않는다.
+   해석을 붙이는 줄은 반드시 '[해석]'으로 시작한다. '[재료]'·'[전망]' 같은 새 라벨을 만들지 않는다.
+   헤드라인·본문에서 '출발'·'개장'이라고 쓰지 않는다(장 시작 전이면 '개장 전', 장중이면 '상승/하락'으로만).
 10. [기준 시각]의 국면을 지킨다. '장전'·'프리마켓'이면 '마감'·'종가 확정'·'출발'·'개장'이라고 쓰지 않고,
     선물이 '실시간 아님'이면 세션 표기(예: 15:45 마감)를 함께 적는다.
     FACTS가 '집계 전'이라 적은 값(등락 0.00%·수급 0억·등락종목수 0)은 0으로 쓰지 말고 '집계 전'이라 쓰며,
@@ -1163,6 +1194,7 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 11. 거래대금 300억 미만 종목은 '동반'으로만 언급한다. 대장주로 쓰지 않는다.
 12. 상한가는 FACTS에 '상한가' 표시가 있는 종목만 그렇게 쓴다. 등락률만 보고 단정하지 않는다.
 13. 순위는 FACTS에 적힌 순위만 쓴다('대금 1위' 같은 새 순위 주장 금지). 테마·종목·공시를 새로 만들지 않는다.
+    상한가 '확정' 수와 '임박' 수를 더하지 않는다. 테마의 '구성 종목수'와 '상승/하락 종목수'를 섞지 않는다.
 14. 모든 문장은 '~습니다/~입니다' 존댓말. 이모지는 형식에 있는 것만 쓴다.
 
 [출력 형식]
@@ -1172,30 +1204,44 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 코스피 {값} {등락률} · 코스닥 {값} {등락률} · 외인 {현·선물 판정} · 대장 테마 {테마} — {지금 대응 한 줄}
 
 📊 핵심 지표 & 매크로
-- 코스피 {값} ({등락}p / {등락률}) — 전일 종가 {값}, 고 {값} · 저 {값}
-- 코스닥 {값} ({등락}p / {등락률})
-- 선물 {값} ({등락률}, {세션}) · 베이시스 {값}p
-- 상승:하락 코스피 {상승}:{하락} / 코스닥 {상승}:{하락} · 상한가 {개수}종목
+- 코스피 {값} ({등락}p / {등락률}) — 전일 종가 {값}
+- 코스피 시 {값} · 고 {값} · 저 {값} · 대금 {값}
+- 코스닥 {값} ({등락}p / {등락률}) — 전일 종가 {값}
+- 코스닥 고 {값} · 저 {값} · 대금 {값}
+- 선물 {값} ({등락률}, {세션}) · 베이시스 {값}p · 미결제 {계약}
+- 상승:하락 코스피 {상승}:{하락} / 코스닥 {상승}:{하락} · 상한가 확정 {개수}종목
 - 원/달러 {값}원 ({등락률}, {기준일})
 
 💰 투자자별 수급 & 흐름 해석
-- 외국인 현물 코스피 {값} · 코스닥 {값} / 선물 {계약} ({기준일})
-- 기관 현물 코스피 {값} · 코스닥 {값} / 선물 {계약}
+- 외국인 현물 코스피 {값} · 코스닥 {값}
+- 외국인 선물 {계약} ({기준일})
+- 기관 현물 코스피 {값} · 코스닥 {값} · 선물 {계약}
 - 개인 코스피 {값} · 프로그램 {값}
+- 현·선물 판정: {FACTS의 판정 문장}
+- 외인 순매수 상위 {종목} · 기관 순매수 상위 {종목}
 - [해석] {왜 이런 수급이 나왔는지, 어떤 의미인지 — FACTS 근거로 2~3줄}
 
 🔥 장중 주도 테마 & 대장주 (거래대금 300억↑)
-- {테마1} {등락률}: {대장주} {등락률} ({거래대금}) — {재료 또는 수급}
-  동반 {종목} {등락률} · 구성 {상승}상승/{하락}하락
-- {테마2} {등락률}: {대장주} {등락률} ({거래대금}) — {재료}
-- {테마3} {등락률}: {대장주} {등락률} ({거래대금})
-- 빠지는 쪽: {업종} {등락률} — 대표 {종목} {등락률} ({거래대금})
+- {테마1} {등락률} — 구성 {종목수}종목, 상승 {상승} / 하락 {하락}
+- 대장 {종목} {등락률} ({거래대금})
+- 동반 {종목} {등락률} ({거래대금})
+- 재료: {FACTS에 붙은 뉴스 헤드라인} (없으면 '재료 뉴스 미수신' 한 번만)
+- {테마2} {등락률} — 구성 {상승}상승/{하락}하락
+- 대장 {종목} {등락률} ({거래대금})
+- 재료: {헤드라인 또는 미수신}
+- {테마3} {등락률}
+- 대장 {종목} {등락률} ({거래대금})
+- 빠지는 쪽: {업종} {등락률}
+- 하락 대표주: {종목} {등락률} ({거래대금})
+- 테마 총평: {오늘 자금이 어느 테마로 몰리고 어디서 빠지는지 한 문장 — 새 수치 계산 금지}
 
 🧭 오늘 시장 전망 & 시나리오 · 기준선 대응
-- 현재 코스피 {값} — 1차 지지 {값} 대비 {위/아래}, 2차 지지 {값}
+- 현재 코스피 {값} — 1차 지지 {값} 대비 {위/아래}, 2차 지지 {값} · 저항1 {값}
+- 코스닥 {값} — 1차 지지 {값} · 저항1 {값}
 - ① 돌파·유지: {숫자 조건} → {행동}
 - ② 박스: {숫자 조건} → {행동}
 - ③ 이탈: {숫자 조건} → {행동}
+- 대응 원칙: {오늘 비중·추격 여부·손절 기준을 FACTS 기준선으로 한 줄}
 - 체크포인트: {다음에 확인할 것 — FACTS의 기준선·수급·상한가 중에서}
 """ + CHECKER_URL + """
 
@@ -1207,14 +1253,18 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
   외인·기관 순매수·순매도 상위 종목을 근거로 '[해석]' 줄을 2~3줄 쓴다. 해석은 FACTS에 있는 종목·수급·뉴스로만 연결한다.
 - 🔥 는 [받는 쪽]의 2~3개 테마를 순서대로 쓴다. 테마마다 ① 첫 줄: 테마·등락률·(구성 상승/하락)
   ② 둘째 줄: 대장주와 등락률·거래대금 ③ 셋째 줄: 동반 종목과 재료(뉴스) — 로 나눠 적는다.
-  '재료(뉴스)'가 FACTS에 붙어 있을 때만 그 헤드라인을 인용하고, 없으면 재료를 지어내지 말고
-  수급·등락만 쓴다. 마지막 두 줄은 [빠지는 쪽]을 대비시킨다. 하락 업종 이름이 FACTS에 없으면
-  '하락 대표 {종목}'만 쓰고 '업종 미수신'과 종목을 '—'로 이어 붙이지 않는다.
+  '재료(뉴스)'가 FACTS의 그 테마 줄에 '재료(뉴스):'로 붙어 있을 때만 그 헤드라인을 인용하고,
+  없으면 재료를 지어내지 말고 '재료 뉴스 미수신'이라 적는다. [뉴스·재료] 목록의 다른 헤드라인을
+  특정 테마의 상승 이유로 끌어다 붙이지 않는다(테마↔뉴스 연결은 FACTS에 표시된 것만).
+  마지막에 [빠지는 쪽]을 대비시키되, 업종의 대표 종목은 FACTS에 '대표'로 붙은
+  종목만 쓰고 없으면 업종 등락률만 쓴다. '하락 대표주'는 FACTS에 그렇게 적힌 종목만 별도 줄로 쓰고
+  업종 옆에 '— 대표'로 이어 붙이지 않는다.
 - 🧭 는 [기준선]의 1차·2차 지지와 저항을 써서 세 경우(① 돌파·유지 / ② 박스 / ③ 이탈)를 숫자로 나눈다.
   지지선이 없으면 전일 종가를 기준으로 쓴다. 각 경우의 행동은 '관망 / 분할 / 추격 금지 / 비중 축소' 중에서
   조건과 함께 단호하게 쓴다. 마지막 줄은 다음 확인 항목이다.
 - 같은 숫자를 여러 블록에서 다시 써도 된다. 분량을 채우려고 없는 사실을 늘리지는 않는다.
   단, FACTS에 있는 수치·종목·테마·기준선은 빠짐없이 인용한다(인용만으로 분량이 채워진다).
+- 🔥 마지막에 '테마 총평' 한 줄을 반드시 넣는다. 🧭 마지막에 '체크포인트' 한 줄을 반드시 넣는다.
 - 다 쓰고 나서 글자 수를 세라. 2,000자보다 짧으면 FACTS에 있는 다른 수치·종목·기준선을 각 블록에 더 붙여 늘려라.
 - 문장은 짧고 단정하게. '~로 보입니다'를 반복하지 말고 근거 숫자를 먼저 쓴다."""
 
@@ -1270,6 +1320,9 @@ def call_gemini(api_key, model, system_prompt, user_text, timeout=60, max_tokens
 # --------------------------------------------------------------------------- #
 NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 URL_RE = re.compile(r"https?://\S+")
+# FACTS에 없는 '원인·심리' 어휘 — [해석] 줄이 아니면 쓰지 않는다(숫자와 같은 방식으로 막는다)
+RISK_WORDS = ["기대감", "수혜주", "수혜", "차익실현", "차익 실현", "실망 매물", "매물 소화", "순환매",
+              "패닉", "공포 심리", "저가 매수세", "반발 매수", "기관 매도", "외인 환헤지"]
 SAFE_INTS = set(range(0, 31)) | {32, 45, 50, 60, 100, 150, 200, 300, 500, 1000, 1200,
                                 1500, 2000, 2500, 3000, 3200, 4096, 2025, 2026, 2027}
 
@@ -1410,8 +1463,11 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
 
     if "**" in body or "##" in body:
         problems.append("마크다운 금지 위반")
-    if phase in ("장전", "정규장") and re.search(r"(?:상승|하락|급락|급등|보합)\s*마감|마감했", body):
-        problems.append(f"국면 불일치: {phase}인데 '마감' 서술")
+    if phase in ("장전", "프리마켓", "정규장"):
+        # 시각(06:00·15:45)이 앞에 붙은 '마감'은 선물 세션 표기라 위반이 아니다
+        probe = re.sub(r"\d{1,2}:\d{2}", " ", body)
+        if re.search(r"(?:정규장|장)\s*마감|종가\s*확정|마감했|(?:상승|하락|보합|급등|급락)\s*마감", probe):
+            problems.append(f"국면 불일치: {phase}인데 '마감' 서술")
 
     allowed = allowed_numbers(ftext)
     unknown = []
@@ -1425,6 +1481,31 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
             if all(abs(n - u) > 1e-9 for u in uniq):
                 uniq.append(n)
         problems.append("근거 없는 숫자: " + ", ".join(f"{n:g}" for n in uniq[:8]))
+
+    # FACTS에 없는 원인·심리 어휘([해석] 줄 제외) — 뉴스 제목에 있는 말은 허용
+    bad_words = []
+    for ln in lines:
+        if ln.startswith("[해석]"):
+            continue
+        for w in RISK_WORDS:
+            if w in ln and w not in ftext:
+                bad_words.append(w)
+    if bad_words:
+        uniq_w = []
+        for w in bad_words:
+            if w not in uniq_w:
+                uniq_w.append(w)
+        problems.append("근거 없는 원인 어휘: " + ", ".join(uniq_w[:5]))
+
+    # 상한가 '확정' 수와 '임박' 수를 더해 버린 경우(예: 2+1=3)
+    m = re.search(r"상한가\s*(?:확정\s*)?(\d+)\s*종목", body)
+    if m:
+        n = int(m.group(1))
+        confirmed = set(numbers_in(re.search(r"\[상한가\] 확정 (\d+)종목", ftext).group(1)))
+        near_m = re.search(r"상한가 임박 (\d+)종목", ftext)
+        near = {float(near_m.group(1))} if near_m else set()
+        if confirmed and float(n) not in confirmed and float(n) not in near:
+            problems.append(f"상한가 수 불일치({n}종목 — FACTS와 다름)")
     return (not problems), problems
 
 
@@ -1761,6 +1842,7 @@ def main(argv=None):
     gens = []
     body = None
     validation = None
+    soft_best = None   # 분량만 모자란 초안 — 형식·숫자를 통과한 것 중 가장 긴 것
     if not args.no_ai and api_key:
         models = [args.model] if args.model else (
             [m.strip() for m in args.models.split(",") if m.strip()] if args.models else DEFAULT_MODELS
@@ -1773,7 +1855,7 @@ def main(argv=None):
             return base + 15 if "lite" in name else base + 10
 
         def try_models(model_list, pass_no):
-            nonlocal body, validation
+            nonlocal body, validation, soft_best
             for model in model_list:
                 prompt = base_text
                 for attempt in (1, 2):
@@ -1798,6 +1880,12 @@ def main(argv=None):
                             validation = {"ok": True, "problems": [], "chars": len(cand)}
                             log(f"✓ Gemini({model}) 생성·검증 통과 ({len(cand)}자, {time.time()-t0:.1f}s)")
                             return
+                        hard = [p for p in problems
+                                if not p.startswith(("분량 부족", "줄 수 부족"))]
+                        if not hard and len(cand) >= 1500:
+                            if soft_best is None or len(cand) > soft_best[0]:
+                                soft_best = (len(cand), cand, problems, model)
+                                log(f"… Gemini({model}) 형식·숫자는 통과, 분량 {len(cand)}자 — 후보로 보류")
                         log(f"… Gemini({model}) 검증 실패({len(cand)}자): {problems}")
                         if attempt == 1:
                             bad = [p.split(": ")[-1] for p in problems if p.startswith("근거 없는 숫자")]
@@ -1831,6 +1919,17 @@ def main(argv=None):
             retry = [m for m in models if m in {g["model"] for g in gens
                                                 if g.get("error", "").startswith(("HTTP 429", "HTTP 503", "HTTP 500"))}]
             try_models(retry, 2)
+
+        # 분량만 모자란 초안이 있으면 대체(fallback)보다 그 초안을 살린다
+        if not body and soft_best:
+            body = soft_best[1]
+            validation = {
+                "ok": True,
+                "problems": ["분량 미달이나 형식·숫자 검증 통과 → 최선 초안 채택"] + soft_best[2],
+                "chars": soft_best[0],
+                "model": soft_best[3],
+            }
+            log(f"↺ 분량 미달 최선 초안 채택 ({soft_best[0]}자, {soft_best[3]})")
 
     generator = "gemini"
     if not body:
