@@ -3,81 +3,81 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-25 11:18:05",
- "updatedAt": "2026-11-25T11:18:06.033382+09:00",
- "updatedAgeMin": -0.0,
+ "fetchedAt": "2026-11-25 13:12:58",
+ "updatedAt": "2026-11-25T13:12:55.907936+09:00",
+ "updatedAgeMin": 0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
+  "257720",
+  "003350",
+  "123690",
   "338220",
   "380550",
   "290650",
-  "257720",
-  "123690",
-  "123330",
   "053800",
   "263860",
   "042510",
-  "039200",
   "192820",
+  "039200",
   "358570",
   "115180",
   "443670",
-  "035420"
+  "018260"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "의료기기",
-   "avgRS": 27,
+   "name": "화장품",
+   "avgRS": 54,
    "stocks": [
     {
-     "code": "338220",
-     "name": "뷰노",
-     "chg": 26.2,
-     "value_eok": 256.1,
+     "code": "257720",
+     "name": "실리콘투",
+     "chg": 13.9,
+     "value_eok": 1302.16,
      "verified": true
     },
     {
-     "code": "380550",
-     "name": "뉴로핏",
-     "chg": 21.6,
-     "value_eok": 141.48,
+     "code": "003350",
+     "name": "한국화장품제조",
+     "chg": 13.7,
+     "value_eok": 393.11,
      "verified": true
     },
     {
-     "code": "290650",
-     "name": "엘앤씨바이오",
-     "chg": 9.6,
-     "value_eok": 188.3,
+     "code": "123690",
+     "name": "한국화장품",
+     "chg": 12.2,
+     "value_eok": 715.11,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "화장품",
-   "avgRS": 36,
+   "name": "의료기기",
+   "avgRS": 27,
    "stocks": [
     {
-     "code": "257720",
-     "name": "실리콘투",
-     "chg": 14.2,
-     "value_eok": 1034.11,
+     "code": "338220",
+     "name": "뷰노",
+     "chg": 24.0,
+     "value_eok": 269.57,
      "verified": true
     },
     {
-     "code": "123690",
-     "name": "한국화장품",
-     "chg": 12.6,
-     "value_eok": 492.96,
+     "code": "380550",
+     "name": "뉴로핏",
+     "chg": 16.5,
+     "value_eok": 155.17,
      "verified": true
     },
     {
-     "code": "123330",
-     "name": "제닉",
-     "chg": 9.9,
-     "value_eok": 59.1,
+     "code": "290650",
+     "name": "엘앤씨바이오",
+     "chg": 10.6,
+     "value_eok": 268.74,
      "verified": true
     }
    ]
@@ -90,22 +90,22 @@
     {
      "code": "053800",
      "name": "안랩",
-     "chg": 17.6,
-     "value_eok": 3561.29,
+     "chg": 22.5,
+     "value_eok": 4429.02,
      "verified": true
     },
     {
      "code": "263860",
      "name": "지니언스",
-     "chg": 10.3,
-     "value_eok": 1366.18,
+     "chg": 10.7,
+     "value_eok": 1634.46,
      "verified": true
     },
     {
      "code": "042510",
      "name": "라온시큐어",
-     "chg": 6.6,
-     "value_eok": 264.91,
+     "chg": 6.8,
+     "value_eok": 303.24,
      "verified": true
     }
    ]
@@ -116,23 +116,23 @@
    "avgRS": 68,
    "stocks": [
     {
-     "code": "039200",
-     "name": "오스코텍",
-     "chg": 11.0,
-     "value_eok": 70.98,
+     "code": "192820",
+     "name": "코스맥스",
+     "chg": 11.7,
+     "value_eok": 592.63,
      "verified": true
     },
     {
      "code": "290650",
      "name": "엘앤씨바이오",
-     "chg": 9.6,
-     "value_eok": 188.3
+     "chg": 10.6,
+     "value_eok": 268.74
     },
     {
-     "code": "192820",
-     "name": "코스맥스",
-     "chg": 9.1,
-     "value_eok": 439.05
+     "code": "039200",
+     "name": "오스코텍",
+     "chg": 9.3,
+     "value_eok": 85.94
     }
    ]
   },
@@ -144,45 +144,45 @@
     {
      "code": "358570",
      "name": "지아이이노베이션",
-     "chg": 15.5,
-     "value_eok": 89.48
+     "chg": 15.6,
+     "value_eok": 111.52
     },
     {
      "code": "039200",
      "name": "오스코텍",
-     "chg": 11.0,
-     "value_eok": 70.98
+     "chg": 9.3,
+     "value_eok": 85.94
     },
     {
      "code": "115180",
      "name": "큐리언트",
-     "chg": 10.0,
-     "value_eok": 39.35
+     "chg": 8.9,
+     "value_eok": 54.16
     }
    ]
   },
   {
    "rank": 6,
    "name": "클라우드 컴퓨팅",
-   "avgRS": 70,
+   "avgRS": 86,
    "stocks": [
     {
      "code": "053800",
      "name": "안랩",
-     "chg": 17.6,
-     "value_eok": 3561.29
+     "chg": 22.5,
+     "value_eok": 4429.02
     },
     {
      "code": "443670",
      "name": "에스피소프트",
-     "chg": 6.9,
-     "value_eok": 169.52
+     "chg": 5.9,
+     "value_eok": 188.93
     },
     {
-     "code": "035420",
-     "name": "NAVER",
-     "chg": 1.8,
-     "value_eok": 938.87
+     "code": "018260",
+     "name": "삼성에스디에스",
+     "chg": 3.1,
+     "value_eok": 543.73
     }
    ]
   }
