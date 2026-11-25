@@ -109,7 +109,7 @@ RETRYABLE = {429, 500, 502, 503, 504}
 
 # 텔레그램 한 통 4,096자 · 목표 2,000~3,200자
 TG_LIMIT = 4096
-BODY_MIN = 1700      # 검증 통과 하한(70~80% 분량이 안 나온 초안은 재작성)
+BODY_MIN = 1900      # 검증 통과 하한(목표 2,000~3,200자의 5% 여유 — 이보다 짧으면 재작성)
 BODY_TARGET_MIN = 2000
 BODY_TARGET_MAX = 3200
 BODY_MAX = 3900      # 이 위는 잘라서 보내야 하므로 실패로 본다
@@ -1893,8 +1893,10 @@ def print_summary(path):
     print(f"- 검증: `{d.get('validation')}`")
     for g in d.get("generations") or []:
         status = "OK" if g.get("ok") else "FAIL"
-        parts = [f"{g.get('model')} p{g.get('pass')} try{g.get('attempt')} {status} {g.get('chars', '')}자 {g.get('sec', '')}s"
-                 if g.get("pass") else f"{g.get('model')} try{g.get('attempt')} {status} {g.get('sec', '')}s"]
+        chars = f"{g.get('chars')}자 " if g.get("chars") else ""
+        sec = f"{g.get('sec')}s" if g.get("sec") else ""
+        head = f"{g.get('model')} " + (f"p{g.get('pass')} " if g.get("pass") else "") + f"try{g.get('attempt')} {status} {chars}{sec}"
+        parts = [head]
         if g.get("error"):
             parts.append(str(g["error"])[:80])
         if g.get("problems"):
