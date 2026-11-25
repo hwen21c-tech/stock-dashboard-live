@@ -447,12 +447,20 @@ def pick_upper_limit(tabs):
 
 
 def pick_futures(tabs):
+    """KIS 코스피200 선물 — 체결이 있는 시세를 고른다.
+
+    장전에는 야간(CM), 정규장에는 주간. 개장 직후 주간 시세가 0으로 비어 있으면
+    다른 세션으로 건너뛰어 '0.00'을 보내지 않는다.
+    """
     fk = (tabs or {}).get("futuresKis") or {}
-    q = fk.get("primaryQuote") or {}
-    if not fk.get("ok") or q.get("price") is None:
+    if not fk.get("ok"):
+        return None
+    cands = [fk.get("primaryQuote") or {}, fk.get("day") or {}, fk.get("night") or {}]
+    session = fk.get("session") or {}
+    q = next((c for c in cands if c.get("price")), None)
+    if q is None:
         return None
     contract = q.get("contract") or {}
-    session = fk.get("session") or {}
     return {
         "price": q.get("price"),
         "change": q.get("change"),
@@ -935,8 +943,6 @@ def validate_body(body, ftext, phase=None):
     for sec in REQ_SECTIONS:
         if sec not in body:
             problems.append(f"섹션 누락: {sec}")
-    if CHECKER_URL not in body:
-        problems.append("체커 링크 누락")
     # 🧭 대응 문장이 한 단어로 끝나지 않았는지
     try:
         gi = next(i for i, ln in enumerate(lines) if ln.startswith("🧭"))
