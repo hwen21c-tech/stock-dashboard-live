@@ -42,6 +42,7 @@ const {
   getQuery,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
+const { pickMaterialNews, isRealTheme, materialLine, materialTag } = require('../lib/chim-material');
 const { assignThemeRoles, themeRoleMap, liquidAvgPct, liquidBasisLabel } = require('../lib/theme-roles');
 /* KIS 공식 API — ?mode=supply_live(장중 기관·외국인 가집계) 에서만 쓴다. 없으면 null 로 두고 503 안내. */
 let kisLib = null;
@@ -3477,6 +3478,21 @@ const CP_CHIM_DART_TTL_MS = 5 * 60 * 1000;
 let cpChimDartCache = { at: 0, value: null };
 const CP_CHIM_WARN_SOURCE =
   '지정·단기과열 = KIS 시세 실시간(FHKST01010100) · 경고 예고·관리종목·거래정지 = KIS 종목마스터 일 스냅샷(data/krx-warn-latest.json) · DART 악재 = 오픈DART 공시(최근 3일)';
+/* DART 호재 공시(재료) 키워드 — 수주·잠정실적·자사주처럼 종베 재료가 되는 유형만 담는다.
+ *  ('실적' 단독은 사업보고서류와 섞이므로 '잠정'만 인정한다) */
+const CP_CHIM_DART_GOOD = [
+  { kw: '단일판매', label: '수주·공급계약' },
+  { kw: '공급계약', label: '수주·공급계약' },
+  { kw: '수주', label: '수주' },
+  { kw: '잠정', label: '잠정실적' },
+  { kw: '자기주식취득', label: '자사주 취득' },
+  { kw: '무상증자', label: '무상증자' },
+  { kw: '주식분할', label: '액면분할' },
+  { kw: '특허권취득', label: '특허 취득' },
+  { kw: '기술이전', label: '기술이전' },
+  { kw: '타법인주식', label: '타법인 지분 취득' },
+];
+
 /* DART 악재(희석·악재) 키워드 — 공시명 기준. 원전(침착해)이 정리 대상으로 적은 유형만 담는다. */
 const CP_CHIM_DART_RISK = [
   { kw: '유상증자', label: '유상증자(지분 희석)' },
@@ -3518,9 +3534,11 @@ function chimTrendLabel(trend) {
 }
 
 const CP_CHIM_RULES = {
+  material:
+    '재료(주도 테마 구성종목 또는 당일 특징·수주·실적·지분 뉴스·호재 공시)가 확인된 종목만 후보 — 재료 미확인 종목은 수급이 좋아도 넣지 않는다(기준 임의 완화 금지)',
   select:
-    '프로그램 순매수(당일 누적 · KIS 0465) 최우선 · 프로그램이 소폭 순매도여도 외인·기관 양매수면 방어 종목으로 포함(뱃지) · ETF·ETN·스팩·우선주 제외',
-  sort: '프로그램 순매수 ↓ · 오후(13시 이후) 순증 → 추세 → 외인+기관 합산 ↓',
+    '재료 확인 종목 안에서 프로그램 순매수(당일 누적 · KIS 0465) 최우선 · 프로그램이 소폭 순매도여도 외인·기관 양매수면 방어 종목으로 포함(뱃지) · ETF·ETN·스팩·우선주 제외',
+  sort: '재료 확인 → 프로그램 순매수 ↓ · 오후(13시 이후) 순증 → 추세 → 외인+기관 합산 ↓',
   entry: '13시 이후 지수 대비 눌림에서 프로그램 방어 확인 후 분할매수 · 돌파·불타기는 당일 고점 돌파 확인 후에만(눌림과 돌파를 같은 비중으로 넣지 않는다)',
   split: '3단 분할 — ' + CP_CHIM_SPLIT + ' (14:30 전에는 관찰, 비중 0%)',
   exit: '당일 고점 부근 프로그램 매도 전환 시 분할 청산 · 시간외 3~5% 상승 시 분할 익절',
@@ -3819,14 +3837,16 @@ function loadKrxWarnSnapshot() {
 }
 
 /** 오픈DART 최근 3일 공시에서 후보 종목의 희석·악재 공시만 골라 Map 으로 만든다(5분 캐시).
- *  · 주요사항보고(B) 2장 + 발행공시(C) 1장 — 유증·CB/BW·감자·최대주주변경 등이 몰리는 유형.
+ *  · 주요사항보고(B) 2장 + 발행공시(C) 1장 + 거래소공시(I) 1장 — 유증·CB/BW·감자·최대주주변경 등이 몰리는 유형.
+ *  · 같은 스캔에서 **호재 공시**(단일판매·공급계약/잠정실적/자사주 취득)도 함께 골라 favMap 에 담는다
+ *    → 재료(공시) 근거로 카드에 붙이기 위해 호출을 늘리지 않고 같은 응답에서 뽑는다.
  *  · DART_API_KEY 가 없거나 응답이 실패하면 map 을 비우고 note 만 남긴다(악재 없음으로 단정하지 않는다). */
 async function fetchChimDartRisks(codes) {
   const want = new Set((codes || []).map((c) => String(c)));
   if (cpChimDartCache.value && Date.now() - cpChimDartCache.at < CP_CHIM_DART_TTL_MS) {
     return cpChimDartCache.value;
   }
-  const value = { ok: false, map: new Map(), asOf: null, note: null, requested: want.size, found: 0 };
+  const value = { ok: false, map: new Map(), favMap: new Map(), asOf: null, note: null, requested: want.size, found: 0, favFound: 0 };
   const apiKey = process.env.DART_API_KEY;
   if (!apiKey || !String(apiKey).trim()) {
     value.note = 'DART_API_KEY 없음 — 악재 공시 확인 불가';
@@ -3845,10 +3865,17 @@ async function fetchChimDartRisks(codes) {
     for (const r of CP_CHIM_DART_RISK) if (s.indexOf(r.kw) >= 0) return r.label;
     return null;
   };
+  const clsGood = (nm) => {
+    const s = String(nm || '');
+    for (const r of CP_CHIM_DART_GOOD) if (s.indexOf(r.kw) >= 0) return r.label;
+    return null;
+  };
   const scans = [
     { ty: 'B', page: 1 },
     { ty: 'B', page: 2 },
     { ty: 'C', page: 1 },
+    /* 거래소공시(수시) — 단일판매·공급계약(수주) 이 여기에 실린다 */
+    { ty: 'I', page: 1 },
   ];
   try {
     const settled = await Promise.allSettled(
@@ -3874,26 +3901,44 @@ async function fetchChimDartRisks(codes) {
         rows += 1;
         const code = String(it.stock_code || '').trim();
         if (!/^\d{6}$/.test(code) || !want.has(code)) return;
-        const label = cls(it.report_nm);
-        if (!label) return;
-        const cur = value.map.get(code);
         const date = String(it.rcept_dt || '');
-        const item = {
-          label,
+        const rceptDate = /^\d{8}$/.test(date) ? date.slice(4, 6) + '/' + date.slice(6, 8) : null;
+        const label = cls(it.report_nm);
+        if (label) {
+          const cur = value.map.get(code);
+          const item = {
+            label,
+            reportNm: String(it.report_nm || '').trim(),
+            rceptDate,
+            rceptDt: date,
+            rceptNo: it.rcept_no || null,
+            url: /^\d{14}$/.test(String(it.rcept_no || ''))
+              ? 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo=' + it.rcept_no
+              : null,
+          };
+          /* 같은 종목에 여러 건이면 가장 최근 접수분만 카드에 쓴다 */
+          if (!cur || date >= String(cur.rceptDt || '')) value.map.set(code, item);
+          return;
+        }
+        /* 악재가 아니면 호재 공시(수주·잠정실적·자사주)인지 한 번 더 본다 */
+        const good = clsGood(it.report_nm);
+        if (!good) return;
+        const curFav = value.favMap.get(code);
+        const favItem = {
+          label: good,
           reportNm: String(it.report_nm || '').trim(),
-          rceptDate: /^\d{8}$/.test(date) ? date.slice(4, 6) + '/' + date.slice(6, 8) : null,
+          rceptDate,
           rceptDt: date,
-          rceptNo: it.rcept_no || null,
           url: /^\d{14}$/.test(String(it.rcept_no || ''))
             ? 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo=' + it.rcept_no
             : null,
         };
-        /* 같은 종목에 여러 건이면 가장 최근 접수분만 카드에 쓴다 */
-        if (!cur || date >= String(cur.rceptDt || '')) value.map.set(code, item);
+        if (!curFav || date >= String(curFav.rceptDt || '')) value.favMap.set(code, favItem);
       });
     });
     value.ok = rows > 0;
     value.found = value.map.size;
+    value.favFound = value.favMap.size;
     value.asOf = end.slice(0, 4) + '-' + end.slice(4, 6) + '-' + end.slice(6, 8) + ' 기준 최근 3일';
     if (!rows) value.note = apiErr || 'DART 응답에 공시가 없습니다.';
   } catch (e) {
@@ -3901,6 +3946,103 @@ async function fetchChimDartRisks(codes) {
   }
   cpChimDartCache = { at: Date.now(), value };
   return value;
+}
+
+/* ----------------------------------------------------------------------------
+ * 📰 재료(테마·뉴스·공시) 확인 — 2026-11-25 사용자 확정
+ *  "침착해는 재료가 있는 거에서 참고로 다른 걸 보는 거야"
+ *  → 재료가 확인된 종목만 후보로 올리고, 프로그램·외인/기관 수급은 그 안에서 참고로 쓴다.
+ *  · ① 테마 : 이미 받아 둔 주도 테마 구성종목(가짜 라벨 제외) — 추가 호출 없음
+ *  · ② 뉴스 : 네이버 종목 뉴스(당일) — 종목별 병렬 1회(≈0.6초), 5분 메모리 캐시
+ *  · ③ 공시 : 오픈DART 스캔에서 같이 건진 호재 공시(단일판매·공급계약·잠정실적 등)
+ *  · 뉴스 응답이 없으면 테마·공시만으로 판정하고, 아무 근거도 없으면 '재료 미확인'으로 뺀다.
+ * -------------------------------------------------------------------------- */
+const CP_CHIM_NEWS_MAX = 16; // 후보 풀에서 뉴스를 확인할 상한(대금 상위)
+const CP_CHIM_NEWS_WAIT_MS = 3500; // 뉴스 단계 최대 대기(넘으면 테마·공시만으로 판정)
+const CP_CHIM_NEWS_TTL_MS = 5 * 60 * 1000;
+const CP_CHIM_NEWS_FAIL_TTL_MS = 60 * 1000;
+const cpChimNewsCache = new Map(); // code → { at, ttl, value }
+const CP_CHIM_MATERIAL_SOURCE =
+  '재료 확인 = ① 네이버·스탁이지 주도 테마 구성종목 ② 당일 네이버 종목 뉴스(회사명 + 수주·계약·실적·승인·지분·특징주·급등 등, 악재 우세 기사 제외) ③ 오픈DART 호재 공시(단일판매·공급계약·잠정실적 등)';
+
+/** 네이버 종목 뉴스 1종목 — 실패는 1분만 캐시해 다음 주기에 다시 시도한다 */
+async function fetchChimStockNews(code) {
+  const hit = cpChimNewsCache.get(code);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
+  try {
+    const data = await fetchJson(
+      'https://m.stock.naver.com/api/news/stock/' + code + '?pageSize=20&page=1',
+      { headers: NAVER_HEADERS, timeout: 3000 },
+    );
+    const groups = Array.isArray(data) ? data : data && data.items ? [data] : [];
+    const items = [];
+    groups.forEach((g) => {
+      ((g && g.items) || []).forEach((it) => {
+        if (!it || !(it.title || it.titleFull)) return;
+        items.push({
+          title: decodeNewsText(it.titleFull || it.title),
+          press: it.officeName || null,
+          datetime: String(it.datetime || ''),
+          url: it.mobileNewsUrl || null,
+        });
+      });
+    });
+    cpChimNewsCache.set(code, { at: Date.now(), ttl: CP_CHIM_NEWS_TTL_MS, value: items });
+    return items;
+  } catch (e) {
+    cpChimNewsCache.set(code, { at: Date.now(), ttl: CP_CHIM_NEWS_FAIL_TTL_MS, value: [] });
+    return [];
+  }
+}
+
+/** 후보 코드들의 종목 뉴스를 병렬로 — deadline 을 넘기면 그 주기는 건너뛴다 */
+async function fetchChimNewsBatch(codes, deadline) {
+  const map = new Map();
+  const list = (codes || []).map((c) => String(c));
+  await Promise.all(
+    list.map(async (code) => {
+      if (Date.now() > deadline) return;
+      const items = await fetchChimStockNews(code);
+      map.set(code, items);
+    }),
+  );
+  return map;
+}
+
+function decodeNewsText(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 재료 뉴스를 인정하는 날짜(YYYY-MM-DD)
+ *  · 장중·장후 → 오늘  · 장전 → 직전 거래일  · 주말 → 금요일
+ *  (장전에 어제 저녁 기사를 오늘의 재료로 쓰는 것은 실제로 맞지만,
+ *   '당일 재료'라는 표기가 흔들리지 않도록 직전 거래일까지만 인정한다) */
+function chimMaterialDateYmd(p0) {
+  const ymd = (d) =>
+    String(d.getUTCFullYear()) +
+    '-' +
+    pad2(d.getUTCMonth() + 1) +
+    '-' +
+    pad2(d.getUTCDate());
+  /* p0 는 KST 기준 값 → 같은 날 12시(KST)를 UTC 로 옮겨 날짜 계산을 한다 */
+  const base = new Date(Date.UTC(p0.y, p0.m - 1, p0.d, 3, 0, 0));
+  const weekday = !(p0.wd === 'Sat' || p0.wd === 'Sun');
+  if (weekday && p0.minutes >= 9 * 60) return ymd(base);
+  let d = new Date(base.getTime());
+  for (let i = 0; i < 4; i += 1) {
+    d = new Date(d.getTime() - 86400000);
+    const wd = new Date(d.getTime() + 9 * 3600 * 1000).getUTCDay();
+    if (wd !== 0 && wd !== 6) break;
+  }
+  return ymd(d);
 }
 
 /** 진입 구분 — 눌림 / 돌파·불타기 (3강 Ch.2). 당일 고가·현재가·등락률만으로 판정한다(추정 금지). */
@@ -3966,7 +4108,7 @@ function chimSignedEok(v) {
 /** 📘 침착해 종가베팅 트랙 — buildClosingPicks 안에서 호출한다. */
 async function buildChimchakhae(ctx) {
   const started = Date.now();
-  const { supplyPassed, themePassed, session } = ctx || {};
+  const { supplyPassed, themePassed, themeMembership, session } = ctx || {};
   const cached = cpChimCache.get('chim');
   if (cached && !(ctx && ctx.debug) && Date.now() - cached.at < CP_CHIM_CACHE_TTL_MS) return cached.value;
   const p0 = kstParts(new Date());
@@ -4008,6 +4150,7 @@ async function buildChimchakhae(ctx) {
   }
   out.split3 = CP_CHIM_SPLIT;
   out.warnSource = CP_CHIM_WARN_SOURCE;
+  out.materialSource = CP_CHIM_MATERIAL_SOURCE;
 
   if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
     out.ok = false;
@@ -4015,7 +4158,9 @@ async function buildChimchakhae(ctx) {
     return out;
   }
 
-  /* ② 후보 풀 — 수급 트랙 통과분(외인·기관) + 테마 트랙 상위(거래대금) */
+  /* ② 후보 풀 — 수급 트랙 통과분(외인·기관) + 테마 트랙 상위(거래대금)
+   *  · 같은 종목이 수급·테마 양쪽에 있으면 테마명(주도 테마)을 반드시 합친다 — 재료 판정의 1차 근거다.
+   *  · '52주 신고가'·'상한가·임박'·'NXT 상승률 상위'는 테마가 아니라 풀 확장용 라벨이므로 제외한다. */
   const cands = new Map();
   const pushCand = (r, src) => {
     if (!r || !/^\d{6}$/.test(String(r.code || ''))) return;
@@ -4026,9 +4171,24 @@ async function buildChimchakhae(ctx) {
       if (cur.high === null) cur.high = numOrNull(r.high);
       if (typeof cur.foreignEok !== 'number' && typeof r.foreignEok === 'number') cur.foreignEok = r.foreignEok;
       if (typeof cur.organEok !== 'number' && typeof r.organEok === 'number') cur.organEok = r.organEok;
+      const thName = r.themeName && isRealTheme(r.themeName) ? r.themeName : null;
+      if (thName) {
+        const betterRank =
+          r.themeRank && (!cur.themeRank || r.themeRank < cur.themeRank);
+        if (!cur.themeName || !isRealTheme(cur.themeName) || betterRank) {
+          cur.themeName = thName;
+          cur.themeRank = r.themeRank || cur.themeRank || null;
+        }
+      }
+      const member = themeMembership && themeMembership.get(r.code);
+      if (member && member.name && isRealTheme(member.name) && (!cur.themeName || !isRealTheme(cur.themeName))) {
+        cur.themeName = member.name;
+        cur.themeRank = member.rank || cur.themeRank || null;
+      }
       if (!cur.name && r.name) cur.name = r.name;
       return;
     }
+    const mem = themeMembership && themeMembership.get(String(r.code));
     cands.set(r.code, {
       code: String(r.code),
       name: r.name || null,
@@ -4039,7 +4199,13 @@ async function buildChimchakhae(ctx) {
       foreignEok: numOrNull(r.foreignEok),
       organEok: numOrNull(r.organEok),
       supplyKind: r.supplyKind || null,
-      themeName: r.themeName || null,
+      themeName: r.themeName && isRealTheme(r.themeName) ? r.themeName : mem && mem.name ? mem.name : null,
+      themeRank:
+        r.themeName && isRealTheme(r.themeName)
+          ? r.themeRank || null
+          : mem && mem.name
+            ? mem.rank || null
+            : null,
       sources: [src],
     });
   };
@@ -4049,10 +4215,55 @@ async function buildChimchakhae(ctx) {
     .filter((r) => r.price !== null && r.changePct !== null)
     .sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
   out.poolSize = pool.length;
-  const targets = pool.slice(0, CP_CHIM_POOL_MAX);
 
-  /* ③ 프로그램 수급 조회 · DART 희석·악재 공시는 동시에 돌린다(응답 예산 안에서 겹쳐 기다린다) */
-  const dartPromise = fetchChimDartRisks(targets.map((t) => t.code));
+  /* ②-b 재료 확인 — ① 테마(이미 받음) ② 당일 종목 뉴스(병렬, 최대 3.5초 대기) ③ DART 호재 공시(스캔은 아래에서 동시에)
+   *  · 뉴스만 대금 상위 CP_CHIM_NEWS_MAX 종목까지 본다(응답 예산). 테마는 풀 전체에 붙는다.
+   *  · 뉴스는 1종목≈0.6초 병렬(12종목 동시 0.6초 실측) · 5분 캐시 → 보통 단계 비용 1초 미만.
+   *  · DART 스캔은 풀 전체 코드로 미리 띄운다 — 요청 수는 그대로(4장)이고 필터만 넓힌다. */
+  const materialDate = chimMaterialDateYmd(p0);
+  const newsTargets = pool.slice(0, CP_CHIM_NEWS_MAX).map((r) => r.code);
+  const newsPromise = fetchChimNewsBatch(newsTargets, started + CP_CHIM_NEWS_WAIT_MS).catch(() => new Map());
+  const dartPromise = fetchChimDartRisks(pool.map((r) => r.code));
+  const newsMap = await Promise.race([
+    newsPromise,
+    new Promise((resolve) => setTimeout(() => resolve(new Map()), CP_CHIM_NEWS_WAIT_MS)),
+  ]);
+
+  /* ②-c 재료 게이트 — 재료가 확인된 종목만 후보로 남긴다 */
+  const materialGate = { theme: 0, news: 0, dart: 0, none: 0, adverse: 0, newsChecked: newsMap.size };
+  const materialPool = [];
+  pool.forEach((c) => {
+    const hedge = newsMap.get(c.code);
+    const picked = Array.isArray(hedge) && hedge.length
+      ? pickMaterialNews(c.name, hedge, materialDate)
+      : { material: null, adverse: null };
+    const m = {
+      themeName: c.themeName && isRealTheme(c.themeName) ? c.themeName : null,
+      themeRank: c.themeRank || null,
+      news: picked.material || null,
+      adverse: picked.adverse || null,
+      dart: null,
+    };
+    m.ok = Boolean(m.themeName || m.news);
+    if (m.themeName) materialGate.theme += 1;
+    if (m.news) materialGate.news += 1;
+    if (!m.ok) {
+      materialGate.none += 1;
+      if (m.adverse) materialGate.adverse += 1;
+      return;
+    }
+    materialPool.push({ ...c, material: m });
+  });
+  out.materialDate = materialDate;
+  out.materialGate = materialGate;
+  if (!materialPool.length) {
+    out.notes.push(
+      '재료(주도 테마·당일 특징/호재 뉴스·호재 공시)가 확인된 종목이 없습니다 — 재료 없는 종목으로 채우지 않았습니다.',
+    );
+  }
+  /* ②-d 프로그램 조회 대상 — 재료 확인 종목 중 거래대금 상위 */
+  const targets = materialPool.slice(0, CP_CHIM_POOL_MAX);
+  /* ③ 프로그램 수급 조회 — DART는 풀 전체 코드로 이미 띄워 두었다(동시에 기다린다) */
   const progMap = await fetchProgramBatch(
     targets.map((t) => t.code),
     started + CP_CHIM_DEADLINE_MS,
@@ -4086,9 +4297,21 @@ async function buildChimchakhae(ctx) {
   out.dartStats = {
     ok: Boolean(dartRisks && dartRisks.ok),
     found: (dartRisks && dartRisks.found) || 0,
+    favFound: (dartRisks && dartRisks.favFound) || 0,
     asOf: (dartRisks && dartRisks.asOf) || null,
     note: (dartRisks && dartRisks.note) || null,
   };
+  /* DART 호재 공시를 재료에 합친다 — 게이트는 이미 테마·뉴스로 끝났지만,
+   *  수주·잠정실적 공시가 있으면 카드 근거로 같이 적는다(없으면 그대로). */
+  if (dartRisks && dartRisks.favMap && dartRisks.favMap.size) {
+    targets.forEach((c) => {
+      const fav = dartRisks.favMap.get(c.code);
+      if (!fav || !c.material) return;
+      c.material.dart = fav;
+      if (!c.material.ok) c.material.ok = true;
+      materialGate.dart += 1;
+    });
+  }
 
   const gate = out.marketGate || {};
   const idxPct = (() => {
@@ -4096,8 +4319,8 @@ async function buildChimchakhae(ctx) {
     return v.length ? Math.min.apply(null, v) : null;
   })();
 
-  /* ④ 분류 — 프로그램 순매수 최우선, 소폭 순매도 + 외인·기관 방어는 뱃지로 포함 */
-  const drop = { noProg: 0, programSell: 0, noQuote: 0, fund: 0 };
+  /* ④ 분류 — 재료 확인 종목 안에서 프로그램 순매수 최우선, 소폭 순매도 + 외인·기관 방어는 뱃지로 포함 */
+  const drop = { noProg: 0, programSell: 0, noQuote: 0, fund: 0, noMaterial: materialGate.none };
   const prelim = [];
   targets.forEach((c) => {
     const nm = String(c.name || '');
@@ -4223,6 +4446,13 @@ async function buildChimchakhae(ctx) {
       totalEok: f !== null && o !== null ? round2(f + o) : null,
       supplyKind: c.supplyKind || null,
       themeName: c.themeName || null,
+      themeRank: c.themeRank || null,
+      material: c.material || null,
+      materialLine: c.material && c.material.ok ? materialLine(c.material) : '',
+      materialTag: c.material && c.material.ok ? materialTag(c.material) : null,
+      materialNews: c.material && c.material.news ? c.material.news : null,
+      materialDart: c.material && c.material.dart ? c.material.dart : null,
+      materialAdverse: c.material && c.material.adverse ? c.material.adverse : null,
       sources: c.sources,
       marketWarn: null,
       warnLabel: null,
@@ -4234,16 +4464,23 @@ async function buildChimchakhae(ctx) {
       ruleHint: CP_CHIM_HINT,
       _stateScore: state === '순매수' ? 3 : state === '미수신' ? 2 : 1,
       _trendScore: trend.kind === 'flip' ? 3 : trend.kind === 'up' ? 2 : trend.kind === 'flat' ? 1 : 0,
+      _materialScore: c.material
+        ? (c.material.themeName ? 2 : 0) +
+          (c.material.news ? (c.material.news.score >= 3 ? 2 : 1) : 0) +
+          (c.material.dart ? 1 : 0)
+        : 0,
     });
   });
 
-  /* ⑤ 정렬 — 1순위 프로그램 순매수(+오후 순증), 그 다음 규모 */
+  /* ⑤ 정렬 — 재료 확인 종목 안에서: ① 프로그램 순매수(+오후 순증) ② 규모 ③ 재료 강도
+   *  (재료는 '자격'이고, 그 안의 순서는 침착해 원전대로 프로그램 수급이 정한다) */
   prelim.sort(
     (a, b) =>
       b._stateScore - a._stateScore ||
       b._trendScore - a._trendScore ||
       (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok) ||
-      (b.totalEok || 0) - (a.totalEok || 0),
+      (b.totalEok || 0) - (a.totalEok || 0) ||
+      (b._materialScore || 0) - (a._materialScore || 0),
   );
 
   /* ⑥ 경보·악재 — ① 종목마스터 스냅샷(지정·경고 예고·관리종목·거래정지)
@@ -4331,7 +4568,8 @@ async function buildChimchakhae(ctx) {
       b._stateScore - a._stateScore ||
       (a._riskScore || 0) - (b._riskScore || 0) ||
       b._trendScore - a._trendScore ||
-      (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok),
+      (b.programEok === null ? -Infinity : b.programEok) - (a.programEok === null ? -Infinity : a.programEok) ||
+      (b._materialScore || 0) - (a._materialScore || 0),
   );
   out.riskStats = {
     flagged: prelim.filter((r) => (r._riskScore || 0) > 0).length,
@@ -4344,6 +4582,7 @@ async function buildChimchakhae(ctx) {
     delete copy._stateScore;
     delete copy._trendScore;
     delete copy._riskScore;
+    delete copy._materialScore;
     /* 경보·악재·전략 문구는 KIS 실시간 값이 붙은 뒤 한 곳에서 조립한다 */
     const badgeText = (copy.riskBadges || []).map((b) => b.text).join(' · ');
     if (badgeText) {
@@ -4396,12 +4635,15 @@ async function buildChimchakhae(ctx) {
       f: r.foreignEok,
       o: r.organEok,
       valueEok: r.valueEok,
+      materialLine: r.materialLine,
     }));
     out.progTargets = targets.map((c) => {
       const p = progMap.get(c.code);
       return {
         code: c.code,
         name: c.name,
+        theme: c.material ? c.material.themeName : null,
+        material: c.material ? c.material.ok : false,
         ok: Boolean(p && p.ok),
         err: p && !p.ok ? p.error : null,
         rows: p && p.ok && p.data ? p.data.rows.length : 0,
@@ -4412,7 +4654,15 @@ async function buildChimchakhae(ctx) {
   }
 
   if (!out.rows.length) {
-    out.notes.push('프로그램 순매수·방어 조건을 통과한 종목이 없습니다(기준을 임의로 완화하지 않음).');
+    out.notes.push(
+      '재료(테마·뉴스·공시) 확인 + 프로그램 순매수·방어 조건을 함께 통과한 종목이 없습니다(기준을 임의로 완화하지 않음).',
+    );
+  }
+  if (materialGate.none) {
+    out.notes.push(
+      '재료 미확인 ' + materialGate.none + '종목 제외 — 수급만 유입된 종목은 후보로 올리지 않습니다' +
+        (materialGate.newsChecked ? ' (뉴스 확인 ' + materialGate.newsChecked + '종목)' : '') + '.',
+    );
   }
   if (out.programStats.failed) {
     out.notes.push(
@@ -4535,6 +4785,16 @@ async function buildClosingPicks(ctx) {
   });
   out.themeDrop = drop;
   out.themePoolSize = pool.size;
+  /* 주도 테마 소속 지도(code → 테마명·순위) — 침착해 재료 판정이 쓴다.
+   *  테마 기준을 통과하지 못한 종목(대금 미달 등)도 테마 구성종목이면 재료로 인정한다. */
+  const themeMembership = new Map();
+  pool.forEach((r) => {
+    if (!r.code || !r.themeName || !isRealTheme(r.themeName)) return;
+    const prev = themeMembership.get(r.code);
+    if (!prev || (r.themeRank && (!prev.rank || r.themeRank < prev.rank))) {
+      themeMembership.set(r.code, { name: r.themeName, rank: r.themeRank || null });
+    }
+  });
   /* 테마 강도 — 테마 랭킹 1위 = +3, 2~3위 = +2, 4~10위 = +1, 테마 없음 = 0.
    *  상한가 종목은 한 단계 가점한다(상한가 자체가 가장 강한 주도 신호이므로).
    *  → 11/24처럼 테마 1위 대장주(휴림로봇)가 등락률 3위여도 맨 위로 온다. */
@@ -4653,7 +4913,13 @@ async function buildClosingPicks(ctx) {
 
   /* ---------------- 📘 침착해 종가베팅 (프로그램 수급·오후장 방어) — 3번째 탭 ---------------- */
   try {
-    out.chimchakhae = await buildChimchakhae({ supplyPassed, themePassed, session, debug: Boolean(ctx && ctx.debug) });
+    out.chimchakhae = await buildChimchakhae({
+      supplyPassed,
+      themePassed,
+      themeMembership,
+      session,
+      debug: Boolean(ctx && ctx.debug),
+    });
   } catch (e) {
     out.chimchakhae = { ok: false, rows: [], rules: CP_CHIM_RULES, error: String((e && e.message) || e) };
     out.errors.push('침착해 트랙: ' + String((e && e.message) || e));
