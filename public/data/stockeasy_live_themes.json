@@ -2,10 +2,10 @@
  "ok": true,
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
- "via": "landing-data(playwright)",
- "fetchedAt": "2026-11-25 14:15:29",
- "updatedAt": "2026-11-25T14:15:17.549322+09:00",
- "updatedAgeMin": 0.2,
+ "via": "landing-data",
+ "fetchedAt": "2026-11-25 15:14:04",
+ "updatedAt": "2026-11-25T15:14:04.419395+09:00",
+ "updatedAgeMin": 0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
@@ -15,16 +15,16 @@
   "338220",
   "179290",
   "380550",
+  "241710",
   "003350",
   "257720",
-  "278470",
   "443670",
   "018260",
-  "356680",
-  "158430",
   "192820",
   "290650",
-  "039200"
+  "039200",
+  "358570",
+  "115180"
  ],
  "themes": [
   {
@@ -36,21 +36,21 @@
      "code": "053800",
      "name": "안랩",
      "chg": 30.0,
-     "value_eok": 5549.56,
+     "value_eok": 5754.14,
      "verified": true
     },
     {
      "code": "263860",
      "name": "지니언스",
-     "chg": 26.3,
-     "value_eok": 2824.04,
+     "chg": 18.1,
+     "value_eok": 3468.03,
      "verified": true
     },
     {
      "code": "042510",
      "name": "라온시큐어",
-     "chg": 21.3,
-     "value_eok": 723.52,
+     "chg": 14.8,
+     "value_eok": 867.38,
      "verified": true
     }
    ]
@@ -63,22 +63,22 @@
     {
      "code": "338220",
      "name": "뷰노",
-     "chg": 26.6,
-     "value_eok": 285.14,
+     "chg": 23.8,
+     "value_eok": 295.15,
      "verified": true
     },
     {
      "code": "179290",
      "name": "엠아이텍",
-     "chg": 21.7,
-     "value_eok": 17.65,
+     "chg": 20.1,
+     "value_eok": 21.53,
      "verified": true
     },
     {
      "code": "380550",
      "name": "뉴로핏",
-     "chg": 17.9,
-     "value_eok": 163.2,
+     "chg": 14.6,
+     "value_eok": 169.25,
      "verified": true
     }
    ]
@@ -86,27 +86,27 @@
   {
    "rank": 3,
    "name": "화장품",
-   "avgRS": 62,
+   "avgRS": 66,
    "stocks": [
+    {
+     "code": "241710",
+     "name": "코스메카코리아",
+     "chg": 12.8,
+     "value_eok": 292.73,
+     "verified": true
+    },
     {
      "code": "003350",
      "name": "한국화장품제조",
-     "chg": 13.7,
-     "value_eok": 434.02,
+     "chg": 11.5,
+     "value_eok": 458.89,
      "verified": true
     },
     {
      "code": "257720",
      "name": "실리콘투",
-     "chg": 12.0,
-     "value_eok": 1439.76,
-     "verified": true
-    },
-    {
-     "code": "278470",
-     "name": "에이피알",
-     "chg": 11.9,
-     "value_eok": 3015.74,
+     "chg": 11.1,
+     "value_eok": 1538.81,
      "verified": true
     }
    ]
@@ -120,70 +120,70 @@
      "code": "053800",
      "name": "안랩",
      "chg": 30.0,
-     "value_eok": 5549.56,
+     "value_eok": 5754.14,
      "verified": true
     },
     {
      "code": "443670",
      "name": "에스피소프트",
-     "chg": 14.4,
-     "value_eok": 295.98
+     "chg": 9.7,
+     "value_eok": 318.61
     },
     {
      "code": "018260",
      "name": "삼성에스디에스",
-     "chg": 4.9,
-     "value_eok": 683.81
+     "chg": 4.7,
+     "value_eok": 831.43
     }
    ]
   },
   {
    "rank": 5,
-   "name": "양자암호/양자컴퓨팅",
-   "avgRS": 76,
-   "stocks": [
-    {
-     "code": "042510",
-     "name": "라온시큐어",
-     "chg": 21.3,
-     "value_eok": 723.52
-    },
-    {
-     "code": "356680",
-     "name": "엑스게이트",
-     "chg": 10.9,
-     "value_eok": 567.61
-    },
-    {
-     "code": "158430",
-     "name": "아톤",
-     "chg": 7.2,
-     "value_eok": 53.36
-    }
-   ]
-  },
-  {
-   "rank": 6,
    "name": "밸류업",
    "avgRS": 68,
    "stocks": [
     {
      "code": "192820",
      "name": "코스맥스",
-     "chg": 11.8,
-     "value_eok": 668.56
+     "chg": 11.0,
+     "value_eok": 753.21
     },
     {
      "code": "290650",
      "name": "엘앤씨바이오",
-     "chg": 11.3,
-     "value_eok": 295.44
+     "chg": 9.9,
+     "value_eok": 330.68
     },
     {
      "code": "039200",
      "name": "오스코텍",
-     "chg": 8.9,
-     "value_eok": 93.55
+     "chg": 8.7,
+     "value_eok": 111.83
+    }
+   ]
+  },
+  {
+   "rank": 6,
+   "name": "면역항암제",
+   "avgRS": 24,
+   "stocks": [
+    {
+     "code": "358570",
+     "name": "지아이이노베이션",
+     "chg": 15.1,
+     "value_eok": 135.13
+    },
+    {
+     "code": "039200",
+     "name": "오스코텍",
+     "chg": 8.7,
+     "value_eok": 111.83
+    },
+    {
+     "code": "115180",
+     "name": "큐리언트",
+     "chg": 8.4,
+     "value_eok": 70.68
     }
    ]
   }
