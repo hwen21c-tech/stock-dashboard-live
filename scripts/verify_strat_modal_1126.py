@@ -240,13 +240,15 @@ def main():
               tipScore: (document.getElementById('tacTipScore')||{}).textContent || '',
               rule: ((document.getElementById('sdmRule')||{}).textContent || '').slice(0, 40),
               facts: ((document.getElementById('sdmFacts')||{}).textContent || '').slice(0, 60),
+              factsAll: ((document.getElementById('sdmFacts')||{}).textContent || ''),
               news: ((document.getElementById('sdmNews')||{}).textContent || '').slice(0, 60)
             };
         }""")
         ok("신정재 카드 클릭 → 확대 차트 모달", jmod["open"] and jmod["chartInModal"] and jmod["cw"] > 50 and jmod["ch"] > 50, jmod)
         ok("신정재 모달 제목에 종목코드", jcode in jmod["title"], jmod["title"][:60])
         ok("신정재 모달 6대 팁 X/6 상세", "/6" in jmod["tipScore"] and len(jmod["tips"]) > 10, {"score": jmod["tipScore"], "tips": jmod["tips"]})
-        ok("신정재 모달 재료·수급·타점", "재료" in jmod["facts"] or "타점" in jmod["facts"], jmod["facts"])
+        ok("신정재 모달 ② 캔들 지표(시/고/저/종)", "시 / 고 / 저 / 종" in jmod.get("factsAll", ""), jmod.get("factsAll", "")[:120])
+        ok("신정재 모달 ① 재료 근거", "재료" in jmod["news"] and "②" in jmod["facts"], jmod["news"][:70])
         ok("신정재 모달 뉴스 섹션", "재료" in jmod["news"], jmod["news"])
         page.screenshot(path=os.path.join(SHOTS, f"{mode}_jb_modal_top_400.png"))
         page.eval_on_selector('#stratDetailModal #canvasContainer', "e => e.scrollIntoView({block:'center'})")
