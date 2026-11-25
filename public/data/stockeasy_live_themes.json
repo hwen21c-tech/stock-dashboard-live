@@ -3,51 +3,53 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-25 09:17:43",
- "updatedAt": "2026-11-25T09:17:45.905975+09:00",
- "updatedAgeMin": -0.0,
+ "fetchedAt": "2026-11-25 10:16:29",
+ "updatedAt": "2026-11-25T10:16:15.095700+09:00",
+ "updatedAgeMin": 0.2,
  "stale": false,
  "themeCount": 6,
  "codes": [
+  "053800",
+  "263860",
+  "488280",
+  "123690",
+  "257720",
+  "278470",
   "380550",
   "338220",
-  "376900",
-  "123690",
-  "003350",
-  "439090",
-  "084850",
-  "448900",
-  "125490",
-  "307950",
-  "129920",
-  "437730",
-  "012860"
+  "290650",
+  "443670",
+  "035420",
+  "039200",
+  "192820",
+  "214450",
+  "483650"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "의료기기",
-   "avgRS": 13,
+   "name": "정보보안",
+   "avgRS": 69,
    "stocks": [
     {
-     "code": "380550",
-     "name": "뉴로핏",
-     "chg": 29.8,
-     "value_eok": 17.59,
+     "code": "053800",
+     "name": "안랩",
+     "chg": 18.0,
+     "value_eok": 2819.6,
      "verified": true
     },
     {
-     "code": "338220",
-     "name": "뷰노",
-     "chg": 20.9,
-     "value_eok": 190.29,
+     "code": "263860",
+     "name": "지니언스",
+     "chg": 16.4,
+     "value_eok": 1006.01,
      "verified": true
     },
     {
-     "code": "376900",
-     "name": "로킷헬스케어",
-     "chg": 7.2,
-     "value_eok": 116.12,
+     "code": "488280",
+     "name": "에스투더블유",
+     "chg": 9.6,
+     "value_eok": 18.67,
      "verified": true
     }
    ]
@@ -55,132 +57,132 @@
   {
    "rank": 2,
    "name": "화장품",
-   "avgRS": 72,
+   "avgRS": 51,
    "stocks": [
     {
      "code": "123690",
      "name": "한국화장품",
-     "chg": 21.4,
-     "value_eok": 249.05,
+     "chg": 16.3,
+     "value_eok": 446.76,
      "verified": true
     },
     {
-     "code": "003350",
-     "name": "한국화장품제조",
-     "chg": 10.2,
-     "value_eok": 126.76,
+     "code": "257720",
+     "name": "실리콘투",
+     "chg": 13.0,
+     "value_eok": 757.58,
      "verified": true
     },
     {
-     "code": "439090",
-     "name": "마녀공장",
-     "chg": 9.1,
-     "value_eok": 463.41,
+     "code": "278470",
+     "name": "에이피알",
+     "chg": 10.8,
+     "value_eok": 1660.59,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "로봇",
-   "avgRS": 67,
+   "name": "의료기기",
+   "avgRS": 27,
    "stocks": [
     {
-     "code": "084850",
-     "name": "아이티엠반도체",
-     "chg": 17.1,
-     "value_eok": 142.02,
+     "code": "380550",
+     "name": "뉴로핏",
+     "chg": 23.7,
+     "value_eok": 125.56,
      "verified": true
     },
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 6.0,
-     "value_eok": 199.84,
+     "code": "338220",
+     "name": "뷰노",
+     "chg": 21.9,
+     "value_eok": 227.13,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 4.6,
-     "value_eok": 141.97,
+     "code": "290650",
+     "name": "엘앤씨바이오",
+     "chg": 6.2,
+     "value_eok": 83.05,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "피지컬 AI",
-   "avgRS": 93,
+   "name": "클라우드 컴퓨팅",
+   "avgRS": 70,
    "stocks": [
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 6.0,
-     "value_eok": 199.84,
+     "code": "053800",
+     "name": "안랩",
+     "chg": 18.0,
+     "value_eok": 2819.6,
      "verified": true
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 4.6,
-     "value_eok": 141.97
+     "code": "443670",
+     "name": "에스피소프트",
+     "chg": 12.8,
+     "value_eok": 143.18
     },
     {
-     "code": "307950",
-     "name": "현대오토에버",
-     "chg": 4.1,
-     "value_eok": 618.1
+     "code": "035420",
+     "name": "NAVER",
+     "chg": 2.0,
+     "value_eok": 734.72
     }
    ]
   },
   {
    "rank": 5,
-   "name": "방위산업",
+   "name": "밸류업",
    "avgRS": 68,
    "stocks": [
     {
-     "code": "084850",
-     "name": "아이티엠반도체",
-     "chg": 17.1,
-     "value_eok": 142.02
+     "code": "039200",
+     "name": "오스코텍",
+     "chg": 9.9,
+     "value_eok": 36.67
     },
     {
-     "code": "129920",
-     "name": "대성하이텍",
-     "chg": 0.2,
-     "value_eok": 37.05
+     "code": "192820",
+     "name": "코스맥스",
+     "chg": 8.9,
+     "value_eok": 293.59
     },
     {
-     "code": "437730",
-     "name": "삼현",
-     "chg": 0.0,
-     "value_eok": 279.76
+     "code": "290650",
+     "name": "엘앤씨바이오",
+     "chg": 6.2,
+     "value_eok": 83.05
     }
    ]
   },
   {
    "rank": 6,
-   "name": "자동차부품",
-   "avgRS": 94,
+   "name": "미용기기",
+   "avgRS": 56,
    "stocks": [
     {
-     "code": "448900",
-     "name": "한국피아이엠",
-     "chg": 6.0,
-     "value_eok": 199.84
+     "code": "278470",
+     "name": "에이피알",
+     "chg": 10.8,
+     "value_eok": 1660.59
     },
     {
-     "code": "125490",
-     "name": "한라캐스트",
-     "chg": 4.6,
-     "value_eok": 141.97
+     "code": "214450",
+     "name": "파마리서치",
+     "chg": 5.1,
+     "value_eok": 115.99
     },
     {
-     "code": "012860",
-     "name": "모베이스전자",
-     "chg": 0.2,
-     "value_eok": 78.86
+     "code": "483650",
+     "name": "달바글로벌",
+     "chg": 4.9,
+     "value_eok": 139.22
     }
    ]
   }
