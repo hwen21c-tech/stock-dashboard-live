@@ -800,7 +800,9 @@ def collect(script_dir, use_fixture=None, verbose=True):
         change = live.get("change")
         p = live.get("pct")
         # 장 시작 전·마감 후에는 0.00%가 '집계 전' 값이다 — 실시간 등락으로 읽히지 않게 표시
-        stale = (change == 0 and str(live.get("market_status") or "").upper() in ("PREOPEN", "CLOSE"))
+        status = str(live.get("market_status") or "").upper()
+        stale = (change == 0 and status in ("PREOPEN", "CLOSE"))
+        preopen = (status == "PREOPEN")
         prev = det.get("prev_close")
         if prev is None and price is not None and change is not None:
             prev = round(price - change, 2)
@@ -811,9 +813,10 @@ def collect(script_dir, use_fixture=None, verbose=True):
             "price": price,
             "change": change,
             "pct": p,
-            "open": live.get("open") or det.get("open"),
-            "high": live.get("high") or det.get("high"),
-            "low": live.get("low") or det.get("low"),
+            # 장전에는 시·고·저가 전일 종가로 채워져 온다 — 실제 체결로 오해되지 않게 비운다
+            "open": None if preopen else (live.get("open") or det.get("open")),
+            "high": None if preopen else (live.get("high") or det.get("high")),
+            "low": None if preopen else (live.get("low") or det.get("low")),
             "prev_close": prev,
             "value_eok": won_to_eok(value_won),
             "value_text": det.get("value_text"),
@@ -1469,6 +1472,8 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
         probe = re.sub(r"\d{1,2}:\d{2}", " ", body)
         if re.search(r"(?:정규장|장)\s*마감|종가\s*확정|마감했|(?:상승|하락|보합|급등|급락)\s*마감", probe):
             problems.append(f"국면 불일치: {phase}인데 '마감' 서술")
+    if phase in ("장전", "프리마켓") and "출발" in body:
+        problems.append(f"국면 불일치: {phase}인데 '출발' 서술")
 
     allowed = allowed_numbers(ftext)
     unknown = []
