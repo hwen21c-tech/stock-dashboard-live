@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-🦊 폭스시그널 · 장중 속보 (Gemini) → 텔레그램 자동 발송
+🦊 폭스시그널 · 장중 브리핑 (Gemini) → 텔레그램 자동 발송
 ================================================================
 평일 10:00 · 11:00 · 13:00 · 14:00 KST 에 GitHub Actions 가 실행한다.
-피클 크레딧을 쓰지 않고, Gemini API + 공개 실측 데이터만으로 5단 속보를 만들어
+피클 크레딧을 쓰지 않고, Gemini API + 공개 실측 데이터만으로
+정규 브리핑의 70~80% 분량(2,000~3,200자) 장중 브리핑을 만들어
 텔레그램 채널(@fox_signal_stock)로 보낸다.
+
+5블록 양식
+  📌 한줄 요약            지수·외인 현선물 판정·대장 테마·대응 한 줄
+  📊 핵심 지표 & 매크로    코스피·코스닥·선물(베이시스)·등락종목수·상한가·원/달러
+  💰 투자자별 수급 & 해석  외인(현물·선물)·기관·개인·프로그램 + 왜/의미 해석
+  🔥 주도 테마 & 대장주    300억↑ 실측 대장주·상승률·거래대금·재료 + 빠지는 섹터
+  🧭 전망 & 시나리오       지지선 대비 위치 + ① 돌파·유지 ② 박스 ③ 이탈 대응
 
 원칙
   · 실측 팩트만 쓴다. 응답에 없는 숫자는 절대 만들지 않는다(검증기가 막는다).
   · 값이 없으면 "미수신"이라고 적는다(0·추정으로 채우지 않는다).
-  · Gemini 가 실패하거나 검증을 통과하지 못하면, 같은 5단 양식을 실측값으로만
+  · Gemini 가 실패하거나 검증을 통과하지 못하면, 같은 5블록 양식을 실측값으로만
     채운 대체(fallback) 본문을 보내고 헤더에 그 사실을 표기한다.
 
 환경변수 (GitHub Secrets)
@@ -25,7 +33,7 @@
 
 데이터 소스
   · https://stock-dashboard-live-6frm.vercel.app/api/tabs-live
-      주도 테마·300억↑ 대장주·선물(KIS)·뉴스·상한가·수급 참고
+      주도 테마·구성종목·300억↑ 대장주·선물(KIS·베이시스)·뉴스·상한가·수급 참고
   · https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI,KOSDAQ
       코스피·코스닥 지수/등락/시고저/거래대금
   · https://stock-dashboard-live-6frm.vercel.app/api/live-briefing
@@ -38,8 +46,12 @@
       업종(테마) 등락률 전수 → 받는 쪽 / 빠지는 쪽
   · https://m.stock.naver.com/api/stocks/theme/{no}
       약한 테마의 대표 종목(거래대금)
+  · https://m.stock.naver.com/front-api/marketIndex/prices?category=exchange&reutersCode=FX_USDKRW
+      원/달러 환율
+  · public/data/supply-latest.json (있으면)
+      외인·기관 순매수/순매도 상위 종목(확정 기준일) — 수급 해석 근거
   · public/data/daily_levels.json (있으면)
-      {"date":"2026-11-26","kospi":{"s1":4700,"s2":4650},"kosdaq":{"s1":645,"s2":635}}
+      {"date":"2026-11-26","kospi":{"s1":4672.55,"s2":4586.8,"r1":4708.54,"r2":4809,"close":4697.51}}
       없으면 전일 종가를 기준선으로 쓴다.
 
 Gemini 모델
@@ -70,6 +82,10 @@ NAVER_POLL_URL = "https://polling.finance.naver.com/api/realtime?query="
 NAVER_MOBILE = "https://m.stock.naver.com/api/index/"
 NAVER_THEME_LIST = "https://m.stock.naver.com/api/stocks/theme?page=1&pageSize=100"
 NAVER_THEME_ONE = "https://m.stock.naver.com/api/stocks/theme/"
+NAVER_FX_URL = (
+    "https://m.stock.naver.com/front-api/marketIndex/prices"
+    "?category=exchange&reutersCode=FX_USDKRW"
+)
 LIVE_BRIEFING_URL = os.environ.get(
     "LIVE_BRIEFING_URL", "https://stock-dashboard-live-6frm.vercel.app/api/live-briefing"
 )
@@ -90,6 +106,23 @@ DEFAULT_MODELS = [
     "gemini-3.1-flash-lite-preview",
 ]
 RETRYABLE = {429, 500, 502, 503, 504}
+
+# 텔레그램 한 통 4,096자 · 목표 2,000~3,200자
+TG_LIMIT = 4096
+BODY_MIN = 1700      # 검증 통과 하한(70~80% 분량이 안 나온 초안은 재작성)
+BODY_TARGET_MIN = 2000
+BODY_TARGET_MAX = 3200
+BODY_MAX = 3900      # 이 위는 잘라서 보내야 하므로 실패로 본다
+
+# 5블록 정식 헤더 — 모델이 흔들려도 이 문구로 고정한다
+BLOCK_HEADERS = [
+    ("📌", "📌 한줄 요약"),
+    ("📊", "📊 핵심 지표 & 매크로"),
+    ("💰", "💰 투자자별 수급 & 흐름 해석"),
+    ("🔥", "🔥 장중 주도 테마 & 대장주 (300억↑ 실측)"),
+    ("🧭", "🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"),
+]
+REQ_SECTIONS = [h for _, h in BLOCK_HEADERS]
 
 
 # --------------------------------------------------------------------------- #
@@ -287,6 +320,26 @@ def fetch_trend(market):
     }
 
 
+def fetch_fx():
+    """원/달러 — 네이버 마켓인덱스(전일·장중 마지막 체결). 실패하면 None."""
+    d = http_json(NAVER_FX_URL, timeout=12, retries=1,
+                  headers={"Referer": "https://m.stock.naver.com/"})
+    rows = (d or {}).get("result") or []
+    if not rows:
+        raise RuntimeError("fx 응답이 비었습니다")
+    r = rows[0]
+    price = fnum(r.get("closePrice"))
+    if price is None:
+        raise RuntimeError("fx 가격 파싱 실패")
+    return {
+        "name": "원/달러",
+        "price": price,
+        "change": fnum(r.get("fluctuations")),
+        "pct": fnum(r.get("fluctuationsRatio")),
+        "traded_date": r.get("localTradedAt") or "",
+    }
+
+
 def fetch_theme_rank():
     d = http_json(NAVER_THEME_LIST, timeout=20, retries=2,
                   headers={"Referer": "https://m.stock.naver.com/"})
@@ -295,11 +348,15 @@ def fetch_theme_rank():
         rate = fnum(g.get("changeRate"))
         if rate is None:
             continue
+        total = fnum(g.get("totalCount"))
+        # 장 시작 전에는 전체 0인 빈 껍데기 행이 온다 — 테마로 쓰지 않는다
+        if rate == 0 and not total:
+            continue
         out.append({
             "no": g.get("no"),
             "name": g.get("name"),
             "pct": rate,
-            "total": fnum(g.get("totalCount")),
+            "total": total,
             "up": fnum(g.get("riseCount")),
             "down": fnum(g.get("fallCount")),
         })
@@ -324,6 +381,43 @@ def fetch_theme_members(theme_no, limit=40):
     return rows
 
 
+def read_supply(path):
+    """supply-latest.json — 외인·기관 순매수/순매도 상위(확정). 없으면 None."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:  # noqa: BLE001
+        return None
+    g = d.get("groups") or {}
+
+    def grab(key, n):
+        rows = []
+        for x in (g.get(key) or [])[:n]:
+            if not x.get("name"):
+                continue
+            rows.append({
+                "name": x.get("name"),
+                "pct": fnum(x.get("pct")),
+                "foreign_eok": fnum(x.get("foreignEok")),
+                "organ_eok": fnum(x.get("organEok")),
+            })
+        return rows
+
+    out = {
+        "basis_label": d.get("basisLabel"),
+        "confirmed": bool(d.get("confirmed")),
+        "foreign_buy": grab("foreignBuy", 3),
+        "organ_buy": grab("organBuy", 3),
+        "foreign_sell": grab("foreignSell", 2),
+        "dual_buy": grab("dualBuy", 2),
+    }
+    if not any(out[k] for k in ("foreign_buy", "organ_buy", "foreign_sell", "dual_buy")):
+        return None
+    return out
+
+
 def read_daily_levels(path):
     """public/data/daily_levels.json — 없거나 형식이 다르면 None."""
     if not path or not os.path.exists(path):
@@ -333,7 +427,8 @@ def read_daily_levels(path):
             d = json.load(f)
     except Exception:  # noqa: BLE001
         return None
-    out = {"date": d.get("date") or d.get("basisDate"), "markets": {}, "source": path}
+    out = {"date": d.get("date") or d.get("basisDate"), "markets": {}, "source": path,
+           "note": d.get("note")}
     markets = d.get("markets") or d
     alias = {"kospi": "코스피", "kosdaq": "코스닥", "코스피": "코스피", "코스닥": "코스닥"}
     for key, name in alias.items():
@@ -347,18 +442,24 @@ def read_daily_levels(path):
             node = flat or None
         if not isinstance(node, dict):
             continue
-        s1 = s2 = None
+        lv = {"s1": None, "s2": None, "r1": None, "r2": None, "close": None}
         for k2, v2 in node.items():
             kk = str(k2).lower()
             num = fnum(v2)
             if num is None:
                 continue
-            if kk in ("s1", "support1", "first", "1", "l1") and s1 is None:
-                s1 = num
-            elif kk in ("s2", "support2", "second", "2", "l2") and s2 is None:
-                s2 = num
-        if s1 is not None or s2 is not None:
-            out["markets"][name] = {"s1": s1, "s2": s2}
+            if kk in ("s1", "support1", "first", "1", "l1") and lv["s1"] is None:
+                lv["s1"] = num
+            elif kk in ("s2", "support2", "second", "2", "l2") and lv["s2"] is None:
+                lv["s2"] = num
+            elif kk in ("r1", "resist1", "resistance1") and lv["r1"] is None:
+                lv["r1"] = num
+            elif kk in ("r2", "resist2", "resistance2") and lv["r2"] is None:
+                lv["r2"] = num
+            elif kk in ("close", "prevclose", "prev_close") and lv["close"] is None:
+                lv["close"] = num
+        if any(lv[k] is not None for k in lv):
+            out["markets"][name] = lv
     if not out["markets"]:
         return None
     return out
@@ -369,12 +470,13 @@ def pick_theme_leaders(tabs, limit=3):
 
     같은 종목이 여러 테마에 중복으로 잡히므로(예: 파수AI — 재택근무·마이데이터),
     앞선 테마에서 이미 쓴 종목은 뒤 테마에서 빼고, 남는 대장주가 없으면 테마도 뺀다.
+    300억 미만 동반 상승 종목은 '동반'으로만 붙인다(대장주로 쓰지 않는다).
     """
     out = []
     seen = set()
     for t in (tabs or {}).get("themes") or []:
         stocks = t.get("stocks") or []
-        big = []
+        big, small = [], []
         for s in stocks:
             val = s.get("value")
             p = s.get("changePct")
@@ -382,16 +484,22 @@ def pick_theme_leaders(tabs, limit=3):
                 continue
             if s.get("name") in seen:
                 continue
+            row = {
+                "name": s.get("name"),
+                "pct": round(float(p), 2),
+                "value_eok": val / 1e8,
+                "value_basis": s.get("valueBasis"),
+                "upper_limit": bool(s.get("upperLimit")),
+                "role": s.get("role"),
+            }
             if val >= BIG_VALUE_WON and p > 0:
-                big.append({
-                    "name": s.get("name"),
-                    "pct": round(float(p), 2),
-                    "value_eok": val / 1e8,
-                    "value_basis": s.get("valueBasis"),
-                })
+                big.append(row)
+            elif p > 0 and val >= 5_000_000_000:      # 50억↑ 동반 상승만
+                small.append(row)
         if not big:
             continue
         big.sort(key=lambda x: (-x["value_eok"], -x["pct"]))
+        small.sort(key=lambda x: (-x["value_eok"], -x["pct"]))
         for s in big:
             seen.add(s["name"])
         out.append({
@@ -405,13 +513,14 @@ def pick_theme_leaders(tabs, limit=3):
             "total": t.get("stockCount"),
             "leaders": big[:3],
             "leaders_by_pct": sorted(big, key=lambda x: -x["pct"])[:2],
+            "co_movers": small[:2],
         })
         if len(out) >= limit:
             break
     return out
 
 
-def pick_decliners(tabs):
+def pick_decliners(tabs, limit=2):
     """tabs-live searchTop — 거래대금 300억↑ 하락 대표주."""
     rows = []
     for s in (tabs or {}).get("searchTop") or []:
@@ -426,28 +535,33 @@ def pick_decliners(tabs):
     for r in (by_value[:1] + by_pct[:1]):
         if all(r["name"] != p["name"] for p in picked):
             picked.append(r)
-    return picked
+    return picked[:limit]
 
 
 def pick_upper_limit(tabs):
     ul = (tabs or {}).get("upperLimit") or {}
-    rows = []
-    for s in ul.get("confirmed") or []:
-        rows.append({
-            "name": s.get("name"),
-            "pct": round(float(s.get("changePct")), 2) if s.get("changePct") is not None else None,
-            "value_text": s.get("valueText"),
-        })
+
+    def rows_of(name, n=3):
+        out = []
+        for s in ul.get(name) or []:
+            out.append({
+                "name": s.get("name"),
+                "pct": round(float(s.get("changePct")), 2) if s.get("changePct") is not None else None,
+                "value_text": s.get("valueIntegText") or s.get("valueDispText") or s.get("valueText"),
+            })
+        return out[:n]
+
     counts = ul.get("counts") or {}
     return {
         "count": counts.get("confirmed"),
         "near": counts.get("near"),
-        "rows": rows[:3],
+        "rows": rows_of("confirmed"),
+        "near_rows": rows_of("near", 2),
     }
 
 
 def pick_futures(tabs):
-    """KIS 코스피200 선물 — 체결이 있는 시세를 고른다.
+    """KIS 코스피200 선물 — 체결이 있는 시세를 고르고 베이시스까지 넘긴다.
 
     장전에는 야간(CM), 정규장에는 주간. 개장 직후 주간 시세가 0으로 비어 있으면
     다른 세션으로 건너뛰어 '0.00'을 보내지 않는다.
@@ -460,7 +574,7 @@ def pick_futures(tabs):
     q = next((c for c in cands if c.get("price")), None)
     if q is None:
         return None
-    contract = q.get("contract") or {}
+    contract = q.get("contract") or fk.get("contract") or {}
     return {
         "price": q.get("price"),
         "change": q.get("change"),
@@ -471,10 +585,17 @@ def pick_futures(tabs):
         "label": contract.get("label"),
         "as_of": q.get("asOfKst"),
         "disparity": q.get("disparity"),
+        "basis": q.get("basis"),
+        "market_basis": q.get("marketBasis"),
+        "kospi200": q.get("kospi200"),
+        "open_interest": q.get("openInterest"),
+        "oi_delta": q.get("openInterestDelta"),
+        "volume": q.get("volume"),
+        "prev_close": q.get("prevClose"),
     }
 
 
-def pick_news(tabs, limit=3):
+def pick_news(tabs, limit=6):
     rows = []
     for n in (tabs or {}).get("news") or []:
         title = (n.get("title") or "").strip()
@@ -485,11 +606,77 @@ def pick_news(tabs, limit=3):
             "press": n.get("press") or "",
             "time": n.get("time") or "",
             "impact": n.get("impactLevel") or "",
-            "themes": n.get("matchedThemes") or [],
+            "direction": n.get("impactDirection") or "",
+            "themes": [t for t in (n.get("matchedThemes") or []) if t],
+            "beneficiaries": [b.get("name") for b in (n.get("beneficiaryStocks") or []) if b.get("name")][:3],
         })
         if len(rows) >= limit:
             break
     return rows
+
+
+def _theme_key(name):
+    """테마 이름 비교용 — 괄호·공백·가운뎃점 제거."""
+    s = re.sub(r"\([^)]*\)", "", str(name or ""))
+    s = re.sub(r"[\s·,/]", "", s)
+    return s.lower()
+
+
+def attach_news_to_themes(themes, news):
+    """뉴스 matchedThemes ↔ 테마 이름을 느슨하게 맞춰 테마별 재료 헤드라인을 붙인다.
+
+    확실히 맞는 것만 붙인다(없으면 None). 재료를 지어내지 않기 위한 장치.
+    """
+    for t in themes:
+        keys = {_theme_key(t.get("name"))}
+        hit = None
+        for n in news or []:
+            for mt in n.get("themes") or []:
+                mk = _theme_key(mt)
+                if not mk:
+                    continue
+                if mk in keys or any(k and (k in mk or mk in k) for k in keys):
+                    hit = n
+                    break
+            if hit:
+                break
+        t["news"] = hit
+    return themes
+
+
+def flow_verdict(fl):
+    """외인 현·선물 판정 — 사용자가 정한 임계치(현물 ±1,000억 · 선물 ±1,500계약).
+
+    현물이 0(집계 전)이거나 한쪽이 없으면 판정하지 않는다 — 0을 '순매수'로 읽지 않는다.
+    """
+    spot = fl.get("spot_foreign_total")
+    fut = (fl.get("fut") or {}).get("foreign")
+    if spot is None or fut is None or spot == 0 or fut == 0:
+        return None
+    spot_t, fut_t = 1000.0, 1500.0
+    spot_big = abs(spot) >= spot_t
+    fut_big = abs(fut) >= fut_t
+    if not (spot_big or fut_big or abs(spot) >= 3000 or abs(fut) >= 3000):
+        return {
+            "label": "중립(임계 미달)",
+            "spot": spot, "fut": fut,
+            "text": f"임계 미달 — 현물 {sgn(spot)}억 / 선물 {sgn(fut)}계약 (현물 ±1,000억·선물 ±1,500계약 기준)",
+        }
+    if spot > 0 and fut > 0:
+        label = "쌍매수"
+        if spot_big and fut_big:
+            label = "쌍매수(적극)"
+    elif spot < 0 and fut < 0:
+        label = "쌍매도"
+        if spot_big and fut_big:
+            label = "쌍매도(적극)"
+    else:
+        side = "현물 매도·선물 매수" if spot < 0 < fut else "현물 매수·선물 매도"
+        label = f"엇갈림({side})"
+    return {
+        "label": label, "spot": spot, "fut": fut,
+        "text": f"{label} — 현물 {sgn(spot)}억 / 선물 {sgn(fut)}계약",
+    }
 
 
 def collect(script_dir, use_fixture=None, verbose=True):
@@ -505,6 +692,9 @@ def collect(script_dir, use_fixture=None, verbose=True):
         "weekday": WEEKDAY_KO[now.weekday()],
     }
 
+    fx = None
+    supply = None
+
     if use_fixture:
         with open(os.path.join(use_fixture, "tabs_live.json"), encoding="utf-8") as f:
             tabs = json.load(f)
@@ -514,6 +704,12 @@ def collect(script_dir, use_fixture=None, verbose=True):
         themes = json.load(open(os.path.join(use_fixture, "themes.json"), encoding="utf-8"))
         member_path = os.path.join(use_fixture, "members.json")
         members = json.load(open(member_path, encoding="utf-8")) if os.path.exists(member_path) else {}
+        fx_path = os.path.join(use_fixture, "fx.json")
+        if os.path.exists(fx_path):
+            fx = json.load(open(fx_path, encoding="utf-8"))
+        supply_path = os.path.join(use_fixture, "supply.json")
+        if os.path.exists(supply_path):
+            supply = json.load(open(supply_path, encoding="utf-8"))
     else:
         tabs, err = fetch_tabs_live()
         if err:
@@ -535,6 +731,14 @@ def collect(script_dir, use_fixture=None, verbose=True):
             except Exception as e2:  # noqa: BLE001
                 facts["errors"].append(f"index-api: {e2}")
                 log(f"⚠️ 관제탑 지수도 실패 — {e2}")
+
+        try:
+            fx = fetch_fx()
+            if verbose:
+                log(f"✓ 환율 원/달러 {fx['price']} ({fx['pct']}%)")
+        except Exception as e:  # noqa: BLE001
+            facts["errors"].append(f"fx: {e}")
+            log(f"⚠️ 환율 실패 — {e}")
 
         for market in ("KOSPI", "KOSDAQ"):
             try:
@@ -567,6 +771,8 @@ def collect(script_dir, use_fixture=None, verbose=True):
         price = live.get("price")
         change = live.get("change")
         p = live.get("pct")
+        # 장 시작 전·마감 후에는 0.00%가 '집계 전' 값이다 — 실시간 등락으로 읽히지 않게 표시
+        stale = (change == 0 and str(live.get("market_status") or "").upper() in ("PREOPEN", "CLOSE"))
         prev = det.get("prev_close")
         if prev is None and price is not None and change is not None:
             prev = round(price - change, 2)
@@ -582,8 +788,10 @@ def collect(script_dir, use_fixture=None, verbose=True):
             "low": live.get("low") or det.get("low"),
             "prev_close": prev,
             "value_eok": won_to_eok(value_won),
+            "value_text": det.get("value_text"),
             "breadth": breadth,
             "market_status": live.get("market_status"),
+            "stale": stale,
         }
 
     facts["indices"] = [idx_row("KOSPI", "코스피"), idx_row("KOSDAQ", "코스닥")]
@@ -604,6 +812,9 @@ def collect(script_dir, use_fixture=None, verbose=True):
         t = trend.get(code) or {}
         if all(t.get(k) is None for k in ("foreign", "organ", "personal")):
             return None
+        # 장 시작 전에는 0으로 채운 빈 값이 온다 — 0은 실측 수급이 아니라 '집계 전'이다
+        if all((t.get(k) or 0) == 0 for k in ("foreign", "organ", "personal")):
+            return None
         return {
             "foreign": t.get("foreign"),
             "organ": t.get("organ"),
@@ -623,12 +834,22 @@ def collect(script_dir, use_fixture=None, verbose=True):
         "basis_date": (k or {}).get("bizdate") or (q or {}).get("bizdate") or (fu or {}).get("bizdate"),
         "program": (detail.get("KOSPI") or {}).get("program"),
     }
+    facts["flows"]["verdict"] = flow_verdict(facts["flows"])
+
+    # ---------- 환율·수급 종목 ----------
+    facts["fx"] = fx
+    if supply is None and not use_fixture:
+        sp = os.path.abspath(os.path.join(script_dir, "..", "public", "data", "supply-latest.json"))
+        supply = read_supply(sp)
+    facts["supply"] = supply
 
     # ---------- 테마 ----------
-    facts["themes"] = pick_theme_leaders(tabs)
+    themes_out = pick_theme_leaders(tabs)
+    news = pick_news(tabs)
+    facts["themes"] = attach_news_to_themes(themes_out, news)
     facts["decliners"] = pick_decliners(tabs)
     facts["upper_limit"] = pick_upper_limit(tabs)
-    facts["news"] = pick_news(tabs)
+    facts["news"] = news
 
     weak = []
     if themes:
@@ -683,6 +904,8 @@ def facts_text(f):
     L.append(f"[기준 시각] {a['date_label']} {a['time_sec']} KST · "
              f"{(f['tabs'] or {}).get('session_phase') or '장중'} · "
              f"시장상태 {(f['tabs'] or {}).get('market_status') or f.get('market_status') or '미수신'}")
+    if (f["tabs"] or {}).get("session_label"):
+        L.append(f"[세션] {f['tabs']['session_label']}")
     if (f["tabs"] or {}).get("generated_at_label"):
         L.append(f"[관제탑 API 기준] {f['tabs']['generated_at_label']}")
     L.append("")
@@ -703,14 +926,18 @@ def facts_text(f):
             parts.append(f"저 {r['low']:,.2f}")
         if r["value_eok"] is not None:
             parts.append(f"대금 {eok_text(r['value_eok'])}")
+        elif r.get("value_text"):
+            parts.append(f"대금 {r['value_text']}")
         L.append(" · ".join(parts))
         b = r.get("breadth") or {}
-        if b.get("up") is not None:
+        if r.get("stale"):
+            L.append("  ※ 장 시작 전·마감 후 — 위 등락률 0.00%는 집계 전 값이며 직전 거래일 종가입니다.")
+        if b.get("up") is not None and not (b.get("up") == 0 and b.get("down") == 0 and r.get("stale")):
             L.append(f"  {r['name']} 상승 {int(b['up'])} / 하락 {int(b['down'])} / 보합 {int(b.get('flat') or 0)}"
                      f" · 상한 {int(b.get('upper') or 0)} · 하한 {int(b.get('lower') or 0)}")
     kb = (f["indices"][0].get("breadth") or {})
     qb = (f["indices"][1].get("breadth") or {})
-    if kb.get("up") is not None and qb.get("up") is not None:
+    if kb.get("up") is not None and qb.get("up") is not None and (kb["up"] + qb["up"]) > 0:
         L.append(f"상승:하락 합계 {int(kb['up'] + qb['up'])} : {int(kb['down'] + qb['down'])}")
     L.append("")
 
@@ -721,8 +948,34 @@ def facts_text(f):
             f"{fu.get('label') or '코스피200 선물'} {fu['price']:,.2f} ({sgn(fu.get('change'),2)}p, {pct_text(fu.get('pct'))})"
             f" · {fu.get('session') or ''} · {'실시간' if fu.get('live') else '실시간 아님'}"
         )
+        basis_bits = []
+        if fu.get("basis") is not None:
+            basis_bits.append(f"베이시스 {sgn(fu['basis'],2)}p")
+        if fu.get("market_basis") is not None:
+            basis_bits.append(f"시장베이시스 {sgn(fu['market_basis'],2)}p")
+        if fu.get("disparity") is not None:
+            basis_bits.append(f"괴리율 {pct_text(fu['disparity'])}")
+        if fu.get("kospi200") is not None:
+            basis_bits.append(f"코스피200 {fu['kospi200']:,.2f}")
+        if fu.get("open_interest") is not None:
+            basis_bits.append(f"미결제 {int(fu['open_interest']):,}계약")
+        if fu.get("oi_delta") is not None:
+            basis_bits.append(f"미결제 증감 {sgn(fu['oi_delta'])}계약")
+        if basis_bits:
+            L.append("  " + " · ".join(basis_bits))
+        if fu.get("prev_close") is not None:
+            L.append(f"  전일 종가 {fu['prev_close']:,.2f}")
     else:
         L.append("코스피200 선물 미수신")
+    L.append("")
+
+    fx = f.get("fx")
+    L.append("[환율]")
+    if fx:
+        L.append(f"{fx['name']} {fx['price']:,.2f}원 ({sgn(fx.get('change'),2)}, {pct_text(fx.get('pct'))})"
+                 f" · 기준 {fx.get('traded_date') or '미상'}")
+    else:
+        L.append("원/달러 미수신")
     L.append("")
 
     fl = f.get("flows") or {}
@@ -733,14 +986,54 @@ def facts_text(f):
             L.append(f"{label} 수급 미수신")
             continue
         L.append(f"{label} 외국인 {sgn(r['foreign'])}억 · 기관 {sgn(r['organ'])}억 · 개인 {sgn(r['personal'])}억")
+    if not fl.get("kospi") and not fl.get("kosdaq"):
+        L.append("※ 현물 투자자별 수급은 아직 집계 전입니다(장 시작 후값이 잡힙니다). 0을 쓰지 말고 '집계 전'이라 적으십시오.")
     if fl.get("spot_foreign_total") is not None:
         L.append(f"현물 합계 외국인 {sgn(fl['spot_foreign_total'])}억 · 기관 {sgn(fl['spot_organ_total'])}억")
     r = fl.get("fut")
     if r:
-        L.append(f"선물 외국인 {sgn(r['foreign'])}계약 · 기관 {sgn(r['organ'])}계약 · 개인 {sgn(r['personal'])}계약")
+        L.append(f"선물 외국인 {sgn(r['foreign'])}계약 · 기관 {sgn(r['organ'])}계약 · 개인 {sgn(r['personal'])}계약"
+                 f" (기준 {md_date(r.get('bizdate')) or '미수신'})")
     prog = fl.get("program")
-    if prog and prog.get("total") is not None:
+    if prog and prog.get("total") is not None and not (prog["total"] == 0 and prog.get("bi") == 0):
         L.append(f"프로그램 순매수 {sgn(prog['total'])}억 (비차익 {sgn(prog.get('bi'))}억)")
+    elif prog:
+        L.append("프로그램 매매 집계 전")
+    v = fl.get("verdict")
+    if v:
+        L.append(f"외인 현·선물 판정: {v['text']}")
+    else:
+        L.append("외인 현·선물 판정: 판정 보류(현물 또는 선물 집계 전)")
+    L.append("")
+
+    sup = f.get("supply")
+    L.append("[수급 종목] " + (f"확정 {sup.get('basis_label')} 기준" if sup and sup.get("basis_label") else "확정 기준일 미수신"))
+
+    def sup_line(rows, key):
+        bits = []
+        for x in rows or []:
+            amt = x.get(key)
+            if amt is None:
+                continue
+            bits.append(f"{x['name']} {sgn(amt)}억")
+        return ", ".join(bits)
+
+    if sup:
+        fb = sup_line(sup.get("foreign_buy"), "foreign_eok")
+        ob = sup_line(sup.get("organ_buy"), "organ_eok")
+        fs = sup_line(sup.get("foreign_sell"), "foreign_eok")
+        db = ", ".join(f"{x['name']}(외인 {sgn(x.get('foreign_eok'))}억·기관 {sgn(x.get('organ_eok'))}억)"
+                       for x in sup.get("dual_buy") or [])
+        if fb:
+            L.append(f"- 외국인 순매수 상위: {fb}")
+        if ob:
+            L.append(f"- 기관 순매수 상위: {ob}")
+        if fs:
+            L.append(f"- 외국인 순매도 상위: {fs}")
+        if db:
+            L.append(f"- 외인·기관 동반 매수: {db}")
+    if not sup:
+        L.append("- 종목별 수급 미수신")
     L.append("")
 
     L.append("[받는 쪽 — 주도 테마, 거래대금 300억↑ 상승 대장주]")
@@ -753,10 +1046,18 @@ def facts_text(f):
             else:
                 strength = pct_text(t.get("calc_pct"))
                 basis = f"{t.get('basis_label') or ''}, "
-            head = f"{t['rank']}위 {t['name']} {strength} ({basis}구성 {int(t.get('total') or 0)} · 상승 {int(t.get('rise') or 0)}/하락 {int(t.get('fall') or 0)})"
+            head = (f"{t['rank']}위 {t['name']} {strength} ({basis}구성 {int(t.get('total') or 0)}"
+                    f" · 상승 {int(t.get('rise') or 0)}/하락 {int(t.get('fall') or 0)})")
             L.append(head)
             for s in t.get("leaders") or []:
-                L.append(f"   - {s['name']} {pct_text(s['pct'])} · 대금 {money_text_eok(s['value_eok'])} ({s.get('value_basis') or ''})")
+                extra = " · 상한가" if s.get("upper_limit") else ""
+                L.append(f"   - 대장 {s['name']} {pct_text(s['pct'])} · 대금 {money_text_eok(s['value_eok'])}"
+                         f" ({s.get('value_basis') or ''}){extra}")
+            for s in t.get("co_movers") or []:
+                L.append(f"   - 동반(300억 미만) {s['name']} {pct_text(s['pct'])} · 대금 {money_text_eok(s['value_eok'])}")
+            n = t.get("news")
+            if n:
+                L.append(f"   - 재료(뉴스): {n['title']} ({n.get('press') or ''} {n.get('time') or ''})")
     else:
         L.append("주도 테마 미수신")
     L.append("")
@@ -774,28 +1075,49 @@ def facts_text(f):
     L.append("")
 
     ul = f.get("upper_limit") or {}
-    if ul.get("count") is not None:
+    if ul.get("count") is not None and (ul.get("count") or 0) + (ul.get("near") or 0) > 0:
         names = ", ".join(f"{r['name']} {pct_text(r['pct'])}" for r in ul.get("rows") or [])
         L.append(f"[상한가] 확정 {int(ul['count'])}종목" + (f" — {names}" if names else ""))
+        if ul.get("near") is not None:
+            near = ", ".join(f"{r['name']} {pct_text(r['pct'])}" for r in ul.get("near_rows") or [])
+            L.append(f"  상한가 임박 {int(ul['near'])}종목" + (f" — {near}" if near else ""))
+        L.append("")
+    elif ul.get("count") is not None:
+        L.append("[상한가] 집계 전(확정 0 · 임박 0)")
         L.append("")
 
     L.append("[기준선]")
     lv = f.get("levels")
     if lv and lv.get("markets"):
         for name, node in lv["markets"].items():
-            s1 = node.get("s1")
-            s2 = node.get("s2")
-            L.append(f"{name} 1차 {s1:,.2f} · 2차 {s2:,.2f}" if s1 is not None and s2 is not None
-                     else f"{name} " + (f"1차 {s1:,.2f}" if s1 is not None else f"2차 {s2:,.2f}"))
+            bits = []
+            if node.get("s1") is not None:
+                bits.append(f"1차 지지 {node['s1']:,.2f}")
+            if node.get("s2") is not None:
+                bits.append(f"2차 지지 {node['s2']:,.2f}")
+            if node.get("r1") is not None:
+                bits.append(f"저항1 {node['r1']:,.2f}")
+            if node.get("r2") is not None:
+                bits.append(f"저항2 {node['r2']:,.2f}")
+            if node.get("close") is not None:
+                bits.append(f"전일 종가 {node['close']:,.2f}")
+            if bits:
+                L.append(f"{name} " + " · ".join(bits))
         L.append(f"(출처 daily_levels.json {lv.get('date') or ''})")
+        if lv.get("note"):
+            L.append(f"(기준 메모: {lv['note']})")
     else:
         L.append("저장된 1·2차 지지선 없음 — 전일 종가를 기준선으로 판단할 것")
     L.append("")
 
     if f.get("news"):
-        L.append("[뉴스]")
+        L.append("[뉴스·재료]")
         for n in f["news"]:
-            L.append(f"- {n['title']} ({n.get('press') or ''} {n.get('time') or ''})")
+            tag = ""
+            if n.get("impact"):
+                tag = f"[{n['impact']}" + (f"/{n['direction']}" if n.get("direction") else "") + "] "
+            themes = f" → 관련테마: {', '.join(n['themes'])}" if n.get("themes") else ""
+            L.append(f"- {tag}{n['title']} ({n.get('press') or ''} {n.get('time') or ''}){themes}")
         L.append("")
 
     if f.get("long"):
@@ -816,56 +1138,88 @@ def facts_text(f):
     return "\n".join(L).strip()
 
 
-SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 속보 작성자다.
-아래 FACTS에 적힌 실측값만으로 텔레그램용 5단 속보 본문을 쓴다.
+SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정통 브리핑 작성자다.
+아래 FACTS에 적힌 실측값만으로, 정규 브리핑의 70~80% 분량(2,000~3,200자) 텔레그램 본문을 쓴다.
+읽는 사람은 장중에 폰으로 잠깐 보는 개인 투자자다. 숫자·수급·테마·기준선이 한 번에 잡혀야 한다.
 
 [절대 규칙]
-1. FACTS에 있는 숫자만 쓴다. FACTS에 없는 숫자·전망치·목표가·예상 지수를 만들지 않는다.
+1. FACTS에 있는 숫자만 쓴다. FACTS에 없는 숫자·전망치·목표가·예상 지수·지표(VIX·국채금리·달러인덱스 등)를 만들지 않는다.
 2. 합계·평균·증감률을 새로 계산하지 않는다. FACTS에 이미 적힌 값만 인용한다.
-3. 숫자는 FACTS의 표기(쉼표·소수점)를 그대로 옮긴다. 단위(억/조/계약/%/p)를 바꾸지 않는다.
-4. FACTS가 '미수신'이거나 '실시간 아님'이라고 하면 그 사실을 숨기지 않고 그대로 적는다.
-5. FACTS의 날짜·시각을 바꾸지 않는다. 오늘 날짜와 다른 기준일이면 '기준 11/25'처럼 기준일을 밝힌다.
-6. 출력은 아래 4개 블록만. 머리말·인사·인사말·설명·면책·마크다운(**·##·표) 금지.
-   첫 줄은 헤드라인 **문장만** 쓴다. '헤드라인:' 같은 접두어를 붙이지 않는다.
-7. 전체 900자 이내. 각 블록 1~3줄. 폴드8 세로 화면에서 읽기 좋게 한 줄에 몰아쓰지 않는다.
-8. 매수·매도 '추천'이 아니라 판단과 대응만 쓴다. 근거 없는 확신('반드시', '무조건') 금지.
-9. 🔄 는 정확히 두 줄이다(더 만들지 않는다).
-   - 받는 쪽: '업종 — 대장 종목'을 한 줄에.
-   - 빠지는 쪽: 하락 업종 한 줄. 업종이 없을 때만 '하락 대표 종목' 한 줄을 쓴다.
-   업종과 종목을 서로 다른 출처에서 끌어다 '—'로 이어 붙이지 않는다.
-10. 🧭 첫 줄에는 반드시 숫자를 넣어 기준선과의 관계를 적는다
-    (예: '코스피 4,697.51 — 전일 종가 5,006.03 대비 -6.16%').
-11. [기준 시각]의 국면을 지켜라. '장전'·'정규장'이면 '마감'·'종가 확정'이라고 쓰지 않는다
-    (장중이면 '장중'·'현재'로 쓴다). 선물이 '실시간 아님'이면 세션 표기를 함께 적는다.
-12. 원인·이유는 FACTS의 [뉴스]·[수급]에 적힌 것만 쓴다. FACTS에 없는 원인 추정
-    ('패닉', '실망 매물', '차익실현', '기관 매도')을 새로 만들지 않는다.
+3. 숫자는 FACTS의 표기(쉼표·소수점)를 그대로 옮긴다. 단위(억/조/계약/%/p)와 기준을 바꾸지 않는다.
+4. FACTS가 '미수신'·'미집계'·'실시간 아님'이라고 하면 숨기지 말고 그대로 적는다.
+5. FACTS의 날짜·시각을 바꾸지 않는다. 수급 기준일이 오늘이 아니면 '기준 11/25'처럼 기준일을 밝힌다.
+6. 출력은 맨 첫 줄 헤드라인 + 아래 5개 블록만. 인사·서론·면책·맺음말·마크다운(**·##·표·```) 금지.
+7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄 / 📊 5~7줄 / 💰 6~8줄(해석 2~3줄 포함)
+   / 🔥 10~14줄(테마당 3~4줄) / 🧭 5~7줄. 한 줄은 40~70자로 끊어 폰 화면에서 읽히게 하고,
+   한 줄에 몰아 쓰지 말고 항목마다 '- '로 시작하는 줄로 나눈다.
+8. 매수·매도 '추천'이 아니라 조건부 대응만 쓴다. '반드시·무조건·수익 보장' 금지.
+9. 원인·재료는 FACTS의 [뉴스·재료]·[수급 종목]에 적힌 것만 쓴다. FACTS에 없는 원인 추정
+   ('패닉', '실망 매물', '차익실현', '기관 매도', '외인 환헤지')을 새로 만들지 않는다.
+   해석을 붙이는 줄은 반드시 '[해석]'으로 시작한다.
+10. [기준 시각]의 국면을 지킨다. '장전'·'프리마켓'이면 '마감'·'종가 확정'·'출발'·'개장'이라고 쓰지 않고,
+    선물이 '실시간 아님'이면 세션 표기(예: 15:45 마감)를 함께 적는다.
+    FACTS가 '집계 전'이라 적은 값(등락 0.00%·수급 0억·등락종목수 0)은 0으로 쓰지 말고 '집계 전'이라 쓰며,
+    그것으로 시장 방향을 단정하지 않는다.
+11. 거래대금 300억 미만 종목은 '동반'으로만 언급한다. 대장주로 쓰지 않는다.
+12. 상한가는 FACTS에 '상한가' 표시가 있는 종목만 그렇게 쓴다. 등락률만 보고 단정하지 않는다.
+13. 순위는 FACTS에 적힌 순위만 쓴다('대금 1위' 같은 새 순위 주장 금지). 테마·종목·공시를 새로 만들지 않는다.
+14. 모든 문장은 '~습니다/~입니다' 존댓말. 이모지는 형식에 있는 것만 쓴다.
 
-[출력 형식 — 첫 줄은 헤드라인 문장 하나]
-{지수 방향 + 핵심 수급 또는 주도 테마를 25자 내외로}
-📊 지수
-코스피 {값} ({등락}) · 코스닥 {값} ({등락}) · 선물 {값} ({등락}, {세션}) · 상승:하락 코스피 {상승}:{하락} / 코스닥 {상승}:{하락}
-💰 수급
-외국인 현물 코스피 {값}·코스닥 {값} / 외국인 선물 {계약} · 기관 현물 코스피 {값}·코스닥 {값} · 개인 코스피 {값} ({기준일})
-🔄 빠지는 쪽 vs 받는 쪽
-- 받는 쪽: {업종} {등락} — 대장 {종목} {등락} ({대금})
-- 빠지는 쪽: {업종} {등락}
-🧭 폭스시그널의 시각
-{숫자가 들어간 기준선 판단 1줄 — 지지/이탈/근접}
-{대응 1줄 — 관망/분할/추격금지/비중축소 중에서 단호하게}
+[출력 형식]
+{헤드라인 한 줄 — 지수 방향 + 핵심 수급 또는 대장 테마, 30자 안팎}
+
+📌 한줄 요약
+코스피 {값} {등락률} · 코스닥 {값} {등락률} · 외인 {현·선물 판정} · 대장 테마 {테마} — {지금 대응 한 줄}
+
+📊 핵심 지표 & 매크로
+- 코스피 {값} ({등락}p / {등락률}) — 전일 종가 {값}, 고 {값} · 저 {값}
+- 코스닥 {값} ({등락}p / {등락률})
+- 선물 {값} ({등락률}, {세션}) · 베이시스 {값}p
+- 상승:하락 코스피 {상승}:{하락} / 코스닥 {상승}:{하락} · 상한가 {개수}종목
+- 원/달러 {값}원 ({등락률}, {기준일})
+
+💰 투자자별 수급 & 흐름 해석
+- 외국인 현물 코스피 {값} · 코스닥 {값} / 선물 {계약} ({기준일})
+- 기관 현물 코스피 {값} · 코스닥 {값} / 선물 {계약}
+- 개인 코스피 {값} · 프로그램 {값}
+- [해석] {왜 이런 수급이 나왔는지, 어떤 의미인지 — FACTS 근거로 2~3줄}
+
+🔥 장중 주도 테마 & 대장주 (거래대금 300억↑)
+- {테마1} {등락률}: {대장주} {등락률} ({거래대금}) — {재료 또는 수급}
+  동반 {종목} {등락률} · 구성 {상승}상승/{하락}하락
+- {테마2} {등락률}: {대장주} {등락률} ({거래대금}) — {재료}
+- {테마3} {등락률}: {대장주} {등락률} ({거래대금})
+- 빠지는 쪽: {업종} {등락률} — 대표 {종목} {등락률} ({거래대금})
+
+🧭 오늘 시장 전망 & 시나리오 · 기준선 대응
+- 현재 코스피 {값} — 1차 지지 {값} 대비 {위/아래}, 2차 지지 {값}
+- ① 돌파·유지: {숫자 조건} → {행동}
+- ② 박스: {숫자 조건} → {행동}
+- ③ 이탈: {숫자 조건} → {행동}
+- 체크포인트: {다음에 확인할 것 — FACTS의 기준선·수급·상한가 중에서}
 """ + CHECKER_URL + """
 
 [작성 지침]
-- 헤드라인은 FACTS의 지수·수급·테마를 조합해 한 문장으로. '무엇이 왜'인지 드러나게.
-- 📊 는 FACTS의 지수·선물·상승:하락만. 상승:하락은 **코스피·코스닥을 따로** 쓴다(합계만 쓰지 않는다).
-- 💰 는 시장 전체 투자자별 수급(현물 억원, 선물 계약). 기준일이 오늘이 아니면 '(기준 M/D)'를 붙인다.
-- 🔄 받는 쪽은 FACTS의 주도 테마와 300억↑ 대장주, 빠지는 쪽은 하락 업종, 약한 종목은 하락 대표주에서 고른다.
-- 🧭 은 FACTS의 [기준선] 또는 전일 종가와 현재 지수를 비교해 판단한다. 지지선이 없으면 전일 종가를 기준으로 쓴다.
-- 🧭 둘째 줄은 행동 지침을 15자 이상으로 쓴다(예: '전일 종가 회복 전까지 추격 금지·비중 축소'). 한 단어로 끝내지 않는다.
-- 선물이 '실시간 아님'이면 표기 그대로 두고, 실시간인 것처럼 쓰지 않는다.
-- 문장은 짧게. 이모지는 형식에 있는 것만 쓴다."""
+- 📌 는 정확히 한 줄이다(두 줄 금지). 지수 방향·외인 현선물 판정·대장 테마·대응이 모두 들어가야 한다.
+- 📊 는 FACTS의 지수·선물·베이시스·등락종목수·상한가·환율만 쓴다. 없는 값은 그 줄을 빼고 '미수신'으로 남긴다.
+  코스피·코스닥은 전일 종가·고가·저가·거래대금을 각각 한 줄로 나눠 적는다.
+- 💰 는 시장 전체 투자자별 수급(현물 억원, 선물 계약)과 프로그램 수치를 줄별로 쓰고, 이어서 [수급 종목]의
+  외인·기관 순매수·순매도 상위 종목을 근거로 '[해석]' 줄을 2~3줄 쓴다. 해석은 FACTS에 있는 종목·수급·뉴스로만 연결한다.
+- 🔥 는 [받는 쪽]의 2~3개 테마를 순서대로 쓴다. 테마마다 ① 첫 줄: 테마·등락률·(구성 상승/하락)
+  ② 둘째 줄: 대장주와 등락률·거래대금 ③ 셋째 줄: 동반 종목과 재료(뉴스) — 로 나눠 적는다.
+  '재료(뉴스)'가 FACTS에 붙어 있을 때만 그 헤드라인을 인용하고, 없으면 재료를 지어내지 말고
+  수급·등락만 쓴다. 마지막 두 줄은 [빠지는 쪽]을 대비시킨다. 하락 업종 이름이 FACTS에 없으면
+  '하락 대표 {종목}'만 쓰고 '업종 미수신'과 종목을 '—'로 이어 붙이지 않는다.
+- 🧭 는 [기준선]의 1차·2차 지지와 저항을 써서 세 경우(① 돌파·유지 / ② 박스 / ③ 이탈)를 숫자로 나눈다.
+  지지선이 없으면 전일 종가를 기준으로 쓴다. 각 경우의 행동은 '관망 / 분할 / 추격 금지 / 비중 축소' 중에서
+  조건과 함께 단호하게 쓴다. 마지막 줄은 다음 확인 항목이다.
+- 같은 숫자를 여러 블록에서 다시 써도 된다. 분량을 채우려고 없는 사실을 늘리지는 않는다.
+  단, FACTS에 있는 수치·종목·테마·기준선은 빠짐없이 인용한다(인용만으로 분량이 채워진다).
+- 다 쓰고 나서 글자 수를 세라. 2,000자보다 짧으면 FACTS에 있는 다른 수치·종목·기준선을 각 블록에 더 붙여 늘려라.
+- 문장은 짧고 단정하게. '~로 보입니다'를 반복하지 말고 근거 숫자를 먼저 쓴다."""
 
 
-def call_gemini(api_key, model, system_prompt, user_text, timeout=60, max_tokens=1400,
+def call_gemini(api_key, model, system_prompt, user_text, timeout=60, max_tokens=4096,
                 temperature=0.35, thinking_budget=0):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     body = {
@@ -879,8 +1233,26 @@ def call_gemini(api_key, model, system_prompt, user_text, timeout=60, max_tokens
         url, data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json", "User-Agent": UA},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        data = json.loads(r.read().decode("utf-8", "replace"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:  # noqa: BLE001
+            pass
+        # thinkingConfig 미지원 모델이면 한 번만 빼고 재시도
+        if e.code == 400 and "thinking" in detail.lower() and "thinkingConfig" in body["generationConfig"]:
+            body["generationConfig"].pop("thinkingConfig", None)
+            req = urllib.request.Request(
+                url, data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": UA},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = json.loads(r.read().decode("utf-8", "replace"))
+        else:
+            raise
     cands = data.get("candidates") or []
     if not cands:
         raise RuntimeError(f"후보 없음: {json.dumps(data)[:200]}")
@@ -889,16 +1261,17 @@ def call_gemini(api_key, model, system_prompt, user_text, timeout=60, max_tokens
     if not text:
         raise RuntimeError(f"빈 응답: finish={cands[0].get('finishReason')}")
     usage = data.get("usageMetadata") or {}
+    usage["finishReason"] = cands[0].get("finishReason")
     return text, usage
 
 
 # --------------------------------------------------------------------------- #
 # 검증
 # --------------------------------------------------------------------------- #
-REQ_SECTIONS = ["📊 지수", "💰 수급", "🔄 빠지는 쪽 vs 받는 쪽", "🧭 폭스시그널의 시각"]
 NUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 URL_RE = re.compile(r"https?://\S+")
-SAFE_INTS = set(range(0, 31)) | {100, 300, 500, 1000, 1500, 2000, 3000, 5000, 2025, 2026, 2027}
+SAFE_INTS = set(range(0, 31)) | {32, 45, 50, 60, 100, 150, 200, 300, 500, 1000, 1200,
+                                1500, 2000, 2500, 3000, 3200, 4096, 2025, 2026, 2027}
 
 
 def numbers_in(text):
@@ -930,27 +1303,110 @@ def allowed_numbers(ftext):
     return allowed
 
 
-def validate_body(body, ftext, phase=None):
-    """(ok, 문제점 리스트). 숫자 창작·형식 누락을 잡는다."""
+def body_min_chars(facts):
+    """근거가 얇은 장전에는 2,000자를 강요하지 않는다(빈말로 채우는 것보다 짧은 게 낫다).
+
+    등락종목수·투자자별 수급·판정·테마·하락 섹터·상한가·종목수급 중 5개 이상이 잡히는
+    정상 장중에는 2,000자 목표를 그대로 요구한다.
+    """
+    rich = 0
+    idx = facts.get("indices") or []
+    if any((r.get("breadth") or {}).get("up") for r in idx):
+        rich += 1
+    fl = facts.get("flows") or {}
+    if fl.get("kospi"):
+        rich += 1
+    if fl.get("verdict"):
+        rich += 1
+    if facts.get("themes"):
+        rich += 1
+    if facts.get("decliners") or facts.get("weak_themes"):
+        rich += 1
+    if (facts.get("upper_limit") or {}).get("count"):
+        rich += 1
+    if facts.get("supply"):
+        rich += 1
+    return BODY_TARGET_MIN if rich >= 5 else 1400
+
+
+def normalize_headers(body):
+    """5블록 헤더를 정식 문구로 고정한다(모델이 흔들려도 양식이 유지되게)."""
+    out = []
+    for ln in body.splitlines():
+        s = ln.strip()
+        replaced = False
+        for emoji, header in BLOCK_HEADERS:
+            if s.startswith(emoji):
+                out.append(header)
+                replaced = True
+                break
+        if not replaced:
+            out.append(ln)
+    return "\n".join(out)
+
+
+def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
+    """(ok, 문제점 리스트). 숫자 창작·형식 누락·분량 미달을 잡는다."""
     problems = []
     lines = [ln.strip() for ln in body.strip().splitlines() if ln.strip()]
     if not lines:
         return False, ["본문 비어 있음"]
-    if len(lines) < 6:
-        problems.append(f"줄 수 부족({len(lines)})")
-    if len(body) > 1600:
-        problems.append(f"본문 과다({len(body)}자)")
+    if len(lines) < 14:
+        problems.append(f"줄 수 부족({len(lines)}자 아님)")
+
+    n_chars = len(body)
+    if n_chars < min_chars:
+        problems.append(f"분량 부족({n_chars}자 < {BODY_TARGET_MIN}~{BODY_TARGET_MAX}자 목표)")
+    if n_chars > BODY_MAX:
+        problems.append(f"본문 과다({n_chars}자 > {BODY_MAX}자)")
+
+    positions = {}
+    for i, ln in enumerate(lines):
+        for _, header in BLOCK_HEADERS:
+            if ln.strip() == header and header not in positions:
+                positions[header] = i
     for sec in REQ_SECTIONS:
-        if sec not in body:
+        if sec not in positions:
             problems.append(f"섹션 누락: {sec}")
-    # 🧭 대응 문장이 한 단어로 끝나지 않았는지
+    if len(positions) == len(REQ_SECTIONS):
+        order = [positions[s] for s in REQ_SECTIONS]
+        if order != sorted(order):
+            problems.append("섹션 순서 어긋남")
+
+    # 📌 한 줄 요약은 두 줄 이상이면 안 된다
     try:
-        gi = next(i for i, ln in enumerate(lines) if ln.startswith("🧭"))
-        tail = [ln for ln in lines[gi + 1:] if ln and not ln.startswith("http")]
-        if len(tail) < 2 or len(tail[-1]) < 10:
-            problems.append("🧭 판단·대응 문장 부족")
-    except StopIteration:
+        i = positions["📌 한줄 요약"]
+        j = positions["📊 핵심 지표 & 매크로"]
+        block = [ln for ln in lines[i + 1:j] if ln.strip()]
+        if len(block) > 1:
+            problems.append(f"한줄 요약이 {len(block)}줄")
+        if not block:
+            problems.append("한줄 요약 내용 없음")
+    except KeyError:
         pass
+
+    # 🧭 시나리오 3분기(① ② ③)
+    try:
+        i = positions["🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"]
+        tail = "\n".join(lines[i + 1:])
+        missing = [m for m in ("①", "②", "③") if m not in tail]
+        if missing:
+            problems.append(f"시나리오 누락: {''.join(missing)}")
+        if len(tail) < 120:
+            problems.append("🧭 분량 부족")
+    except KeyError:
+        pass
+
+    # 🔥 테마 블록에 300억↑ 대장 종목 흔적
+    try:
+        i = positions["🔥 장중 주도 테마 & 대장주 (300억↑ 실측)"]
+        j = positions["🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"]
+        block = "\n".join(lines[i + 1:j])
+        if len(block) < 150:
+            problems.append("🔥 테마 블록 분량 부족")
+    except KeyError:
+        pass
+
     if "**" in body or "##" in body:
         problems.append("마크다운 금지 위반")
     if phase in ("장전", "정규장") and re.search(r"(?:상승|하락|급락|급등|보합)\s*마감|마감했", body):
@@ -978,7 +1434,7 @@ def clean_body(text):
     t = t.replace("**", "").replace("##", "")
     lines = [ln.rstrip() for ln in t.splitlines()]
     # 헤더를 Gemini가 다시 쓴 경우 제거
-    while lines and ("장중 속보" in lines[0] and "폭스시그널" in lines[0]):
+    while lines and lines[0].lstrip().startswith("🦊"):
         lines.pop(0)
     while lines and not lines[0].strip():
         lines.pop(0)
@@ -996,103 +1452,213 @@ def clean_body(text):
         else:
             blank = 0
         out.append(ln.strip())
-    return "\n".join(out).strip()
+    return normalize_headers("\n".join(out).strip())
 
 
 def build_header(slot):
-    return f"🦊 폭스시그널 · {slot} 장중 속보 [🤖 Gemini AI 자동 작성]"
+    return f"🦊 폭스시그널 · {slot} 장중 브리핑 [🤖 Gemini AI 자동 작성]"
+
+
+def fit_telegram(text, limit=TG_LIMIT - 96):
+    """텔레그램 4,096자 한도에 맞춘다(줄 경계에서 자른다)."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    idx = cut.rfind("\n")
+    if idx > limit * 0.6:
+        cut = cut[:idx]
+    return cut.rstrip() + "\n… (분량 한도로 이하 생략)"
+
+
+def _idx_line(r):
+    if r["price"] is None:
+        return f"{r['name']} 미수신"
+    tail = "집계 전" if r.get("stale") else pct_text(r["pct"])
+    return f"{r['name']} {r['price']:,.2f} ({sgn(r['change'],2)}p / {tail})"
+
+
+def _breadth(r):
+    b = r.get("breadth") or {}
+    if b.get("up") is None:
+        return "미수신"
+    if (b.get("up") or 0) == 0 and (b.get("down") or 0) == 0:
+        return "집계 전"
+    return f"{int(b['up'])}:{int(b['down'])}"
 
 
 def fallback_body(f):
-    """Gemini 실패 시 — 실측값만으로 같은 5단 양식."""
+    """Gemini 실패 시 — 실측값만으로 같은 5블록 양식."""
     k, q = f["indices"][0], f["indices"][1]
     fl = f.get("flows") or {}
     fu = f.get("futures")
+    fx = f.get("fx")
+    lv = (f.get("levels") or {}).get("markets") or {}
+    kospi_lv = lv.get("코스피") or {}
+    kosdaq_lv = lv.get("코스닥") or {}
 
-    def idx_line(r):
-        if r["price"] is None:
-            return f"{r['name']} 미수신"
-        return f"{r['name']} {r['price']:,.2f} ({pct_text(r['pct'])})"
-
-    def breadth(r):
-        b = r.get("breadth") or {}
-        return f"{int(b['up'])}:{int(b['down'])}" if b.get("up") is not None else "미수신"
-
-    fut_line = (f"{fu['price']:,.2f} ({pct_text(fu.get('pct'))}, {fu.get('session') or ''})" if fu else "미수신")
-
-    headline_bits = [x for x in (idx_line(k), idx_line(q)) if "미수신" not in x]
+    headline_bits = [x for x in (_idx_line(k), _idx_line(q)) if "미수신" not in x]
     headline = " · ".join(headline_bits) if headline_bits else "장중 시황"
-    if fl.get("spot_foreign_total") is not None:
-        headline += f" · 외인 현물 {sgn(fl['spot_foreign_total'])}억"
-    elif f["themes"]:
+    verdict = (fl.get("verdict") or {}).get("label")
+    if verdict:
+        headline += f" · 외인 {verdict}"
+    elif f.get("themes"):
         headline += f" · {f['themes'][0]['name']} 강세"
 
-    basis = f"[기준 {md_date(fl.get('basis_date'))}] " if fl.get("basis_date") else ""
+    basis = f"기준 {md_date(fl.get('basis_date'))}" if fl.get("basis_date") else "기준일 미수신"
 
-    def side(r, label):
-        if not r:
-            return f"{label} 미수신"
-        return f"{label} 외인 {sgn(r['foreign'])}억·기관 {sgn(r['organ'])}억·개인 {sgn(r['personal'])}억"
-
-    fut_flow = (f"선물 외인 {sgn(fl['fut']['foreign'])}계약" if fl.get("fut") else "선물 수급 미수신")
-
-    recv = []
-    for t in (f.get("themes") or [])[:2]:
-        lead = (t.get("leaders") or [None])[0]
-        recv.append(f"- {t['name']} {pct_text(t.get('avg_pct'))}" + (
-            f" — {lead['name']} {pct_text(lead['pct'])} ({money_text_eok(lead['value_eok'])})" if lead else ""))
-    if not recv:
-        recv.append("- 주도 테마 미수신")
-    weak = []
-    if f.get("weak_themes"):
-        t = f["weak_themes"][0]
-        line = f"- {t['name']} {pct_text(t['pct'])}"
-        if t.get("leader"):
-            line += f" — 대표 {t['leader']['name']} {pct_text(t['leader']['pct'])} ({money_text_eok(t['leader']['value_eok'])})"
-        weak.append(line)
-    elif f.get("decliners"):
-        d = f["decliners"][0]
-        weak.append(f"- {d['name']} {pct_text(d['pct'])} ({money_text_eok(d['value_eok'])})")
-    if not weak:
-        weak.append("- 하락 대표 미수신")
-
-    # 기준선 판단
-    view = []
-    lv = (f.get("levels") or {}).get("markets") or {}
-    kospi_lv = lv.get("코스피")
-    if k["price"] is not None and kospi_lv and kospi_lv.get("s1") is not None:
+    # 📌
+    summary = " · ".join(x for x in (_idx_line(k), _idx_line(q)) if "미수신" not in x) or "지수 미수신"
+    if verdict:
+        summary += f" · 외인 {verdict}"
+    if f.get("themes"):
+        t0 = f["themes"][0]
+        lead = (t0.get("leaders") or [None])[0]
+        summary += f" · 대장 테마 {t0['name']} {pct_text(t0.get('avg_pct'))}"
+        if lead:
+            summary += f"({lead['name']} {pct_text(lead['pct'])})"
+    action_line = ""
+    if k["price"] is not None and kospi_lv.get("s1") is not None:
         if k["price"] < kospi_lv["s1"]:
-            view.append(f"코스피 {kospi_lv['s1']:,.2f} 1차 지지선 아래 — 이탈 상태")
-            action = "지지 회복 확인 전 추격 금지 · 비중 축소"
-        elif kospi_lv.get("s2") is not None and k["price"] < kospi_lv["s2"]:
-            view.append(f"코스피 1차 {kospi_lv['s1']:,.2f} 지지선 근처")
-            action = "1차 지지 확인 전 소액·관망"
+            action_line = "1차 지지 이탈 — 지지 회복 확인 전 추격 금지·비중 축소"
+        elif kospi_lv.get("r1") is not None and k["price"] >= kospi_lv["r1"]:
+            action_line = "저항1 위 유지 — 주도 테마 눌림만 분할 대응"
         else:
-            view.append(f"코스피 1차 지지선 {kospi_lv['s1']:,.2f} 위 유지")
-            action = "주도 테마 눌림만 분할 대응"
-    elif k["price"] is not None and k.get("prev_close") is not None:
-        diff = k["price"] - k["prev_close"]
-        view.append(f"코스피 전일 종가 {k['prev_close']:,.2f} 대비 {sgn(diff,2)}p ({pct_text(k.get('pct'))})")
-        action = ("전일 종가 회복 전 관망 · 추격 금지" if diff < 0 else "전일 종가 위 유지 — 주도주 눌림 분할")
+            action_line = "지지~저항 사이 박스 — 관망하며 거래대금 동반 확인"
+    else:
+        action_line = "실측값 확인 전 관망"
+    summary += f" — {action_line}"
+
+    # 📊
+    macro = [_idx_line(k), _idx_line(q)]
+    if k.get("prev_close") is not None:
+        macro.append(f"코스피 전일 종가 {k['prev_close']:,.2f}" + (f" · 대금 {eok_text(k['value_eok'])}" if k.get("value_eok") else ""))
+    if q.get("prev_close") is not None:
+        macro.append(f"코스닥 전일 종가 {q['prev_close']:,.2f}" + (f" · 대금 {eok_text(q['value_eok'])}" if q.get("value_eok") else ""))
+    if fu:
+        basis_bit = f" · 베이시스 {sgn(fu.get('basis'),2)}p" if fu.get("basis") is not None else ""
+        macro.append(f"선물 {fu['price']:,.2f} ({pct_text(fu.get('pct'))}, {fu.get('session') or ''}){basis_bit}")
+    else:
+        macro.append("선물 미수신")
+    macro.append(f"상승:하락 코스피 {_breadth(k)} / 코스닥 {_breadth(q)}")
+    ul = f.get("upper_limit") or {}
+    if ul.get("count") is not None:
+        if (ul.get("count") or 0) + (ul.get("near") or 0) > 0:
+            macro.append(f"상한가 확정 {int(ul['count'])}종목 · 임박 {int(ul.get('near') or 0)}종목")
+        else:
+            macro.append("상한가 집계 전")
+    if fx:
+        macro.append(f"원/달러 {fx['price']:,.2f}원 ({pct_text(fx.get('pct'))}, 기준 {fx.get('traded_date') or '미상'})")
+    else:
+        macro.append("원/달러 미수신")
+
+    # 💰
+    flow = []
+    for key, label in (("kospi", "코스피"), ("kosdaq", "코스닥")):
+        r = fl.get(key)
+        flow.append(f"{label} 외인 {sgn(r['foreign'])}억·기관 {sgn(r['organ'])}억·개인 {sgn(r['personal'])}억"
+                    if r else f"{label} 수급 미수신")
+    if fl.get("fut"):
+        r = fl["fut"]
+        flow.append(f"선물 외인 {sgn(r['foreign'])}계약·기관 {sgn(r['organ'])}계약 ({basis})")
+    else:
+        flow.append("선물 수급 미수신")
+    prog = fl.get("program")
+    if prog and prog.get("total") and not (prog["total"] == 0 and prog.get("bi") == 0):
+        flow.append(f"프로그램 순매수 {sgn(prog['total'])}억 (비차익 {sgn(prog.get('bi'))}억)")
+    if verdict:
+        flow.append(f"외인 현·선물 판정: {(fl.get('verdict') or {}).get('text')}")
+    else:
+        flow.append("외인 현·선물 판정: 현물 수급 집계 전으로 판정 보류")
+    sup = f.get("supply")
+    if sup:
+        fb = ", ".join(f"{x['name']} {sgn(x.get('foreign_eok'))}억" for x in sup.get("foreign_buy") or [])
+        ob = ", ".join(f"{x['name']} {sgn(x.get('organ_eok'))}억" for x in sup.get("organ_buy") or [])
+        if fb:
+            flow.append(f"외인 순매수 상위(확정 {sup.get('basis_label') or ''}): {fb}")
+        if ob:
+            flow.append(f"기관 순매수 상위: {ob}")
+    flow.append("[해석] 수급 해석 문장은 Gemini 응답 실패로 생략했습니다. 위 수치는 수집된 실측값 그대로입니다.")
+
+    # 🔥
+    themes = []
+    for t in (f.get("themes") or [])[:3]:
+        leaders = t.get("leaders") or []
+        if not leaders:
+            continue
+        themes.append(f"{t['name']} {pct_text(t.get('avg_pct'))}"
+                      f" (구성 {int(t.get('rise') or 0)}상승/{int(t.get('fall') or 0)}하락)")
+        for s in leaders[:2]:
+            themes.append(f"대장 {s['name']} {pct_text(s['pct'])} · 대금 {money_text_eok(s['value_eok'])}"
+                          + (" · 상한가" if s.get("upper_limit") else ""))
+        co = t.get("co_movers") or []
+        if co:
+            themes.append("동반: " + ", ".join(f"{s['name']} {pct_text(s['pct'])}" for s in co))
+        n = t.get("news")
+        if n:
+            themes.append(f"재료: {n['title']} ({n.get('press') or ''})")
+    if not themes:
+        themes.append("주도 테마 미수신")
+    weak = []
+    for t in (f.get("weak_themes") or [])[:2]:
+        line = f"{t['name']} {pct_text(t['pct'])}"
+        if t.get("leader"):
+            line += f" · 대표 {t['leader']['name']} {pct_text(t['leader']['pct'])} ({money_text_eok(t['leader']['value_eok'])})"
+        weak.append(line)
+    if not weak:
+        for d in (f.get("decliners") or [])[:2]:
+            weak.append(f"하락 대표 {d['name']} {pct_text(d['pct'])} ({money_text_eok(d['value_eok'])})")
+    if weak:
+        themes.append("빠지는 쪽: " + " · ".join(weak))
+    ul = f.get("upper_limit") or {}
+    if ul.get("rows"):
+        themes.append("상한가: " + ", ".join(f"{r['name']} {pct_text(r['pct'])}" for r in ul["rows"]))
+
+    # 🧭
+    view = []
+    if k["price"] is not None:
+        s1 = kospi_lv.get("s1")
+        s2 = kospi_lv.get("s2")
+        r1 = kospi_lv.get("r1")
+        pos = []
+        if s1 is not None:
+            pos.append(f"1차 지지 {s1:,.2f} {'위' if k['price'] >= s1 else '아래'}")
+        if s2 is not None:
+            pos.append(f"2차 지지 {s2:,.2f}")
+        if r1 is not None:
+            pos.append(f"저항1 {r1:,.2f}")
+        view.append(f"현재 코스피 {k['price']:,.2f} — " + " · ".join(pos) if pos
+                    else f"현재 코스피 {k['price']:,.2f} — 저장된 지지선 없음")
+        if s1 is not None and r1 is not None:
+            view.append(f"① 돌파·유지: {r1:,.2f} 위 유지 시 → 주도 테마 눌림 분할, 추격 매수 금지")
+            view.append(f"② 박스: {s1:,.2f}~{r1:,.2f} 왕복 시 → 관망, 거래대금 동반 확인 전 진입 보류")
+            view.append(f"③ 이탈: {s1:,.2f} 아래 종가 이탈 시 → 비중 축소, 반등 확인 전 신규 진입 금지")
+        elif s1 is not None:
+            view.append(f"① 지지 {s1:,.2f} 위 유지 시 → 주도 테마 눌림 분할")
+            view.append(f"② {s1:,.2f} 부근 박스 → 관망")
+            view.append(f"③ {s1:,.2f} 이탈 시 → 비중 축소·추격 금지")
+        else:
+            view.append("① 전일 종가 위 유지 시 → 주도 테마 눌림 분할")
+            view.append("② 전일 종가 부근 박스 → 관망")
+            view.append("③ 전일 종가 이탈 시 → 비중 축소·추격 금지")
     else:
         view.append("지수 미수신 — 기준선 판단 불가")
-        action = "실측값 확인 전 관망"
-    if fl.get("spot_foreign_total") is not None and fl["spot_foreign_total"] < 0:
-        action += " · 외인 순매도 지속"
+        view.append("① ② ③ 시나리오는 실측값 수신 후 판단")
+    if kosdaq_lv.get("s1") is not None and q["price"] is not None:
+        view.append(f"코스닥 1차 지지 {kosdaq_lv['s1']:,.2f} / 현재 {q['price']:,.2f}")
+    view.append("체크포인트: 1차 지지 회복 여부 · 외인 선물 방향 · 상한가 확대 여부")
 
     return "\n".join([
         headline,
-        "📊 지수",
-        f"{idx_line(k)} · {idx_line(q)} · 선물 {fut_line} · 상승:하락 코스피 {breadth(k)} / 코스닥 {breadth(q)}",
-        "💰 수급",
-        f"{basis}{side(fl.get('kospi'), '코스피')}",
-        f"{side(fl.get('kosdaq'), '코스닥')} · {fut_flow}",
-        "🔄 빠지는 쪽 vs 받는 쪽",
-        *recv,
-        *weak,
-        "🧭 폭스시그널의 시각",
-        *view,
-        action,
+        "📌 한줄 요약",
+        summary,
+        "📊 핵심 지표 & 매크로",
+        *[f"- {x}" for x in macro],
+        "💰 투자자별 수급 & 흐름 해석",
+        *[f"- {x}" for x in flow],
+        "🔥 장중 주도 테마 & 대장주 (300억↑ 실측)",
+        *[f"- {x}" for x in themes],
+        "🧭 오늘 시장 전망 & 시나리오 · 기준선 대응",
+        *[f"- {x}" for x in view],
         CHECKER_URL,
     ])
 
@@ -1145,7 +1711,7 @@ def market_guard(facts, force=False):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="폭스시그널 장중 속보 (Gemini → 텔레그램)")
+    ap = argparse.ArgumentParser(description="폭스시그널 장중 브리핑 (Gemini → 텔레그램)")
     ap.add_argument("--dry-run", action="store_true", help="발송하지 않고 본문만 출력")
     ap.add_argument("--print-facts", action="store_true", help="수집한 FACTS만 출력")
     ap.add_argument("--slot", default=None, help="헤더 시각 표기 (기본: 현재 KST HH:MM)")
@@ -1158,6 +1724,7 @@ def main(argv=None):
     ap.add_argument("--fixture", default=None, help="오프라인 테스트용 JSON 폴더")
     ap.add_argument("--no-ai", action="store_true", help="Gemini 호출 없이 대체 본문만 생성")
     ap.add_argument("--timeout", type=int, default=60, help="Gemini 호출 타임아웃(초)")
+    ap.add_argument("--max-tokens", type=int, default=4096, help="Gemini maxOutputTokens")
     ap.add_argument("--summary", default=None, help="결과 JSON 을 Actions 요약(markdown)으로 출력")
     args = ap.parse_args(argv)
 
@@ -1197,45 +1764,49 @@ def main(argv=None):
         models = [args.model] if args.model else (
             [m.strip() for m in args.models.split(",") if m.strip()] if args.models else DEFAULT_MODELS
         )
-        base_text = f"FACTS:\n{ftext}\n\n위 FACTS만으로 5단 속보 본문을 작성하라."
+        base_text = f"FACTS:\n{ftext}\n\n위 FACTS만으로 5블록 장중 브리핑 본문을 작성하라."
         started = time.time()
 
         def model_timeout(name):
-            base = args.timeout if args.timeout != 60 else 30
-            return base + 10 if "lite" in name else base
+            base = args.timeout if args.timeout != 60 else 40
+            return base + 15 if "lite" in name else base + 10
 
         def try_models(model_list, pass_no):
             nonlocal body, validation
             for model in model_list:
                 prompt = base_text
                 for attempt in (1, 2):
-                    if time.time() - started > 200:
+                    if time.time() - started > 240:
                         return
                     try:
                         t0 = time.time()
                         text, usage = call_gemini(
                             api_key, model, SYSTEM_PROMPT, prompt,
                             timeout=model_timeout(model),
-                            max_tokens=1600 if attempt == 1 else 1200,
+                            max_tokens=args.max_tokens,
                             thinking_budget=0,
                         )
                         cand = clean_body(text)
-                        ok, problems = validate_body(cand, ftext, phase=(facts.get("tabs") or {}).get("session_phase"))
+                        ok, problems = validate_body(cand, ftext, phase=(facts.get("tabs") or {}).get("session_phase"),
+                                                     min_chars=body_min_chars(facts))
                         gens.append({"model": model, "pass": pass_no, "attempt": attempt, "ok": ok,
-                                     "problems": problems, "sec": round(time.time() - t0, 1),
-                                     "usage": usage})
+                                     "problems": problems, "chars": len(cand),
+                                     "sec": round(time.time() - t0, 1), "usage": usage})
                         if ok:
                             body = cand
-                            validation = {"ok": True, "problems": []}
-                            log(f"✓ Gemini({model}) 생성·검증 통과 ({time.time()-t0:.1f}s)")
+                            validation = {"ok": True, "problems": [], "chars": len(cand)}
+                            log(f"✓ Gemini({model}) 생성·검증 통과 ({len(cand)}자, {time.time()-t0:.1f}s)")
                             return
-                        log(f"… Gemini({model}) 검증 실패: {problems}")
+                        log(f"… Gemini({model}) 검증 실패({len(cand)}자): {problems}")
                         if attempt == 1:
                             bad = [p.split(": ")[-1] for p in problems if p.startswith("근거 없는 숫자")]
                             extra = f"\n\n[재작성 지시] 아래 숫자는 FACTS에 없다. 쓰지 마라: {', '.join(bad)}" if bad else ""
+                            if any(p.startswith("분량 부족") for p in problems):
+                                extra += ("\n[재작성 지시] 분량이 모자란다. 각 블록을 3~6줄로 늘리고,"
+                                          " FACTS에 있는 수치·종목·테마·기준선을 빠짐없이 인용해 2,000~3,200자로 써라.")
                             extra += f"\n[이전 초안의 문제] {' / '.join(problems)}"
                             prompt = (base_text + extra +
-                                      "\nFACTS의 숫자만 그대로 옮기고, 지시한 5단 형식·국면·900자 이내를 지켜 다시 써라.")
+                                      "\nFACTS의 숫자만 그대로 옮기고, 지시한 5블록 형식·국면·2,000~3,200자를 지켜 다시 써라.")
                     except urllib.error.HTTPError as e:
                         detail = ""
                         try:
@@ -1243,7 +1814,7 @@ def main(argv=None):
                         except Exception:  # noqa: BLE001
                             pass
                         gens.append({"model": model, "pass": pass_no, "attempt": attempt,
-                                     "ok": False, "error": f"HTTP {e.code}"})
+                                     "ok": False, "error": f"HTTP {e.code} {detail[:60]}"})
                         log(f"… Gemini({model}) HTTP {e.code} — 다음 모델")
                         break  # 같은 모델 재시도 없이 다음 모델로
                     except Exception as e:  # noqa: BLE001
@@ -1256,25 +1827,28 @@ def main(argv=None):
         if not body and any(g.get("error", "").startswith(("HTTP 429", "HTTP 503", "HTTP 500")) for g in gens):
             log("… 전 모델 실패 — 5초 뒤 한 번 더 시도")
             time.sleep(5)
-            try_models([m for m in models if m in {g["model"] for g in gens if g.get("error", "").startswith(("HTTP 429", "HTTP 503", "HTTP 500"))}], 2)
+            retry = [m for m in models if m in {g["model"] for g in gens
+                                                if g.get("error", "").startswith(("HTTP 429", "HTTP 503", "HTTP 500"))}]
+            try_models(retry, 2)
 
     generator = "gemini"
     if not body:
         body = fallback_body(facts)
         generator = "fallback"
-        validation = {"ok": True, "problems": ["Gemini 미사용 — 실측 대체 본문"]}
+        validation = {"ok": True, "problems": ["Gemini 미사용 — 실측 대체 본문"], "chars": len(body)}
         log("⚠️ Gemini 본문 없음 → 실측 대체 본문으로 발송")
 
-    suffix = "" if generator == "gemini" else " · Gemini 응답 실패로 실측 요약 자동 발송"
-    header_line = header if generator == "gemini" else header.replace("[🤖 Gemini AI 자동 작성]",
-                                                                     "[🤖 자동 작성 · 실측 요약]")
+    header_line = header if generator == "gemini" else header.replace(
+        "[🤖 Gemini AI 자동 작성]", "[🤖 자동 작성 · 실측 요약]")
     message = f"{header_line}\n{body}".strip()
     if generator == "gemini" and CHECKER_URL not in message:
         message += "\n" + CHECKER_URL
+    message = fit_telegram(message)
 
     print("\n" + "=" * 60)
     print(message)
     print("=" * 60)
+    log(f"본문 {len(message)}자 (헤더 포함, 텔레그램 한도 {TG_LIMIT}자)")
 
     message_id = None
     if args.dry_run:
@@ -1296,6 +1870,7 @@ def main(argv=None):
         write_out(args.out, {
             "ok": True, "generator": generator, "model": gens[-1]["model"] if gens else None,
             "validation": validation, "generations": gens, "message": message,
+            "message_chars": len(message),
             "message_id": message_id, "slot": slot, "facts": facts, "facts_text": ftext,
         })
     return 0
@@ -1313,11 +1888,12 @@ def print_summary(path):
         print(f"- 생략 사유: {d.get('reason')}")
         return
     print(f"- 생성기: **{d.get('generator')}** · 모델: `{d.get('model')}`")
+    print(f"- 본문 길이: **{d.get('message_chars') or len(d.get('message') or '')}자** (텔레그램 한도 4,096자)")
     print(f"- 텔레그램 message_id: `{d.get('message_id')}`")
     print(f"- 검증: `{d.get('validation')}`")
     for g in d.get("generations") or []:
         status = "OK" if g.get("ok") else "FAIL"
-        parts = [f"{g.get('model')} p{g.get('pass')} try{g.get('attempt')} {status} {g.get('sec', '')}s"
+        parts = [f"{g.get('model')} p{g.get('pass')} try{g.get('attempt')} {status} {g.get('chars', '')}자 {g.get('sec', '')}s"
                  if g.get("pass") else f"{g.get('model')} try{g.get('attempt')} {status} {g.get('sec', '')}s"]
         if g.get("error"):
             parts.append(str(g["error"])[:80])
