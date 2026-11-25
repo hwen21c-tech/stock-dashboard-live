@@ -1470,8 +1470,10 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
     if phase in ("장전", "프리마켓", "정규장"):
         # 시각(06:00·15:45)이 앞에 붙은 '마감'은 선물 세션 표기라 위반이 아니다
         probe = re.sub(r"\d{1,2}:\d{2}", " ", body)
-        if re.search(r"(?:정규장|장)\s*마감|종가\s*확정|마감했|(?:상승|하락|보합|급등|급락)\s*마감", probe):
-            problems.append(f"국면 불일치: {phase}인데 '마감' 서술")
+        mm = re.search(r"(?:정규장|장)\s*마감|종가\s*확정|마감했|(?:상승|하락|보합|급등|급락)\s*마감", probe)
+        if mm:
+            ctx = probe[max(0, mm.start() - 12):mm.end() + 8].replace("\n", " ")
+            problems.append(f"국면 불일치: {phase}인데 '마감' 서술 ({ctx})")
     if phase in ("장전", "프리마켓") and "출발" in body:
         problems.append(f"국면 불일치: {phase}인데 '출발' 서술")
 
