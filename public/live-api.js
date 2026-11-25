@@ -3372,7 +3372,12 @@
 
   function slJongbeRow(c) {
     var L = c.live;
-    var track = c.track === 'shin' ? '신정재' : c.track === 'kang' ? '강창권' : '';
+    /* 2026-11-25 신정재 4대 패턴 개편 — 트랙 키가 p1~p4 로 바뀌었다(강창권 제거).
+       알 수 없는 키면 서버가 준 patternLabel 을 그대로 쓴다(값을 지어내지 않는다). */
+    var JB_TRACKS = { p1: '① 위꼬리', p2: '② 5일선 지지', p3: '③ 마른 양봉', p4: '④ 20일선 눌림' };
+    var track = JB_TRACKS[c.track] || (c.live && c.live.patternLabel) || '';
+    var tipTxt = (L && typeof L.tipScore === 'number')
+      ? ' · 팁 <b style="color:#fbbf24;">' + L.tipScore + '/' + (L.tipTotal || 6) + '</b>' : '';
     if (!L) return slRow('<div style="font-size:11px;color:#94a3b8;">' + esc(c.name) + ' — 실시간 시세 미수신</div>', c.name, c.code, 'jongbe');
     var right =
       (track ? '<b style="color:#fbbf24;">' + esc(track) + '</b> · ' : '') +
@@ -3380,7 +3385,7 @@
       ' · 목표 ' + slWon(L.target1) + (isNum(L.target2) ? ' / ' + slWon(L.target2) : '') +
       ' · 손절 ' + slWon(L.stopPrice) + (L.stopBreach ? ' <span style="color:#fca5a5;font-weight:800;">이탈</span>' : '') +
       (isNum(L.ma5) ? '<br>5일선 ' + slWon(L.ma5) + ' · 20일선 ' + slWon(L.ma20) : '') +
-      ' · 대금 ' + (L.valueText || slEok(L.valueEok));
+      ' · 대금 ' + (L.valueText || slEok(L.valueEok)) + tipTxt;
     return slRow(slHeadRow(esc(c.name) + ' ' + slStateBadge(L), c.code, L.price, L.pct, right, true), c.name, c.code, 'jongbe', L.price, L.pct);
   }
 
@@ -3502,7 +3507,7 @@
       ['tabKkangto', 'stratLiveKkangtoHost', sl.kkangto, '⚡ 깡토 추세추종 · 실시간 조건 판정', '#38bdf8', slKkangtoRow,
         '전고점(매수타점) 돌파 유지 여부 · −8% 손절 · +24% 1차 익절 · 60일선 위/아래를 장중 현재가로 다시 판정합니다.'],
       ['tabJongbe', 'stratLiveJongbeHost', sl.jongbe, '💪 종가베팅 마스터 · 실시간 조건 판정', '#fbbf24', slJongbeRow,
-        '신정재는 기준가 ±0.5% 진입존 · +3%/+5% 익절 · −0.8% 손절, 강창권은 5일선 지지 보유 · +15% 목표 · 20일선 이탈 매도 기준입니다.'],
+        '신정재 4대 패턴 — ①~③은 15:18~15:20 종가매수 · 익일 09:05 전 청산(손절선 이탈 즉시), ④는 5일선을 깬 자리라 엔벨로프 중심선(20일선) 스윙 손절 기준입니다.'],
       ['tabRnzone', 'stratLiveRnzoneHost', sl.rnzone, '🎯 RN존 · 실시간 구간 판정', '#f472b6', slRnzoneRow,
         '하단·상단 RN 사이에서 지금 위치(구간 %)와 매수 1·2차 도달 여부입니다. RN은 재스캔 기준일 일봉으로 계산된 값입니다.']
     ];

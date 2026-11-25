@@ -3200,6 +3200,14 @@ async function buildStrategyLive(map, phase, ctx) {
     zero: 'D+0(기준일 당일)',
     nth: (n) => `D+${n}`,
   });
+  /* 장 마감 뒤의 현재가는 NXT 시간외 체결가다 — 기준선(정규장 종가) 대비 손절/익절 판정을
+     그대로 '확정'처럼 보여 주면 오해가 된다. 값은 그대로 두고 라벨에 '· 시간외'만 붙인다(11/25). */
+  if (jongbe && phase === '장마감') {
+    jongbe.afterHours = true;
+    jongbe.cards.forEach((c) => {
+      if (c.live && c.live.stateLabel) c.live.stateLabel = c.live.stateLabel + ' · 시간외';
+    });
+  }
   const rnzone = stratSection(RNZONE_DATA, 'stocks', judgeRnzoneStock, {
     zero: 'D+0(기준일 당일)',
     nth: (n) => `D+${n}`,
