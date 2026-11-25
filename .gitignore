@@ -22,3 +22,6 @@ scripts/.cache/
 work_scan/
 scripts/__pycache__/
 __pycache__/
+
+# 장중 속보 워크플로 산출물(로컬 실행 시)
+artifacts/

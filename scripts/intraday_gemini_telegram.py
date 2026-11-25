@@ -56,14 +56,15 @@ from datetime import datetime, timedelta, timezone
 KST = timezone(timedelta(hours=9))
 WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
 
-TABS_LIVE_URL = "https://stock-dashboard-live-6frm.vercel.app/api/tabs-live"
+TABS_LIVE_URL = os.environ.get(
+    "TABS_LIVE_URL", "https://stock-dashboard-live-6frm.vercel.app/api/tabs-live"
+)
 NAVER_POLL_URL = "https://polling.finance.naver.com/api/realtime?query="
 NAVER_MOBILE = "https://m.stock.naver.com/api/index/"
 NAVER_THEME_LIST = "https://m.stock.naver.com/api/stocks/theme?page=1&pageSize=100"
 NAVER_THEME_ONE = "https://m.stock.naver.com/api/stocks/theme/"
 
 CHECKER_URL = "https://hwen21c-tech.github.io/foxsignal-checker/"
-FORBIDDEN = "https://hwen21c-tech.github.io/foxsignal-checker"
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -107,7 +108,6 @@ def http_json(url, timeout=20, retries=2, headers=None, backoff=2.0):
 
 
 def fnum(s):
-    """'+-1,234' / '-1,234' / '1,234.5' → float | None"""
     if s is None:
         return None
     t = str(s).replace(",", "").replace(" ", "").strip()
@@ -119,14 +119,6 @@ def fnum(s):
         return v if math.isfinite(v) else None
     except ValueError:
         return None
-
-
-def comma(v, dp=0):
-    if v is None:
-        return None
-    if dp == 0:
-        return f"{int(round(v)):,}"
-    return f"{v:,.{dp}f}"
 
 
 def sgn(v, dp=0, unit=""):
@@ -192,7 +184,7 @@ def kst_now():
 
 def fetch_tabs_live():
     try:
-        return http_json(TABS_LIVE_URL, timeout=60, retries=2), None
+        return http_json(TABS_LIVE_URL, timeout=35, retries=1), None
     except Exception as e:  # noqa: BLE001
         return None, str(e)
 
@@ -891,7 +883,7 @@ def allowed_numbers(ftext):
     return allowed
 
 
-def validate_body(body, ftext):
+def validate_body(body, ftext, phase=None):
     """(ok, 문제점 리스트). 숫자 창작·형식 누락을 잡는다."""
     problems = []
     lines = [ln.strip() for ln in body.strip().splitlines() if ln.strip()]
@@ -908,6 +900,8 @@ def validate_body(body, ftext):
         problems.append("체커 링크 누락")
     if "**" in body or "##" in body:
         problems.append("마크다운 금지 위반")
+    if phase in ("장전", "정규장") and re.search(r"(?:상승|하락|급락|급등|보합)\s*마감|마감했", body):
+        problems.append(f"국면 불일치: {phase}인데 '마감' 서술")
 
     allowed = allowed_numbers(ftext)
     unknown = []
@@ -1173,7 +1167,7 @@ def main(argv=None):
                             thinking_budget=0,
                         )
                         cand = clean_body(text)
-                        ok, problems = validate_body(cand, ftext)
+                        ok, problems = validate_body(cand, ftext, phase=(facts.get("tabs") or {}).get("session_phase"))
                         gens.append({"model": model, "pass": pass_no, "attempt": attempt, "ok": ok,
                                      "problems": problems, "sec": round(time.time() - t0, 1),
                                      "usage": usage})
@@ -1186,8 +1180,9 @@ def main(argv=None):
                         if attempt == 1:
                             bad = [p.split(": ")[-1] for p in problems if p.startswith("근거 없는 숫자")]
                             extra = f"\n\n[재작성 지시] 아래 숫자는 FACTS에 없다. 쓰지 마라: {', '.join(bad)}" if bad else ""
+                            extra += f"\n[이전 초안의 문제] {' / '.join(problems)}"
                             prompt = (base_text + extra +
-                                      "\nFACTS의 숫자만 그대로 옮기고, 지시한 5단 형식과 900자 이내를 지켜 다시 써라.")
+                                      "\nFACTS의 숫자만 그대로 옮기고, 지시한 5단 형식·국면·900자 이내를 지켜 다시 써라.")
                     except urllib.error.HTTPError as e:
                         detail = ""
                         try:
