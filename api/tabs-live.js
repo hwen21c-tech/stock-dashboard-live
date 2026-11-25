@@ -2559,9 +2559,19 @@ async function buildIntradayHong(ctx) {
   out.leaderStats.picked = out.leader.length;
 
   if (!out.leader.length) {
-    out.notes.push(
-      `조건(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑ · 120일 전고점 돌파/근접)을 모두 채운 종목이 없습니다 — 기준을 임의로 완화하지 않았습니다.`,
-    );
+    if (beforeOpen || weekend) {
+      out.notes.push(
+        `장전·휴장에는 당일 등락률·거래대금이 갱신되지 않아 D+0 후보를 판정하지 않습니다 — 09:30 이후 다시 계산합니다(원전: 9시 30분 이전 매매 자제).`,
+      );
+    } else if (afterClose) {
+      out.notes.push(
+        `정규장이 끝나(15:30 이후) 오늘 D+0 판정은 종료됐습니다 — 남은 시간외 흐름은 위 '하락장 역발상'과 🌙 종가베팅 후보에서 보십시오.`,
+      );
+    } else {
+      out.notes.push(
+        `조건(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑ · 120일 전고점 돌파/근접)을 모두 채운 종목이 없습니다 — 기준을 임의로 완화하지 않았습니다.`,
+      );
+    }
   }
   if (out.leaderStats.judged === 0) {
     out.notes.push('등락 +5%↑ 후보 일봉 판정이 0건입니다 — 장전·휴장일이거나 KRX 순위 응답이 비었습니다.');
