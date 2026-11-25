@@ -4237,9 +4237,12 @@ async function buildChimchakhae(ctx) {
     const picked = Array.isArray(hedge) && hedge.length
       ? pickMaterialNews(c.name, hedge, materialDate)
       : { material: null, adverse: null };
+    /* 테마 재료는 테마맵 카드 종목(themeMembership)만 인정 — 확장 풀의 업종 걸치기는 재료가 아니다 */
+    const mem = themeMembership ? themeMembership.get(c.code) : null;
+    const themeMat = mem && mem.name && isRealTheme(mem.name) ? mem : null;
     const m = {
-      themeName: c.themeName && isRealTheme(c.themeName) ? c.themeName : null,
-      themeRank: c.themeRank || null,
+      themeName: themeMat ? themeMat.name : null,
+      themeRank: themeMat ? themeMat.rank || null : null,
       news: picked.material || null,
       adverse: picked.adverse || null,
       dart: null,
@@ -4786,14 +4789,21 @@ async function buildClosingPicks(ctx) {
   out.themeDrop = drop;
   out.themePoolSize = pool.size;
   /* 주도 테마 소속 지도(code → 테마명·순위) — 침착해 재료 판정이 쓴다.
-   *  테마 기준을 통과하지 못한 종목(대금 미달 등)도 테마 구성종목이면 재료로 인정한다. */
+   *  ⚠️ 여기는 **1번 탭 테마맵 카드에 실제로 올라온 종목**만 담는다(확장 풀의 전체 구성종목 제외).
+   *  확장 풀(top10 테마 전체 구성종목)은 대형주가 업종 이름만 걸쳐 들어오므로, 그것을 재료로 인정하면
+   *  '재료 없이 수급만 유입된 대형주'가 다시 후보로 올라온다(사용자 지적: NAVER·셀트리온·삼양식품).
+   *  → 화면에서 보는 '주도 테마 N위'의 구성종목이 곧 재료다. */
   const themeMembership = new Map();
-  pool.forEach((r) => {
-    if (!r.code || !r.themeName || !isRealTheme(r.themeName)) return;
-    const prev = themeMembership.get(r.code);
-    if (!prev || (r.themeRank && (!prev.rank || r.themeRank < prev.rank))) {
-      themeMembership.set(r.code, { name: r.themeName, rank: r.themeRank || null });
-    }
+  (ctx && ctx.themes ? ctx.themes : []).forEach((t) => {
+    if (!t || !t.name || !isRealTheme(t.name)) return;
+    (t.stocks || []).forEach((s) => {
+      const code = String((s && s.code) || '');
+      if (!/^\d{6}$/.test(code)) return;
+      const prev = themeMembership.get(code);
+      if (!prev || (t.rank && (!prev.rank || t.rank < prev.rank))) {
+        themeMembership.set(code, { name: t.name, rank: t.rank || null });
+      }
+    });
   });
   /* 테마 강도 — 테마 랭킹 1위 = +3, 2~3위 = +2, 4~10위 = +1, 테마 없음 = 0.
    *  상한가 종목은 한 단계 가점한다(상한가 자체가 가장 강한 주도 신호이므로).
