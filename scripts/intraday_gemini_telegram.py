@@ -886,6 +886,10 @@ def collect(script_dir, use_fixture=None, verbose=True):
     if themes:
         eligible = [t for t in themes if (t.get("total") or 0) >= 5]
         weak = sorted(eligible, key=lambda x: x["pct"])[:2]
+        # 하락 업종이 없으면(전 테마 상승) '빠지는 쪽'으로 쓰지 않는다
+        if weak and all((t.get("pct") or 0) >= 0 for t in weak):
+            facts["all_themes_up"] = {"name": weak[0]["name"], "pct": weak[0]["pct"]}
+            weak = []
         # 약한 테마 1순위의 대표 종목(거래대금 최대) 1개
         if weak and not use_fixture:
             try:
@@ -1032,13 +1036,15 @@ def facts_text(f):
         L.append("프로그램 매매 집계 전")
     v = fl.get("verdict")
     if v:
+        L.append(f"[임계] 현물 ±1,000억 · 선물 ±1,500계약(이 숫자는 판정 기준일 뿐, 다른 항목에 쓰지 말 것)")
         L.append(f"외인 현·선물 판정: {v['text']}")
     else:
         L.append("외인 현·선물 판정: 판정 보류(현물 또는 선물 집계 전)")
     L.append("")
 
     sup = f.get("supply")
-    L.append("[수급 종목] " + (f"확정 {sup.get('basis_label')} 기준" if sup and sup.get("basis_label") else "확정 기준일 미수신"))
+    sup_date = (sup.get("basis_label") if sup else None) or "기준일 미수신"
+    L.append(f"[수급 종목] 확정 {sup_date} 기준 — 아래 수치는 그 날짜의 확정치다(오늘 장중 수급이 아니다)")
 
     def sup_line(rows, key):
         bits = []
@@ -1056,13 +1062,13 @@ def facts_text(f):
         db = ", ".join(f"{x['name']}(외인 {sgn(x.get('foreign_eok'))}억·기관 {sgn(x.get('organ_eok'))}억)"
                        for x in sup.get("dual_buy") or [])
         if fb:
-            L.append(f"- 외국인 순매수 상위: {fb}")
+            L.append(f"- 외국인 순매수 상위({sup_date} 확정): {fb}")
         if ob:
-            L.append(f"- 기관 순매수 상위: {ob}")
+            L.append(f"- 기관 순매수 상위({sup_date} 확정): {ob}")
         if fs:
-            L.append(f"- 외국인 순매도 상위: {fs}")
+            L.append(f"- 외국인 순매도 상위({sup_date} 확정): {fs}")
         if db:
-            L.append(f"- 외인·기관 동반 매수: {db}")
+            L.append(f"- 외인·기관 동반 매수({sup_date} 확정): {db}")
     if not sup:
         L.append("- 종목별 수급 미수신")
     L.append("")
@@ -1095,14 +1101,18 @@ def facts_text(f):
 
     L.append("[빠지는 쪽 — 하락 업종(전체 테마 중 하위) 및 대금 300억↑ 하락 대표]")
     for t in f.get("weak_themes") or []:
-        line = f"{t['name']} {pct_text(t['pct'])} (구성 {int(t.get('total') or 0)} · 상승 {int(t.get('up') or 0)}/하락 {int(t.get('down') or 0)})"
+        line = f"{t['name']} {pct_text(t['pct'])} (구성 {int(t.get('total') or 0)}종목 중 상승 {int(t.get('up') or 0)} · 하락 {int(t.get('down') or 0)})"
         if t.get("leader"):
             line += f" · 대표 {t['leader']['name']} {pct_text(t['leader']['pct'])} 대금 {money_text_eok(t['leader']['value_eok'])}"
         else:
             line += " · 대표 종목 미수신"
         L.append(line)
     if not f.get("weak_themes"):
-        L.append("하락 업종 미수신")
+        atu = f.get("all_themes_up")
+        if atu:
+            L.append(f"하락 업종 없음 — 전 테마 상승(최저 {atu['name']} {pct_text(atu['pct'])})")
+        else:
+            L.append("하락 업종 미수신")
     for d in f.get("decliners") or []:
         L.append(f"하락 대표주 {d['name']} {pct_text(d['pct'])} · 대금 {money_text_eok(d['value_eok'])}")
     L.append("")
@@ -1116,7 +1126,7 @@ def facts_text(f):
             L.append(f"  상한가 임박 {int(ul['near'])}종목" + (f" — {near}" if near else ""))
         L.append("")
     elif ul.get("count") is not None:
-        L.append("[상한가] 집계 전(확정 0 · 임박 0)")
+        L.append("[상한가] 확정 0종목 · 임박 0종목(관제탑 집계 기준)")
         L.append("")
 
     L.append("[기준선]")
@@ -1198,7 +1208,9 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 12. 상한가는 FACTS에 '상한가' 표시가 있는 종목만 그렇게 쓴다. 등락률만 보고 단정하지 않는다.
 13. 순위는 FACTS에 적힌 순위만 쓴다('대금 1위' 같은 새 순위 주장 금지). 테마·종목·공시를 새로 만들지 않는다.
     상한가 '확정' 수와 '임박' 수를 더하지 않는다. 테마의 '구성 종목수'와 '상승/하락 종목수'를 섞지 않는다.
+    [임계] 숫자(±1,000억·±1,500계약)는 판정 기준일 뿐이니 프로그램·비차익·거래대금에 옮겨 쓰지 않는다.
 14. 모든 문장은 '~습니다/~입니다' 존댓말. 이모지는 형식에 있는 것만 쓴다.
+    지수 숫자에는 'p'를 붙이지 않는다(p는 등락폭 단위다: '코스피 4,729.01' / '+31.50p').
 
 [출력 형식]
 {헤드라인 한 줄 — 지수 방향 + 핵심 수급 또는 대장 테마, 30자 안팎}
@@ -1505,13 +1517,18 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
                 uniq_w.append(w)
         problems.append("근거 없는 원인 어휘: " + ", ".join(uniq_w[:5]))
 
+    # 테마 구성 종목수와 상승/하락 수를 섞어 쓴 경우("구성 19상승/7하락" 같은 표기)
+    if re.search(r"구성\s*\d+\s*(?:상승|하락)", body):
+        problems.append("테마 표기 오류: '구성 N상승/N하락'(구성 종목수와 상승/하락 수를 섞음)")
+
     # 상한가 '확정' 수와 '임박' 수를 더해 버린 경우(예: 2+1=3)
     m = re.search(r"상한가\s*(?:확정\s*)?(\d+)\s*종목", body)
     if m:
         n = int(m.group(1))
-        confirmed = set(numbers_in(re.search(r"\[상한가\] 확정 (\d+)종목", ftext).group(1)))
-        near_m = re.search(r"상한가 임박 (\d+)종목", ftext)
-        near = {float(near_m.group(1))} if near_m else set()
+        fm = re.search(r"\[상한가\] 확정 (\d+)종목", ftext)
+        nm = re.search(r"상한가 임박 (\d+)종목", ftext)
+        confirmed = {float(fm.group(1))} if fm else set()
+        near = {float(nm.group(1))} if nm else set()
         if confirmed and float(n) not in confirmed and float(n) not in near:
             problems.append(f"상한가 수 불일치({n}종목 — FACTS와 다름)")
     return (not problems), problems
@@ -1676,7 +1693,7 @@ def fallback_body(f):
         if not leaders:
             continue
         themes.append(f"{t['name']} {pct_text(t.get('avg_pct'))}"
-                      f" (구성 {int(t.get('rise') or 0)}상승/{int(t.get('fall') or 0)}하락)")
+                      f" (구성 {int(t.get('total') or 0)}종목 중 상승 {int(t.get('rise') or 0)} · 하락 {int(t.get('fall') or 0)})")
         for s in leaders[:2]:
             themes.append(f"대장 {s['name']} {pct_text(s['pct'])} · 대금 {money_text_eok(s['value_eok'])}"
                           + (" · 상한가" if s.get("upper_limit") else ""))
@@ -1699,6 +1716,8 @@ def fallback_body(f):
             weak.append(f"하락 대표 {d['name']} {pct_text(d['pct'])} ({money_text_eok(d['value_eok'])})")
     if weak:
         themes.append("빠지는 쪽: " + " · ".join(weak))
+    elif f.get("all_themes_up"):
+        themes.append(f"빠지는 쪽: 하락 업종 없음(전 테마 상승, 최저 {f['all_themes_up']['name']} {pct_text(f['all_themes_up']['pct'])})")
     ul = f.get("upper_limit") or {}
     if ul.get("rows"):
         themes.append("상한가: " + ", ".join(f"{r['name']} {pct_text(r['pct'])}" for r in ul["rows"]))
