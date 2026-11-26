@@ -3,25 +3,25 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-26 15:10:10",
- "updatedAt": "2026-11-26T15:09:54.485192+09:00",
- "updatedAgeMin": 0.3,
+ "fetchedAt": "2026-11-26 17:53:06",
+ "updatedAt": "2026-11-26T17:53:08.359701+09:00",
+ "updatedAgeMin": -0.0,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "417010",
   "100790",
-  "321370",
-  "225190",
   "347700",
+  "225190",
+  "321370",
   "000650",
   "084670",
-  "038500",
+  "128820",
   "073490",
-  "032500",
+  "218410",
   "310210",
-  "389470",
   "476830",
+  "389470",
   "226950",
   "000250"
  ],
@@ -29,27 +29,27 @@
   {
    "rank": 1,
    "name": "스페이스X",
-   "avgRS": 95,
+   "avgRS": 97,
    "stocks": [
     {
      "code": "417010",
      "name": "나노팀",
      "chg": 29.9,
-     "value_eok": 193.97,
+     "value_eok": 194.39,
      "verified": true
     },
     {
      "code": "100790",
      "name": "미래에셋벤처투자",
-     "chg": 22.1,
-     "value_eok": 1706.25,
+     "chg": 21.6,
+     "value_eok": 1753.62,
      "verified": true
     },
     {
-     "code": "321370",
-     "name": "센서뷰",
-     "chg": 19.9,
-     "value_eok": 139.85,
+     "code": "347700",
+     "name": "스피어",
+     "chg": 18.4,
+     "value_eok": 1051.27,
      "verified": true
     }
    ]
@@ -57,27 +57,27 @@
   {
    "rank": 2,
    "name": "우주항공산업",
-   "avgRS": 78,
+   "avgRS": 90,
    "stocks": [
     {
      "code": "225190",
      "name": "LK삼양",
      "chg": 29.9,
-     "value_eok": 53.96,
-     "verified": true
-    },
-    {
-     "code": "321370",
-     "name": "센서뷰",
-     "chg": 19.9,
-     "value_eok": 139.85,
+     "value_eok": 54.03,
      "verified": true
     },
     {
      "code": "347700",
      "name": "스피어",
-     "chg": 18.7,
-     "value_eok": 1021.1,
+     "chg": 18.4,
+     "value_eok": 1051.27,
+     "verified": true
+    },
+    {
+     "code": "321370",
+     "name": "센서뷰",
+     "chg": 18.1,
+     "value_eok": 142.33,
      "verified": true
     }
    ]
@@ -85,27 +85,27 @@
   {
    "rank": 3,
    "name": "부동산 자산주",
-   "avgRS": 99,
+   "avgRS": 93,
    "stocks": [
     {
      "code": "000650",
      "name": "천일고속",
      "chg": 30.0,
-     "value_eok": 26.89,
+     "value_eok": 29.12,
      "verified": true
     },
     {
      "code": "084670",
      "name": "동양고속",
      "chg": 30.0,
-     "value_eok": 44.12,
+     "value_eok": 46.51,
      "verified": true
     },
     {
-     "code": "038500",
-     "name": "삼표시멘트",
-     "chg": 14.3,
-     "value_eok": 163.41,
+     "code": "128820",
+     "name": "대성산업",
+     "chg": 5.8,
+     "value_eok": 48.07,
      "verified": true
     }
    ]
@@ -113,76 +113,76 @@
   {
    "rank": 4,
    "name": "5G",
-   "avgRS": 94,
+   "avgRS": 96,
    "stocks": [
     {
      "code": "321370",
      "name": "센서뷰",
-     "chg": 19.9,
-     "value_eok": 139.85,
+     "chg": 18.1,
+     "value_eok": 142.33,
      "verified": true
     },
     {
      "code": "073490",
      "name": "LIG아큐버",
-     "chg": 15.3,
-     "value_eok": 145.39
+     "chg": 13.9,
+     "value_eok": 150.29
     },
     {
-     "code": "032500",
-     "name": "케이엠더블유",
-     "chg": 12.9,
-     "value_eok": 169.0
+     "code": "218410",
+     "name": "RFHIC",
+     "chg": 11.9,
+     "value_eok": 1229.31
     }
    ]
   },
   {
    "rank": 5,
    "name": "치매 치료제",
-   "avgRS": 10,
+   "avgRS": 17,
    "stocks": [
     {
      "code": "310210",
      "name": "보로노이",
-     "chg": 17.8,
-     "value_eok": 413.87
-    },
-    {
-     "code": "389470",
-     "name": "인벤티지랩",
-     "chg": 15.5,
-     "value_eok": 54.9
+     "chg": 18.2,
+     "value_eok": 429.32
     },
     {
      "code": "476830",
      "name": "알지노믹스",
-     "chg": 15.4,
-     "value_eok": 360.37
+     "chg": 15.0,
+     "value_eok": 371.65
+    },
+    {
+     "code": "389470",
+     "name": "인벤티지랩",
+     "chg": 13.8,
+     "value_eok": 56.56
     }
    ]
   },
   {
    "rank": 6,
    "name": "비만치료제",
-   "avgRS": 41,
+   "avgRS": 51,
    "stocks": [
     {
      "code": "389470",
      "name": "인벤티지랩",
-     "chg": 15.5,
-     "value_eok": 54.9
+     "chg": 13.8,
+     "value_eok": 56.56
     },
     {
      "code": "226950",
      "name": "올릭스",
-     "chg": 14.8,
-     "value_eok": 506.83
+     "chg": 13.5,
+     "value_eok": 519.54
     },
     {
      "code": "000250",
      "name": "삼천당제약",
-     "chg": 11.2,
-     "value_eok": 573.54
+     "chg": 9.6,
+     "value_eok": 606.5
     }
    ]
   }
