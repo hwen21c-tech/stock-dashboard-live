@@ -399,6 +399,7 @@ def read_supply(path):
                 continue
             rows.append({
                 "name": x.get("name"),
+                "code": x.get("code"),
                 "pct": fnum(x.get("pct")),
                 "foreign_eok": fnum(x.get("foreignEok")),
                 "organ_eok": fnum(x.get("organEok")),
@@ -486,6 +487,8 @@ def pick_theme_leaders(tabs, limit=3):
                 continue
             row = {
                 "name": s.get("name"),
+                "code": s.get("code"),
+                "price": s.get("price"),
                 "pct": round(float(p), 2),
                 "value_eok": val / 1e8,
                 "value_basis": s.get("valueBasis"),
@@ -1565,7 +1568,13 @@ def clean_body(text):
 
 
 def build_header(slot):
-    return f"🦊 폭스시그널 · {slot} 장중 브리핑 [🤖 Gemini AI 자동 작성]"
+    """텔레그램 공개 발송 헤더 — 작성 주체 표기는 넣지 않는다(2026-11-26 사용자 요청).
+
+    · 09:30 회차는 장이 막 열린 시각이라 '장초반 브리핑'으로 부른다(나머지는 '장중 브리핑').
+    · Gemini 작성 여부는 관제탑 타임라인 슬롯(src·statusLabel)에만 남긴다.
+    """
+    label = "장초반 브리핑" if str(slot).strip().startswith("09:") else "장중 브리핑"
+    return f"🦊 폭스시그널 · {slot} {label}"
 
 
 def fit_telegram(text, limit=TG_LIMIT - 96):
@@ -1801,6 +1810,412 @@ def send_telegram(token, chat_id, text, timeout=20, retries=3):
 
 
 # --------------------------------------------------------------------------- #
+# 관제탑 타임라인 연동 (1번·7번 탭 FLOW_TIMELINE)
+#
+#   1·7번 탭의 시간별 브리핑 타임라인은 두 곳에서 읽힌다.
+#     · 동적(Vercel)  public/data/flow_timeline_today.json  — 15초마다 fetch 해 슬롯을 갈아끼움
+#     · 정적(Pages)   index.html 의 <!-- FLOW_TIMELINE_START --> 안 window.FLOW_TIMELINE
+#     · 정적 미러      deploy_repo/data/flow_timeline_today.json (작업트리에 있을 때만)
+#   발송 성공한 회차를 JSON 슬롯으로 넣고(필요하면 html 내장 블록도 같이 갱신) commit·push 하면
+#   두 화면이 같은 값을 본다. 슬롯에는 🤖 Gemini AI 작성 표기를 남긴다(텔레그램 헤더와 별개 — 내부 데이터).
+# --------------------------------------------------------------------------- #
+GEMINI_MARK = "🤖 Gemini AI 자동 작성"
+GEMINI_TAG = "Gemini"
+FLOW_SLOT_TIMES = ["08:50", "09:30", "10:00", "11:00", "12:00",
+                   "13:00", "14:00", "15:00", "16:00"]
+# Gemini 장중 브리핑이 도는 정규 회차(09:30 장초반 + 10·11·13·14시, 보통 1~8분 늦게 발송)
+#   · 09:30 회차는 관제탑 타임라인의 '09:30'(장초반) 슬롯에 그대로 들어간다.
+INTRADAY_SLOTS = ["09:30", "10:00", "11:00", "13:00", "14:00"]
+
+
+def _hm_minutes(t):
+    a = str(t).split(":")
+    try:
+        return int(a[0]) * 60 + int(a[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def target_slot(t):
+    """발송 시각(11:08) → 타임라인 회차(11:00). 50분 넘게 떨어졌으면 그 시각 정시 슬롯."""
+    s = str(t or "").strip()
+    if s in FLOW_SLOT_TIMES:
+        return s
+    m = re.match(r"^(\d{1,2}):(\d{2})", s)
+    if m:
+        mins = int(m.group(1)) * 60 + int(m.group(2))
+    else:
+        n = kst_now()
+        mins = n.hour * 60 + n.minute
+    best = min(INTRADAY_SLOTS, key=lambda x: abs(_hm_minutes(x) - mins))
+    if abs(_hm_minutes(best) - mins) <= 50:
+        return best
+    hh = f"{mins // 60:02d}:00"
+    return hh if hh in FLOW_SLOT_TIMES else best
+FLOW_START_MARK = "<!-- FLOW_TIMELINE_START -->"
+FLOW_END_MARK = "<!-- FLOW_TIMELINE_END -->"
+
+
+def dashboard_root(script_dir):
+    """관제탑 저장소 루트 — Actions(체크아웃 루트)와 워크스페이스(sd_live/) 둘 다 지원."""
+    cands = [os.environ.get("SD_LIVE_ROOT"), os.environ.get("GITHUB_WORKSPACE"),
+             os.path.abspath(os.path.join(script_dir, "..")),
+             os.path.abspath(script_dir)]
+    for c in cands:
+        if c and os.path.isdir(os.path.join(c, "public", "data")):
+            return c
+    return None
+
+
+def flow_paths(root):
+    """(json 경로, 미러 json 경로 또는 None, [html 경로들])"""
+    jp = os.path.join(root, "public", "data", "flow_timeline_today.json")
+    parent = os.path.dirname(os.path.abspath(root).rstrip(os.sep))
+    mirror = os.path.join(parent, "deploy_repo", "data", "flow_timeline_today.json")
+    if not os.path.isdir(os.path.dirname(mirror)):
+        mirror = None
+    htmls = [os.path.join(root, "public", "index.html")]
+    mh = os.path.join(parent, "deploy_repo", "index.html")
+    if os.path.exists(mh):
+        htmls.append(mh)
+    return jp, mirror, htmls
+
+
+def _json_for_script(obj):
+    """<script> 안 JSON — '<'·'>' 이스케이프로 </script> 조기 종료를 막는다."""
+    js = json.dumps(obj, ensure_ascii=False)
+    bs = chr(92)
+    return (js.replace("<", bs + "u003c").replace(">", bs + "u003e")
+              .replace(chr(0x2028), " ").replace(chr(0x2029), " "))
+
+
+def blank_timeline(now):
+    slots = []
+    for t in FLOW_SLOT_TIMES:
+        if t == "08:50":
+            slots.append({"t": t, "tag": "프리마켓", "state": "wait", "waitLabel": "08:50 브리핑 대기"})
+        else:
+            slots.append({"t": t, "tag": "", "state": "wait",
+                          "waitLabel": "자동동기화 대기" if t in ("09:30", "12:00") else "브리핑 대기"})
+    return {"date": now.strftime("%Y-%m-%d"),
+            "day": WEEKDAY_KO[now.weekday()],
+            "updated": now.strftime("%H:%M"), "slots": slots}
+
+
+def load_timeline(path, now):
+    data = None
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception:  # noqa: BLE001
+            data = None
+    if not data or data.get("date") != now.strftime("%Y-%m-%d") or not data.get("slots"):
+        return blank_timeline(now)
+    return data
+
+
+def prev_done_slot(slots, slot_t):
+    """slot_t 보다 앞선 완료 슬롯(유지/신규 판정 기준)."""
+    target = next((i for i, s in enumerate(slots) if s.get("t") == slot_t), None)
+    if target is None:
+        return None
+    for i in range(target - 1, -1, -1):
+        if slots[i].get("state") == "done":
+            return slots[i]
+    return None
+
+
+def _money_eok_text(v):
+    """300.55 → '300.6억' / 1186.1 → '1,186.1억' / 311.0 → '311억'"""
+    if v is None:
+        return ""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if abs(f - round(f)) < 0.05:
+        return f"{round(f):,}억"
+    return f"{f:,.1f}억"
+
+
+def name_code_map(root):
+    """종목명 → 코드 (숫자가 아니라 이름·코드 대응만 읽는다). 없으면 빈 dict."""
+    for cand in (os.path.join(root, "data", "stock_name_codes.json"),
+                 os.path.join(os.path.dirname(os.path.abspath(root)), "data", "stock_name_codes.json")):
+        if not os.path.exists(cand):
+            continue
+        try:
+            with open(cand, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except Exception:  # noqa: BLE001
+            continue
+        mp = d.get("map") if isinstance(d.get("map"), dict) else None
+        if mp:
+            return {str(k): str(v) for k, v in mp.items() if v}
+    return {}
+
+
+def build_timeline_slot(facts, slot_t, measured, body, generator, prev_slot=None, code_map=None):
+    """발송한 장중 브리핑을 관제탑 타임라인 슬롯(같은 스키마)으로 옮긴다.
+
+    · 숫자는 전부 facts(발송 직전 수집한 실측)에서만 가져온다 — 새로 계산하지 않는다.
+    · 유지/신규는 직전 완료 슬롯의 대장 종목 코드·테마 이름과 비교한 결과다.
+    """
+    themes = facts.get("themes") or []
+    flows = facts.get("flows") or {}
+    prev_slot = prev_slot if isinstance(prev_slot, dict) else None
+    prev_codes = {str(t.get("code")) for t in (prev_slot or {}).get("themes") or [] if t.get("code")}
+    prev_keys = {_theme_key(t.get("name")) for t in (prev_slot or {}).get("themes") or [] if t.get("name")}
+
+    rows, used = [], set()
+    for th in themes[:3]:
+        leaders = [l for l in (th.get("leaders") or []) if l.get("name")]
+        if not leaders:
+            continue
+        lead = next((l for l in leaders if (l.get("code") or l.get("name")) not in used), leaders[0])
+        used.add(lead.get("code") or lead.get("name"))
+        is_keep = bool(prev_slot) and (
+            (lead.get("code") and str(lead.get("code")) in prev_codes)
+            or _theme_key(th.get("name")) in prev_keys)
+        note = []
+        if th.get("avg_pct") is not None:
+            note.append(f"테마 평균 {float(th['avg_pct']):+.2f}%")
+        if th.get("total") is not None:
+            note.append(f"구성 {int(th['total'])}종목 중 상승 {int(th.get('rise') or 0)}"
+                        f" · 하락 {int(th.get('fall') or 0)}")
+        news = th.get("news") or {}
+        note.append("재료: " + (news.get("title") if news.get("title") else "뉴스 미수신"))
+        extra = " · ".join(
+            f"{c.get('name')} {float(c.get('pct') or 0):+.2f}% ({_money_eok_text(c.get('value_eok'))})"
+            for c in (th.get("co_movers") or [])[:2])
+        price = lead.get("price")
+        code = lead.get("code") or (code_map or {}).get(lead.get("name") or "")
+        rows.append({
+            "name": th.get("name"),
+            "status": ("keep" if is_keep else "new") if prev_slot else "live",
+            "statusLabel": ("🟢 유지" if is_keep else "🔴 신규 유입") if prev_slot else "📊 실측",
+            "leader": lead.get("name"),
+            "code": str(code or ""),
+            "chg": round(float(lead.get("pct") or 0), 2),
+            "price": f"{int(float(price)):,}원" if isinstance(price, (int, float)) else "",
+            "value": _money_eok_text(lead.get("value_eok")),
+            "note": " · ".join(note),
+            "extra": extra,
+        })
+
+    top = rows[0] if rows else None
+    n_new = sum(1 for r in rows if r["status"] == "new")
+    n_keep = sum(1 for r in rows if r["status"] == "keep")
+    sub_bits = ([f"🔴{n_new} 🟢{n_keep}"] if prev_slot else [f"📊{len(rows)} 실측"])
+
+    # 한 줄 요약 — 본문의 📌 블록 첫 줄(없으면 헤드라인)
+    lines = [ln.strip() for ln in (body or "").splitlines() if ln.strip()]
+    ctx = ""
+    for i, ln in enumerate(lines):
+        if ln.startswith("📌"):
+            ctx = lines[i + 1] if i + 1 < len(lines) else ""
+            break
+    if not ctx and len(lines) >= 2:
+        ctx = lines[1]
+    if not ctx and lines:
+        ctx = lines[0]
+
+    def num(v):
+        return v if isinstance(v, (int, float)) else None
+
+    k, q, fu = flows.get("kospi") or {}, flows.get("kosdaq") or {}, flows.get("fut") or {}
+    sup = {
+        "at": measured,
+        "kospi": {"foreign": num(k.get("foreign")), "organ": num(k.get("organ")),
+                  "personal": num(k.get("personal"))},
+        "kosdaq": {"foreign": num(q.get("foreign")), "organ": num(q.get("organ")),
+                   "personal": num(q.get("personal"))},
+        "fut": {"foreign": num(fu.get("foreign")), "organ": num(fu.get("organ")),
+                "personal": num(fu.get("personal"))},
+        "diff": {},
+    }
+    basis = flows.get("basis_date")
+    has_sup = any(v is not None for v in sup["kospi"].values()) or any(
+        v is not None for v in sup["fut"].values())
+    if has_sup:
+        sup["note"] = ((f"네이버 현물·선물 수급 실측(기준 {md_date(basis)}) — {measured} 발송 시점 값. "
+                        "현물 억원 · 선물 계약.") if basis else
+                       f"네이버 현물·선물 수급 실측 — {measured} 발송 시점 값.")
+        sup["source"] = "naver"
+        sup["label"] = f"기준 {md_date(basis)}" if basis else ""
+    else:
+        sup["note"] = "발송 시점 수급 집계 전 — 0 이 아니라 미집계입니다"
+
+    chip = "new" if n_new else ("keep" if n_keep else "live")
+    return {
+        "t": slot_t,
+        "tag": GEMINI_TAG,
+        "state": "done",
+        "measured": measured,
+        "status": chip,
+        "statusLabel": "🤖 Gemini AI 작성",
+        "leadName": top["leader"] if top else "",
+        "leadChg": f"{top['chg']:+.2f}%" if top else "",
+        "leadSub": ((top["name"] + " · ") if top else "") + " ".join(sub_bits),
+        "ctx": ctx,
+        "src": (f"{GEMINI_MARK} · 텔레그램 발송본 {measured} · "
+                f"{'Gemini 생성' if generator == 'gemini' else '실측 요약(대체)'}"),
+        "writer": "gemini" if generator == "gemini" else "fallback",
+        "supply": sup,
+        "themes": rows,
+        "basis": ("유지/신규 판정 = 직전 완료 슬롯(" + str(prev_slot.get("t")) +
+                  ") 대장 종목 코드·테마 이름 일치 여부." if prev_slot else
+                  "오늘 첫 완료 슬롯 — 직전 슬롯이 없어 유지/신규 판정 없이 실측값만 기록했습니다."),
+        "sent": (facts.get("asof") or {}).get("iso", ""),
+    }
+
+
+def write_timeline(root, slot_t, slot, now, patch_html=True):
+    """JSON(동적) + 미러 JSON(정적) + 내장 FLOW_TIMELINE 블록 갱신. 바뀐 파일 목록을 돌려준다."""
+    jp, mirror, htmls = flow_paths(root)
+    data = load_timeline(jp, now)
+    slots = data["slots"]
+    idx = next((i for i, s in enumerate(slots) if s.get("t") == slot_t), None)
+    if idx is None:
+        slots.append(slot)
+        slots.sort(key=lambda s: (int(str(s.get("t", "00:00")).split(":")[0]) * 60
+                                  + int(str(s.get("t", "00:00")).split(":")[1])))
+    else:
+        slots[idx] = slot
+    data["updated"] = now.strftime("%H:%M")
+    data.setdefault("day", WEEKDAY_KO[now.weekday()])
+
+    changed = []
+    os.makedirs(os.path.dirname(jp), exist_ok=True)
+    with open(jp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=1)
+    changed.append(jp)
+    if mirror:
+        with open(mirror, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=1)
+        changed.append(mirror)
+
+    if patch_html:
+        js = _json_for_script(data)
+        block = (FLOW_START_MARK + "\n    <script>window.FLOW_TIMELINE = " + js +
+                 ";</script>\n    " + FLOW_END_MARK)
+        for hp in htmls:
+            if not os.path.exists(hp):
+                continue
+            with open(hp, encoding="utf-8") as fh:
+                src = fh.read()
+            i = src.find(FLOW_START_MARK)
+            j = src.find(FLOW_END_MARK, i + 1) if i != -1 else -1
+            if i == -1 or j == -1:
+                log(f"⚠️ {os.path.basename(hp)} — FLOW_TIMELINE 마커 없음(내장 블록 생략)")
+                continue
+            new = src[:i] + block + src[j + len(FLOW_END_MARK):]
+            if new != src:
+                with open(hp, "w", encoding="utf-8") as fh:
+                    fh.write(new)
+                changed.append(hp)
+    return changed, data
+
+
+def repo_root_of(path):
+    """파일이 속한 git 저장소 루트(없으면 None)."""
+    p = os.path.abspath(path)
+    while True:
+        if os.path.isdir(os.path.join(p, ".git")):
+            return p
+        parent = os.path.dirname(p)
+        if parent == p:
+            return None
+        p = parent
+
+
+def git_commit_push(repo, files, message, push=False):
+    """그 저장소에 속한 파일만 커밋(원하면 push). 실패해도 발송은 성공이므로 예외를 던지지 않는다."""
+    import subprocess
+
+    def run(args, **kw):
+        return subprocess.run(args, cwd=repo, capture_output=True, text=True, **kw)
+
+    base = os.path.abspath(repo)
+    rel = [os.path.relpath(f, base) for f in files
+           if os.path.abspath(f).startswith(base + os.sep)]
+    if not rel:
+        return False, "이 저장소 파일 없음"
+    if not os.path.isdir(os.path.join(base, ".git")):
+        return False, "git 저장소가 아님(파일만 갱신)"
+    try:
+        add = run(["git", "add", "--"] + rel)
+        if add.returncode != 0:
+            return False, f"add 실패: {(add.stderr or '')[:160]}"
+        staged = run(["git", "diff", "--cached", "--quiet", "--"] + rel)
+        if staged.returncode == 0:
+            return True, "변경 없음(이미 반영된 슬롯)"
+        com = run(["git", "-c", "user.name=github-actions[bot]",
+                   "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+                   "commit", "-m", message, "--"] + rel)
+        if com.returncode != 0:
+            return False, f"커밋 실패: {(com.stderr or com.stdout or '')[:160]}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"커밋 예외: {e}"
+    if not push:
+        return True, "커밋만(푸시 생략)"
+    p = run(["git", "push", "origin", "HEAD"])
+    if p.returncode != 0:
+        # 원격이 앞서 있으면(30분 동기화와 겹침) rebase 후 한 번 더
+        run(["git", "fetch", "origin", "--depth=1"])
+        rb = run(["git", "rebase", "--autostash", "origin/HEAD"])
+        if rb.returncode != 0:
+            run(["git", "rebase", "--abort"])
+            return False, f"푸시 실패(원격 충돌): {(p.stderr or '')[:160]}"
+        p = run(["git", "push", "origin", "HEAD"])
+    if p.returncode != 0:
+        return False, f"푸시 실패: {(p.stderr or p.stdout or '')[:200]}"
+    return True, "커밋·푸시 완료"
+
+
+def apply_timeline(facts, slot_t, measured, body, generator, script_dir,
+                   write=False, push=False, patch_html=True):
+    """발송본을 관제탑 타임라인 슬롯으로 반영한다. write=False 면 슬롯 JSON만 출력(검사용)."""
+    root = dashboard_root(script_dir)
+    if not root:
+        log("⚠️ 관제탑 저장소를 찾지 못해 타임라인 반영을 건너뜁니다(public/data 없음)")
+        return None
+    jp = flow_paths(root)[0]
+    now = kst_now()
+    data = load_timeline(jp, now)
+    prev = prev_done_slot(data["slots"], slot_t)
+    slot = build_timeline_slot(facts, slot_t, measured, body, generator, prev,
+                               code_map=name_code_map(root))
+    log(f"🗂 타임라인 슬롯 {slot_t} — {slot['leadName']} {slot['leadChg']} · 테마 {len(slot['themes'])}개"
+        f" · 출처 '{GEMINI_MARK}'")
+    if not write:
+        print(json.dumps(slot, ensure_ascii=False, indent=1))
+        log("TIMELINE DRY — 파일을 쓰지 않았습니다(--timeline-write 로 반영)")
+        return slot
+
+    changed, _data = write_timeline(root, slot_t, slot, now, patch_html=patch_html)
+    rel = [os.path.relpath(p, root) if os.path.abspath(p).startswith(os.path.abspath(root) + os.sep)
+           else p for p in changed]
+    log(f"🗂 타임라인 저장 {rel}")
+    msg = (f"chore(타임라인): {now.strftime('%m/%d')} {slot_t} Gemini 장중 브리핑 반영"
+           f" ({measured} 발송 · {len(slot['themes'])}테마)")
+    # 같은 작업트리에 있는 저장소(sd_live · deploy_repo)별로 각각 커밋
+    groups = {}
+    for f in changed:
+        rr = repo_root_of(f)
+        groups.setdefault(rr, []).append(f)
+    for rr, files in groups.items():
+        if not rr:
+            continue
+        ok, note = git_commit_push(rr, files, msg, push=push)
+        log(("✓ " if ok else "⚠️ ") + f"타임라인 git({os.path.basename(rr)}): {note}")
+        if not ok and push:
+            log("   → 워크플로 permissions(contents: write) 또는 원격 상태를 확인해야 합니다")
+    return slot
+
+
+# --------------------------------------------------------------------------- #
 # 실행
 # --------------------------------------------------------------------------- #
 def market_guard(facts, force=False):
@@ -1837,10 +2252,36 @@ def main(argv=None):
     ap.add_argument("--timeout", type=int, default=60, help="Gemini 호출 타임아웃(초)")
     ap.add_argument("--max-tokens", type=int, default=4096, help="Gemini maxOutputTokens")
     ap.add_argument("--summary", default=None, help="결과 JSON 을 Actions 요약(markdown)으로 출력")
+    ap.add_argument("--timeline-slot", default=None,
+                    help="관제탑 타임라인 슬롯 시각 (기본: 발송 시각에서 가장 가까운 정규 회차)")
+    ap.add_argument("--no-timeline", action="store_true", help="관제탑 타임라인 반영을 생략")
+    ap.add_argument("--timeline-write", action="store_true",
+                    help="dry-run 에서도 타임라인 파일을 쓴다(검사·수동 반영용)")
+    ap.add_argument("--timeline-from", default=None,
+                    help="저장된 결과 JSON(intraday.json)으로 타임라인 슬롯만 재생성")
+    ap.add_argument("--no-html", action="store_true", help="정적 index.html 내장 블록은 건드리지 않는다")
+    ap.add_argument("--push-timeline", action="store_true",
+                    help="타임라인 커밋을 원격에 push (GitHub Actions 에서는 자동)")
     args = ap.parse_args(argv)
 
     if args.summary:
         print_summary(args.summary)
+        return 0
+
+    # ── 저장된 발송본으로 타임라인만 재생성(수동 백필) ──────────────────
+    if args.timeline_from:
+        with open(args.timeline_from, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        if not saved.get("facts"):
+            log(f"❌ {args.timeline_from} 에 facts 가 없습니다")
+            return 2
+        sdir = os.path.dirname(os.path.abspath(__file__))
+        sent = saved.get("facts", {}).get("asof", {}).get("time") or ""
+        slot_t = target_slot(args.timeline_slot or saved.get("slot") or sent)
+        apply_timeline(saved["facts"], slot_t, sent or slot_t, saved.get("message") or "",
+                       saved.get("generator") or "gemini", sdir,
+                       write=bool(args.timeline_write), push=bool(args.push_timeline),
+                       patch_html=not args.no_html)
         return 0
 
     for path in args.env_file:
@@ -1967,8 +2408,8 @@ def main(argv=None):
         validation = {"ok": True, "problems": ["Gemini 미사용 — 실측 대체 본문"], "chars": len(body)}
         log("⚠️ Gemini 본문 없음 → 실측 대체 본문으로 발송")
 
-    header_line = header if generator == "gemini" else header.replace(
-        "[🤖 Gemini AI 자동 작성]", "[🤖 자동 작성 · 실측 요약]")
+    # Gemini 실패 시에만 '실측 요약'임을 밝힌다(공개 헤더에는 AI 표기를 넣지 않는다)
+    header_line = header if generator == "gemini" else f"{header} (실측 요약)"
     message = f"{header_line}\n{body}".strip()
     if generator == "gemini" and CHECKER_URL not in message:
         message += "\n" + CHECKER_URL
@@ -1990,6 +2431,14 @@ def main(argv=None):
             return 2
         message_id = send_telegram(tg_token, chat_id, message)
         log(f"✓ 텔레그램 발송 완료 message_id={message_id}")
+
+    # ── 관제탑 1·7번 타임라인에 이번 회차를 남긴다(발송 성공본) ──────────
+    if not args.no_timeline and (message_id or args.timeline_write):
+        slot_t = target_slot(args.timeline_slot or slot)
+        apply_timeline(facts, slot_t, facts["asof"]["time"], message, generator, script_dir,
+                       write=True,
+                       push=bool(args.push_timeline) or os.environ.get("GITHUB_ACTIONS") == "true",
+                       patch_html=not args.no_html)
 
     if args.out_text:
         os.makedirs(os.path.dirname(os.path.abspath(args.out_text)), exist_ok=True)

@@ -27,6 +27,7 @@ const {
   formatKoreanMoney,
   sendJson,
   getQuery,
+  stretchCacheControl,
 } = require('../lib/http');
 
 const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
@@ -48,19 +49,21 @@ const MEM_TTL_MS = 4000;
 /* ------------------------------- 시간 유틸 ------------------------------- */
 const WEEKDAY_KO = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
 
+const FMT_KST_FULL = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  weekday: 'short',
+});
+
 function kstParts(date) {
   const d = date instanceof Date ? date : new Date();
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-    weekday: 'short',
-  }).formatToParts(d);
+  const parts = FMT_KST_FULL.formatToParts(d);
   const g = (t) => (parts.find((p) => p.type === t) || {}).value || '';
   const hh = Number(g('hour')) % 24;
   return {
@@ -357,9 +360,11 @@ function buildHeadline(phase, indices, futures, fx, tradingDate) {
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
 function applyCacheHeaders(res, policy) {
-  res.setHeader('Cache-Control', policy);
-  res.setHeader('CDN-Cache-Control', policy);
-  res.setHeader('Vercel-CDN-Cache-Control', policy);
+  /* 장 마감·야간·주말에는 s-maxage 를 늘려 함수 호출(=Fluid Active CPU)을 줄인다 */
+  const p = stretchCacheControl(policy);
+  res.setHeader('Cache-Control', p);
+  res.setHeader('CDN-Cache-Control', p);
+  res.setHeader('Vercel-CDN-Cache-Control', p);
 }
 
 /* --------------------------- 실시간 팩트 수집 본체 ---------------------------

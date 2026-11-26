@@ -188,6 +188,16 @@ function applyLive() {
     .catch(function () { return false; });
 }
 
+/* 💰 수급 탭이 화면에 떠 있을 때만 30초 폴링한다 — 다른 탭을 보는 동안에도
+   /api/stock-live 를 계속 부르면 Vercel Fluid CPU 만 쌓인다(2026-11-26).
+   탭을 누르면 즉시 한 번 새로 받아 값이 늦지 않게 한다. */
+function supplyTabActive() {
+  try {
+    var btn = document.querySelector('.tab-btn.active');
+    return !btn || btn.getAttribute('data-view') === 'supply';
+  } catch (e) { return true; }
+}
+
 function boot() {
   if (S.booted) return;
   S.booted = true;
@@ -196,8 +206,14 @@ function boot() {
   applyLive();
   S.timer = setInterval(function () {
     if (document.visibilityState !== 'visible') return;
+    if (!supplyTabActive()) return;
     applyLive();
   }, 30000);
+  try {
+    document.querySelectorAll('.tab-btn[data-view="supply"], [data-view="supply"]').forEach(function (b) {
+      b.addEventListener('click', function () { setTimeout(applyLive, 350); });
+    });
+  } catch (e) { /* noop */ }
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

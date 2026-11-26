@@ -40,6 +40,7 @@ const {
   formatKoreanMoney,
   sendJson,
   getQuery,
+  stretchCacheControl,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
 const { pickMaterialNews, isRealTheme, materialLine, materialTag } = require('../lib/chim-material');
@@ -410,19 +411,22 @@ const CP_RULES = {
 const pad2 = (n) => (n < 10 ? '0' : '') + n;
 const WEEKDAY_KO = { Sun: '일', Mon: '월', Tue: '화', Wed: '수', Thu: '목', Fri: '금', Sat: '토' };
 
+/* Intl.DateTimeFormat 은 모듈 로드 때 한 번만 만든다 — 요청마다 새로 만들면 CPU 가 그대로 쌓인다 */
+const FMT_KST_FULL = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  weekday: 'short',
+});
+
 function kstParts(date) {
   const d = date instanceof Date ? date : new Date();
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-    weekday: 'short',
-  }).formatToParts(d);
+  const parts = FMT_KST_FULL.formatToParts(d);
   const g = (t) => (parts.find((p) => p.type === t) || {}).value || '';
   const hh = Number(g('hour')) % 24;
   const mi = Number(g('minute'));
@@ -1943,16 +1947,7 @@ function buildUpperLimit(cand) {
 function kstDayLabel(iso) {
   const d = iso ? new Date(iso) : null;
   if (!d || Number.isNaN(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-    weekday: 'short',
-  }).formatToParts(d);
+  const parts = FMT_KST_FULL.formatToParts(d);
   const g = (t) => (parts.find((p) => p.type === t) || {}).value || '';
   return {
     date: `${g('year')}-${g('month')}-${g('day')}`,
@@ -2418,6 +2413,11 @@ async function buildIntradayHong(ctx) {
   const minutes = p0.minutes;
   const beforeOpen = !weekend && minutes < 9 * 60;
   const beforeD0 = !weekend && minutes < HONG_D0.openMinute;
+  /* 09:00~09:29 — 장은 열렸고 D+0 판정 시각(09:30)만 안 된 구간.
+     2026-11-26 사용자 확정: 이 구간에도 기준을 채운 후보는 '미리보기'로 내려보낸다.
+     (매매 권장은 원전대로 09:30 이후. 09:00 이전 장전·프리마켓은 값이 굳어 있어 제외)
+     장전·프리마켓에는 당일 등락률·거래대금이 아니라 직전 값이므로 후보를 만들지 않는다. */
+  const previewD0 = !weekend && minutes >= 9 * 60 && minutes < HONG_D0.openMinute;
   const afterClose = !weekend && minutes >= 15 * 60 + 30;
   const supply = (c.supply ? await c.supply : null) || (await hongSupplyMap());
   const indexGate = (c.indexGate ? await c.indexGate : null) || null;
@@ -2437,16 +2437,19 @@ async function buildIntradayHong(ctx) {
     gate: {
       ready: !weekend && !beforeD0 && !afterClose,
       beforeD0: !weekend && beforeD0,
+      previewD0: !weekend && previewD0,
       afterClose: !weekend && afterClose,
       weekend,
       minute: minutes,
       text: weekend
         ? '휴장일 — 다음 거래일 09:30 이후 D+0 탐색'
-        : beforeD0
-          ? '09:30 이후 D+0 탐색 대기 (원전: 9시 30분 이전 매매 자제)'
-          : afterClose
-            ? '정규장 마감(15:30) — 오늘 D+0 판정 종료'
-            : '09:30 이후 D+0 탐색 구간',
+        : previewD0
+          ? '⏳ 09:30 이전 관망 구간 — 후보는 미리 확인, 실전 매매는 09:30 이후 권장'
+          : beforeD0
+            ? '09:30 이후 D+0 탐색 대기 (원전: 9시 30분 이전 매매 자제)'
+            : afterClose
+              ? '정규장 마감(15:30) — 오늘 D+0 판정 종료'
+              : '09:30 이후 D+0 탐색 구간',
     },
     thresholds: {
       valueRank: HONG_D0.valueRankMax,
@@ -2488,7 +2491,9 @@ async function buildIntradayHong(ctx) {
 
   const prevStrong = new Set((c.prevStrongThemes || []).map((t) => String(t).replace(/\s+/g, '')));
 
-  (c.pool || []).forEach((j) => {
+  /* 장전·프리마켓(09:00 이전)·휴장에는 당일 등락률·대금이 갱신되지 않는다 — 후보를 만들지 않는다 */
+  const poolRows = beforeOpen || weekend ? [] : (c.pool || []);
+  poolRows.forEach((j) => {
     const st = out.leaderStats;
     const rank = j.valueRank === null || j.valueRank === undefined ? null : j.valueRank;
     if (rank !== null && rank <= HONG_D0.valueRankMax) st.rank += 1;
@@ -2576,6 +2581,10 @@ async function buildIntradayHong(ctx) {
     if (beforeOpen || weekend) {
       out.notes.push(
         `장전·휴장에는 당일 등락률·거래대금이 갱신되지 않아 D+0 후보를 판정하지 않습니다 — 09:30 이후 다시 계산합니다(원전: 9시 30분 이전 매매 자제).`,
+      );
+    } else if (previewD0) {
+      out.notes.push(
+        `09:30 이전 관망 구간입니다 — 기준(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑)을 채운 종목이 아직 없습니다. 09:30 이후 다시 계산합니다(미리보기 구간).`,
       );
     } else if (afterClose) {
       out.notes.push(
@@ -5343,9 +5352,11 @@ async function buildClosingPicks(ctx) {
  *  (Vercel Node 함수는 Cache-Control 의 s-maxage 를 CDN 정책으로 쓰지 않고 정규화하므로,
  *   CDN-Cache-Control / Vercel-CDN-Cache-Control 을 함께 지정한다) */
 function applyCacheHeaders(res, policy) {
-  res.setHeader('Cache-Control', policy);
-  res.setHeader('CDN-Cache-Control', policy);
-  res.setHeader('Vercel-CDN-Cache-Control', policy);
+  /* 장 마감·야간·주말에는 s-maxage 를 늘려 함수 호출(=Fluid Active CPU)을 줄인다 */
+  const p = stretchCacheControl(policy);
+  res.setHeader('Cache-Control', p);
+  res.setHeader('CDN-Cache-Control', p);
+  res.setHeader('Vercel-CDN-Cache-Control', p);
 }
 
 /* ------------------------------------------------------------------------ */
