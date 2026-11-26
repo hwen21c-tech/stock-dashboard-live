@@ -2475,15 +2475,21 @@ function minuteSeries(bars, compactDate) {
   return out;
 }
 
-/** target(분) 이후 첫 봉 — 없으면 target 까지의 마지막 봉. 없으면 null. */
-function seriesValue(series, target) {
-  if (!series.length) return null;
-  let before = null;
+/** 정확히 그 분의 봉 (없으면 null) */
+function seriesAt(series, minute) {
   for (const r of series) {
-    if (r.min >= target) return r;
-    before = r;
+    if (r.min === minute) return r;
+    if (r.min > minute) return null;
   }
-  return before;
+  return null;
+}
+
+/** 그 분 이후 첫 봉 (없으면 null) */
+function seriesAfter(series, minute) {
+  for (const r of series) {
+    if (r.min > minute) return r;
+  }
+  return null;
 }
 
 /** 네이버 증권 투자자별 누적 수급(외인·기관·개인) — 억원 / 선물은 계약 */
@@ -2697,8 +2703,15 @@ async function buildIndexFlowBundle(req, indices) {
       if (carry.at && carry.at !== t) row.n = '수급 ' + carry.at;
     }
     if (tmin <= p.minutes) {
-      const kb = seriesValue(kSeries, tmin + 1);
-      const qb = seriesValue(qSeries, tmin + 1);
+      /* 슬롯 HH:00 의 값 = 그 시간대(HH:00분) 봉의 종가.
+       *  · 그 봉이 아직 만들어지는 중(다음 분봉이 없음)이면 비운다 — 흘러가는 현재가를
+       *    '그 시각 종가'로 굳히지 않는다(14:01 봉이 4,774.29 → 4,768.57 로 바뀌던 문제).
+       *  · 마지막 15:30 슬롯만 예외: 다음 봉이 없으므로 15:30이 지난 뒤 그 봉을 쓴다. */
+      const lastSlot = t === IDX_FLOW_SLOTS[IDX_FLOW_SLOTS.length - 1];
+      const kDone = lastSlot ? p.minutes > tmin : Boolean(seriesAfter(kSeries, tmin));
+      const qDone = lastSlot ? p.minutes > tmin : Boolean(seriesAfter(qSeries, tmin));
+      const kb = kDone ? (seriesAt(kSeries, tmin) || seriesAfter(kSeries, tmin)) : null;
+      const qb = qDone ? (seriesAt(qSeries, tmin) || seriesAfter(qSeries, tmin)) : null;
       if (kb) {
         row.k = r2(kb.price);
         row.m = kb.at;

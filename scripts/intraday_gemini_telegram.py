@@ -2127,14 +2127,22 @@ def _index_prev_close(market):
     return fnum(info.get("lastClosePrice"))
 
 
-def _series_at(series, target):
-    """target(분) 이후 첫 봉 — 없으면 target 까지의 마지막 봉."""
-    before = None
+def _bar_at(series, minute):
+    """정확히 그 분의 봉 (없으면 None)"""
     for r in series:
-        if r[0] >= target:
+        if r[0] == minute:
             return r
-        before = r
-    return before
+        if r[0] > minute:
+            return None
+    return None
+
+
+def _bar_after(series, minute):
+    """그 분 이후 첫 봉 (없으면 None)"""
+    for r in series:
+        if r[0] > minute:
+            return r
+    return None
 
 
 def merge_index_hourly_flow(data, timeline_slots, now):
@@ -2207,8 +2215,12 @@ def merge_index_hourly_flow(data, timeline_slots, now):
             if tl.get("measured") and str(tl.get("measured")) != t:
                 row["n"] = "수급 " + str(tl.get("measured"))
         if tmin <= now_min:
-            kb = _series_at(ks, tmin + 1) if ks else None
-            qb = _series_at(qs, tmin + 1) if qs else None
+            # 슬롯 HH:00 = 그 시간대 봉의 종가. 아직 만들어지는 중이면 비운다(추정 금지).
+            last_slot = t == INDEX_FLOW_SLOTS_LOCAL[-1]
+            k_done = (now_min > tmin) if last_slot else bool(_bar_after(ks, tmin))
+            q_done = (now_min > tmin) if last_slot else bool(_bar_after(qs, tmin))
+            kb = (_bar_at(ks, tmin) or _bar_after(ks, tmin)) if (ks and k_done) else None
+            qb = (_bar_at(qs, tmin) or _bar_after(qs, tmin)) if (qs and q_done) else None
             if kb:
                 row["k"] = round(kb[1], 2)
                 row["m"] = kb[2]
