@@ -61,6 +61,9 @@
       원/달러 환율
   · public/data/supply-latest.json (있으면)
       외인·기관 순매수/순매도 상위 종목(확정 기준일) — 수급 해석 근거
+  · scripts/analysis_context.py (심화 분석 헬퍼 · 무료·키 불필요)
+      종목 최신 뉴스(네이버) · 당일 DART 공시 · 3~5거래일 연속 수급(네이버 일별 확정)
+      · 전일 테마 연속성/자금 잔류 · scenario_retro_notes.json(오답 노트) · 미장(Yahoo) → 국내 연결
   · public/data/daily_levels.json (있으면)
       {"date":"2026-11-26","kospi":{"s1":4672.55,"s2":4586.8,"r1":4708.54,"r2":4809,"close":4697.51}}
       없으면 전일 종가를 기준선으로 쓴다.
@@ -82,6 +85,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:  # 심화 분석 헬퍼 — 없어도 브리핑은 그대로 돌아간다
+    import analysis_context as analysis_ctx
+except Exception as _e:  # noqa: BLE001
+    analysis_ctx = None
+    print(f"⚠️ analysis_context 로드 실패 — 심화 분석 생략 ({_e})", flush=True)
 
 KST = timezone(timedelta(hours=9))
 WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
@@ -721,7 +731,7 @@ def flow_verdict(fl):
     }
 
 
-def collect(script_dir, use_fixture=None, verbose=True):
+def collect(script_dir, use_fixture=None, verbose=True, deep=True, deep_budget=25.0):
     """모든 실측값 수집 → facts dict. 실패한 소스는 None 으로 남긴다(추정 금지)."""
     facts = {"errors": [], "asof": {}}
     now = kst_now()
@@ -922,6 +932,25 @@ def collect(script_dir, use_fixture=None, verbose=True):
                 weak[0]["leader"] = top if top["value_eok"] >= 300 else None
     facts["weak_themes"] = weak
 
+    # ---------- 심화 분석(뉴스·공시·연속 수급·테마 연속성·오답 노트·미장) ----------
+    #   · 네트워크 작업은 내부 시간 예산 안에서만 돌고, 실패해도 발송을 막지 않는다.
+    facts["deep"] = None
+    if deep and analysis_ctx is not None and not use_fixture:
+        # 오늘 테마 순위 — 네이버 테마 랭킹(장중) 우선, 장전에는 관제탑 테마 목록으로
+        rank_rows = [{"rank": x.get("rank"), "name": x.get("name"), "avg_pct": x.get("pct"),
+                      "basis_label": "네이버 테마 등락(실시간)"} for x in themes or [] if x.get("name")]
+        if not rank_rows:
+            rank_rows = [{"rank": t.get("rank"), "name": t.get("name"), "avg_pct": t.get("avgPct"),
+                          "basis_label": t.get("avgPctBasisLabel")}
+                         for t in (tabs or {}).get("themes") or [] if t.get("name")]
+        try:
+            facts["deep"] = analysis_ctx.build_deep_context(
+                script_dir, facts["themes"], theme_rank=rank_rows,
+                budget=deep_budget, verbose=verbose)
+        except Exception as e:  # noqa: BLE001 — 심화 분석은 보조 정보다
+            facts["errors"].append(f"deep: {e}")
+            log(f"⚠️ 심화 분석 실패 — {e}")
+
     # ---------- 기준선 ----------
     levels_path = os.path.join(script_dir, "..", "public", "data", "daily_levels.json")
     facts["levels"] = read_daily_levels(os.path.abspath(levels_path))
@@ -949,6 +978,169 @@ def collect(script_dir, use_fixture=None, verbose=True):
 # --------------------------------------------------------------------------- #
 # FACTS → 프롬프트 텍스트
 # --------------------------------------------------------------------------- #
+def _deep_theme(f, name):
+    """deep["themes"] 에서 그 테마 항목(뉴스·공시·연속 수급)을 찾는다."""
+    for t in (f.get("deep") or {}).get("themes") or []:
+        if str(t.get("name") or "") == str(name or ""):
+            return t
+    return None
+
+
+def _streak_line(node, label):
+    """연속 수급 한 조각 — '외인 3일 연속 순매수 +152.0억(11/24~11/26)'."""
+    if not node:
+        return None
+    days = node.get("days") or 0
+    if node.get("dir") in (None, "flat") or days == 0:
+        return f"{label} 연속 없음(직전일 0·보합)"
+    word = "순매수" if node.get("dir") == "buy" else "순매도"
+    if days >= 2:
+        return (f"{label} {days}일 연속 {word} {sgn(node.get('sum_eok'), 1)}억"
+                f"({node.get('from')}~{node.get('to')})")
+    return f"{label} 직전일({node.get('to')}) {word} {sgn(node.get('sum_eok'), 1)}억"
+
+
+def _eok_short(v):
+    """억 단위 짧은 표기 — 10억 미만은 소수 1자리('-0억' 방지)."""
+    if v is None:
+        return "미수신"
+    return f"{sgn(v, 1)}억" if abs(v) < 10 else f"{sgn(v)}억"
+
+
+def deep_text(f):
+    """심화 분석(연속 수급·테마 연속성·미장 연결·오답 노트) → FACTS 줄.
+
+    모든 줄은 위에서 수집한 실측값이다. 숫자·일수는 여기 있는 그대로만 본문에 옮긴다.
+    """
+    d = f.get("deep") or {}
+    if not d:
+        return []
+    L = []
+
+    # ── ① 3~5거래일 연속 수급 ──────────────────────────────────────────
+    #   · 종목별 일별 확정치는 네이버 trend(주수×종가)로 직접 계산한 값만 쓴다.
+    #     supply-latest.json 의 streak* 필드는 금액 부호와 어긋나는 경우가 있어(SK스퀘어 기관 -496.5억인데 streak 1)
+    #     API 계산값이 없을 때만, 부호가 맞을 때만 보조로 쓴다.
+    ss = d.get("supply_streaks") or {}
+    sup_rows = ss.get("rows") or []
+    leader_rows = []
+    for t in d.get("themes") or []:
+        for s in t.get("leaders") or []:
+            if (s.get("supply") or {}).get("ok"):
+                leader_rows.append((t.get("name"), s, s["supply"]))
+    if sup_rows or leader_rows:
+        bases = [str((r.get("supply") or {}).get("basis")) for r in sup_rows if (r.get("supply") or {}).get("ok")]
+        basis_txt = max(bases) if bases else (ss.get("basis") or "미수신")
+        L.append(f"[3~5거래일 연속 수급] 확정 기준일 {basis_txt} — 확정치다(오늘 장중 값 아님)")
+    for r in sup_rows[:4]:
+        sv = r.get("supply") or {}
+        if sv.get("ok"):
+            seg = [x for x in (_streak_line(sv.get("foreign"), "외인"),
+                               _streak_line(sv.get("organ"), "기관")) if x]
+            last = (sv.get("rows") or [{}])[0]
+            if seg:
+                L.append(f"- {r.get('name')}: " + " · ".join(seg)
+                         + f" (최근일 {last.get('date')} 외인 {_eok_short(last.get('foreign_eok'))}"
+                           f"·기관 {_eok_short(last.get('organ_eok'))})")
+            continue
+        seg = []
+        if r.get("foreign_streak") and (r.get("foreign_eok") or 0) > 0:
+            seg.append(f"외인 {int(r['foreign_streak'])}일 연속 순매수")
+        if r.get("organ_streak") and (r.get("organ_eok") or 0) > 0:
+            seg.append(f"기관 {int(r['organ_streak'])}일 연속 순매수")
+        if not seg:
+            continue
+        L.append(f"- {r.get('name')}: " + " · ".join(seg)
+                 + f" (확정일 외인 {_eok_short(r.get('foreign_eok'))}·기관 {_eok_short(r.get('organ_eok'))})")
+
+    for theme_name, s, supv in leader_rows[:5]:
+        seg = [x for x in (_streak_line(supv.get("foreign"), "외인"),
+                           _streak_line(supv.get("organ"), "기관")) if x]
+        if not seg:
+            continue
+        recent = " / ".join(
+            f"{r['date']} 외인 {_eok_short(r.get('foreign_eok'))}·기관 {_eok_short(r.get('organ_eok'))}"
+            for r in (supv.get("rows") or [])[:3])
+        L.append(f"- [테마대장] {s.get('name')}({theme_name}) 기준 {supv.get('basis')}: "
+                 + " · ".join(seg) + (f" · 일별 {recent}" if recent else ""))
+    if sup_rows or leader_rows:
+        L.append("")
+
+    # ── ② 테마 연속성·자금 잔류 ────────────────────────────────────────
+    ct = d.get("continuity") or {}
+    if ct.get("ok"):
+        hist = ", ".join(md_date(str(x).replace("-", "")) for x in (ct.get("history_dates") or []))
+        L.append(f"[테마 연속성·자금 잔류] 직전 거래일 {ct.get('prev_label')} 대비 · 보관 {ct.get('history_days')}일치({hist})")
+        prev_md = md_date(str(ct.get("prev_date") or "").replace("-", ""))
+        stale = next((t.get("basis_label") for t in (f.get("themes") or [])
+                      if t.get("basis_label") and prev_md and prev_md in str(t.get("basis_label"))), None)
+        for r in ct.get("themes") or []:
+            tr = f"{int(r['today_rank'])}위" if r.get("today_rank") else "순위권 밖"
+            seg = [f"전일 {r.get('prev_rank')}위 {pct_text(r.get('prev_avg'))} → 오늘 {tr} {pct_text(r.get('today_avg'))} ({r.get('status')})"]
+            if r.get("today_basis"):
+                seg.append(f"오늘 값 기준 '{r['today_basis']}'")
+            if r.get("leader_prev"):
+                state = r.get("leader_state") or ("대장 유지" if r.get("leader_kept") else "대장 교체")
+                tail = f" 오늘 {pct_text(r.get('leader_pct'))}" if r.get("leader_pct") is not None else ""
+                seg.append(state + tail)
+            if r.get("prev4_checked"):
+                names = ", ".join(r.get("prev4_up_names") or []) or "없음"
+                seg.append(f"전일 주도 {r['prev4_checked']}종목 중 오늘 상승 {r['prev4_up']}({names})")
+                if r.get("prev4_value_share") is not None:
+                    seg.append(f"그 종목들이 오늘 이 테마 대금의 {r['prev4_value_share']:.1f}%"
+                               + ("(직전 거래일 값)" if stale else ""))
+            seg.append(f"보관 {r.get('history_days')}일 중 상위권 {r.get('appear_days')}일")
+            L.append(f"- {r['name']}: " + " · ".join(seg))
+        sm = ct.get("summary") or {}
+        L.append(f"  요약: 전일 상위 테마 중 오늘도 상위권 {sm.get('rank_kept')} · 전일 주도주가 오늘 상승한 테마 {sm.get('leader_up')}")
+        if stale:
+            L.append(f"  ※ 지금 받는 쪽 테마 값은 '{stale}' 기준이라 오늘 장중 값이 아니다 — 연속성 판정은 장중에 의미가 있다.")
+        L.append("")
+
+    # ── ③ 미장 → 국내 연결 ────────────────────────────────────────────
+    us = d.get("us") or {}
+    if us.get("ok"):
+        idx = [r for r in us.get("indices") or [] if r.get("ok")]
+        if idx:
+            L.append(f"[미장 → 국내 연결] 최근 정규장 {us.get('latest_date')}(현지) 기준")
+            L.append("- " + " · ".join(
+                f"{r['name']} {r['price']:,.2f}({pct_text(r.get('pct'))})" for r in idx))
+            gap = us.get("gap_days")
+            if gap and gap >= 2:
+                L.append(f"  ※ 그 뒤 {int(gap)}일이 지났지만 새 정규장 값이 없다(휴장·미집계) — 값을 지어내지 말 것.")
+        fut = us.get("futures") or {}
+        if fut.get("ok"):
+            L.append(f"- 나스닥100 선물 {fut['price']:,.2f}({pct_text(fut.get('pct'))}) · 지금 값")
+        big = [r for r in us.get("bigtech") or [] if r.get("ok") and r.get("pct") is not None]
+        if big:
+            L.append("- 빅테크(같은 정규장): " + " · ".join(
+                f"{r['name']} {r['price']:,.2f}({pct_text(r.get('pct'))})" for r in big))
+        for r in us.get("rules") or []:
+            L.append(f"- 연결 규칙(가설): {r}")
+        L.append("")
+
+    # ── ④ 오답 노트 ──────────────────────────────────────────────────
+    rn = d.get("retro") or {}
+    if rn.get("ok") and rn.get("notes"):
+        L.append(f"[시나리오 오답 노트] 최근 {len(rn['notes'])}건 — 과거 교훈이다. 그날 숫자를 오늘 값처럼 쓰지 말 것")
+        for n in rn["notes"][:5]:
+            bits = [md_date(str(n.get("date") or "").replace("-", "")) + (f" {n['slot']}" if n.get("slot") else "")]
+            if n.get("title"):
+                bits.append(f"「{n['title']}」")
+            if n.get("wrong"):
+                bits.append(f"틀린 판단: {n['wrong']}")
+            if n.get("right"):
+                bits.append(f"그때 실측: {n['right']}")
+            if n.get("lesson"):
+                bits.append(f"교훈: {n['lesson']}")
+            L.append("- " + " / ".join(bits))
+        L.append("")
+
+    if d.get("errors"):
+        L.append("[심화 수집 실패] " + " | ".join(str(x)[:40] for x in d["errors"][:4]))
+    return L
+
+
 def facts_text(f):
     L = []
     a = f["asof"]
@@ -1090,6 +1282,7 @@ def facts_text(f):
     L.append("")
 
     L.append("[받는 쪽 — 주도 테마, 거래대금 300억↑ 상승 대장주]")
+    _deep_done = set()
     if f["themes"]:
         for t in f["themes"]:
             avg = t.get("avg_pct")
@@ -1111,6 +1304,34 @@ def facts_text(f):
             n = t.get("news")
             if n:
                 L.append(f"   - 재료(뉴스): {n['title']} ({n.get('press') or ''} {n.get('time') or ''})")
+            dth = _deep_theme(f, t.get("name"))
+            dart_bits = []
+            for s in (dth or {}).get("leaders") or []:
+                if s.get("name") in _deep_done:
+                    continue
+                _deep_done.add(s.get("name"))
+                nw = s.get("news") or {}
+                for it in (nw.get("items") or [])[:2]:
+                    old = "  ※최근 기사 아님" if (it.get("age_h") or 0) > 36 else ""
+                    L.append(f"   - 대장주 최신기사({s['name']}, {it.get('time') or ''}): {it['title']}"
+                             f" ({it.get('press') or ''}){old}")
+                if nw.get("ok") and nw.get("note"):
+                    L.append(f"   - 대장주 기사({s['name']}): {nw['note']}")
+                dt = s.get("dart") or {}
+                if not dt:
+                    continue
+                day = md_date(str(dt.get("date") or "").replace("-", ""))
+                if dt.get("ok") and dt.get("major"):
+                    names = ", ".join(x["title"] + (f" 외 {x['count']-1}건" if (x.get("count") or 1) > 1 else "")
+                                      for x in dt["major"])
+                    dart_bits.append(f"{s['name']}: {names}")
+                elif dt.get("ok") and dt.get("count"):
+                    first = (dt.get("routine") or [{}])[0].get("title") or ""
+                    dart_bits.append(f"{s['name']}: 일반공시 {int(dt['count'])}건({first} 등)")
+            if dart_bits:
+                L.append(f"   - 당일 공시({md_date(f['asof']['date'].replace('-', ''))}): " + " · ".join(dart_bits))
+            elif dth:
+                L.append(f"   - 당일 공시({md_date(f['asof']['date'].replace('-', ''))}): 대장주 접수 0건 — 주요 공시 없음")
     else:
         L.append("주도 테마 미수신")
     L.append("")
@@ -1179,6 +1400,11 @@ def facts_text(f):
             L.append(f"- {tag}{n['title']} ({n.get('press') or ''} {n.get('time') or ''}){themes}")
         L.append("")
 
+    if f.get("deep"):
+        L.extend(deep_text(f))
+        if L and L[-1] != "":
+            L.append("")
+
     if f.get("long"):
         lg = f["long"]
         L.append("[관제탑 종가베팅 참고]")
@@ -1208,8 +1434,8 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 4. FACTS가 '미수신'·'미집계'·'실시간 아님'이라고 하면 숨기지 말고 그대로 적는다.
 5. FACTS의 날짜·시각을 바꾸지 않는다. 수급 기준일이 오늘이 아니면 '기준 11/25'처럼 기준일을 밝힌다.
 6. 출력은 맨 첫 줄 헤드라인 + 아래 5개 블록만. 인사·서론·면책·맺음말·마크다운(**·##·표·```) 금지.
-7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄(약 100자) / 📊 약 420자 / 💰 약 560자
-   / 🔥 약 850자 / 🧭 약 650자. 한 줄은 40~80자로 끊어 폰 화면에서 읽히게 하고,
+7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄(약 100자) / 📊 약 460자 / 💰 약 620자
+   / 🔥 약 860자 / 🧭 약 700자. 한 줄은 40~80자로 끊어 폰 화면에서 읽히게 하고,
    한 줄에 몰아 쓰지 말고 항목마다 '- '로 시작하는 줄로 나눈다.
 8. 매수·매도 '추천'이 아니라 조건부 대응만 쓴다. '반드시·무조건·수익 보장' 금지.
 9. 원인·재료는 FACTS의 [뉴스·재료]·[수급 종목]에 적힌 것만 쓴다. FACTS에 없는 원인 추정
@@ -1227,6 +1453,18 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
     [임계] 숫자(±1,000억·±1,500계약)는 판정 기준일 뿐이니 프로그램·비차익·거래대금에 옮겨 쓰지 않는다.
 14. 모든 문장은 '~습니다/~입니다' 존댓말. 이모지는 형식에 있는 것만 쓴다.
     지수 숫자에는 'p'를 붙이지 않는다(p는 등락폭 단위다: '코스피 4,729.01' / '+31.50p').
+15. 읽는 사람은 초보자다. 어려운 말을 그대로 던지지 말고 쉬운 말로 먼저 풀어 쓴다.
+    베이시스 → '선물이 현물보다 비싼지 싼지를 보는 값(베이시스)',
+    콘탱고·백워데이션 → '선물이 현물보다 비싼 상태·싼 상태',
+    괴리율 → '이론 가격과 실제 가격의 차이(%)', 프로그램 비차익 → '컴퓨터가 지수 바스켓을 통째로 사고파는 것',
+    미결제약정 → '아직 청산되지 않은 선물 계약 수', 디커플링 → '같이 움직이던 것이 따로 움직이는 것'.
+    용어를 빼라는 뜻이 아니라, 용어 옆에 한 번은 쉬운 설명을 붙이라는 뜻이다.
+16. [미장 → 국내 연결]은 '규칙(가설)'이다. 미장을 인용할 때는 '최근 정규장 날짜(현지)'를 반드시 붙이고,
+    연결은 '지난밤 반도체가 약했으니 오늘 반도체·장비 쪽 수급이 붙는지 본다'처럼 확인 항목으로만 쓴다.
+    오늘 국내 테마가 실제로 그렇게 움직였다는 FACTS의 등락이 없으면 '연결됐다'고 단정하지 않는다.
+    미장 숫자가 없거나 '새 정규장 값이 없다'고 적혀 있으면 미장 줄을 통째로 뺀다(예전 값을 오늘처럼 쓰지 않는다).
+17. [시나리오 오답 노트]의 숫자는 그날(과거) 값이다. 오늘 수치처럼 쓰지 않고 '피할 것'·'체크포인트'의
+    원칙으로만 반영한다(예: '연속이 확인되지 않은 수급은 전환 1일차로만 본다').
 
 [출력 형식]
 {헤드라인 한 줄 — 지수 방향 + 핵심 수급 또는 대장 테마, 30자 안팎}
@@ -1239,9 +1477,10 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 - 코스피 시 {값} · 고 {값} · 저 {값} · 대금 {값}
 - 코스닥 {값} ({등락}p / {등락률}) — 전일 종가 {값}
 - 코스닥 고 {값} · 저 {값} · 대금 {값}
-- 선물 {값} ({등락률}, {세션}) · 베이시스 {값}p · 미결제 {계약}
+- 선물 {값} ({등락률}, {세션}) · 베이시스 {값}p(선물이 현물보다 비싼지 싼지를 보는 값) · 미결제 {계약}
 - 상승:하락 코스피 {상승}:{하락} / 코스닥 {상승}:{하락} · 상한가 확정 {개수}종목
 - 원/달러 {값}원 ({등락률}, {기준일})
+- 미장 {최근 정규장 날짜(현지)}: 다우 {값} {등락률} · 나스닥 {값} {등락률} · 필라델피아 반도체 {값} {등락률} · 엔비디아 {값} {등락률} (FACTS에 없으면 그 항목은 뺀다)
 
 💰 투자자별 수급 & 흐름 해석
 - 외국인 현물 코스피 {값} · 코스닥 {값}
@@ -1250,6 +1489,7 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 - 개인 코스피 {값} · 프로그램 {값}
 - 현·선물 판정: {FACTS의 판정 문장}
 - 외인 순매수 상위 {종목} · 기관 순매수 상위 {종목}
+- 연속 수급: {FACTS의 [3~5거래일 연속 수급] — 전일 대장주 '외인 3일 연속 +152억' 같은 줄 2~3개}
 - [해석] {왜 이런 수급이 나왔는지, 어떤 의미인지 — FACTS 근거로 2~3줄}
 
 🔥 장중 주도 테마 & 대장주 (거래대금 300억↑)
@@ -1260,6 +1500,7 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 - {테마2} {등락률} — 구성 {상승}상승/{하락}하락
 - 대장 {종목} {등락률} ({거래대금})
 - 재료: {헤드라인 또는 미수신}
+- 공시: {FACTS의 그 테마 '당일 공시' — 주요 공시가 없으면 '주요 공시 없음'}
 - {테마3} {등락률}
 - 대장 {종목} {등락률} ({거래대금})
 - 빠지는 쪽: {업종} {등락률}
@@ -1268,6 +1509,7 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 🧭 대응 시나리오
 - 지금 위치: 코스피 {값} — 오늘 {저}~{고} 박스에서 어디쯤, 1차 지지 {값} 대비 {위/아래} · 전일 종가 {값}
 - 큰 틀: 1차 지지 {값} · 2차 지지 {값} · 저항1 {값} · 저항2 {값} — 지금 박스의 위·아래 경계
+- 전일 테마 잔류: {전일 대장 테마 등락률 → 오늘 등락률(유지/약화/이탈) · 전일 주도 종목 중 오늘 상승 N/M}
 - 코스닥 {값} — 1차 지지 {값} · 저항1 {값}
 - ① 돌파·강세 ({숫자 조건}): {내 계좌 행동 — 분할 여부·비중·추격 금지}
 - ② 박스권·혼조 ({숫자 조건}): {내 계좌 행동 — 관망·소액·대기}
@@ -1281,8 +1523,13 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 - 📌 는 정확히 한 줄이다(두 줄 금지). 지수 방향·외인 현선물 판정·대장 테마·대응이 모두 들어가야 한다.
 - 📊 는 FACTS의 지수·선물·베이시스·등락종목수·상한가·환율만 쓴다. 없는 값은 그 줄을 빼고 '미수신'으로 남긴다.
   코스피·코스닥은 전일 종가·고가·저가·거래대금을 각각 한 줄로 나눠 적는다.
+  미장·빅테크는 '최근 정규장 날짜'를 붙여 한 줄로 쓰고, 초보자를 위해 왜 보는지 한 줄을 덧붙인다
+  (예: '간밤 미국 반도체·엔비디아가 약했습니다. 오늘 국내 반도체·HBM 수급이 따라오는지 보면 됩니다').
+  '새 정규장 값이 없다'고 적혀 있으면 미장 줄을 빼고, 그 사실을 지어내지 않는다.
 - 💰 는 시장 전체 투자자별 수급(현물 억원, 선물 계약)과 프로그램 수치를 줄별로 쓰고, 이어서 [수급 종목]의
   외인·기관 순매수·순매도 상위 종목을 근거로 '[해석]' 줄을 2~3줄 쓴다. 해석은 FACTS에 있는 종목·수급·뉴스로만 연결한다.
+  [3~5거래일 연속 수급]은 일수·누적 금액을 FACTS에 적힌 그대로 옮기고 '확정 기준일'을 밝힌다.
+  1일짜리는 '연속'이라 쓰지 않고 '11/25 하루 순매수'처럼 적는다. 확인되지 않은 수급을 '이어지는 매수세'로 읽지 않는다.
 - 🔥 는 [받는 쪽]의 2~3개 테마를 순서대로 쓴다. 테마마다 ① 첫 줄: 테마·등락률·(구성 상승/하락)
   ② 둘째 줄: 대장주와 등락률·거래대금 ③ 셋째 줄: 동반 종목과 재료(뉴스) — 로 나눠 적는다.
   '재료(뉴스)'가 FACTS의 그 테마 줄에 '재료(뉴스):'로 붙어 있을 때만 그 헤드라인을 인용하고,
@@ -1291,6 +1538,10 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
   마지막에 [빠지는 쪽]을 대비시키되, 업종의 대표 종목은 FACTS에 '대표'로 붙은
   종목만 쓰고 없으면 업종 등락률만 쓴다. '하락 대표주'는 FACTS에 그렇게 적힌 종목만 별도 줄로 쓰고
   업종 옆에 '— 대표'로 이어 붙이지 않는다.
+  테마는 2~3개까지만 쓰고 테마당 5줄을 넘기지 않는다(분량은 지표·수급·시나리오에서 채운다).
+  '당일 공시'는 FACTS에 적힌 공시명만 쓰고(무엇을 담은 공시인지·주가에 어떻게 작용할지는 추정하지 않는다),
+  '대장주 최신기사'는 날짜를 붙여 인용하며 '※최근 기사 아님'이 붙은 기사는 오늘 재료로 쓰지 않는다.
+  '대장주 기사: 제목에 종목명이 든 기사 없음'이면 '재료 뉴스 미수신'으로 적는다.
 - 🧭 '대응 시나리오'는 이름 그대로 오늘의 대응만 쓴다(단순 전망·지수 나열 금지).
   첫 두 줄에서 큰 틀을 먼저 잡는다: ① 지금 지수가 오늘 저가·고가(또는 지지·저항) 박스 안 어디쯤인지,
   ② 전일 종가·1차/2차 지지·저항으로 이루어진 박스의 위·아래 경계. 숫자는 FACTS에 있는 값만 쓴다.
@@ -1301,6 +1552,9 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
   그 근거(FACTS의 수급·기준선·테마)를 적는다. 마지막 '체크포인트' 한 줄로 다음 확인 항목을 남긴다.
   FACTS에 없는 지지선·저항선·목표가를 새로 만들지 않는다. 지지선이 없으면 전일 종가를 기준선으로 쓴다.
   세 갈래 행동은 '관망 / 분할 / 추격 금지 / 비중 축소 / 현금' 중에서 조건과 함께 고른다.
+  '전일 테마 잔류'는 FACTS의 [테마 연속성·자금 잔류] 값만 쓰고, '오늘 값이 직전 거래일 기준'이라고 적혀 있으면
+  '장중에 다시 확인'이라고 덧붙인다(직전 거래일 값으로 오늘 판단을 단정하지 않는다).
+  '확률 우위'에는 FACTS의 수급·기준선·테마 중 가장 무거운 근거 하나만 쓰고, 미장 연결은 가설로만 덧붙인다.
 - 같은 숫자를 여러 블록에서 다시 써도 된다. 분량을 채우려고 없는 사실을 늘리지는 않는다.
   단, FACTS에 있는 수치·종목·테마·기준선은 빠짐없이 인용한다(인용만으로 분량이 채워진다).
 - '동반'은 FACTS에 '동반(300억 미만)'으로 적힌 종목에만 쓰고, 거래대금 300억↑ 종목은 모두 '대장'으로 쓴다.
@@ -2485,6 +2739,10 @@ def main(argv=None):
     ap.add_argument("--env-file", action="append", default=[], help="환경변수 파일(.env 형식)")
     ap.add_argument("--fixture", default=None, help="오프라인 테스트용 JSON 폴더")
     ap.add_argument("--no-ai", action="store_true", help="Gemini 호출 없이 대체 본문만 생성")
+    ap.add_argument("--no-deep", action="store_true",
+                    help="심화 분석(뉴스·공시·연속 수급·테마 연속성·오답 노트·미장) 생략")
+    ap.add_argument("--deep-budget", type=float, default=25.0,
+                    help="심화 분석(네트워크)에 쓸 최대 초 — 넘기면 남은 항목은 버린다")
     ap.add_argument("--timeout", type=int, default=60, help="Gemini 호출 타임아웃(초)")
     ap.add_argument("--max-tokens", type=int, default=4096, help="Gemini maxOutputTokens")
     ap.add_argument("--summary", default=None, help="결과 JSON 을 Actions 요약(markdown)으로 출력")
@@ -2543,7 +2801,8 @@ def main(argv=None):
                                      "slot": pre_slot, "timeline_slot": done_slot})
             return 0
 
-    facts = collect(script_dir, use_fixture=args.fixture)
+    facts = collect(script_dir, use_fixture=args.fixture,
+                    deep=not args.no_deep, deep_budget=args.deep_budget)
     ftext = facts_text(facts)
 
     if args.print_facts:
