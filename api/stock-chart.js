@@ -351,8 +351,9 @@ module.exports = async function handler(req, res) {
   const q = getQuery(req);
   const query = (q.q || q.code || q.name || '').trim();
   const countParam = parseInt(q.count, 10);
-  /* 20~260 — 260거래일이면 52주 위치 바(1초 체커)까지 한 번에 계산된다 */
-  const count = Number.isFinite(countParam) ? Math.min(Math.max(countParam, 20), 260) : 60;
+  /* 20~520 — 260거래일이면 52주 위치 바(1초 체커)까지, 500거래일이면 약 2년 일봉(관제탑 [2년] 버튼)까지
+     한 번에 내려준다. 네이버 fchart 는 520봉까지 지원한다(2026-11-26 상한 260 → 520). */
+  const count = Number.isFinite(countParam) ? Math.min(Math.max(countParam, 20), 520) : 60;
 
   if (!query) {
     return sendJson(

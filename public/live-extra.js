@@ -953,7 +953,7 @@
     state.afChart.code = code;
     var req = state.afChart.req;
     var titleEl = function () { return document.getElementById('modalChartTitleTxt'); };
-    fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=250', { cache: 'no-store' })
+    fetch('/api/stock-chart?code=' + encodeURIComponent(code) + '&count=500', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (req !== state.afChart.req) return; // 다른 카드를 더 누르면 이 응답은 버린다

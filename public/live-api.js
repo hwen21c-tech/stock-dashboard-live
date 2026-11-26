@@ -573,11 +573,11 @@
       .catch(function (err) { if (timer) clearTimeout(timer); throw err; });
   }
 
-  /* RN존 차트는 250봉(1년)을 쓴다 — 60봉만 받아 오면 들고 있던 1년 이력이 60봉으로 잘려
-     '직전 상단 RN 터치 후 눌림' 파동이 사라진다(2026-11-25 수리). */
-  var RN_CANDLE_COUNT = 250;
+  /* RN존 차트는 500봉(약 2년)을 쓴다 — 60봉만 받아 오면 들고 있던 이력이 잘려
+     '직전 상단 RN 터치 후 눌림' 파동이 사라진다(2026-11-25 수리 · 11/26 2년 확장). */
+  var RN_CANDLE_COUNT = 500;
 
-  /** 종목 1개의 250봉·현재가·RN을 받아 RN존 목록 항목을 교체한다. 실패 시 false. */
+  /** 종목 1개의 500봉·현재가·RN을 받아 RN존 목록 항목을 교체한다. 실패 시 false. */
   function refreshStockData(code) {
     if (!code) return Promise.resolve(false);
     return fetchChartJson(code, RN_CANDLE_COUNT)
@@ -630,7 +630,7 @@
         try { if (window.LiveExtra && typeof window.LiveExtra.renderChips === 'function') window.LiveExtra.renderChips(); } catch (e) { /* noop */ }
         if (rnRefresh.fail === 0) {
           rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · ' + rnRefresh.ok + '/' + rnRefresh.total +
-            ' 종목 250봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
+            ' 종목 500봉·현재가·RN선 최신 ( /api/stock-chart )', 'ok');
         } else {
           rnStatus('⚡ RN 캔들 동적 갱신 ' + rnRefresh.lastAt + ' · 성공 ' + rnRefresh.ok + ' · 보류 ' + rnRefresh.fail +
             '/' + rnRefresh.total + ' (보류 종목은 기존 데이터 유지)', 'warn');
@@ -1249,7 +1249,7 @@
     try { controller = new AbortController(); } catch (e) { controller = null; }
     if (controller) timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, 14000);
 
-    fetch(CHART_URL + '?q=' + encodeURIComponent(query) + '&count=250',
+    fetch(CHART_URL + '?q=' + encodeURIComponent(query) + '&count=500',
       controller ? { signal: controller.signal, cache: 'no-store' } : { cache: 'no-store' })
       .then(function (res) {
         return res.text().then(function (text) {
@@ -2231,7 +2231,7 @@
     if (!arr0.length || lastDate === todayKstYmd()) return;
     chartPopupReq += 1;
     var req = chartPopupReq;
-    fetch(CHART_API_URL + '?code=' + encodeURIComponent(code) + '&count=250', { cache: 'no-store' })
+    fetch(CHART_API_URL + '?code=' + encodeURIComponent(code) + '&count=500', { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (req !== chartPopupReq) return;                        // 더 최근 클릭이 있으면 이 응답은 버린다
