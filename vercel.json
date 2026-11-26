@@ -22,7 +22,7 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
-      "source": "/(live-api|live-extra|live-schedule|live-calendar|live-macro|live-dart|live-closing|strategy-pins|watchlist|overheat-badge).js",
+      "source": "/(live-api|live-extra|live-schedule|live-calendar|live-macro|live-dart|live-closing|strategy-pins|strategy-day-guard|watchlist|overheat-badge).js",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
