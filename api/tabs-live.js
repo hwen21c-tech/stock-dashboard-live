@@ -2326,7 +2326,8 @@ function judgeMover(q, bars, valueRank) {
  *  트랙 ① 홍인기 D+0 주도주 (09:30 이후)
  *    · 거래대금 상위 15위 이내 · 500억↑ · +5%↑
  *    · 같은 테마 +5%↑ 3종목 이상 동반
- *    · 120일(6개월) 전고점 돌파 또는 근접(5% 이내) + 90거래일 '끼' 이력 표시
+ *    · 120일(6개월) 전고점은 탈락 조건이 아니라 뱃지·정렬 조건 + 90거래일 '끼' 이력 표시
+ *      (2026-11-26: 반등장에서 전고점 미달로 후보가 0종목이 되던 것을 뱃지 + 화면 🎯 ON/OFF 토글로 바꿈)
  *    · 당일 고점 상승폭의 절반을 밀면 '탈락' — 원전 손절 기준
  *  트랙 ② 하락장 역발상 (지수 -1.5% 이하 급락장)
  *    · 직전/최근 강세 테마 안에서 지수보다 덜 빠지거나 역행 상승 중인 종목
@@ -2456,7 +2457,7 @@ async function buildIntradayHong(ctx) {
       halfDrop: '당일 고점 상승폭의 50%',
     },
     leader: [],
-    leaderStats: { judged: (c.pool || []).length, rank: 0, value: 0, pct: 0, theme: 0, picked: 0, candleMissing: 0 },
+    leaderStats: { judged: (c.pool || []).length, rank: 0, value: 0, pct: 0, theme: 0, near120: 0, picked: 0, pickedNear: 0, candleMissing: 0 },
     downside: { active: false, index: { kospiPct: kospi, kosdaqPct: kosdaq, asOf: (indexGate && indexGate.asOf) || null }, items: [], note: '' },
     supply: {
       ok: Boolean(supply && supply.ok),
@@ -2500,9 +2501,12 @@ async function buildIntradayHong(ctx) {
     if (j.hi120 === null || j.hi120 === undefined) { st.candleMissing += 1; return; }
 
     const gap120 = round2(((j.hi120 - j.price) / j.price) * 100);
-    const near = j.break120 || (gap120 !== null && gap120 <= HONG_D0.nearHighPct);
-    /* 120일 전고점 돌파도 근접도 아니면 주도주 트랙에서 뺀다(원전 5번 '끼'·전고점 조건) */
-    if (!near) return;
+    const break120 = Boolean(j.break120);
+    const near120 = break120 || (gap120 !== null && gap120 <= HONG_D0.nearHighPct);
+    /* 120일 전고점 돌파/근접은 탈락 조건이 아니라 뱃지·정렬 조건으로 내려보낸다.
+       2026-11-26 사용자 확정: 반등장에서 전고점 미달이면 후보가 통째로 사라지던 하드 탈락을 걷어내고,
+       화면의 `🎯 120일 전고점만 보기` 토글이 걸러 보게 한다(기본 OFF = 전체 후보). */
+    if (near120) st.near120 += 1;
 
     const th = themesOf.get(j.code) || [];
     let best = null;
@@ -2534,7 +2538,8 @@ async function buildIntradayHong(ctx) {
       hi120: j.hi120,
       hi120Date: j.hi120Date,
       gap120,
-      break120: Boolean(j.break120),
+      near120,
+      break120,
       firstBreak120: Boolean(j.firstBreak120),
       theme: best ? best.theme : null,
       themeUp5: best ? best.up5 : 0,
@@ -2547,7 +2552,9 @@ async function buildIntradayHong(ctx) {
     });
   });
 
+  /* 정렬: ① 120일 전고점 돌파/근접 먼저 ② 테마 3종목 동반 ③ 고점 절반선 유지 ④ 등락률·거래대금 */
   out.leader.sort((a, b) => {
+    if (a.near120 !== b.near120) return a.near120 ? -1 : 1;
     if (a.themeOk !== b.themeOk) return a.themeOk ? -1 : 1;
     if (a.half.state !== b.half.state) {
       const w = { hold: 0, warn: 1, drop: 2, unknown: 3 };
@@ -2555,8 +2562,15 @@ async function buildIntradayHong(ctx) {
     }
     return (b.pct || 0) - (a.pct || 0) || (b.valueEok || 0) - (a.valueEok || 0);
   });
-  out.leader = out.leader.slice(0, 6);
+  /* 순위 15위 이내로 이미 잘려 있어 최대 15종목 — 토글 OFF는 후보 전체를 보여 준다 */
+  out.leader = out.leader.slice(0, 15);
   out.leaderStats.picked = out.leader.length;
+  out.leaderStats.pickedNear = out.leader.filter((x) => x.near120).length;
+  if (out.leader.length && !out.leaderStats.pickedNear) {
+    out.notes.push(
+      `오늘은 120일 전고점 돌파/근접 종목이 없습니다 — 전고점 이격 반등형 ${out.leader.length}종목만 후보로 남겼습니다(🎯 토글 ON이면 0종목).`,
+    );
+  }
 
   if (!out.leader.length) {
     if (beforeOpen || weekend) {
@@ -2569,7 +2583,7 @@ async function buildIntradayHong(ctx) {
       );
     } else {
       out.notes.push(
-        `조건(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑ · 120일 전고점 돌파/근접)을 모두 채운 종목이 없습니다 — 기준을 임의로 완화하지 않았습니다.`,
+        `조건(거래대금 ${HONG_D0.valueRankMax}위 이내 · ${HONG_D0.valueEok}억↑ · +${HONG_D0.pct}%↑)을 모두 채운 종목이 없습니다 — 기준을 임의로 완화하지 않았습니다.`,
       );
     }
   }
