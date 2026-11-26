@@ -26,6 +26,9 @@ const {
 // 한국투자증권(KIS) 공식 오픈API — 실패하면 조용히 네이버 단독으로 돌아가야 하므로 절대 throw 하지 않는다.
 const kis = require('../lib/kis');
 
+// 📐 1분봉 + F존·K존 계산 (2026-11-26) — 새 함수 파일을 만들지 않고 이 파일 안에서 내부 라우트로 처리한다.
+const fkzone = require('../lib/fkzone');
+
 const CACHE_CONTROL = 'public, s-maxage=10, stale-while-revalidate=20';
 
 // 기본 관제탑 종목 (사용자가 자주 보는 축)
@@ -1037,6 +1040,74 @@ async function fetchStockNews(code, limit) {
     basis: todayRows.length ? '당일 뉴스' : '최근 뉴스(당일 없음)',
     source: 'naver-stock-news',
   };
+}
+
+/* ---------------- 📐 1분봉 + F존·K존 (종목 모달 전용 · 2026-11-26) ----------------
+ *  GET /api/stock-live?mode=minute&code=005930
+ *   · 네이버 증권 1분봉(당일 09:00~15:30)을 그대로 내려주고, 같은 봉으로 F존·K존 파동을 계산해 함께 준다.
+ *   · 봉이 없으면(휴장·신규 코드·응답 실패) ok:false + 사유만 내려 화면은 계산표만 보여준다.
+ *   · 20초 메모리 캐시(lib/fkzone) + CDN 20초 캐시 — 모달을 여닫아도 매번 새로 받지 않는다.
+ */
+const MINUTE_CACHE_CONTROL = 'public, s-maxage=20, stale-while-revalidate=40';
+async function handleMinuteCandles(res, q, fresh) {
+  const code = String(q.code || '').trim();
+  const generatedAtKst = kstLabel(new Date());
+  if (!CODE_RE.test(code)) {
+    return sendJson(
+      res,
+      400,
+      { ok: false, reason: 'bad_code', mode: 'minute', message: 'code=종목코드가 필요합니다.', candles: [], generatedAtKst },
+      'no-store',
+    );
+  }
+  let got = null;
+  try {
+    got = await fkzone.fetchMinuteBars(code, { fresh });
+  } catch (e) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false, reason: 'fetch_failed', mode: 'minute', code,
+        message: '네이버 1분봉 응답을 받지 못했습니다: ' + String((e && e.message) || e),
+        candles: [], generatedAtKst,
+      },
+      'no-store',
+    );
+  }
+  if (!got || !got.ok || !got.bars.length) {
+    return sendJson(
+      res,
+      200,
+      {
+        ok: false, reason: 'no_candles', mode: 'minute', code,
+        message: '오늘 1분봉이 없습니다(휴장·장전·응답 없음).',
+        candles: [], generatedAtKst,
+      },
+      MINUTE_CACHE_CONTROL,
+    );
+  }
+  const bars = got.bars;
+  let high = -Infinity;
+  let low = Infinity;
+  bars.forEach((b) => { if (b.h > high) high = b.h; if (b.l < low) low = b.l; });
+  const body = {
+    ok: true,
+    mode: 'minute',
+    code,
+    date: got.date,
+    count: bars.length,
+    session: '09:00~15:30',
+    candles: bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })),
+    high,
+    low,
+    last: bars[bars.length - 1].c,
+    lastAt: bars[bars.length - 1].t,
+    fk: fkzone.computeFkZone(bars),
+    generatedAtKst,
+    cached: Boolean(got.cached),
+  };
+  return sendJson(res, 200, body, MINUTE_CACHE_CONTROL);
 }
 
 async function handleStockNews(res, q, fresh) {
@@ -2798,6 +2869,9 @@ module.exports = async function handler(req, res) {
 
   // ?mode=history_catalyst&code=005930 — [특징주] 기사 이력 + 260일 과거 파동
   if (q.mode === 'history_catalyst') return handleHistoryCatalyst(res, q, fresh);
+
+  // ?mode=minute&code=005930 — 종목 모달 1분봉(+F존·K존 계산). 새 함수 파일을 만들지 않기 위한 내부 라우트
+  if (q.mode === 'minute') return handleMinuteCandles(res, q, fresh);
 
   const rawQueries = String(q.codes || q.code || '')
     .split(',')

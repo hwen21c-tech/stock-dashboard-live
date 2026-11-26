@@ -6003,6 +6003,571 @@
     })();
     </script>
 
+<!-- ⚡ 장중매매 후보 (F존·K존) — 2026-11-26 신설 · 1번 메인 탭 · 홍인기 D+0 박스 바로 아래
+     원전: 보유 자료 「3강 F존, 38스윙」
+       · F존 = 당일 고가(H0) 대비 B1 -8% / B2 -10% / B3 -12% 밴드에서 눌림을 받는 자리
+       · F존 진입(1분봉 저가 ≤ B1) 뒤 실제 저점(L) 대비 +4% 반등 → 반등 파동 인정
+       · K존 = 반등 뒤 새 고점(H1) 대비 -8% / -10% / -12% (2차 밴드)
+       · 손절 ① F존 진입 후 저점 이탈(B3 아래) ② 반등 뒤 쌍바닥 지지 실패(저점 이탈)
+     값은 /api/tabs-live 의 fkZone 만 쓴다 — 화면은 계산·추정하지 않는다.
+     F존·K존 박스와 라인은 모달의 '1분봉'에서만 그린다(일봉에서는 그리지 않는다). -->
+<div class="op-box" id="fkZoneBox" style="border-color:rgba(250,204,21,0.45);">
+  <div class="op-head">
+    <div class="op-title">⚡ 장중매매 후보 <span class="op-sub">(F존·K존 · 당일 고가 -8/-10/-12%)</span></div>
+    <div class="op-badges">
+      <span class="op-badge op-time" id="fkTimeBadge">⏱ 대기</span>
+      <span class="op-badge" id="fkCountBadge">⏱ 로딩 중</span>
+      <button type="button" class="op-toggle" id="fkToggleBtn" aria-expanded="true">접기</button>
+    </div>
+  </div>
+  <div class="op-note" id="fkNote"></div>
+  <div id="fkBody"></div>
+  <div class="op-principle" id="fkPrinciple"></div>
+  <div class="op-foot" id="fkFoot"></div>
+</div>
+<script>
+/* FZONE_ENGINE_START — ⚡ 장중매매 후보 (F존·K존) · 모달 일봉/1분봉 전환 (2026-11-26) */
+(function () {
+  'use strict';
+  var LIVE_MS = 60 * 1000;
+  var FAIL_IDLE_MS = 10 * 60 * 1000;
+  var DATA = null;
+  var FAIL = null;
+  var busy = false;
+  var timer = null;
+  var BY_CODE = {};
+
+  function $(id) { return document.getElementById(id); }
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function comma(v) { return isNum(v) ? Math.round(v).toLocaleString('ko-KR') : '—'; }
+  function won(v) { return isNum(v) ? Math.round(v).toLocaleString('ko-KR') + '원' : '—'; }
+  function pctf(v) { return isNum(v) ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—'; }
+  function eok(v) { return isNum(v) ? comma(v) + '억' : '—'; }
+  function upColor(v) { return !isNum(v) ? '#cbd5e1' : (v > 0 ? '#f43f5e' : v < 0 ? '#38bdf8' : '#cbd5e1'); }
+  function apiBase() { try { return window.__API_BASE || ''; } catch (e) { return ''; } }
+  function apiOn() { try { return !!(window.__API_BASE) || !/\.github\.io$/i.test(location.hostname); } catch (e) { return true; } }
+  function nowKst() {
+    var d = new Date();
+    try {
+      var f = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short' }).formatToParts(d);
+      var o = {};
+      f.forEach(function (p) { o[p.type] = p.value; });
+      var hh = parseInt(o.hour, 10) % 24;
+      return { min: hh * 60 + parseInt(o.minute, 10), wd: o.weekday || '' };
+    } catch (e) {
+      return { min: d.getHours() * 60 + d.getMinutes(), wd: '' };
+    }
+  }
+  function inSession() { var n = nowKst(); return n.wd !== 'Sat' && n.wd !== 'Sun' && n.min >= 540 && n.min <= 930; }
+  function chip(text, cls) { return '<span class="op-chip ' + (cls || 'mute') + '">' + esc(text) + '</span>'; }
+
+  /* 상태 뱃지 — 서버가 계산한 phase 만 표기한다 */
+  function stateChip(z) {
+    if (!z) return chip('1분봉 미수신', 'wait');
+    if (z.phase === 'k') return chip('🟠 K존 진입', 'hot');
+    if (z.phase === 'rebound') return chip('🟢 +4% 반등', 'ok');
+    if (z.phase === 'f') return chip('🟡 F존 진입', 'warm');
+    if (z.phase === 'stop') return chip('⛔ 손절 이탈', 'dn');
+    return chip('⏳ B1 대기', 'wait');
+  }
+
+  function card(it, i) {
+    var z = it.zone;
+    var chips = [];
+    chips.push(chip('🔥 ' + (it.themeName || '테마 미확인') + (it.themeRank ? ' ' + it.themeRank + '위' : '') + (isNum(it.themePct) ? ' · ' + pctf(it.themePct) : ''), 'ok'));
+    chips.push(chip(it.role === '부대장' ? '💰 부대장(대금)' : '👑 대장(상승률)', it.role === '부대장' ? 'warm' : 'hot'));
+    if (isNum(it.valueEok)) chips.push(chip('대금 ' + eok(it.valueEok), 'mute'));
+    if (it.section === 'prev' && isNum(it.pct)) chips.push(chip('전일 ' + pctf(it.pct), 'warm'));
+    chips.push(stateChip(z));
+
+    var zc = [];
+    if (!z) {
+      zc.push(chip('1분봉 없음 · ' + (it.minuteReason || ''), 'weak'));
+    } else {
+      zc.push(chip('F존 ' + comma(z.b1) + ' / ' + comma(z.b2) + ' / ' + comma(z.b3), 'mute'));
+      if (isNum(z.low)) zc.push(chip('저점 ' + comma(z.low) + ' → +4% ' + comma(z.reboundPrice), 'warm'));
+      if (z.k && z.k.entered) zc.push(chip('K존 ' + comma(z.k.b1) + ' / ' + comma(z.k.b2) + ' / ' + comma(z.k.b3), 'hot'));
+      else if (z.rebound) zc.push(chip('K존 대기 · H1 ' + comma(z.k && z.k.h1), 'mute'));
+      if (isNum(z.stopLine)) zc.push(chip('손절 ' + comma(z.stopLine), 'hot'));
+    }
+
+    return '<div class="op-card" data-fk-code="' + esc(it.code) + '" role="button" tabindex="0">' +
+      '<div class="op-card-top"><span class="op-rank">' + (i + 1) + '</span>' +
+      '<b class="op-name">' + esc(it.name) + '</b>' +
+      '<span style="font-size:9.5px;color:#94a3b8;">' + esc(it.code) + '</span>' +
+      '<span class="op-price">' + won(it.price) + '</span>' +
+      '<span class="op-chg" style="color:' + upColor(it.pctNow) + ';">' + (it.section === 'prev' ? '오늘 ' : '') + pctf(it.pctNow) + '</span></div>' +
+      '<div class="op-chips">' + chips.join('') + '</div>' +
+      '<div class="op-chips">' + zc.join('') + '</div></div>';
+  }
+
+  function secHead(title, sub, color) {
+    return '<div style="display:flex;align-items:baseline;gap:7px;margin:11px 0 1px;flex-wrap:wrap;border-left:3px solid ' + color + ';padding-left:7px;">' +
+      '<b style="font-size:12px;font-weight:900;color:' + color + ';">' + esc(title) + '</b>' +
+      '<span style="font-size:9.5px;color:#94a3b8;">' + esc(sub) + '</span></div>';
+  }
+
+  function render() {
+    var body = $('fkBody');
+    if (!body) return;
+    var noteEl = $('fkNote');
+    var d = DATA;
+    if (!d) {
+      body.innerHTML = '';
+      if (noteEl) noteEl.textContent = FAIL ? ('F존 후보를 불러오지 못했습니다 — ' + FAIL) : 'F존 후보를 불러오는 중입니다…';
+      if ($('fkFoot')) $('fkFoot').textContent = '';
+      return;
+    }
+    var prevItems = [];
+    var todayItems = [];
+    (d.items || []).forEach(function (x) {
+      if (!x || !x.code) return;
+      if (x.section === 'prev') prevItems.push(x); else todayItems.push(x);
+    });
+    $('fkTimeBadge').textContent = '⏱ ' + (d.generatedAtKst || '') + ' 기준';
+    $('fkCountBadge').textContent = 'F존 후보 ' + (prevItems.length + todayItems.length) + '종목';
+    $('fkCountBadge').className = 'op-badge' + ((prevItems.length + todayItems.length) ? '' : ' closed');
+
+    if (d.ok === false && !(d.items || []).length) {
+      body.innerHTML = '<div class="op-card"><div style="font-size:11px;color:#fda4af;line-height:1.6;">F존 후보를 만들지 못했습니다 — ' +
+        esc((d.errors || []).join(' / ') || '사유 없음') + '</div></div>';
+      if (noteEl) noteEl.textContent = '카드 대신 실패 사유만 표시합니다(값을 지어내지 않습니다).';
+      if ($('fkFoot')) $('fkFoot').textContent = '';
+      return;
+    }
+    var html = '';
+    var pv = d.prev || {};
+    var td = d.today || {};
+    html += secHead('📅 ' + (pv.label || '전일 강세주'), (pv.asOfLabel ? pv.asOfLabel + ' · ' : '') + prevItems.length + '종목', '#fcd34d');
+    html += prevItems.length ? '<div class="op-grid">' + prevItems.map(card).join('') + '</div>'
+      : '<div class="op-card" style="opacity:.85;"><div style="font-size:11px;color:#94a3b8;line-height:1.6;">직전 거래일 강세 테마에서 조건(테마 평균 +1%↑ · 종목 +5%↑)을 채운 대장·부대장이 없습니다.</div></div>';
+    html += secHead('🔥 오늘 강세주', (td.themes && td.themes.length ? td.themes.map(function (t) { return t.name; }).join(' · ') : '오늘 주도 테마') + ' · ' + todayItems.length + '종목', '#fda4af');
+    html += todayItems.length ? '<div class="op-grid">' + todayItems.map(card).join('') + '</div>'
+      : '<div class="op-card" style="opacity:.85;"><div style="font-size:11px;color:#94a3b8;line-height:1.6;">오늘 실시간 테마에서 조건(테마 +1%↑ · 종목 +5%↑)을 채운 대장·부대장이 없습니다.<br>기준을 임의로 완화하지 않습니다.</div></div>';
+    body.innerHTML = html;
+
+    if (noteEl) noteEl.innerHTML = d.note || '';
+    $('fkPrinciple').innerHTML = '<b>📐 F존·K존 판정</b> ' +
+      '고가는 <b>오늘(당일) 고가</b> 하나로 통일 — 전일 강세주도 오늘 자리(-8/-10/-12%)로만 봅니다. ' +
+      'F존 진입은 <b>1분봉 저가 ≤ B1(-8%)</b>, 반등 인정은 <b>그 뒤 실제 저점 대비 +4%</b>, K존은 <b>반등 뒤 새 고점 기준</b>입니다. ' +
+      '손절은 ① F존 진입 후 저점 이탈 ② 반등 뒤 쌍바닥 지지 실패 두 가지입니다.';
+    $('fkFoot').textContent = '※ 카드를 누르면 그 종목의 1분봉 차트가 바로 열리고 F존·K존 박스·저점/+4%·손절선이 그려집니다(일봉에서는 표시하지 않습니다). 1분봉은 네이버 증권 당일 분봉 실측이며, 같은 종목이 여러 테마에 있으면 가장 강한 테마 카드에 한 번만 싣습니다.';
+  }
+
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    var wait = document.hidden ? FAIL_IDLE_MS * 3 : (inSession() ? LIVE_MS : FAIL_IDLE_MS);
+    timer = setTimeout(function () { if (!document.hidden) load(); else schedule(); }, wait);
+  }
+
+  function load() {
+    if (busy) return;
+    if (!apiOn()) {
+      FAIL = '정적 미러 — F존 계산은 동적 서버(/api/tabs-live)에서만 됩니다';
+      render();
+      return;
+    }
+    busy = true;
+    fetch(apiBase() + '/api/tabs-live?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        var d = j && j.fkZone;
+        if (!d) throw new Error('fkZone 없음(서버 구버전)');
+        DATA = d;
+        FAIL = null;
+        BY_CODE = {};
+        (d.items || []).forEach(function (x) { if (x && x.code) BY_CODE[x.code] = x; });
+        window.FKZ_BY_CODE = BY_CODE;
+        render();
+      })
+      .catch(function (e) { FAIL = String((e && e.message) || e); render(); })
+      .finally(function () { busy = false; schedule(); });
+  }
+
+  function bindToggle() {
+    var btn = $('fkToggleBtn');
+    var box = $('fkZoneBox');
+    if (!btn || !box) return;
+    var saved = null;
+    try { saved = window.localStorage.getItem('fkZoneCollapsed'); } catch (e) {}
+    if (saved === '1') { box.className += ' collapsed'; btn.textContent = '펼치기'; btn.setAttribute('aria-expanded', 'false'); }
+    btn.addEventListener('click', function () {
+      var col = box.className.indexOf('collapsed') >= 0;
+      box.className = col ? box.className.replace(/\s*collapsed/g, '') : box.className + ' collapsed';
+      btn.textContent = col ? '접기' : '펼치기';
+      btn.setAttribute('aria-expanded', col ? 'true' : 'false');
+      try { window.localStorage.setItem('fkZoneCollapsed', col ? '0' : '1'); } catch (e) {}
+    });
+  }
+
+  function bindClicks() {
+    var box = $('fkBody');
+    if (!box) return;
+    box.addEventListener('click', function (e) {
+      var cardEl = e.target && e.target.closest ? e.target.closest('[data-fk-code]') : null;
+      if (!cardEl) return;
+      var code = cardEl.getAttribute('data-fk-code');
+      var nameEl = cardEl.querySelector('.op-name');
+      var name = nameEl ? nameEl.textContent : code;
+      if (typeof window.openDetail === 'function') {
+        window.openDetail(name + ' (' + code + ')', '', '⚡ 장중매매 후보 · F존·K존', '');
+      }
+      /* 카드에서 열면 곧바로 1분봉 + F존·K존 */
+      setTimeout(function () {
+        if (window.FKModal && window.FKModal.showMin) window.FKModal.showMin(code);
+      }, 120);
+    });
+  }
+
+  /* ============================================================
+     모달 — 일봉 / 1분봉 전환 + F존·K존 박스(1분봉 전용)
+     ============================================================ */
+  var M = { tf: 'day', code: null, fk: null, saved: null, dayTitle: null, reqId: 0, count: 120, force: false, title: '' };
+  window.MODAL_TF = window.MODAL_TF || 'day';
+
+  function tfBar() {
+    var bar = $('modalTfBar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'modalTfBar';
+    bar.className = 'ucx-pbar';
+    bar.style.cssText = 'margin:6px 0 5px;align-items:center;';
+    bar.innerHTML =
+      '<span style="font-size:9.5px;color:#94a3b8;font-weight:800;white-space:nowrap;">🕯 봉 단위</span>' +
+      '<button type="button" class="ucx-p on" id="modalTfDay" onclick="setModalTimeframe(\'day\')">일봉</button>' +
+      '<button type="button" class="ucx-p" id="modalTfMin" onclick="setModalTimeframe(\'min\')">1분봉</button>' +
+      '<span id="modalMinChips" style="display:none;align-items:center;gap:4px;">' +
+        '<button type="button" class="ucx-p" data-mc="30" onclick="setModalMinCount(30)">30분</button>' +
+        '<button type="button" class="ucx-p on" data-mc="120" onclick="setModalMinCount(120)">120분</button>' +
+        '<button type="button" class="ucx-p" data-mc="390" onclick="setModalMinCount(390)">전장</button>' +
+      '</span>' +
+      '<span style="font-size:9px;color:#64748b;font-weight:700;">F존·K존은 1분봉에서만</span>';
+    var pb = $('modalPeriodBar');
+    if (pb && pb.parentNode) pb.parentNode.insertBefore(bar, pb);
+    else { var cb = $('modalChartBox'); if (cb) cb.insertBefore(bar, cb.firstChild); }
+    return bar;
+  }
+
+  function paintCountChips() {
+    var wrap = $('modalMinChips');
+    if (!wrap) return;
+    var btns = wrap.getElementsByTagName('button');
+    for (var i = 0; i < btns.length; i++) {
+      var v = parseInt(btns[i].getAttribute('data-mc'), 10);
+      btns[i].className = 'ucx-p' + (v === M.count || (v === 390 && M.count >= 390) ? ' on' : '');
+    }
+  }
+
+  function setBar(tf) {
+    var bar = tfBar();
+    if (!bar) return;
+    bar.style.display = 'flex';
+    var d = $('modalTfDay');
+    var m = $('modalTfMin');
+    if (d) d.className = 'ucx-p' + (tf === 'day' ? ' on' : '');
+    if (m) m.className = 'ucx-p' + (tf === 'min' ? ' on' : '');
+    var mc = $('modalMinChips');
+    if (mc) mc.style.display = (tf === 'min' ? 'inline-flex' : 'none');
+    var pb = $('modalPeriodBar');
+    if (pb) pb.style.display = (tf === 'min' ? 'none' : 'flex');
+    var hideIds = ['modalIdxOvBar', 'modalFibBar', 'modalIdxBadges'];
+    for (var i = 0; i < hideIds.length; i++) {
+      var el = $(hideIds[i]);
+      if (!el) continue;
+      if (tf === 'min') {
+        if (el.getAttribute('data-fkprev') === null) el.setAttribute('data-fkprev', el.style.display || '');
+        el.style.display = 'none';
+      } else if (el.getAttribute('data-fkprev') !== null) {
+        el.style.display = el.getAttribute('data-fkprev');
+        el.removeAttribute('data-fkprev');
+      }
+    }
+    paintCountChips();
+  }
+
+  function infoBox() {
+    var el = $('modalFkInfo');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'modalFkInfo';
+    el.style.cssText = 'display:none;margin-top:8px;background:rgba(250,204,21,0.06);border:1px solid rgba(250,204,21,0.38);border-radius:8px;padding:8px 10px;max-width:100%;box-sizing:border-box;';
+    var meta = $('modalChartMeta');
+    if (meta && meta.parentNode) meta.parentNode.insertBefore(el, meta.nextSibling);
+    else { var cb = $('modalChartBox'); if (cb) cb.appendChild(el); }
+    return el;
+  }
+
+  function line(label, value, color) {
+    return '<div style="display:flex;gap:6px;align-items:baseline;font-size:10.5px;line-height:1.65;">' +
+      '<span style="color:#94a3b8;font-weight:800;min-width:66px;">' + esc(label) + '</span>' +
+      '<span style="color:' + (color || '#e2e8f0') + ';font-weight:700;">' + value + '</span></div>';
+  }
+
+  function infoRender(fk, isCand) {
+    var el = infoBox();
+    if (!el) return;
+    if (!isCand) {
+      el.style.display = 'block';
+      el.style.borderColor = 'rgba(148,163,184,0.35)';
+      el.style.background = 'rgba(148,163,184,0.06)';
+      el.innerHTML = '<div style="font-size:10.5px;color:#cbd5e1;line-height:1.55;">📐 <b style="color:#fcd34d;">F존·K존은 「⚡ 장중매매 후보 (F존·K존)」 선정 종목에만</b> 표시합니다. 이 종목은 오늘 후보가 아니어서 1분봉만 보여 줍니다.</div>';
+      return;
+    }
+    if (!fk || !isNum(fk.h0)) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.style.borderColor = 'rgba(250,204,21,0.38)';
+    el.style.background = 'rgba(250,204,21,0.06)';
+    var k = fk.k;
+    var rows = [];
+    rows.push(line('당일 고가 H0', comma(fk.h0) + '원' + (fk.h0At ? ' (' + fk.h0At + ')' : ''), '#fcd34d'));
+    rows.push(line('F존', 'B1 -8% <b>' + comma(fk.b1) + '</b> · B2 -10% <b>' + comma(fk.b2) + '</b> · B3 -12% <b>' + comma(fk.b3) + '</b>', '#fef3c7'));
+    if (isNum(fk.low)) {
+      rows.push(line('저점 기준', comma(fk.low) + '원' + (fk.lowAt ? ' (' + fk.lowAt + ')' : '') + ' → <b style="color:#34d399;">+4% ' + comma(fk.reboundPrice) + '원</b>' + (fk.rebound ? ' · ' + esc(fk.rebound.at) + ' 반등 인정' : ' · 반등 대기'), '#e2e8f0'));
+    } else {
+      rows.push(line('저점 기준', 'F존 진입 전 — B1 ' + comma(fk.b1) + '원 대기', '#94a3b8'));
+    }
+    if (k) {
+      rows.push(line('K존', 'H1 ' + comma(k.h1) + '원' + (k.h1At ? ' (' + k.h1At + ')' : '') + ' → B1 ' + comma(k.b1) + ' · B2 ' + comma(k.b2) + ' · B3 ' + comma(k.b3) + (k.entered ? ' · <b style="color:#fb923c;">진입 ' + esc(k.enteredAt || '') + '</b>' : ' · 미진입'), '#fb923c'));
+    } else {
+      rows.push(line('K존', '반등(+4%) 인정 뒤 새 고점 기준으로 생성됩니다 — 아직 없음', '#94a3b8'));
+    }
+    rows.push(line('손절 ①', 'F존 진입 후 저점 이탈 — B3 ' + comma(fk.b3) + '원 아래로 밀리면 존이 깨집니다', '#fda4af'));
+    rows.push(line('손절 ②', '반등 뒤 쌍바닥 지지 실패(저점 이탈)' + (fk.stopLabel ? ' — 현재 기준 <b>' + esc(fk.stopLabel) + '</b>' : '') , '#fda4af'));
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">' +
+        '<span style="font-size:11px;font-weight:900;color:#fcd34d;">📐 F존 · K존 (1분봉 · 당일 고가 기준)</span>' + stateChip(fk) + '</div>' +
+        rows.join('');
+  }
+
+  function codeOf() {
+    if (window.MODAL_STOCK_CODE) return String(window.MODAL_STOCK_CODE);
+    var t = $('modalTitle');
+    var m = t ? String(t.textContent || '').match(/\((\d{6}|\d{4}[A-Z]\d)\)/) : null;
+    return m ? m[1] : null;
+  }
+
+  function tfFail(msg) {
+    M.tf = 'day';
+    window.MODAL_TF = 'day';
+    window.FKZ_LEVELS = null;
+    setBar('day');
+    var el = infoBox();
+    if (el) {
+      el.style.display = 'block';
+      el.style.borderColor = 'rgba(244,63,94,0.4)';
+      el.style.background = 'rgba(244,63,94,0.06)';
+      el.innerHTML = '<div style="font-size:10.5px;color:#fda4af;font-weight:800;line-height:1.55;">1분봉을 열지 못했습니다 — ' + esc(msg) + '</div>';
+    }
+    if (typeof window.drawModalCandles === 'function') { try { window.drawModalCandles(); } catch (e) {} }
+  }
+
+  function showMin(code) {
+    M.reqId += 1;
+    var rid = M.reqId;
+    var tt = $('modalChartTitleTxt');
+    setBar('min');
+    if (tt) tt.textContent = '⏳ 1분봉 불러오는 중…';
+    fetch(apiBase() + '/api/stock-live?mode=minute&code=' + encodeURIComponent(code), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (rid !== M.reqId) return;
+        if (!j || j.ok !== true || !j.candles || !j.candles.length) {
+          tfFail((j && j.message) || '1분봉 응답이 비었습니다');
+          return;
+        }
+        /* 일봉 상태를 저장한 뒤 1분봉으로 교체 */
+        if (M.tf !== 'min') {
+          M.saved = { candles: window.modalAllCandles || [], view: window.modalViewCount || 60 };
+          var el0 = $('modalChartTitleTxt');
+          M.dayTitle = el0 ? el0.textContent : null;
+        }
+        M.code = code;
+        M.tf = 'min';
+        M.fk = j.fk || null;
+        window.MODAL_TF = 'min';
+        window.modalAllCandles = j.candles.map(function (c) { return { date: c.t, open: c.o, high: c.h, low: c.l, close: c.c, vol: c.v }; });
+        window.modalViewOffset = 0;
+        M.count = Math.min(M.count || 120, window.modalAllCandles.length);
+        window.modalViewCount = M.count;
+        var isCand = Boolean(M.force) || Boolean(BY_CODE[code]);
+        window.FKZ_LEVELS = isCand ? M.fk : null;
+        if (tt) tt.textContent = '📊 오늘 1분봉 ' + j.count + '봉 · ' + (j.lastAt || '') + ' 까지';
+        try { window.setModalValueUnit('원', 0); } catch (eU) {}
+        setBar('min');
+        infoRender(M.fk, isCand);
+        if (typeof window.drawModalCandles === 'function') { try { window.drawModalCandles(); } catch (e) {} }
+      })
+      .catch(function (e) { if (rid === M.reqId) tfFail(String((e && e.message) || e)); });
+  }
+
+  function setTf(tf, opts) {
+    var o = opts || {};
+    if (o.force) M.force = true;
+    if (tf === 'min') {
+      var code = codeOf();
+      if (!code) { tfFail('종목 코드를 찾지 못했습니다(지수는 1분봉 대상이 아닙니다)'); return; }
+      showMin(code);
+      return;
+    }
+    M.tf = 'day';
+    window.MODAL_TF = 'day';
+    window.FKZ_LEVELS = null;
+    setBar('day');
+    var info = $('modalFkInfo');
+    if (info) info.style.display = 'none';
+    var tt = $('modalChartTitleTxt');
+    if (M.saved && M.saved.candles && M.saved.candles.length) {
+      window.modalAllCandles = M.saved.candles;
+      window.modalViewCount = M.saved.view || Math.min(60, M.saved.candles.length);
+      window.modalViewOffset = 0;
+      if (tt && M.dayTitle) tt.textContent = M.dayTitle;
+      if (typeof window.drawModalCandles === 'function') { try { window.drawModalCandles(); } catch (e) {} }
+    } else if (typeof window.renderUniversalModalChart === 'function') {
+      window.renderUniversalModalChart(null, M.title);
+    }
+  }
+
+  function onOpen() {
+    M.reqId += 1;
+    var ttl = $('modalTitle');
+    M.title = ttl ? ttl.textContent : '';
+    M.tf = 'day';
+    M.code = null;
+    M.fk = null;
+    M.saved = null;
+    M.dayTitle = null;
+    M.force = false;
+    window.MODAL_TF = 'day';
+    window.FKZ_LEVELS = null;
+    setBar('day');
+    var info = $('modalFkInfo');
+    if (info) info.style.display = 'none';
+  }
+
+  function onIndex() {
+    M.reqId += 1;
+    M.tf = 'day';
+    window.MODAL_TF = 'day';
+    window.FKZ_LEVELS = null;
+    var bar = $('modalTfBar');
+    if (bar) bar.style.display = 'none';
+    var info = $('modalFkInfo');
+    if (info) info.style.display = 'none';
+    var pb = $('modalPeriodBar');
+    if (pb) pb.style.display = 'flex';
+  }
+
+  window.setModalTimeframe = function (tf) { if (window.FKModal) window.FKModal.setTf(tf); };
+  window.setModalMinCount = function (n) {
+    var v = parseInt(n, 10) || 120;
+    if (M.tf !== 'min') return;
+    var total = (window.modalAllCandles || []).length;
+    M.count = (v >= 390 ? total : Math.min(v, total));
+    window.modalViewCount = M.count;
+    window.modalViewOffset = 0;
+    paintCountChips();
+    if (typeof window.drawModalCandles === 'function') { try { window.drawModalCandles(); } catch (e) {} }
+  };
+  window.FKModal = {
+    onOpen: onOpen,
+    onIndex: onIndex,
+    setTf: setTf,
+    showMin: function (code) { M.force = true; showMin(code); },
+    stashDay: function (arr) {
+      if (!arr || !arr.length) return;
+      if (!M.saved) M.saved = { candles: arr, view: Math.min(60, arr.length) };
+      else M.saved.candles = arr;
+    }
+  };
+
+  /* 1분봉 캔들 위에 F존·K존 박스·손절선·저점/+4% 라인 — 일봉(MODAL_TF!=='min')에서는 호출되지 않는다 */
+  window.FKDrawOverlay = function (ctx, g) {
+    var fk = window.FKZ_LEVELS;
+    if (!fk || !isNum(fk.h0)) return;
+    var cand = g.candles || [];
+    function xOfTime(t) {
+      if (!t) return null;
+      for (var i = 0; i < cand.length; i++) {
+        if (String(cand[i].date) === String(t)) return 10 + i * g.barW + g.barW / 2;
+      }
+      return null;
+    }
+    function yOf(p) { return 10 + g.chartH * (1 - (p - g.minP) / g.pRange); }
+    var xEnd = g.chartW;
+    function band(top, bot, x0, fill, color, label) {
+      var y1 = yOf(top);
+      var y2 = yOf(bot);
+      var left = Math.max(10, Math.min(x0, xEnd - 2));
+      ctx.fillStyle = fill;
+      ctx.fillRect(left, Math.min(y1, y2), Math.max(2, xEnd - left), Math.max(1, Math.abs(y2 - y1)));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(left, y1); ctx.lineTo(xEnd, y1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left, y2); ctx.lineTo(xEnd, y2); ctx.stroke();
+      ctx.font = 'bold 8.5px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = color;
+      ctx.fillText(label, left + 3, Math.min(y1, y2) + 9);
+    }
+    function hline(p, color, label, dash) {
+      var y = yOf(p);
+      if (y < 6 || y > g.h - 2) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(xEnd, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = 'bold 8.5px sans-serif';
+      ctx.textAlign = 'left';
+      var tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(7,12,20,0.78)';
+      ctx.fillRect(11, y - 9, tw + 6, 11);
+      ctx.fillStyle = color;
+      ctx.fillText(label, 14, y - 1);
+    }
+    var xEnter = xOfTime(fk.enterAt);
+    if (xEnter === null) xEnter = 10;
+
+    /* F존 — B1(-8%) ~ B3(-12%) */
+    band(fk.b1, fk.b3, xEnter, 'rgba(250,204,21,0.13)', '#facc15', 'F존 B1 -8%');
+    var yb2 = yOf(fk.b2);
+    ctx.strokeStyle = 'rgba(250,204,21,0.65)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(xEnter, yb2); ctx.lineTo(xEnd, yb2); ctx.stroke();
+    ctx.setLineDash([]);
+    /* F존 상단 (당일 고가) 얇은 표시 */
+    ctx.strokeStyle = 'rgba(250,204,21,0.28)';
+    ctx.beginPath(); ctx.moveTo(10, yOf(fk.h0)); ctx.lineTo(xEnd, yOf(fk.h0)); ctx.stroke();
+
+    /* K존 — 반등 뒤 새 고점(H1) 기준 */
+    if (fk.rebound && fk.k && isNum(fk.k.h1)) {
+      var xk = xOfTime(fk.k.h1At);
+      if (xk === null) xk = xEnter;
+      band(fk.k.b1, fk.k.b3, xk, 'rgba(251,146,60,0.14)', '#fb923c', 'K존 B1 -8%');
+    }
+    /* 저점 L · +4% 반등가 · 손절선 */
+    if (isNum(fk.low)) hline(fk.low, '#38bdf8', '저점 ' + comma(fk.low), [5, 4]);
+    if (isNum(fk.reboundPrice)) hline(fk.reboundPrice, '#34d399', '+4% ' + comma(fk.reboundPrice), [2, 3]);
+    if (isNum(fk.stopLine)) hline(fk.stopLine, '#f43f5e', '손절 ' + comma(fk.stopLine), [6, 4]);
+  };
+
+  function init() {
+    bindToggle();
+    bindClicks();
+    render();
+    load();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+/* FZONE_ENGINE_END */
+</script>
+
 <!-- 🌙 오늘 종가베팅 공략 후보 (3트랙) — 2026-11-24 신설 · 1번 메인 탭 · /api/tabs-live closingPicks · 30초 갱신
      ① 🔥 테마주도주(신정재·만쥬 결) ② 💰 수급주도주(침착해·홍인기 결) ③ 📘 침착해 종가베팅(KIS 프로그램 1순위)
      값은 서버(closingPicks)만 쓴다 — 화면은 계산·추정하지 않고, 기준 미달이면 '조건 충족 종목 없음'만 적는다.
@@ -13161,6 +13726,8 @@ function openDetail(title, v1, v2, desc, label1, label2) {
             if (String(title || '') === name || exactTitle === name) { matchedCode = sCodes[name]; break; }
           }
         }
+        /* 1분봉 조회용 종목코드 — F존·K존 모달이 이 값을 쓴다(2026-11-26) */
+        window.MODAL_STOCK_CODE = matchedCode || null;
         var btnNaver = document.getElementById('btnNaverQuote');
         var btnToss = document.getElementById('btnTossQuote');
         if (btnNaver) {
@@ -13175,6 +13742,7 @@ function openDetail(title, v1, v2, desc, label1, label2) {
         }
 
         // 5. Open Modal
+        try { if (window.FKModal) window.FKModal.onOpen(); } catch (eFk) {}
         document.getElementById('modalOverlay').style.display = 'flex';
 
         // 6. Render 1~2 Year Candle Chart
@@ -15934,7 +16502,7 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
       var elCount = document.getElementById('modalChartZoomCount');
       if (elCount) {
         var labelPeriod = modalViewCount >= 240 ? ' (약 1~2년)' : (modalViewCount >= 100 ? ' (약 6개월)' : (modalViewCount >= 50 ? ' (약 3개월)' : ' (단기)'));
-        elCount.innerText = modalViewCount + '봉' + labelPeriod;
+        elCount.innerText = (window.MODAL_TF === 'min') ? (modalViewCount + '분봉') : (modalViewCount + '봉' + labelPeriod);
       }
 
       // Slice visible window from 500-day data
@@ -15963,6 +16531,17 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
         if (candles[c].high > maxP) maxP = candles[c].high;
         if (candles[c].low < minP) minP = candles[c].low;
         if (candles[c].vol > maxVol) maxVol = candles[c].vol;
+      }
+      /* F존·K존(1분봉 전용) — 존 라인이 화면에서 사라지지 않도록 축 범위에 포함한다 */
+      if (window.MODAL_TF === 'min' && window.FKZ_LEVELS) {
+        var fkLv = window.FKZ_LEVELS;
+        var fkExtra = [fkLv.h0, fkLv.b1, fkLv.b2, fkLv.b3, fkLv.low, fkLv.reboundPrice, fkLv.stopLine];
+        if (fkLv.k) fkExtra.push(fkLv.k.b1, fkLv.k.b3);
+        for (var fxi = 0; fxi < fkExtra.length; fxi++) {
+          if (typeof fkExtra[fxi] !== 'number' || !isFinite(fkExtra[fxi])) continue;
+          if (fkExtra[fxi] > maxP) maxP = fkExtra[fxi];
+          if (fkExtra[fxi] < minP) minP = fkExtra[fxi];
+        }
       }
       var pRange = (maxP - minP) || 1;
       minP -= pRange * 0.05;
@@ -16116,7 +16695,7 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
       }
 
       // 📐 피보나치·추세채널·20선 오버레이 (IDX_OV 토글)
-      if (window.IDXDrawOverlays) {
+      if (window.MODAL_TF !== 'min' && window.IDXDrawOverlays) {
         try { window.IDXDrawOverlays(ctx, {startIdx: startIdx, endIdx: endIdx, barW: barW, chartW: chartW, chartH: chartH, minP: minP, pRange: pRange, padR: padR, w: w, h: h}); } catch (eOv) {}
       }
 
@@ -16134,8 +16713,13 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
         ? '$' + lastC.toFixed(2)
         : (lastC >= 1000 ? Math.round(lastC).toLocaleString() : lastC.toFixed(modalDigits ? Math.min(modalDigits, 2) : 1));
       ctx.fillText(tagStr, chartW + 4, lastY + 3);
-      if (window.IDXOnDrawn) { try { window.IDXOnDrawn(); } catch (eDr) {} }
-      if (window.UCX) { try { UCX.paint('main', { period: modalViewCount }); } catch (eUx) { } }
+      if (window.MODAL_TF === 'min' && typeof window.FKDrawOverlay === 'function') {
+        try {
+          window.FKDrawOverlay(ctx, {startIdx: startIdx, endIdx: endIdx, barW: barW, chartW: chartW, chartH: chartH,
+            minP: minP, pRange: pRange, padR: padR, w: w, h: h, candles: candles});
+        } catch (eFkDr) {}
+      } else if (window.IDXOnDrawn) { try { window.IDXOnDrawn(); } catch (eDr) {} }
+      if (window.MODAL_TF !== 'min' && window.UCX) { try { UCX.paint('main', { period: modalViewCount }); } catch (eUx) { } }
     }
     window.drawModalCandles = drawModalCandles;
 
@@ -16308,6 +16892,8 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
             return { date: c.date, open: c.o, high: c.h, low: c.l, close: c.c, vol: c.v };
           });
           if (!arr.length) return;
+          /* 1분봉을 보는 중이면 일봉은 저장만 하고 화면은 건드리지 않는다 (2026-11-26) */
+          if (window.MODAL_TF === 'min' && window.FKModal && window.FKModal.stashDay) { window.FKModal.stashDay(arr); return; }
           modalAllCandles = arr;
           modalViewCount = Math.min(60, arr.length);
           modalViewOffset = 0;
@@ -16357,6 +16943,9 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
             subTitle.innerText = '⏱️ 당일 시간대별 실시간 누적 수급 흐름 곡선';
           }
         }
+
+        /* 수급 모달에서는 일봉/1분봉 바를 숨긴다 (2026-11-26) */
+        try { var fkTfBar = document.getElementById('modalTfBar'); if (fkTfBar) fkTfBar.style.display = 'none'; } catch (eFk) {}
 
         // Hide Candle UI, Show Supply Flow Canvas
         var candleHead = document.getElementById('modalCandleHeader');
@@ -16579,6 +17168,8 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
         document.getElementById('modalDesc').innerHTML = desc || '';
         var idxTitleTxt = document.getElementById('modalChartTitleTxt');
         if (idxTitleTxt) idxTitleTxt.textContent = '📊 ' + (title || '') + ' 일봉';
+
+        try { if (window.FKModal) window.FKModal.onIndex(); } catch (eFk) {}
 
         // Show Candle UI, Hide Supply Flow Canvas
         var candleHead = document.getElementById('modalCandleHeader');

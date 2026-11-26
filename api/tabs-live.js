@@ -45,6 +45,8 @@ const {
 const { analyzeNewsItem } = require('../lib/news-impact');
 const { pickMaterialNews, isRealTheme, materialLine, materialTag } = require('../lib/chim-material');
 const { assignThemeRoles, themeRoleMap, liquidAvgPct, liquidBasisLabel } = require('../lib/theme-roles');
+/* 📐 F존·K존 — 1분봉 조회와 파동 계산을 모달(stock-live)과 같은 함수로 쓴다(2026-11-26). */
+const fkzone = require('../lib/fkzone');
 /* KIS 공식 API — ?mode=supply_live(장중 기관·외국인 가집계) 에서만 쓴다. 없으면 null 로 두고 503 안내. */
 let kisLib = null;
 try {
@@ -2404,6 +2406,252 @@ function hongSupplyBadge(supply, code) {
   const both = f !== null && o !== null && f > 0 && o > 0;
   const label = `외인 ${f === null ? '—' : (f > 0 ? '+' : '') + f.toFixed(0) + '억'} · 기관 ${o === null ? '—' : (o > 0 ? '+' : '') + o.toFixed(0) + '억'}`;
   return { kind: both ? 'both' : 'one', label, note: (supply && supply.asOfLabel) || '' };
+}
+
+/* ⚡ 1번 탭 '장중매매 후보 (F존·K존)' — 2026-11-26 신설
+ *
+ *  원전: 「3강 F존, 38스윙」 — 당일 고가(H0) 대비 -8/-10/-12%가 F존(B1/B2/B3),
+ *        F존 진입 뒤 실제 저점(L) 대비 +4% 반등 → 새 고점(H1) 대비 -8/-10/-12%가 K존.
+ *  고가 기준은 사용자 확정: 전일 강세주·오늘 강세주 모두 '오늘 당일 고가'로 통일한다.
+ *
+ *  후보
+ *   ① 전일 강세주 : 직전 거래일 관제탑 강세 테마 스냅샷(public/data/last-dynamic-themes.json)
+ *                   의 볼만했던 테마(평균 등락률 +1%↑) 상위 3개 → 테마당 대장·부대장
+ *   ② 오늘 강세주 : 오늘 실시간 테마 구성종목(fetchClosingThemeMembers · 상위 10테마 전체 구성)
+ *                   중 상승률 +2%↑ 종목 → 테마당 대장(상승률 1위)·부대장(대금 1위)
+ *  같은 종목이 여러 테마에 있으면 가장 강한 테마 카드에만 한 번 싣는다(중복 카드 금지).
+ *  기준은 아래 FK_RULES 하나로 고정하고 화면 각주에도 같은 숫자를 적는다 — 조용히 완화하지 않는다.
+ */
+const FK_RULES = {
+  themeTop: 3,        // 볼만했던 강세 테마 상위 3개
+  minThemePct: 1.0,   // 테마 평균 등락률 +1%↑만 '강했던 테마'(전일 섹션)
+  minStockPct: 5.0,   // 대장·부대장 최소 상승률 +5% (홍인기 D+0와 같은 '강세' 기준)
+  maxPct: 100,        // ±100% 이상 이상치(신규상장 첫날 등) 제외
+  maxCodes: 12,       // 두 섹션 합계 최대 종목(분봉 조회 예산)
+  minuteBudgetMs: 5000,
+  ttlMs: 60000,
+};
+let FK_CACHE = null;
+let FK_PREV_DOC = null;
+
+/** 직전 거래일 강세 테마 스냅샷 — 5분 캐시(파일은 하루 1회만 바뀐다) */
+function readPrevThemeDoc() {
+  if (FK_PREV_DOC && Date.now() - FK_PREV_DOC.at < 5 * 60 * 1000) return FK_PREV_DOC.value;
+  let value = null;
+  try {
+    value = require('../public/data/last-dynamic-themes.json');
+  } catch (e) {
+    value = null;
+  }
+  FK_PREV_DOC = { at: Date.now(), value };
+  return value;
+}
+
+/** 테마 구성종목 rows → 테마당 대장(상승률)·부대장(대금) — used 로 중복 종목을 막는다 */
+function fkPickLeaders(rows, used) {
+  const taken = used || new Set();
+  const byTheme = new Map();
+  (rows || []).forEach((r) => {
+    if (!r || !r.code || !r.themeName) return;
+    if (FUND_NAME_RE.test(String(r.name || ''))) return;
+    const pct = numOrNull(r.changePct);
+    if (pct === null || pct < FK_RULES.minStockPct || pct > FK_RULES.maxPct) return;
+    const arr = byTheme.get(r.themeName) || [];
+    arr.push(r);
+    byTheme.set(r.themeName, arr);
+  });
+
+  const themes = Array.from(byTheme.entries())
+    .map(([name, list]) => {
+      const items = list.slice().sort((a, b) => (numOrNull(b.changePct) || 0) - (numOrNull(a.changePct) || 0));
+      /* 테마 등락률은 테마 자체 값(스냅샷 avgPct 등)이 있으면 그것을, 없으면 노출 종목 최고 상승률을 쓴다 */
+      const ownPct = items.map((x) => numOrNull(x.themePct)).filter((v) => v !== null)[0];
+      const themePct = ownPct !== undefined ? ownPct : (numOrNull(items[0].changePct) || 0);
+      return {
+        name,
+        rank: numOrNull(items[0].themeRank),
+        themePct,
+        valueSumEok: Math.round(items.reduce((s, x) => s + (numOrNull(x.value) || 0), 0) / 1e8),
+        themePctRaw: ownPct !== undefined ? ownPct : null,
+        items,
+      };
+    })
+    .filter((t) => t.items.length >= 1)
+    .sort((a, b) => (a.rank || 99) - (b.rank || 99) || b.themePct - a.themePct);
+
+  const picked = [];
+  themes.slice(0, FK_RULES.themeTop).forEach((t) => {
+    const pool = t.items.filter((x) => !taken.has(x.code));
+    if (!pool.length) return;
+    const leader = pool[0];
+    const rest = pool.slice(1);
+    const deputy = rest.slice().sort((a, b) => (numOrNull(b.value) || 0) - (numOrNull(a.value) || 0))[0] || null;
+    const add = (r, role) => {
+      taken.add(r.code);
+      picked.push({
+        code: r.code,
+        name: r.name,
+        role,
+        themeName: t.name,
+        themeRank: t.rank,
+        themePct: round2(t.themePct),
+        themeValueSumEok: t.valueSumEok,
+        pct: round2(numOrNull(r.changePct)),
+        valueEok: r.value ? Math.round(r.value / 1e8) : null,
+        valueText: r.valueText || null,
+        quotePrice: numOrNull(r.price),
+      });
+    };
+    add(leader, '대장');
+    if (deputy) add(deputy, '부대장');
+  });
+  return { themes: themes.slice(0, FK_RULES.themeTop).map((t) => ({ name: t.name, rank: t.rank, themePct: round2(t.themePct), valueSumEok: t.valueSumEok })), items: picked };
+}
+
+/** 1분봉 → F/K존 계산 (실패는 null 로 남기고 사유만 적는다) */
+async function fkItemWithZone(base) {
+  let got = null;
+  try {
+    got = await fkzone.fetchMinuteBars(base.code);
+  } catch (e) {
+    got = { ok: false, reason: String((e && e.message) || e) };
+  }
+  const zone = got && got.ok ? fkzone.computeFkZone(got.bars) : null;
+  const last = zone && typeof zone.last === 'number' ? zone.last : null;
+  const prevClose = base.prevClose;
+  const pctNow = last !== null && prevClose ? round2(((last - prevClose) / prevClose) * 100) : null;
+  return Object.assign({}, base, {
+    minuteOk: Boolean(zone),
+    minuteReason: zone ? null : String((got && (got.reason || got.message)) || 'no_candles'),
+    price: last !== null ? last : base.quotePrice,
+    pctNow,
+    zone,
+  });
+}
+
+async function buildFkZone(ctx) {
+  const c = ctx || {};
+  const p0 = kstParts(new Date());
+  const todayKey = `${p0.y}${pad2(p0.m)}${pad2(p0.d)}`;
+  const out = {
+    ok: true,
+    generatedAtKst: `${pad2(p0.hh)}:${pad2(p0.mi)}`,
+    rules: {
+      b1: '-8%', b2: '-10%', b3: '-12%', rebound: '+4%',
+      themeTop: FK_RULES.themeTop, minStockPct: FK_RULES.minStockPct, maxPct: FK_RULES.maxPct,
+      basis: '오늘(당일) 고가 기준',
+    },
+    prev: { label: '전일 강세주', asOf: null, asOfLabel: null, isToday: false, themes: [], count: 0 },
+    today: { label: '오늘 강세주', asOf: todayKey, themes: [], count: 0 },
+    items: [],
+    errors: [],
+    note: '',
+    sourceLabel: '/api/tabs-live fkZone (테마 구성종목 + 네이버 1분봉 파동 계산)',
+  };
+
+  const cacheKey = `${todayKey}:${p0.minutes}`;
+  if (FK_CACHE && Date.now() - FK_CACHE.at < FK_RULES.ttlMs) {
+    return Object.assign({}, FK_CACHE.value, { cached: true });
+  }
+
+  /* ---------- ① 전일 강세주 ---------- */
+  const used = new Set();
+  let prevItems = [];
+  const doc = readPrevThemeDoc();
+  if (doc && Array.isArray(doc.themes) && doc.themes.length) {
+    out.prev.asOf = doc.asOfDate || null;
+    out.prev.asOfLabel = doc.basisLong || doc.shortLabel || null;
+    out.prev.isToday = String(doc.asOfDate || '') === todayKey;
+    if (out.prev.isToday) out.prev.label = '최근 마감 강세주';
+    const rows = [];
+    doc.themes.forEach((t) => {
+      const pct = numOrNull(t.avgPct);
+      if (pct === null || pct < FK_RULES.minThemePct) return;
+      (t.stocks || []).forEach((s) => {
+        rows.push({
+          code: s.code,
+          name: s.name,
+          changePct: numOrNull(s.changePct),
+          value: numOrNull(s.value),
+          valueText: s.valueText || null,
+          price: numOrNull(s.price),   // 직전 거래일 종가 = 오늘 기준가
+          themeName: t.name,
+          themeRank: t.rank,
+          themePct: pct,
+        });
+      });
+    });
+    /* 스냅샷 themes 는 이미 강한 순서 — fkPickLeaders 가 rank 없는 rows 도 순서대로 쓴다 */
+    let rk = 0;
+    const rankByTheme = new Map();
+    rows.forEach((r) => {
+      if (!rankByTheme.has(r.themeName)) rankByTheme.set(r.themeName, ++rk);
+      r.themeRank = r.themeRank || rankByTheme.get(r.themeName);
+    });
+    const prevPick = fkPickLeaders(rows, used);
+    out.prev.themes = prevPick.themes;
+    prevItems = prevPick.items.map((x) => Object.assign({}, x, { section: 'prev', prevClose: x.quotePrice }));
+  } else {
+    out.errors.push('prev: 직전 거래일 강세 테마 스냅샷을 읽지 못했습니다');
+  }
+
+  /* ---------- ② 오늘 강세주 ---------- */
+  let todayItems = [];
+  let memberRowsRaw = [];
+  try {
+    memberRowsRaw = c.memberRows ? await c.memberRows : [];
+  } catch (e) {
+    out.errors.push('today: 테마 구성종목 조회 실패');
+  }
+  const memberRows = (memberRowsRaw && memberRowsRaw.rows) || memberRowsRaw || [];
+  if (memberRows.length) {
+    const rows = memberRows.map((r) => ({
+      code: r.code,
+      name: r.name,
+      changePct: numOrNull(r.changePct),
+      value: numOrNull(r.value),
+      valueText: null,
+      price: numOrNull(r.price),
+      themeName: r.themeName,
+      themeRank: numOrNull(r.themeRank),
+    }));
+    const todayPick = fkPickLeaders(rows, used);
+    out.today.themes = todayPick.themes;
+    todayItems = todayPick.items.map((x) => {
+      const q = x.quotePrice;
+      const pc = q !== null && x.pct !== null && x.pct > -100 ? round2(q / (1 + x.pct / 100)) : null;
+      return Object.assign({}, x, { section: 'today', prevClose: pc });
+    });
+  } else {
+    out.errors.push('today: 테마 구성종목이 비어 있습니다');
+  }
+
+  const all = prevItems.concat(todayItems).slice(0, FK_RULES.maxCodes);
+  out.prev.count = all.filter((x) => x.section === 'prev').length;
+  out.today.count = all.filter((x) => x.section === 'today').length;
+
+  /* ---------- ③ 1분봉 파동 계산 (예산 5초, 초과분은 상태 없이 카드만) ---------- */
+  if (all.length) {
+    const withZone = await Promise.race([
+      Promise.all(all.map((x) => fkItemWithZone(x))),
+      new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), FK_RULES.minuteBudgetMs)),
+    ]);
+    if (withZone === 'TIMEOUT') {
+      out.items = all;
+      out.errors.push('minute: 5초 예산 초과 — F/K존 상태 없이 카드만 표시');
+    } else {
+      out.items = withZone;
+    }
+  }
+
+  out.note =
+    '고가 기준은 전일·오늘 모두 <b>오늘(당일) 고가</b>입니다 — B1 -8% · B2 -10% · B3 -12%. ' +
+    'F존 진입(1분봉 저가 ≤ B1) 뒤 실제 저점(L) 대비 +4% 반등이 나오면 반등 파동으로 보고, 그 뒤 새 고점(H1) 대비 같은 -8/-10/-12%를 K존으로 표시합니다. ' +
+    '후보는 강세 테마(평균 +1%↑) 상위 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다.';
+
+  const body = Object.assign({}, out, { cacheKey });
+  if (!out.errors.length) FK_CACHE = { at: Date.now(), value: out };
+  return body;
 }
 
 async function buildIntradayHong(ctx) {
@@ -6097,6 +6345,20 @@ module.exports = async function handler(req, res) {
     errors.push('closingPicks: ' + String((e && e.message) || e));
   }
 
+  /* ⚡ 장중매매 후보 (F존·K존) — 테마 대장·부대장 + 1분봉 파동. 실패해도 본 응답은 그대로 내려간다(60초 캐시) */
+  let fkZone = null;
+  try {
+    fkZone = await buildFkZone({ memberRows: cpMembersPromise });
+  } catch (e) {
+    fkZone = {
+      ok: false, items: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`,
+      prev: { label: '전일 강세주', themes: [], count: 0 },
+      today: { label: '오늘 강세주', themes: [], count: 0 },
+      errors: [String((e && e.message) || e)], note: 'F존 후보를 만들지 못했습니다.',
+    };
+    errors.push('fkZone: ' + String((e && e.message) || e));
+  }
+
   const nxtLeaders = {
     ok: nxt.ok,
     source: 'naver NXT 랭킹 (stock.naver.com · tradeType=NXT)',
@@ -6240,6 +6502,7 @@ module.exports = async function handler(req, res) {
     strategyLive,
     closingPicks,
     intradayHong: (strategyLive && strategyLive.intradayHong) || null,
+    fkZone,
     high52,
     upperLimit,
     aftermarket,
@@ -6281,6 +6544,8 @@ module.exports.pickThemeStocks = pickThemeStocks;
 module.exports.mapPrevDayThemes = mapPrevDayThemes;
 // 🌙 종가베팅 2트랙(테마·수급) 규칙을 테스트에서 직접 검증할 수 있게 내보낸다.
 module.exports.buildClosingPicks = buildClosingPicks;
+module.exports.buildFkZone = buildFkZone;
+module.exports.FK_RULES = FK_RULES;
 module.exports.CP_RULES = CP_RULES;
 // 🌙 배너 야간선물 한 줄(장전·주말 전용) — 문구·생략 규칙을 테스트에서 검증한다.
 module.exports.chimNightFutures = chimNightFutures;
