@@ -2644,10 +2644,33 @@ async function buildFkZone(ctx) {
     }
   }
 
+  /* 오늘 강세주는 '지금' 강한 종목이어야 한다 — 테마 구성종목 행은 몇 분 늦게 갱신될 수 있어,
+     1분봉 실측 등락률이 +5% 아래로 내려온 종목은 강세주가 아니므로 뺀다(임의 완화가 아니라 강화).
+     전일 강세주는 오늘 조정 중인 것이 정상이라 이 필터를 적용하지 않는다. */
+  if (out.items.length) {
+    const dropped = [];
+    out.items = out.items.filter((x) => {
+      if (x.section !== 'today') return true;
+      if (!x.minuteOk || !isNum(x.pctNow)) return true;
+      if (x.pctNow >= FK_RULES.minStockPct) return true;
+      dropped.push({ code: x.code, name: x.name, pctNow: x.pctNow });
+      return false;
+    });
+    if (dropped.length) {
+      out.droppedToday = dropped;
+      out.today.count = out.items.filter((x) => x.section === 'today').length;
+      const aliveThemes = new Set(out.items.filter((x) => x.section === 'today').map((x) => x.themeName));
+      out.today.themes = (out.today.themes || []).filter((t) => aliveThemes.has(t.name));
+    }
+  }
+
   out.note =
     '고가 기준은 전일·오늘 모두 <b>오늘(당일) 고가</b>입니다 — B1 -8% · B2 -10% · B3 -12%. ' +
     'F존 진입(1분봉 저가 ≤ B1) 뒤 실제 저점(L) 대비 +4% 반등이 나오면 반등 파동으로 보고, 그 뒤 새 고점(H1) 대비 같은 -8/-10/-12%를 K존으로 표시합니다. ' +
-    '후보는 강세 테마(평균 +1%↑) 상위 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다.';
+    '후보는 강세 테마(평균 +1%↑) 상위 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다. ' +
+    (out.droppedToday && out.droppedToday.length
+      ? '오늘 강세주 중 1분봉 실측 등락률이 +' + FK_RULES.minStockPct + '% 아래로 내려온 ' + out.droppedToday.length + '종목(' + out.droppedToday.map((d) => d.name).join('·') + ')은 뺐습니다.'
+      : '');
 
   const body = Object.assign({}, out, { cacheKey });
   if (!out.errors.length) FK_CACHE = { at: Date.now(), value: out };
