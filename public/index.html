@@ -6498,8 +6498,10 @@
     var cand = g.candles || [];
     function xOfTime(t) {
       if (!t) return null;
+      var want = String(t).replace(/[^0-9]/g, '');   /* '12:11' 과 '1211' 을 같은 값으로 본다 */
+      if (!want) return null;
       for (var i = 0; i < cand.length; i++) {
-        if (String(cand[i].date) === String(t)) return 10 + i * g.barW + g.barW / 2;
+        if (String(cand[i].date).replace(/[^0-9]/g, '') === want) return 10 + i * g.barW + g.barW / 2;
       }
       return null;
     }
@@ -6542,6 +6544,16 @@
     }
     var xEnter = xOfTime(fk.enterAt);
     if (xEnter === null) xEnter = 10;
+    function vline(x, color, dash) {
+      if (x === null || x <= 10) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(dash || [3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, 10 + g.chartH); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    vline(xEnter, 'rgba(250,204,21,0.55)', [3, 3]);
+    if (fk.rebound) vline(xOfTime(fk.rebound.at), 'rgba(52,211,153,0.55)', [2, 3]);
 
     /* F존 — B1(-8%) ~ B3(-12%) */
     band(fk.b1, fk.b3, xEnter, 'rgba(250,204,21,0.13)', '#facc15', 'F존 -8~-12%');
