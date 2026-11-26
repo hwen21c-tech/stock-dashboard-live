@@ -1,0 +1,331 @@
+{
+ "mode": "static",
+ "checks": [
+  {
+   "name": "[400] 깡토 카드 생성",
+   "ok": true,
+   "extra": 22
+  },
+  {
+   "name": "[400] 깡토 탭 가로 넘침 없음",
+   "ok": true,
+   "extra": {
+    "sw": 368,
+    "cw": 368,
+    "mini": [
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     },
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     },
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     },
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     },
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     },
+     {
+      "w": 324,
+      "h": 132,
+      "attrW": "324"
+     }
+    ]
+   }
+  },
+  {
+   "name": "[400] 깡토 미니차트 크기 정상(폭>60, 높이 40~220)",
+   "ok": true,
+   "extra": [
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    },
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    },
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    },
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    },
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    },
+    {
+     "w": 324,
+     "h": 132,
+     "attrW": "324"
+    }
+   ]
+  },
+  {
+   "name": "[400] 깡토 카드 클릭 → 상세 모달 열림",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 380,
+    "boxH": 703,
+    "boxTop": 91,
+    "boxBottom": 793,
+    "canvasW": 356,
+    "canvasH": 420,
+    "vpH": 884,
+    "vpW": 400,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[400] 모달이 화면 안(위·아래 잘림 없음)",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 380,
+    "boxH": 703,
+    "boxTop": 91,
+    "boxBottom": 793,
+    "canvasW": 356,
+    "canvasH": 420,
+    "vpH": 884,
+    "vpW": 400,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[400] 모달 폭 화면 이하",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 380,
+    "boxH": 703,
+    "boxTop": 91,
+    "boxBottom": 793,
+    "canvasW": 356,
+    "canvasH": 420,
+    "vpH": 884,
+    "vpW": 400,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[400] 모달 캔버스 높이 160~420",
+   "ok": true,
+   "extra": {
+    "w": 356,
+    "h": 420
+   }
+  },
+  {
+   "name": "[400] 모달 가로 스크롤 없음",
+   "ok": true,
+   "extra": 0
+  },
+  {
+   "name": "[400] 모달 닫기",
+   "ok": true,
+   "extra": ""
+  },
+  {
+   "name": "[892] 깡토 카드 생성",
+   "ok": true,
+   "extra": 22
+  },
+  {
+   "name": "[892] 깡토 탭 가로 넘침 없음",
+   "ok": true,
+   "extra": {
+    "sw": 860,
+    "cw": 860,
+    "mini": [
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     },
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     },
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     },
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     },
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     },
+     {
+      "w": 252,
+      "h": 132,
+      "attrW": "252"
+     }
+    ]
+   }
+  },
+  {
+   "name": "[892] 깡토 미니차트 크기 정상(폭>60, 높이 40~220)",
+   "ok": true,
+   "extra": [
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    },
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    },
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    },
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    },
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    },
+    {
+     "w": 252,
+     "h": 132,
+     "attrW": "252"
+    }
+   ]
+  },
+  {
+   "name": "[892] 깡토 카드 클릭 → 상세 모달 열림",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 760,
+    "boxH": 387,
+    "boxTop": 12,
+    "boxBottom": 400,
+    "canvasW": 736,
+    "canvasH": 239,
+    "vpH": 412,
+    "vpW": 892,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[892] 모달이 화면 안(위·아래 잘림 없음)",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 760,
+    "boxH": 387,
+    "boxTop": 12,
+    "boxBottom": 400,
+    "canvasW": 736,
+    "canvasH": 239,
+    "vpH": 412,
+    "vpW": 892,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[892] 모달 폭 화면 이하",
+   "ok": true,
+   "extra": {
+    "open": true,
+    "disp": "flex",
+    "z": "9990",
+    "boxW": 760,
+    "boxH": 387,
+    "boxTop": 12,
+    "boxBottom": 400,
+    "canvasW": 736,
+    "canvasH": 239,
+    "vpH": 412,
+    "vpW": 892,
+    "bodyOverflowX": 0,
+    "title": "📈 안랩 — 깡토 기준선 (전고점 · −8% · +24% · 60일선)",
+    "levels": 4,
+    "legend": 8
+   }
+  },
+  {
+   "name": "[892] 모달 캔버스 높이 160~420",
+   "ok": true,
+   "extra": {
+    "w": 736,
+    "h": 239
+   }
+  },
+  {
+   "name": "[892] 모달 가로 스크롤 없음",
+   "ok": true,
+   "extra": 0
+  },
+  {
+   "name": "[892] 모달 닫기",
+   "ok": true,
+   "extra": ""
+  }
+ ],
+ "console": [],
+ "pageerrors": []
+}
