@@ -3,186 +3,186 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-26 09:00:33",
- "updatedAt": "2026-11-26T09:00:27.359349+09:00",
- "updatedAgeMin": 0.1,
+ "fetchedAt": "2026-11-26 15:10:10",
+ "updatedAt": "2026-11-26T15:09:54.485192+09:00",
+ "updatedAgeMin": 0.3,
  "stale": false,
  "themeCount": 6,
  "codes": [
-  "053800",
-  "263860",
-  "042510",
-  "338220",
-  "179290",
-  "380550",
-  "241710",
-  "192820",
-  "257720",
-  "443670",
-  "018260",
-  "039200",
-  "290650",
-  "358570",
-  "000100"
+  "417010",
+  "100790",
+  "321370",
+  "225190",
+  "347700",
+  "000650",
+  "084670",
+  "038500",
+  "073490",
+  "032500",
+  "310210",
+  "389470",
+  "476830",
+  "226950",
+  "000250"
  ],
  "themes": [
   {
    "rank": 1,
-   "name": "정보보안",
-   "avgRS": 98,
+   "name": "스페이스X",
+   "avgRS": 95,
    "stocks": [
     {
-     "code": "053800",
-     "name": "안랩",
-     "chg": 30.0,
-     "value_eok": 5760.01,
+     "code": "417010",
+     "name": "나노팀",
+     "chg": 29.9,
+     "value_eok": 193.97,
      "verified": true
     },
     {
-     "code": "263860",
-     "name": "지니언스",
-     "chg": 18.8,
-     "value_eok": 3548.71,
+     "code": "100790",
+     "name": "미래에셋벤처투자",
+     "chg": 22.1,
+     "value_eok": 1706.25,
      "verified": true
     },
     {
-     "code": "042510",
-     "name": "라온시큐어",
-     "chg": 15.3,
-     "value_eok": 884.25,
+     "code": "321370",
+     "name": "센서뷰",
+     "chg": 19.9,
+     "value_eok": 139.85,
      "verified": true
     }
    ]
   },
   {
    "rank": 2,
-   "name": "의료기기",
-   "avgRS": 11,
+   "name": "우주항공산업",
+   "avgRS": 78,
    "stocks": [
     {
-     "code": "338220",
-     "name": "뷰노",
-     "chg": 22.1,
-     "value_eok": 299.11,
+     "code": "225190",
+     "name": "LK삼양",
+     "chg": 29.9,
+     "value_eok": 53.96,
      "verified": true
     },
     {
-     "code": "179290",
-     "name": "엠아이텍",
-     "chg": 19.2,
-     "value_eok": 23.15,
+     "code": "321370",
+     "name": "센서뷰",
+     "chg": 19.9,
+     "value_eok": 139.85,
      "verified": true
     },
     {
-     "code": "380550",
-     "name": "뉴로핏",
-     "chg": 15.2,
-     "value_eok": 170.7,
+     "code": "347700",
+     "name": "스피어",
+     "chg": 18.7,
+     "value_eok": 1021.1,
      "verified": true
     }
    ]
   },
   {
    "rank": 3,
-   "name": "화장품",
-   "avgRS": 73,
+   "name": "부동산 자산주",
+   "avgRS": 99,
    "stocks": [
     {
-     "code": "241710",
-     "name": "코스메카코리아",
-     "chg": 13.4,
-     "value_eok": 302.44,
+     "code": "000650",
+     "name": "천일고속",
+     "chg": 30.0,
+     "value_eok": 26.89,
      "verified": true
     },
     {
-     "code": "192820",
-     "name": "코스맥스",
-     "chg": 12.2,
-     "value_eok": 770.62,
+     "code": "084670",
+     "name": "동양고속",
+     "chg": 30.0,
+     "value_eok": 44.12,
      "verified": true
     },
     {
-     "code": "257720",
-     "name": "실리콘투",
-     "chg": 12.0,
-     "value_eok": 1561.34,
+     "code": "038500",
+     "name": "삼표시멘트",
+     "chg": 14.3,
+     "value_eok": 163.41,
      "verified": true
     }
    ]
   },
   {
    "rank": 4,
-   "name": "클라우드 컴퓨팅",
-   "avgRS": 89,
+   "name": "5G",
+   "avgRS": 94,
    "stocks": [
     {
-     "code": "053800",
-     "name": "안랩",
-     "chg": 30.0,
-     "value_eok": 5760.01,
+     "code": "321370",
+     "name": "센서뷰",
+     "chg": 19.9,
+     "value_eok": 139.85,
      "verified": true
     },
     {
-     "code": "443670",
-     "name": "에스피소프트",
-     "chg": 9.5,
-     "value_eok": 321.44
+     "code": "073490",
+     "name": "LIG아큐버",
+     "chg": 15.3,
+     "value_eok": 145.39
     },
     {
-     "code": "018260",
-     "name": "삼성에스디에스",
-     "chg": 4.5,
-     "value_eok": 855.22
+     "code": "032500",
+     "name": "케이엠더블유",
+     "chg": 12.9,
+     "value_eok": 169.0
     }
    ]
   },
   {
    "rank": 5,
-   "name": "밸류업",
-   "avgRS": 75,
+   "name": "치매 치료제",
+   "avgRS": 10,
    "stocks": [
     {
-     "code": "192820",
-     "name": "코스맥스",
-     "chg": 12.2,
-     "value_eok": 770.62
+     "code": "310210",
+     "name": "보로노이",
+     "chg": 17.8,
+     "value_eok": 413.87
     },
     {
-     "code": "039200",
-     "name": "오스코텍",
-     "chg": 11.0,
-     "value_eok": 131.09
+     "code": "389470",
+     "name": "인벤티지랩",
+     "chg": 15.5,
+     "value_eok": 54.9
     },
     {
-     "code": "290650",
-     "name": "엘앤씨바이오",
-     "chg": 10.6,
-     "value_eok": 342.19
+     "code": "476830",
+     "name": "알지노믹스",
+     "chg": 15.4,
+     "value_eok": 360.37
     }
    ]
   },
   {
    "rank": 6,
-   "name": "면역항암제",
-   "avgRS": 44,
+   "name": "비만치료제",
+   "avgRS": 41,
    "stocks": [
     {
-     "code": "358570",
-     "name": "지아이이노베이션",
-     "chg": 15.9,
-     "value_eok": 138.52
+     "code": "389470",
+     "name": "인벤티지랩",
+     "chg": 15.5,
+     "value_eok": 54.9
     },
     {
-     "code": "039200",
-     "name": "오스코텍",
-     "chg": 11.0,
-     "value_eok": 131.09
+     "code": "226950",
+     "name": "올릭스",
+     "chg": 14.8,
+     "value_eok": 506.83
     },
     {
-     "code": "000100",
-     "name": "유한양행",
-     "chg": 8.0,
-     "value_eok": 399.57
+     "code": "000250",
+     "name": "삼천당제약",
+     "chg": 11.2,
+     "value_eok": 573.54
     }
    ]
   }
