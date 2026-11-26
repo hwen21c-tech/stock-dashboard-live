@@ -1947,6 +1947,11 @@ def fallback_body(f):
         macro.append(f"원/달러 {fx['price']:,.2f}원 ({pct_text(fx.get('pct'))}, 기준 {fx.get('traded_date') or '미상'})")
     else:
         macro.append("원/달러 미수신")
+    us = ((f.get("deep") or {}).get("us") or {})
+    us_idx = [r for r in us.get("indices") or [] if r.get("ok") and r.get("pct") is not None]
+    if us_idx:
+        macro.append(f"미장 {us.get('latest_date')}(현지): " + " · ".join(
+            f"{r['name']} {r['price']:,.2f}({pct_text(r.get('pct'))})" for r in us_idx))
 
     # 💰
     flow = []
@@ -1974,6 +1979,20 @@ def fallback_body(f):
             flow.append(f"외인 순매수 상위(확정 {sup.get('basis_label') or ''}): {fb}")
         if ob:
             flow.append(f"기관 순매수 상위: {ob}")
+    deep = f.get("deep") or {}
+    streak_rows = []
+    for r in (deep.get("supply_streaks") or {}).get("rows") or []:
+        sv = r.get("supply") or {}
+        if not sv.get("ok"):
+            continue
+        seg = [x for x in (_streak_line(sv.get("foreign"), "외인"),
+                           _streak_line(sv.get("organ"), "기관")) if x and "연속 없음" not in x]
+        if seg:
+            streak_rows.append(f"{r.get('name')} " + " ".join(seg))
+        if len(streak_rows) >= 2:
+            break
+    if streak_rows:
+        flow.append("연속 수급(확정): " + " / ".join(streak_rows))
     flow.append("[해석] 수급 해석 문장은 Gemini 응답 실패로 생략했습니다. 위 수치는 수집된 실측값 그대로입니다.")
 
     # 🔥
@@ -1993,6 +2012,14 @@ def fallback_body(f):
         n = t.get("news")
         if n:
             themes.append(f"재료: {n['title']} ({n.get('press') or ''})")
+        dth = _deep_theme(f, t.get("name"))
+        darts = []
+        for s in (dth or {}).get("leaders") or []:
+            dt = s.get("dart") or {}
+            if dt.get("ok") and dt.get("major"):
+                darts.append(f"{s['name']} {', '.join(x['title'] for x in dt['major'])}")
+        if darts:
+            themes.append("당일 공시: " + " / ".join(darts))
     if not themes:
         themes.append("주도 테마 미수신")
     weak = []

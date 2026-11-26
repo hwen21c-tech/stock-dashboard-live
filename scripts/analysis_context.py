@@ -571,7 +571,7 @@ def theme_continuity(script_dir, today_themes, theme_rank=None, max_days=5):
             leader_now = next((s.get("name") for s in (tt.get("leaders") or [])), None) \
                 or next((s.get("name") for s in (tt.get("stocks") or [])), None)
         if not tt:
-            leader_state = "테마 미수집"
+            leader_state = "대장 미수집"
         elif not leader_now:
             leader_state = "대장 미수집"
         elif leader_prev and leader_prev == leader_now:
