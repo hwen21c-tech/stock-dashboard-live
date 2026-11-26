@@ -2099,8 +2099,11 @@ NAVER_INDEX_MINUTE = "https://api.stock.naver.com/chart/domestic/index/{sym}/min
 
 
 def _index_minute_series(sym, ymd):
-    """오늘(KST) 지수 1분봉 → [(분, 가격, 'HH:MM')] 오름차순"""
-    d = http_json(NAVER_INDEX_MINUTE.format(sym=sym), timeout=15, retries=1,
+    """오늘(KST) 지수 1분봉 → [(분, 가격, 'HH:MM')] 오름차순
+
+    · 발송을 붙잡지 않도록 짧게 끊는다(timeout 8초, 재시도 없음) — 백업이지 본선이 아니다.
+    """
+    d = http_json(NAVER_INDEX_MINUTE.format(sym=sym), timeout=8, retries=0,
                   headers={"Referer": "https://m.stock.naver.com/"})
     rows = []
     for b in d or []:
@@ -2114,6 +2117,14 @@ def _index_minute_series(sym, ymd):
         rows.append((int(dt[8:10]) * 60 + int(dt[10:12]), price, dt[8:10] + ":" + dt[10:12]))
     rows.sort(key=lambda r: r[0])
     return rows
+
+
+def _index_prev_close(market):
+    """지수 전일 종가 — 통합(information) 응답의 lastClosePrice."""
+    d = http_json(NAVER_MOBILE + market + "/integration", timeout=8, retries=0,
+                  headers={"Referer": "https://m.stock.naver.com/"})
+    info = {x.get("code"): x.get("value") for x in (d.get("totalInfos") or [])}
+    return fnum(info.get("lastClosePrice"))
 
 
 def _series_at(series, target):
@@ -2130,21 +2141,36 @@ def merge_index_hourly_flow(data, timeline_slots, now):
     """data['index_hourly_flow'] 를 오늘 실측으로 다시 만든다. 실패하면 아무것도 바꾸지 않는다."""
     today = now.strftime("%Y-%m-%d")
     ymd = now.strftime("%Y%m%d")
+    ks, qs = [], []
+    prev_close = {"KOSPI": None, "KOSDAQ": None}
     try:
-        ks = _index_minute_series("KOSPI", ymd)
-        qs = _index_minute_series("KOSDAQ", ymd)
-    except Exception as e:  # noqa: BLE001 — 백업이 없어도 발송은 성공해야 한다
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            fut = {
+                "ks": ex.submit(_index_minute_series, "KOSPI", ymd),
+                "qs": ex.submit(_index_minute_series, "KOSDAQ", ymd),
+                "pk": ex.submit(_index_prev_close, "KOSPI"),
+                "pq": ex.submit(_index_prev_close, "KOSDAQ"),
+            }
+            for key in ("ks", "qs"):
+                try:
+                    val = fut[key].result(timeout=20)
+                    if key == "ks":
+                        ks = val
+                    else:
+                        qs = val
+                except Exception as e:  # noqa: BLE001
+                    log(f"⚠️ index_hourly_flow {key} 분봉 실패 — {e}")
+            for key, mk in (("pk", "KOSPI"), ("pq", "KOSDAQ")):
+                try:
+                    prev_close[mk] = fut[key].result(timeout=20)
+                except Exception:  # noqa: BLE001
+                    prev_close[mk] = None
+    except Exception as e:  # noqa: BLE001
         log(f"⚠️ index_hourly_flow 분봉 실패 — 기존 값 유지: {e}")
         return
     if not ks and not qs:
         return
-
-    prev_close = {}
-    for mk in ("KOSPI", "KOSDAQ"):
-        try:
-            prev_close[mk] = fetch_index_detail(mk).get("prev_close")
-        except Exception:  # noqa: BLE001
-            prev_close[mk] = None
 
     old_flow = data.get("index_hourly_flow") if isinstance(data.get("index_hourly_flow"), dict) else {}
     old_slots = {}
