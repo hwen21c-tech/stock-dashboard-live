@@ -2493,6 +2493,7 @@ async function buildIntradayHong(ctx) {
 
   /* 장전·프리마켓(09:00 이전)·휴장에는 당일 등락률·대금이 갱신되지 않는다 — 후보를 만들지 않는다 */
   const poolRows = beforeOpen || weekend ? [] : (c.pool || []);
+  out.leaderStats.judged = poolRows.length;   // 판정에 실제로 넣은 후보 수(장전·휴장은 0)  
   poolRows.forEach((j) => {
     const st = out.leaderStats;
     const rank = j.valueRank === null || j.valueRank === undefined ? null : j.valueRank;
