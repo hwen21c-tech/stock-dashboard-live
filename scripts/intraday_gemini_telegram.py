@@ -885,11 +885,13 @@ def collect(script_dir, use_fixture=None, verbose=True):
     weak = []
     if themes:
         eligible = [t for t in themes if (t.get("total") or 0) >= 5]
-        weak = sorted(eligible, key=lambda x: x["pct"])[:2]
-        # 하락 업종이 없으면(전 테마 상승) '빠지는 쪽'으로 쓰지 않는다
-        if weak and all((t.get("pct") or 0) >= 0 for t in weak):
-            facts["all_themes_up"] = {"name": weak[0]["name"], "pct": weak[0]["pct"]}
-            weak = []
+        negative = [t for t in eligible if (t.get("pct") or 0) < 0]
+        weak = sorted(negative, key=lambda x: x["pct"])[:2]
+        # 하락 업종이 하나도 없으면(전 테마 상승) '빠지는 쪽'으로 쓰지 않는다
+        if not weak:
+            lowest = min(eligible, key=lambda x: x["pct"]) if eligible else None
+            if lowest:
+                facts["all_themes_up"] = {"name": lowest["name"], "pct": lowest["pct"]}
         # 약한 테마 1순위의 대표 종목(거래대금 최대) 1개
         if weak and not use_fixture:
             try:
