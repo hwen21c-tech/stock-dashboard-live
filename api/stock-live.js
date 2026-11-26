@@ -2508,22 +2508,31 @@ async function fetchIndexTrend(market) {
 
 /** 같은 배포의 타임라인 JSON — 슬롯별 실측 수급 스냅샷을 읽는다(실패는 3분간 기억). */
 async function fetchFlowTimeline(req) {
-  const raw = (req && req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
-  const host = String(raw).split(',')[0].trim();
-  if (!host) return null;
+  const h = (req && req.headers) || {};
+  const rawHost = h.host || h['x-forwarded-host'] || '';
+  const fwd = h['x-forwarded-host'] || '';
+  const host = String(rawHost).split(',')[0].trim();
+  const altHost = String(fwd).split(',')[0].trim();
+  if (!host) return { ok: false, error: 'no-host-header', host: '' };
   const key = 'timeline:' + host;
   const hit = idxCacheGet(key, IDX_TIMELINE_TTL_MS);
-  if (hit !== null && hit !== undefined) return hit;
-  try {
-    const scheme = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? 'http' : 'https';
-    const j = await fetchJson(scheme + '://' + host + '/data/flow_timeline_today.json', {
-      headers: { Accept: 'application/json' },
-      timeout: 2500,
-    });
-    return idxCacheSet(key, j && typeof j === 'object' ? j : null);
-  } catch (e) {
-    return idxCacheSet(key, null);
+  if (hit) return hit;
+  /* 요청 호스트가 안 되면 x-forwarded-host 로 한 번 더(내부 호스트가 섞이는 배포가 있다) */
+  const hosts = host === altHost || !altHost ? [host] : [host, altHost];
+  let lastErr = null;
+  for (const hv of hosts) {
+    try {
+      const scheme = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(hv) ? 'http' : 'https';
+      const j = await fetchJson(scheme + '://' + hv + '/data/flow_timeline_today.json', {
+        headers: { Accept: 'application/json' },
+        timeout: 2500,
+      });
+      return idxCacheSet(key, { ok: true, doc: j && typeof j === 'object' ? j : null, host: hv });
+    } catch (e) {
+      lastErr = `${hv}: ${String((e && e.message) || e)}`;
+    }
   }
+  return idxCacheSet(key, { ok: false, error: lastErr || 'unknown', host });
 }
 
 const SUPPLY_SLOT_KEYS = ['kv', 'qv', 'f', 'o', 'qf', 'qo', 'ff', 'fo'];
@@ -2605,8 +2614,11 @@ async function buildIndexFlowBundle(req, indices) {
   const tK = pick(2, 'naver-trend-kospi');
   const tQ = pick(3, 'naver-trend-kosdaq');
   const tF = pick(4, 'naver-trend-fut');
-  const tl = settled[5].status === 'fulfilled' ? settled[5].value : null;
-  if (settled[5].status === 'rejected') errors.push('flow-timeline: 응답 없음');
+  const tlRes = settled[5].status === 'fulfilled' ? settled[5].value : null;
+  const tl = tlRes && tlRes.ok ? tlRes.doc : null;
+  if (!tlRes || !tlRes.ok) {
+    errors.push(`flow-timeline: ${(tlRes && tlRes.error) || '응답 없음'}`);
+  }
 
   /* ----- 현재 수급(INDEX_FLOW_SUPPLY) ----- */
   const biz = (tK && tK.bizdate) || (tQ && tQ.bizdate) || (tF && tF.bizdate) || null;
