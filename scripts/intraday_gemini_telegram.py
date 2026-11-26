@@ -23,7 +23,7 @@
   📊 핵심 지표 & 매크로    코스피·코스닥·선물(베이시스)·등락종목수·상한가·원/달러
   💰 투자자별 수급 & 해석  외인(현물·선물)·기관·개인·프로그램 + 왜/의미 해석
   🔥 주도 테마 & 대장주    300억↑ 실측 대장주·상승률·거래대금·재료 + 빠지는 섹터
-  🧭 전망 & 시나리오       지지선 대비 위치 + ① 돌파·유지 ② 박스 ③ 이탈 대응
+  🧭 대응 시나리오         박스권·기준선 위치 + ① 돌파 ② 박스 ③ 이탈 때 내 계좌 행동·피할 것
 
 원칙
   · 실측 팩트만 쓴다. 응답에 없는 숫자는 절대 만들지 않는다(검증기가 막는다).
@@ -39,6 +39,7 @@
 사용 예
   python3 scripts/intraday_gemini_telegram.py --dry-run
   python3 scripts/intraday_gemini_telegram.py --dry-run --slot 10:00 --force
+  python3 scripts/intraday_gemini_telegram.py --skip-if-done --dry-run   # 예약 중복 방지
   python3 scripts/intraday_gemini_telegram.py --print-facts
 
 데이터 소스
@@ -130,7 +131,7 @@ BLOCK_HEADERS = [
     ("📊", "📊 핵심 지표 & 매크로"),
     ("💰", "💰 투자자별 수급 & 흐름 해석"),
     ("🔥", "🔥 장중 주도 테마 & 대장주 (300억↑ 실측)"),
-    ("🧭", "🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"),
+    ("🧭", "🧭 대응 시나리오"),
 ]
 REQ_SECTIONS = [h for _, h in BLOCK_HEADERS]
 
@@ -1207,8 +1208,8 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 4. FACTS가 '미수신'·'미집계'·'실시간 아님'이라고 하면 숨기지 말고 그대로 적는다.
 5. FACTS의 날짜·시각을 바꾸지 않는다. 수급 기준일이 오늘이 아니면 '기준 11/25'처럼 기준일을 밝힌다.
 6. 출력은 맨 첫 줄 헤드라인 + 아래 5개 블록만. 인사·서론·면책·맺음말·마크다운(**·##·표·```) 금지.
-7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄(약 100자) / 📊 약 450자 / 💰 약 600자
-   / 🔥 약 900자 / 🧭 약 500자. 한 줄은 40~80자로 끊어 폰 화면에서 읽히게 하고,
+7. 분량은 장중 2,000~3,200자. 블록별 목표: 📌 1줄(약 100자) / 📊 약 420자 / 💰 약 560자
+   / 🔥 약 850자 / 🧭 약 650자. 한 줄은 40~80자로 끊어 폰 화면에서 읽히게 하고,
    한 줄에 몰아 쓰지 말고 항목마다 '- '로 시작하는 줄로 나눈다.
 8. 매수·매도 '추천'이 아니라 조건부 대응만 쓴다. '반드시·무조건·수익 보장' 금지.
 9. 원인·재료는 FACTS의 [뉴스·재료]·[수급 종목]에 적힌 것만 쓴다. FACTS에 없는 원인 추정
@@ -1264,13 +1265,15 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
 - 빠지는 쪽: {업종} {등락률}
 - 하락 대표주: {종목} {등락률} ({거래대금})
 - [해석] 테마 총평: {오늘 자금이 어느 테마로 몰리고 어디서 빠지는지 한 문장 — 새 수치 계산 금지}
-🧭 오늘 시장 전망 & 시나리오 · 기준선 대응
-- 현재 코스피 {값} — 1차 지지 {값} 대비 {위/아래}, 2차 지지 {값} · 저항1 {값}
+🧭 대응 시나리오
+- 지금 위치: 코스피 {값} — 오늘 {저}~{고} 박스에서 어디쯤, 1차 지지 {값} 대비 {위/아래} · 전일 종가 {값}
+- 큰 틀: 1차 지지 {값} · 2차 지지 {값} · 저항1 {값} · 저항2 {값} — 지금 박스의 위·아래 경계
 - 코스닥 {값} — 1차 지지 {값} · 저항1 {값}
-- ① 돌파·유지: {숫자 조건} → {행동}
-- ② 박스: {숫자 조건} → {행동}
-- ③ 이탈: {숫자 조건} → {행동}
-- 대응 원칙: {오늘 비중·추격 여부·손절 기준을 FACTS 기준선으로 한 줄}
+- ① 돌파·강세 ({숫자 조건}): {내 계좌 행동 — 분할 여부·비중·추격 금지}
+- ② 박스권·혼조 ({숫자 조건}): {내 계좌 행동 — 관망·소액·대기}
+- ③ 이탈·약세 ({숫자 조건}): {내 계좌 행동 — 비중 축소·현금·물타기 금지}
+- 피할 것: {오늘 하면 안 되는 행동 하나 — FACTS 근거로}
+- 확률 우위: {상승·박스·하락 중 무게가 실리는 쪽 + 근거 1줄 — 숫자는 FACTS 것만}
 - 체크포인트: {다음에 확인할 것 — FACTS의 기준선·수급·상한가 중에서}
 """ + CHECKER_URL + """
 
@@ -1288,9 +1291,16 @@ SYSTEM_PROMPT = """너는 한국 주식 채널 '폭스시그널'의 장중 정�
   마지막에 [빠지는 쪽]을 대비시키되, 업종의 대표 종목은 FACTS에 '대표'로 붙은
   종목만 쓰고 없으면 업종 등락률만 쓴다. '하락 대표주'는 FACTS에 그렇게 적힌 종목만 별도 줄로 쓰고
   업종 옆에 '— 대표'로 이어 붙이지 않는다.
-- 🧭 는 [기준선]의 1차·2차 지지와 저항을 써서 세 경우(① 돌파·유지 / ② 박스 / ③ 이탈)를 숫자로 나눈다.
-  지지선이 없으면 전일 종가를 기준으로 쓴다. 각 경우의 행동은 '관망 / 분할 / 추격 금지 / 비중 축소' 중에서
-  조건과 함께 단호하게 쓴다. 마지막 줄은 다음 확인 항목이다.
+- 🧭 '대응 시나리오'는 이름 그대로 오늘의 대응만 쓴다(단순 전망·지수 나열 금지).
+  첫 두 줄에서 큰 틀을 먼저 잡는다: ① 지금 지수가 오늘 저가·고가(또는 지지·저항) 박스 안 어디쯤인지,
+  ② 전일 종가·1차/2차 지지·저항으로 이루어진 박스의 위·아래 경계. 숫자는 FACTS에 있는 값만 쓴다.
+  이어서 세 갈래(① 돌파·강세 / ② 박스권·혼조 / ③ 이탈·약세)마다 FACTS의 기준선 숫자로 조건을 달고
+  각 갈래의 '내 계좌 행동'을 구체적으로 쓴다 — 무엇을 분할로 담고, 무엇을 줄이고(비중 축소·청산),
+  무엇을 하지 않는지(추격 금지·물타기 금지·종베 자제)를 조건과 함께 단호하게 적는다.
+  '피할 것' 한 줄로 오늘 가장 위험한 행동을 못 박고, '확률 우위' 한 줄로 세 갈래 중 무게가 실리는 쪽과
+  그 근거(FACTS의 수급·기준선·테마)를 적는다. 마지막 '체크포인트' 한 줄로 다음 확인 항목을 남긴다.
+  FACTS에 없는 지지선·저항선·목표가를 새로 만들지 않는다. 지지선이 없으면 전일 종가를 기준선으로 쓴다.
+  세 갈래 행동은 '관망 / 분할 / 추격 금지 / 비중 축소 / 현금' 중에서 조건과 함께 고른다.
 - 같은 숫자를 여러 블록에서 다시 써도 된다. 분량을 채우려고 없는 사실을 늘리지는 않는다.
   단, FACTS에 있는 수치·종목·테마·기준선은 빠짐없이 인용한다(인용만으로 분량이 채워진다).
 - '동반'은 FACTS에 '동반(300억 미만)'으로 적힌 종목에만 쓰고, 거래대금 300억↑ 종목은 모두 '대장'으로 쓴다.
@@ -1470,22 +1480,24 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
     except KeyError:
         pass
 
-    # 🧭 시나리오 3분기(① ② ③)
+    # 🧭 대응 시나리오 3분기(① ② ③) + 계좌 행동·피할 것
     try:
-        i = positions["🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"]
+        i = positions["🧭 대응 시나리오"]
         tail = "\n".join(lines[i + 1:])
         missing = [m for m in ("①", "②", "③") if m not in tail]
         if missing:
             problems.append(f"시나리오 누락: {''.join(missing)}")
-        if len(tail) < 120:
+        if len(tail) < 200:
             problems.append("🧭 분량 부족")
+        elif len([ln for ln in tail.splitlines() if ln.strip()]) < 6:
+            problems.append("🧭 항목 부족(박스 위치·3갈래·피할 것·체크포인트를 줄로 나눌 것)")
     except KeyError:
         pass
 
     # 🔥 테마 블록에 300억↑ 대장 종목 흔적
     try:
         i = positions["🔥 장중 주도 테마 & 대장주 (300억↑ 실측)"]
-        j = positions["🧭 오늘 시장 전망 & 시나리오 · 기준선 대응"]
+        j = positions["🧭 대응 시나리오"]
         block = "\n".join(lines[i + 1:j])
         if len(block) < 150:
             problems.append("🔥 테마 블록 분량 부족")
@@ -1743,39 +1755,46 @@ def fallback_body(f):
     if ul.get("rows"):
         themes.append("상한가: " + ", ".join(f"{r['name']} {pct_text(r['pct'])}" for r in ul["rows"]))
 
-    # 🧭
+    # 🧭 대응 시나리오 (박스 위치 → 3갈래 계좌 행동 → 피할 것)
     view = []
     if k["price"] is not None:
         s1 = kospi_lv.get("s1")
         s2 = kospi_lv.get("s2")
         r1 = kospi_lv.get("r1")
-        pos = []
+        r2 = kospi_lv.get("r2")
+        loc = []
+        if k.get("low") is not None and k.get("high") is not None:
+            loc.append(f"오늘 {k['low']:,.2f}~{k['high']:,.2f} 박스 안")
         if s1 is not None:
-            pos.append(f"1차 지지 {s1:,.2f} {'위' if k['price'] >= s1 else '아래'}")
-        if s2 is not None:
-            pos.append(f"2차 지지 {s2:,.2f}")
-        if r1 is not None:
-            pos.append(f"저항1 {r1:,.2f}")
-        view.append(f"현재 코스피 {k['price']:,.2f} — " + " · ".join(pos) if pos
-                    else f"현재 코스피 {k['price']:,.2f} — 저장된 지지선 없음")
+            loc.append(f"1차 지지 {s1:,.2f} {'위' if k['price'] >= s1 else '아래'}")
+        if k.get("prev_close") is not None:
+            loc.append(f"전일 종가 {k['prev_close']:,.2f} 대비 {'위' if k['price'] >= k['prev_close'] else '아래'}")
+        view.append(f"지금 위치: 코스피 {k['price']:,.2f} — " + (" · ".join(loc) if loc else "박스 기준 미수신"))
+        box = []
+        for lab, v in (("1차 지지", s1), ("2차 지지", s2), ("저항1", r1), ("저항2", r2)):
+            if v is not None:
+                box.append(f"{lab} {v:,.2f}")
+        view.append("큰 틀: " + (" · ".join(box) if box else "저장된 지지·저항 없음 — 전일 종가를 기준선으로 판단"))
         if s1 is not None and r1 is not None:
-            view.append(f"① 돌파·유지: {r1:,.2f} 위 유지 시 → 주도 테마 눌림 분할, 추격 매수 금지")
-            view.append(f"② 박스: {s1:,.2f}~{r1:,.2f} 왕복 시 → 관망, 거래대금 동반 확인 전 진입 보류")
-            view.append(f"③ 이탈: {s1:,.2f} 아래 종가 이탈 시 → 비중 축소, 반등 확인 전 신규 진입 금지")
+            view.append(f"① 돌파·강세: {r1:,.2f} 위 유지 시 → 주도 테마 눌림만 분할, 추격 매수 금지")
+            view.append(f"② 박스권·혼조: {s1:,.2f}~{r1:,.2f} 왕복 시 → 관망, 거래대금 동반 확인 전 신규 진입 보류")
+            view.append(f"③ 이탈·약세: {s1:,.2f} 아래로 밀리면 → 비중 축소·현금 확보, 반등 전 물타기 금지")
         elif s1 is not None:
-            view.append(f"① 지지 {s1:,.2f} 위 유지 시 → 주도 테마 눌림 분할")
-            view.append(f"② {s1:,.2f} 부근 박스 → 관망")
-            view.append(f"③ {s1:,.2f} 이탈 시 → 비중 축소·추격 금지")
+            view.append(f"① 돌파·강세: 지지 {s1:,.2f} 위 유지 시 → 주도 테마 눌림 분할")
+            view.append(f"② 박스권·혼조: {s1:,.2f} 부근 왕복 → 관망·소액만")
+            view.append(f"③ 이탈·약세: {s1:,.2f} 아래 → 비중 축소·현금, 추격 금지")
         else:
-            view.append("① 전일 종가 위 유지 시 → 주도 테마 눌림 분할")
-            view.append("② 전일 종가 부근 박스 → 관망")
-            view.append("③ 전일 종가 이탈 시 → 비중 축소·추격 금지")
+            view.append("① 돌파·강세: 전일 종가 위 유지 시 → 주도 테마 눌림 분할")
+            view.append("② 박스권·혼조: 전일 종가 부근 왕복 → 관망")
+            view.append("③ 이탈·약세: 전일 종가 아래 → 비중 축소·현금, 물타기 금지")
+        view.append("피할 것: 기준선 이탈 뒤 반등 없는 추격 매수·물타기, 거래대금 확인 전 신규 진입")
+        view.append("확률 우위: 실측 대체 본문이라 확률 수치는 적지 않습니다 — 지지선 사수 여부와 외인 선물 방향으로 판단하십시오")
     else:
-        view.append("지수 미수신 — 기준선 판단 불가")
-        view.append("① ② ③ 시나리오는 실측값 수신 후 판단")
+        view.append("지수 미수신 — 박스·기준선 판단 불가")
+        view.append("① ② ③ 대응은 실측값 수신 후 판단")
     if kosdaq_lv.get("s1") is not None and q["price"] is not None:
-        view.append(f"코스닥 1차 지지 {kosdaq_lv['s1']:,.2f} / 현재 {q['price']:,.2f}")
-    view.append("체크포인트: 1차 지지 회복 여부 · 외인 선물 방향 · 상한가 확대 여부")
+        view.append(f"코스닥 지금 위치: {q['price']:,.2f} · 1차 지지 {kosdaq_lv['s1']:,.2f}")
+    view.append("체크포인트: 1차 지지 사수 여부 · 외인 선물 방향 · 상한가 확대 여부")
 
     return "\n".join([
         headline,
@@ -1787,7 +1806,7 @@ def fallback_body(f):
         *[f"- {x}" for x in flow],
         "🔥 장중 주도 테마 & 대장주 (300억↑ 실측)",
         *[f"- {x}" for x in themes],
-        "🧭 오늘 시장 전망 & 시나리오 · 기준선 대응",
+        "🧭 대응 시나리오",
         *[f"- {x}" for x in view],
         CHECKER_URL,
     ])
@@ -1913,6 +1932,13 @@ def blank_timeline(now):
 
 
 def load_timeline(path, now):
+    """오늘 타임라인을 읽는다.
+
+    날짜가 바뀐 파일이면 오늘 빈 슬롯으로 새로 시작하되, 직전 거래일의 **제미나이 장중
+    브리핑 5회차**(09:30·10:00·11:00·13:00·14:00)만 `prev` 로 남긴다. 관제탑
+    「시장&수급심층분석」 탭은 오늘 첫 회차(09:30) 전까지 이 `prev` 를 ‘직전 거래일 기록’
+    으로 보여 주고, 오늘 회차가 들어오면 오늘 것으로 바꿔 그린다(전일 값을 오늘로 쓰지는 않는다).
+    """
     data = None
     if os.path.exists(path):
         try:
@@ -1920,8 +1946,17 @@ def load_timeline(path, now):
                 data = json.load(fh)
         except Exception:  # noqa: BLE001
             data = None
-    if not data or data.get("date") != now.strftime("%Y-%m-%d") or not data.get("slots"):
-        return blank_timeline(now)
+    today = now.strftime("%Y-%m-%d")
+    if not data or data.get("date") != today or not data.get("slots"):
+        fresh = blank_timeline(now)
+        if data and data.get("date") and data.get("date") != today:
+            keep = [s for s in (data.get("slots") or [])
+                    if isinstance(s, dict) and s.get("t") in INTRADAY_SLOTS
+                    and s.get("state") == "done"]
+            if keep:
+                fresh["prev"] = {"date": data.get("date"), "day": data.get("day"),
+                                 "updated": data.get("updated"), "slots": keep}
+        return fresh
     return data
 
 
@@ -1934,6 +1969,27 @@ def prev_done_slot(slots, slot_t):
         if slots[i].get("state") == "done":
             return slots[i]
     return None
+
+
+def slot_done_today(script_dir, slot_t):
+    """오늘 그 회차가 이미 기록됐는지 — 예약이 중복·지연 발송되는 것을 막는다.
+
+    반환: (이미 완료, 슬롯 dict 또는 None). 관제탑 저장소를 못 찾으면 False.
+    """
+    root = dashboard_root(script_dir)
+    if not root:
+        return False, None
+    now = kst_now()
+    try:
+        data = load_timeline(flow_paths(root)[0], now)
+    except Exception:  # noqa: BLE001
+        return False, None
+    if data.get("date") != now.strftime("%Y-%m-%d"):
+        return False, None
+    for s in data.get("slots") or []:
+        if isinstance(s, dict) and s.get("t") == slot_t and s.get("state") == "done":
+            return True, s
+    return False, None
 
 
 def _money_eok_text(v):
@@ -2065,6 +2121,10 @@ def build_timeline_slot(facts, slot_t, measured, body, generator, prev_slot=None
         "measured": measured,
         "status": chip,
         "statusLabel": "🤖 Gemini AI 작성",
+        "title": f"{slot_t} 대응 시나리오",
+        # 발송본 전문 — 관제탑 「시장&수급심층분석」 탭의 회차 카드에서 그대로 열린다.
+        "body": (body or "").strip(),
+        "bodyLen": len((body or "").strip()),
         "leadName": top["leader"] if top else "",
         "leadChg": f"{top['chg']:+.2f}%" if top else "",
         "leadSub": ((top["name"] + " · ") if top else "") + " ".join(sub_bits),
@@ -2438,6 +2498,8 @@ def main(argv=None):
     ap.add_argument("--no-html", action="store_true", help="정적 index.html 내장 블록은 건드리지 않는다")
     ap.add_argument("--push-timeline", action="store_true",
                     help="타임라인 커밋을 원격에 push (GitHub Actions 에서는 자동)")
+    ap.add_argument("--skip-if-done", action="store_true",
+                    help="오늘 그 회차가 이미 기록됐으면 발송·생성 없이 종료(예약 중복·백업 슬롯용)")
     args = ap.parse_args(argv)
 
     if args.summary:
@@ -2468,6 +2530,19 @@ def main(argv=None):
     chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHANNEL") or "").strip()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 예약 코른이 지연·중복으로 겹칠 때 같은 회차를 두 번 보내지 않는다.
+    # (오늘 그 슬롯이 이미 done 이면 Gemini 호출·발송 없이 종료 — 수동 workflow_dispatch 는 이 플래그를 안 쓴다)
+    if args.skip_if_done and not args.timeline_from:
+        pre_slot = target_slot(args.timeline_slot or args.slot or kst_now().strftime("%H:%M"))
+        done_already, done_slot = slot_done_today(script_dir, pre_slot)
+        if done_already:
+            log(f"⏭ {pre_slot} 회차는 오늘 이미 기록됐습니다(발송 {(done_slot or {}).get('measured') or '-'}) — 중복 발송 생략")
+            if args.out:
+                write_out(args.out, {"skipped": True, "reason": f"duplicate {pre_slot}",
+                                     "slot": pre_slot, "timeline_slot": done_slot})
+            return 0
+
     facts = collect(script_dir, use_fixture=args.fixture)
     ftext = facts_text(facts)
 
