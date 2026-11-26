@@ -2651,7 +2651,7 @@ async function buildFkZone(ctx) {
     const dropped = [];
     out.items = out.items.filter((x) => {
       if (x.section !== 'today') return true;
-      if (!x.minuteOk || !isNum(x.pctNow)) return true;
+      if (!x.minuteOk || numOrNull(x.pctNow) === null) return true;
       if (x.pctNow >= FK_RULES.minStockPct) return true;
       dropped.push({ code: x.code, name: x.name, pctNow: x.pctNow });
       return false;
