@@ -1440,7 +1440,8 @@
           state.ok = false;
           return;
         }
-        applyLive(body);
+        if (window.SD && window.SD.run) window.SD.run('live-extra.applyLive', function () { applyLive(body); }, 0);
+        else applyLive(body);
       })
       .catch(function () {
         state.polling = false;

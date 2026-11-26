@@ -123,6 +123,51 @@ def pct(a, b):
     return (a / b - 1) * 100 if b else 0.0
 
 
+# ────────────────────────────────────────────────────────────────
+# 🛡️ 등락률 가드 (2026-11-27 전 탭·API 오류 방지 감사)
+#   일봉 캐시의 전일 종가는 **KRX 정규장 종가**인데, 화면·네이버가 쓰는 기준은
+#   **전일 NXT 최종 종가**다. 두 기준이 어긋난 종목(예: 11/26 아리바이오랩)은
+#   캐시로 계산하면 +36.87% 처럼 하루 ±30% 가격제한을 넘는 값이 나온다.
+#   → ±30% 초과면 네이버 공식 등락률(fluctuationsRatio)을 조회해 그 값으로 맞춘다.
+#     공식값도 못 받으면 그 종목의 그날 등락률은 None(=화면 '—')으로 두고, 평균·순위에서 뺀다.
+#     (없는 값을 만들지 않는다 — 사용자 확정 원칙)
+PCT_LIMIT = 30.0
+_OFFICIAL_PCT_CACHE = {}
+
+
+def official_pct(code, ymd):
+    """네이버 공식 일별 등락률(전일 NXT 최종 종가 기준) — 실패 시 None."""
+    key = (code, ymd)
+    if key in _OFFICIAL_PCT_CACHE:
+        return _OFFICIAL_PCT_CACHE[key]
+    val = None
+    try:
+        target = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:8]}"
+        url = f"https://m.stock.naver.com/api/stock/{code}/price?pageSize=12&page=1"
+        rows = json.loads(urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=4).read().decode("utf-8"))
+        for r in rows:
+            if r.get("localTradedAt") == target and r.get("fluctuationsRatio") is not None:
+                val = round(float(str(r["fluctuationsRatio"]).replace(",", "")), 2)
+                break
+    except Exception:  # noqa: BLE001
+        val = None
+    _OFFICIAL_PCT_CACHE[key] = val
+    return val
+
+
+def guarded_pct(code, ymd, raw_pct):
+    """계산 등락률이 ±30%를 넘으면 공식값으로 보정한다. 공식값도 없으면 원값 유지(+suspect 표시).
+
+    None 을 돌려주지 않는 이유: 하위 로직이 `pct >= 5.0` 같은 비교를 하기 때문에
+    None 이 섞이면 스캔 전체가 TypeError 로 멈춘다(한 종목 때문에 전 탭이 죽는 것보다
+    '값은 두되 이상치로 표시'하는 편이 안전하다).
+    """
+    if raw_pct is None or abs(raw_pct) <= PCT_LIMIT:
+        return raw_pct
+    off = official_pct(code, ymd)
+    return off if off is not None else raw_pct
+
+
 def nf(v):
     return f"{v:,.0f}"
 
@@ -497,11 +542,14 @@ def day_records(code, cs, days):
         hi = max(x["h"] for x in win)
         hi_date = max(win, key=lambda x: x["h"])["date"]
         p = pcts[i]
+        guarded = guarded_pct(code, d, round(p, 2))
         prior10 = sum(1 for k in range(i - 60, i) if pcts[k] >= 10.0)
         recs[d] = {
             "date": d, "i": i,
             "o": cur["o"], "h": cur["h"], "l": cur["l"], "c": cur["c"], "v": cur["v"],
-            "prevClose": prev["c"], "pct": round(p, 2),
+            "prevClose": prev["c"], "pct": guarded,
+            "pctRaw": round(p, 2) if guarded != round(p, 2) else None,
+            "pctSuspect": abs(guarded) > PCT_LIMIT,
             "valueEok": round(cur["v"] * cur["c"] / 1e8, 1),
             "hi120": hi, "hi120Date": hi_date,
             "dist120": round((hi - cur["c"]) / cur["c"] * 100 if cur["c"] else 999.0, 2),

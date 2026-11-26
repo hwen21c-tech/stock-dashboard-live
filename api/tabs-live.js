@@ -41,6 +41,11 @@ const {
   sendJson,
   getQuery,
   stretchCacheControl,
+  /* 🛡️ 2026-11-27 수치 가드 — 등락률·금액의 NaN/Infinity/±30% 초과를 API 단에서 한 번 더 막는다 */
+  pctGuard,
+  safePct,
+  finiteOrNull,
+  sanitizePctTree,
 } = require('../lib/http');
 const { analyzeNewsItem } = require('../lib/news-impact');
 const { pickMaterialNews, isRealTheme, materialLine, materialTag } = require('../lib/chim-material');
@@ -99,6 +104,37 @@ try {
   LAST_DYNAMIC = require('../public/data/last-dynamic-themes.json');
 } catch (e) {
   LAST_DYNAMIC = null;
+}
+
+/* 🛡️ 캐시 소스 이중 가드 (2026-11-27)
+ *  last-dynamic-themes.json 은 일봉 캐시로 계산한 '직전 거래일 등락률'을 담는다. 일봉 캐시는
+ *  KRX 정규장 종가 기준인데 화면·네이버는 전일 NXT 최종 종가 기준이라, 기준가가 어긋나면
+ *  +36.87% 같은 존재할 수 없는 값이 화면에 올라온다(11/26 실사례).
+ *  → 파일을 읽는 순간 하루 ±30%(가격제한)를 넘는 값은 신뢰하지 않고 null 로 두고 원값을
+ *    changePctRaw 에 남긴다. 화면에는 '—' 로 나가고, 평균·순위에서는 자동으로 빠진다. */
+const LAST_DYNAMIC_GUARD = { dropped: 0, suspect: 0 };
+if (LAST_DYNAMIC && Array.isArray(LAST_DYNAMIC.themes)) {
+  LAST_DYNAMIC.themes.forEach((t) => {
+    (t && Array.isArray(t.stocks) ? t.stocks : []).forEach((s) => {
+      if (!s || !('changePct' in s)) return;
+      const g = pctGuard(s.changePct);
+      if (g.value === null && g.raw !== null) {
+        s.changePctRaw = g.raw;
+        s.changePct = null;
+        s.pctSuspect = true;
+        LAST_DYNAMIC_GUARD.dropped += 1;
+      } else if (g.suspect) {
+        s.pctSuspect = true;
+        LAST_DYNAMIC_GUARD.suspect += 1;
+      }
+    });
+    if (t && typeof t.leaderPct === 'number' && Math.abs(t.leaderPct) > 30) {
+      t.leaderPctRaw = t.leaderPct;
+      t.leaderPct = null;
+      t.pctSuspect = true;
+      LAST_DYNAMIC_GUARD.dropped += 1;
+    }
+  });
 }
 
 const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
@@ -556,7 +592,9 @@ function normalizeQuote(d) {
 
   const price = parseNum(d.closePriceRaw) ?? parseNum(d.closePrice);
   const change = signedValue(d.compareToPreviousClosePriceRaw ?? d.compareToPreviousClosePrice, negative);
-  const changePct = signedValue(d.fluctuationsRatioRaw ?? d.fluctuationsRatio, negative);
+  /* 🛡️ 등락률 가드 — 숫자가 아니면 null, ±30% 초과면 값은 두되 pctSuspect 로 표시한다 */
+  const changePctGuard = pctGuard(signedValue(d.fluctuationsRatioRaw ?? d.fluctuationsRatio, negative));
+  const changePct = changePctGuard.value;
 
   const valueRegular = parseNum(d.accumulatedTradingValueRaw);
   const valueAfter = over ? parseNum(over.accumulatedTradingValueRaw) : null;
@@ -571,7 +609,8 @@ function normalizeQuote(d) {
   const overSign = (over && over.compareToPreviousPrice && over.compareToPreviousPrice.name) || null;
   const overNegative = overSign === 'FALLING' || overSign === 'LOWER_LIMIT';
   const overPrice = over ? parseNum(over.overPrice) : null;
-  const overPct = over ? signedValue(over.fluctuationsRatio, overNegative) : null;
+  const overPctGuard = over ? pctGuard(signedValue(over.fluctuationsRatio, overNegative)) : { value: null, suspect: false };
+  const overPct = overPctGuard.value;
   const overVolume = over ? parseNum(over.accumulatedTradingVolumeRaw) : null;
   const overTradedAt = over ? over.localTradedAt || null : null;
 
@@ -617,6 +656,14 @@ function normalizeQuote(d) {
     upperLimit: sign === 'UPPER_LIMIT',
     marketStatus: d.marketStatus || null,
     tradedAt: d.localTradedAt || null,
+    /* 이상 등락률이면 화면·평균이 참고할 수 있게 플래그만 남긴다(값 자체는 위에서 보정·보존) */
+    ...(changePctGuard.suspect || overPctGuard.suspect
+      ? {
+          pctSuspect: true,
+          ...(changePctGuard.suspect ? { changePctRaw: changePctGuard.raw } : {}),
+          ...(overPctGuard.suspect ? { overPctRaw: overPctGuard.raw } : {}),
+        }
+      : {}),
   };
 }
 
@@ -6542,6 +6589,12 @@ module.exports = async function handler(req, res) {
     fresh,
   };
 
+  /* 🛡️ 응답 전체 마지막 수치 가드 (2026-11-27)
+   *  · NaN/Infinity/문자 등락률 → null (화면에 'NaN'이 나가지 않게)
+   *  · ±30% 초과 일일 등락률 → pctSuspect 플래그만(값은 보존) → 평균·순위·역할에서 제외
+   *  · 캐시(last-dynamic-themes)에서 걸러낸 건수도 같이 남겨 추적할 수 있게 한다 */
+  body.pctGuard = { ...sanitizePctTree(body), prevDayCache: LAST_DYNAMIC_GUARD };
+
   if (!body.ok) {
     applyCacheHeaders(res, 'no-store');
     return sendJson(
@@ -6573,3 +6626,17 @@ module.exports.CP_RULES = CP_RULES;
 // 🌙 배너 야간선물 한 줄(장전·주말 전용) — 문구·생략 규칙을 테스트에서 검증한다.
 module.exports.chimNightFutures = chimNightFutures;
 module.exports.attachChimNightFutures = attachChimNightFutures;
+
+/* 🛡️ 2026-11-27: 예기치 못한 예외가 500(빈 응답)으로 나가지 않도록 핸들러를 감싼다.
+ *    · 프론트는 ok:false + reason:'internal_error' 를 받고 직전 값을 유지한다.
+ *    · 테스트용으로 붙인 module.exports 속성은 그대로 보존한다. */
+(function () {
+  const __http = require('../lib/http');
+  const __h = module.exports;
+  if (typeof __h === 'function' && !__h.__guarded) {
+    const __wrapped = __http.safeHandler(__h, { label: 'tabs-live' });
+    Object.assign(__wrapped, __h);
+    __wrapped.__guarded = true;
+    module.exports = __wrapped;
+  }
+})();

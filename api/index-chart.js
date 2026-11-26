@@ -254,3 +254,17 @@ module.exports = async function handler(req, res) {
 
 module.exports.SYMBOLS = SYMBOLS;
 module.exports.NO_PUBLIC_DAILY = NO_PUBLIC_DAILY;
+
+/* 🛡️ 2026-11-27: 예기치 못한 예외가 500(빈 응답)으로 나가지 않도록 핸들러를 감싼다.
+ *    · 프론트는 ok:false + reason:'internal_error' 를 받고 직전 값을 유지한다.
+ *    · 테스트용으로 붙인 module.exports 속성은 그대로 보존한다. */
+(function () {
+  const __http = require('../lib/http');
+  const __h = module.exports;
+  if (typeof __h === 'function' && !__h.__guarded) {
+    const __wrapped = __http.safeHandler(__h, { label: 'index-chart' });
+    Object.assign(__wrapped, __h);
+    __wrapped.__guarded = true;
+    module.exports = __wrapped;
+  }
+})();

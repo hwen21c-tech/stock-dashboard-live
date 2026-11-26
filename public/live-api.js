@@ -765,7 +765,10 @@
           setBadge(false, '⚠️ API 응답 없음 · 내장 데이터 유지');
           return;
         }
-        var applied = applyLive(body);
+        /* 🛡️ 렌더 격리(2026-11-27) — 한 종목 카드 그리다 예외가 나도 나머지 탭·다음 폴링을 멈추지 않는다 */
+        var applied = window.SD && window.SD.run
+          ? window.SD.run('live-api.applyLive', function () { return applyLive(body); }, 0)
+          : applyLive(body);
         if (applied > 0) {
           state.ok = true;
           state.lastLiveAt = nowText();
@@ -4722,7 +4725,9 @@
           console.warn('[TabsLive] API 실패 (' + why + ') — 옛 종목을 새 값으로 덮지 않는다');
           return;
         }
-        var applied = apply(body);
+        var applied = window.SD && window.SD.run
+          ? window.SD.run('live-api.apply', function () { return apply(body); }, 0)
+          : apply(body);
         state.lastBody = body;
         /* ④ 나머지 탭은 다음 프레임에 채우므로, 우선 탭만 그려졌어도 성공으로 본다. */
         if (applied > 0 || state.pendingRest > 0) {
@@ -4766,7 +4771,9 @@
     /* ① 화면을 열자마자 3분 내 캐시로 먼저 그린다(0.1초 체감). 최신 응답은 곧바로 이어서 받는다. */
     var cached = readCache();
     if (cached) {
-      var n = apply(cached);
+      var n = window.SD && window.SD.run
+        ? window.SD.run('live-api.applyCache', function () { return apply(cached); }, 0)
+        : apply(cached);
       state.lastBody = cached;
       state.cacheHit = true;
       setStamp(cached, true);
