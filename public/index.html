@@ -6396,6 +6396,8 @@
         var isCand = Boolean(M.force) || Boolean(BY_CODE[code]);
         window.FKZ_LEVELS = isCand ? M.fk : null;
         if (tt) tt.textContent = '📊 오늘 1분봉 ' + j.count + '봉 · ' + (j.lastAt || '') + ' 까지';
+        var trendEl = $('modalChartTrend');
+        if (trendEl) trendEl.textContent = '1분봉 ' + j.count + '봉 · 당일 고가 ' + comma(j.high) + '원';
         try { window.setModalValueUnit('원', 0); } catch (eU) {}
         setBar('min');
         infoRender(M.fk, isCand);
@@ -6476,7 +6478,12 @@
     onOpen: onOpen,
     onIndex: onIndex,
     setTf: setTf,
-    showMin: function (code) { M.force = true; showMin(code); },
+    showMin: function (code) {
+      /* 후보 카드에서 열면 전장(09:00~15:30) 전체로 띄운다 — 하루 파동과 존의 위치를 함께 보려는 것 */
+      M.force = true;
+      M.count = 390;
+      showMin(code);
+    },
     stashDay: function (arr) {
       if (!arr || !arr.length) return;
       if (!M.saved) M.saved = { candles: arr, view: Math.min(60, arr.length) };
@@ -6510,8 +6517,12 @@
       ctx.beginPath(); ctx.moveTo(left, y2); ctx.lineTo(xEnd, y2); ctx.stroke();
       ctx.font = 'bold 8.5px sans-serif';
       ctx.textAlign = 'left';
+      var bandMid = (Math.min(y1, y2) + Math.max(y1, y2)) / 2;
+      var twb = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(7,12,20,0.72)';
+      ctx.fillRect(left + 2, bandMid - 6, twb + 6, 12);
       ctx.fillStyle = color;
-      ctx.fillText(label, left + 3, Math.min(y1, y2) + 9);
+      ctx.fillText(label, left + 5, bandMid + 3);
     }
     function hline(p, color, label, dash) {
       var y = yOf(p);
@@ -6533,7 +6544,7 @@
     if (xEnter === null) xEnter = 10;
 
     /* F존 — B1(-8%) ~ B3(-12%) */
-    band(fk.b1, fk.b3, xEnter, 'rgba(250,204,21,0.13)', '#facc15', 'F존 B1 -8%');
+    band(fk.b1, fk.b3, xEnter, 'rgba(250,204,21,0.13)', '#facc15', 'F존 -8~-12%');
     var yb2 = yOf(fk.b2);
     ctx.strokeStyle = 'rgba(250,204,21,0.65)';
     ctx.lineWidth = 1;
@@ -6548,12 +6559,15 @@
     if (fk.rebound && fk.k && isNum(fk.k.h1)) {
       var xk = xOfTime(fk.k.h1At);
       if (xk === null) xk = xEnter;
-      band(fk.k.b1, fk.k.b3, xk, 'rgba(251,146,60,0.14)', '#fb923c', 'K존 B1 -8%');
+      band(fk.k.b1, fk.k.b3, xk, 'rgba(251,146,60,0.14)', '#fb923c', 'K존 -8~-12%');
     }
     /* 저점 L · +4% 반등가 · 손절선 */
     if (isNum(fk.low)) hline(fk.low, '#38bdf8', '저점 ' + comma(fk.low), [5, 4]);
     if (isNum(fk.reboundPrice)) hline(fk.reboundPrice, '#34d399', '+4% ' + comma(fk.reboundPrice), [2, 3]);
-    if (isNum(fk.stopLine)) hline(fk.stopLine, '#f43f5e', '손절 ' + comma(fk.stopLine), [6, 4]);
+    /* 반등 뒤에는 손절선이 저점(L)과 같은 값 — 같은 자리에 라벨을 두 번 그리지 않는다 */
+    if (isNum(fk.stopLine) && !(isNum(fk.low) && Math.abs(fk.stopLine - fk.low) < 0.51)) {
+      hline(fk.stopLine, '#f43f5e', '손절 ' + comma(fk.stopLine), [6, 4]);
+    }
   };
 
   function init() {
@@ -16532,15 +16546,21 @@ window.DAILY_500_CANDLES = {"000500":[["20251106",48955.0,49122.0,44454.0,45455.
         if (candles[c].low < minP) minP = candles[c].low;
         if (candles[c].vol > maxVol) maxVol = candles[c].vol;
       }
-      /* F존·K존(1분봉 전용) — 존 라인이 화면에서 사라지지 않도록 축 범위에 포함한다 */
+      /* F존·K존(1분봉 전용) — 보이는 봉 범위에서 너무 멀리 떨어진 존까지 축에 넣으면
+         캔들이 납작해져 못 읽는다. 캔들 범위의 ±60% 안에 있는 존 라인만 축에 포함한다. */
       if (window.MODAL_TF === 'min' && window.FKZ_LEVELS) {
         var fkLv = window.FKZ_LEVELS;
+        var fkBaseRange = (maxP - minP) || 1;
+        var fkLo = minP - fkBaseRange * 0.6;
+        var fkHi = maxP + fkBaseRange * 0.6;
         var fkExtra = [fkLv.h0, fkLv.b1, fkLv.b2, fkLv.b3, fkLv.low, fkLv.reboundPrice, fkLv.stopLine];
-        if (fkLv.k) fkExtra.push(fkLv.k.b1, fkLv.k.b3);
+        if (fkLv.k) fkExtra.push(fkLv.k.b1, fkLv.k.b2, fkLv.k.b3);
         for (var fxi = 0; fxi < fkExtra.length; fxi++) {
-          if (typeof fkExtra[fxi] !== 'number' || !isFinite(fkExtra[fxi])) continue;
-          if (fkExtra[fxi] > maxP) maxP = fkExtra[fxi];
-          if (fkExtra[fxi] < minP) minP = fkExtra[fxi];
+          var fkV = fkExtra[fxi];
+          if (typeof fkV !== 'number' || !isFinite(fkV)) continue;
+          if (fkV > fkHi || fkV < fkLo) continue;
+          if (fkV > maxP) maxP = fkV;
+          if (fkV < minP) minP = fkV;
         }
       }
       var pRange = (maxP - minP) || 1;
