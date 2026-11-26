@@ -1280,6 +1280,11 @@
           return;
         }
 
+        /* 1분봉을 보는 중이면 일봉은 저장만 하고 화면을 덮지 않는다 (2026-11-26 F존·K존) */
+        if (window.MODAL_TF === 'min') {
+          if (window.FKModal && window.FKModal.stashDay) window.FKModal.stashDay(candles);
+          return;
+        }
         window.modalAllCandles = candles;
         window.modalViewCount = Math.min(60, candles.length);
         window.modalViewOffset = 0;

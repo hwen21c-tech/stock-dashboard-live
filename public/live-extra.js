@@ -970,6 +970,11 @@
           return c.close !== null && c.high !== null && c.low !== null;
         });
         if (!arr.length) throw new Error('no usable candles');
+        /* 1분봉을 보는 중이면 일봉은 저장만 하고 화면을 덮지 않는다 (2026-11-26 F존·K존) */
+        if (window.MODAL_TF === 'min') {
+          if (window.FKModal && window.FKModal.stashDay) window.FKModal.stashDay(arr);
+          return;
+        }
         root.modalAllCandles = arr;
         if (typeof root.modalViewOffset === 'number') root.modalViewOffset = 0;
         root.modalViewCount = Math.min(60, arr.length);
