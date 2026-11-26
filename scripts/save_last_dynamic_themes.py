@@ -272,6 +272,21 @@ def load_theme_groups():
         return []
 
 
+def _naver_official_pct(code, target_yyyymmdd):
+    """KRX 기준가와 일봉 캐시 괴리(±30% 초과) 시 네이버 공식 등락률(fluctuationsRatio)을 조회한다."""
+    try:
+        ymd = f"{target_yyyymmdd[:4]}-{target_yyyymmdd[4:6]}-{target_yyyymmdd[6:8]}"
+        url = f"https://m.stock.naver.com/api/stock/{code}/price?pageSize=10&page=1"
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        rows = json.loads(urllib.request.urlopen(req, timeout=4).read().decode("utf-8"))
+        for r in rows:
+            if r.get("localTradedAt") == ymd and r.get("fluctuationsRatio") is not None:
+                return round(float(str(r["fluctuationsRatio"]).replace(",", "")), 2)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def build_from_cache(basis=None, groups=None, cache=None, write=True):
     """일봉 캐시(종가·거래량)로 직전 거래일 테마 순위를 다시 계산한다(확정치, 네트워크 불필요)."""
     groups = groups if groups is not None else load_theme_groups()
@@ -301,10 +316,15 @@ def build_from_cache(basis=None, groups=None, cache=None, write=True):
         cur, prev = arr[idx], arr[idx - 1]
         if not prev.get("c"):
             return None
+        chg_pct = round((cur["c"] / prev["c"] - 1) * 100, 2)
+        if abs(chg_pct) > 30.0:
+            off_pct = _naver_official_pct(code, latest)
+            if off_pct is not None:
+                chg_pct = off_pct
         return {
             "code": code,
             "price": cur["c"],
-            "changePct": round((cur["c"] / prev["c"] - 1) * 100, 2),
+            "changePct": chg_pct,
             "open": cur.get("o"),
             "high": cur.get("h"),
             "low": cur.get("l"),
