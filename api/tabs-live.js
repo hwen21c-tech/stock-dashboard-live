@@ -118,14 +118,12 @@ if (LAST_DYNAMIC && Array.isArray(LAST_DYNAMIC.themes)) {
     (t && Array.isArray(t.stocks) ? t.stocks : []).forEach((s) => {
       if (!s || !('changePct' in s)) return;
       const g = pctGuard(s.changePct);
-      if (g.value === null && g.raw !== null) {
+      /* 캐시(유도 계산값)는 ±30% 초과 자체를 믿지 않는다 — 값은 버리고 원값만 남긴다 */
+      if (g.suspect || (g.value === null && g.raw !== null)) {
         s.changePctRaw = g.raw;
         s.changePct = null;
         s.pctSuspect = true;
         LAST_DYNAMIC_GUARD.dropped += 1;
-      } else if (g.suspect) {
-        s.pctSuspect = true;
-        LAST_DYNAMIC_GUARD.suspect += 1;
       }
     });
     if (t && typeof t.leaderPct === 'number' && Math.abs(t.leaderPct) > 30) {
@@ -592,8 +590,9 @@ function normalizeQuote(d) {
 
   const price = parseNum(d.closePriceRaw) ?? parseNum(d.closePrice);
   const change = signedValue(d.compareToPreviousClosePriceRaw ?? d.compareToPreviousClosePrice, negative);
-  /* 🛡️ 등락률 가드 — 숫자가 아니면 null, ±30% 초과면 값은 두되 pctSuspect 로 표시한다 */
-  const changePctGuard = pctGuard(signedValue(d.fluctuationsRatioRaw ?? d.fluctuationsRatio, negative));
+  /* 🛡️ 등락률 가드 — 숫자가 아니면 null, ±30% 초과면 값은 두되 pctSuspect 로 표시한다.
+   *  hard 300: 신규상장 첫날처럼 실제로 큰 값은 통과시키고, 사람이 만든 깨진 값만 버린다. */
+  const changePctGuard = pctGuard(signedValue(d.fluctuationsRatioRaw ?? d.fluctuationsRatio, negative), { hard: 300 });
   const changePct = changePctGuard.value;
 
   const valueRegular = parseNum(d.accumulatedTradingValueRaw);
@@ -609,7 +608,7 @@ function normalizeQuote(d) {
   const overSign = (over && over.compareToPreviousPrice && over.compareToPreviousPrice.name) || null;
   const overNegative = overSign === 'FALLING' || overSign === 'LOWER_LIMIT';
   const overPrice = over ? parseNum(over.overPrice) : null;
-  const overPctGuard = over ? pctGuard(signedValue(over.fluctuationsRatio, overNegative)) : { value: null, suspect: false };
+  const overPctGuard = over ? pctGuard(signedValue(over.fluctuationsRatio, overNegative), { hard: 300 }) : { value: null, suspect: false };
   const overPct = overPctGuard.value;
   const overVolume = over ? parseNum(over.accumulatedTradingVolumeRaw) : null;
   const overTradedAt = over ? over.localTradedAt || null : null;
