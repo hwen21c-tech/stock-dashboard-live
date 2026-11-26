@@ -375,6 +375,15 @@
       try { if (applyManjuQuotes(map) > 0) applied += 1; } catch (e) { /* noop */ }
     }
 
+    /* 🕘 시간별 지수 흐름 — 같은 응답(indexHourlyFlow·indexFlowSupply)을 화면에 반영한다.
+     *  렌더·병합은 index.html 의 window.applyIndexHourlyFlow 가 한다(정적 본체와 같은 코드).
+     *  없는 응답이면 아무것도 바꾸지 않는다 — 차트를 비우지 않는다. */
+    try {
+      if (payload.indexHourlyFlow && typeof window.applyIndexHourlyFlow === 'function') {
+        if (window.applyIndexHourlyFlow(payload)) applied += 1;
+      }
+    } catch (e) { /* 흐름 갱신 실패가 시세 갱신을 막지 않는다 */ }
+
     return applied;
   }
 

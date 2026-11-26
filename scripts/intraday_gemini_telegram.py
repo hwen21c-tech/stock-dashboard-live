@@ -2081,6 +2081,133 @@ def build_timeline_slot(facts, slot_t, measured, body, generator, prev_slot=None
     }
 
 
+# --------------------------------------------------------------------------- #
+# 🕘 시간별 지수 흐름 백업 (INDEX_HOURLY_FLOW) — 타임라인 JSON 에 함께 저장 (2026-11-26)
+#
+#   동적 관제탑의 지수 흐름은 /api/stock-live 가 네이버 분봉으로 직접 계산한다.
+#   여기서는 같은 값을 flow_timeline_today.json 의 `index_hourly_flow` 로 남겨
+#   (1) API 가 분봉을 못 받는 순간의 백업, (2) 정적 본체·점검용 근거가 되게 한다.
+#
+#   · 지수 값  : 네이버 지수 분봉(1분) — 슬롯 'HH:00' = 그 시각 직후 1분봉(HH:01) 종가
+#                (기존 정적 09:00 4,754.81 과 같은 규칙)
+#   · 수급     : 타임라인 슬롯의 그 시각 실측 supply(브리핑 발송 시점). 없으면 비운다.
+#   · 거래대금 : 슬롯 시점 누적 대금의 공개 이력이 없다 — 이미 저장된 실측만 승계.
+#   · 실패하면 기존 값을 건드리지 않는다(0 이나 추정으로 채우지 않음).
+# --------------------------------------------------------------------------- #
+INDEX_FLOW_SLOTS_LOCAL = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "15:30"]
+NAVER_INDEX_MINUTE = "https://api.stock.naver.com/chart/domestic/index/{sym}/minute"
+
+
+def _index_minute_series(sym, ymd):
+    """오늘(KST) 지수 1분봉 → [(분, 가격, 'HH:MM')] 오름차순"""
+    d = http_json(NAVER_INDEX_MINUTE.format(sym=sym), timeout=15, retries=1,
+                  headers={"Referer": "https://m.stock.naver.com/"})
+    rows = []
+    for b in d or []:
+        dt = str(b.get("localDateTime") or "")
+        if len(dt) < 12 or dt[:8] != ymd:
+            continue
+        try:
+            price = float(b.get("currentPrice"))
+        except (TypeError, ValueError):
+            continue
+        rows.append((int(dt[8:10]) * 60 + int(dt[10:12]), price, dt[8:10] + ":" + dt[10:12]))
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def _series_at(series, target):
+    """target(분) 이후 첫 봉 — 없으면 target 까지의 마지막 봉."""
+    before = None
+    for r in series:
+        if r[0] >= target:
+            return r
+        before = r
+    return before
+
+
+def merge_index_hourly_flow(data, timeline_slots, now):
+    """data['index_hourly_flow'] 를 오늘 실측으로 다시 만든다. 실패하면 아무것도 바꾸지 않는다."""
+    today = now.strftime("%Y-%m-%d")
+    ymd = now.strftime("%Y%m%d")
+    try:
+        ks = _index_minute_series("KOSPI", ymd)
+        qs = _index_minute_series("KOSDAQ", ymd)
+    except Exception as e:  # noqa: BLE001 — 백업이 없어도 발송은 성공해야 한다
+        log(f"⚠️ index_hourly_flow 분봉 실패 — 기존 값 유지: {e}")
+        return
+    if not ks and not qs:
+        return
+
+    prev_close = {}
+    for mk in ("KOSPI", "KOSDAQ"):
+        try:
+            prev_close[mk] = fetch_index_detail(mk).get("prev_close")
+        except Exception:  # noqa: BLE001
+            prev_close[mk] = None
+
+    old_flow = data.get("index_hourly_flow") if isinstance(data.get("index_hourly_flow"), dict) else {}
+    old_slots = {}
+    if old_flow.get("date") == today:
+        for s in old_flow.get("slots") or []:
+            if isinstance(s, dict) and s.get("t"):
+                old_slots[s["t"]] = s
+    done_slots = {s.get("t"): s for s in (timeline_slots or [])
+                  if isinstance(s, dict) and s.get("state") == "done"}
+
+    carry_pairs = (("f", "kospi", "foreign"), ("o", "kospi", "organ"),
+                   ("qf", "kosdaq", "foreign"), ("qo", "kosdaq", "organ"),
+                   ("ff", "fut", "foreign"), ("fo", "fut", "organ"))
+    now_min = now.hour * 60 + now.minute
+    rows = []
+    last_k = last_q = None
+    for t in INDEX_FLOW_SLOTS_LOCAL:
+        hh, mm = [int(x) for x in t.split(":")]
+        tmin = hh * 60 + mm
+        row = {"t": t, "m": None, "k": None, "q": None, "kp": None, "qp": None,
+               "dk": None, "dq": None, "kv": None, "qv": None,
+               "f": None, "o": None, "qf": None, "qo": None, "ff": None, "fo": None, "n": ""}
+        old = old_slots.get(t) or {}
+        for k in ("kv", "qv", "f", "o", "qf", "qo", "ff", "fo"):
+            if isinstance(old.get(k), (int, float)):
+                row[k] = old[k]
+        tl = done_slots.get(t)
+        if tl and isinstance(tl.get("supply"), dict):
+            sp = tl["supply"]
+            for key, mk, fld in carry_pairs:
+                v = (sp.get(mk) or {}).get(fld)
+                if isinstance(v, (int, float)):
+                    row[key] = v
+            if tl.get("measured") and str(tl.get("measured")) != t:
+                row["n"] = "수급 " + str(tl.get("measured"))
+        if tmin <= now_min:
+            kb = _series_at(ks, tmin + 1) if ks else None
+            qb = _series_at(qs, tmin + 1) if qs else None
+            if kb:
+                row["k"] = round(kb[1], 2)
+                row["m"] = kb[2]
+                pc = prev_close.get("KOSPI")
+                if pc:
+                    row["kp"] = round((kb[1] - pc) / pc * 100, 2)
+                if last_k is not None:
+                    row["dk"] = round(kb[1] - last_k, 2)
+                last_k = kb[1]
+            if qb:
+                row["q"] = round(qb[1], 2)
+                pc = prev_close.get("KOSDAQ")
+                if pc:
+                    row["qp"] = round((qb[1] - pc) / pc * 100, 2)
+                if last_q is not None:
+                    row["dq"] = round(qb[1] - last_q, 2)
+                last_q = qb[1]
+        rows.append(row)
+
+    data["index_hourly_flow"] = {"date": today, "updated": now.strftime("%H:%M"),
+                                 "source": "naver-minute", "slots": rows}
+    filled = sum(1 for r in rows if isinstance(r.get("k"), (int, float)))
+    log(f"🕘 index_hourly_flow 백업 — {filled}슬롯 실측 기록")
+
+
 def write_timeline(root, slot_t, slot, now, patch_html=True):
     """JSON(동적) + 미러 JSON(정적) + 내장 FLOW_TIMELINE 블록 갱신. 바뀐 파일 목록을 돌려준다."""
     jp, mirror, htmls = flow_paths(root)
@@ -2095,6 +2222,7 @@ def write_timeline(root, slot_t, slot, now, patch_html=True):
         slots[idx] = slot
     data["updated"] = now.strftime("%H:%M")
     data.setdefault("day", WEEKDAY_KO[now.weekday()])
+    merge_index_hourly_flow(data, slots, now)
 
     changed = []
     os.makedirs(os.path.dirname(jp), exist_ok=True)

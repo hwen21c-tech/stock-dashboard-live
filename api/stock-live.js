@@ -2388,6 +2388,354 @@ async function handleHistoryCatalyst(res, q, fresh) {
 }
 
 /* ------------------------------ handler ------------------------------ */
+/* ============================================================================
+ * 🕘 시간별 지수 흐름 (INDEX_HOURLY_FLOW · INDEX_FLOW_SUPPLY) — 실시간 재계산
+ * ----------------------------------------------------------------------------
+ *  왜: 실측 슬롯을 정적 HTML 에 박아 두던 방식은 정적 자동동기화를 끄면 09:00 에서
+ *      멈춘다(2026-11-26 10·11·12·13시 슬롯이 null 로 비어 있었다).
+ *
+ *  무엇을 쓰나 — 전부 실제 응답만, 추정·보간 없음
+ *   · 지수 값  : 네이버 지수 분봉
+ *                (api.stock.naver.com/chart/domestic/index/{KOSPI|KOSDAQ}/minute)
+ *                슬롯 'HH:00' 의 값 = 그 시각 직후 1분봉(HH:01)의 종가.
+ *                기존 정적 09:00 값(4,754.81)이 바로 이 규칙의 값이다(같은 값이 나온다).
+ *   · 현재/전일비: 같은 분봉 값 vs polling 이 주는 전일 종가(현재가 - 전일비).
+ *   · 슬롯 수급  : flow_timeline_today.json 의 **그 시각 실측 스냅샷**(브리핑 발송 시점).
+ *                실측이 없는 시각은 null — 0 이 아니라 '미집계'다.
+ *   · 현재 수급  : 네이버 증권 투자자별 trend API(코스피·코스닥·FUT, 누적).
+ *   · 거래대금  : 슬롯 시점 누적 대금의 공개 이력이 없다. 타임라인 index_hourly_flow 에
+ *                저장된 실측만 승계하고 새로 만들지 않는다. 현재 누적은 polling aa(백만원).
+ *
+ *  · 1분에 한 번만 만든다(메모리 캐시) — 15초 폴링이 매번 네이버를 다시 부르지 않게.
+ *  · 함수 파일을 늘리지 않는다: 기본 응답에 indexHourlyFlow/indexFlowSupply 를 실어 보내고,
+ *    정적 페이지용 경량 경로만 ?mode=index_flow 로 둔다(12개 한도 유지).
+ * ========================================================================== */
+const IDX_FLOW_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '15:30'];
+const IDX_FLOW_TTL_MS = 60000;        // 같은 분 안의 반복 호출은 한 번의 계산을 나눠 쓴다
+const IDX_TIMELINE_TTL_MS = 180000;   // 타임라인 JSON 은 15초마다 안 바뀐다(3분 캐시)
+const idxFlowMem = new Map();
+
+const pad2n = (n) => (n < 10 ? '0' : '') + n;
+const r2 = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) / 100 : null);
+
+/** KST 벽시계 — 서버 시간대와 무관하게 같은 값을 만든다. */
+function kstWall(date) {
+  const d = new Date((date ? new Date(date).getTime() : Date.now()) + 9 * 3600 * 1000);
+  const y = d.getUTCFullYear();
+  const mo = d.getUTCMonth() + 1;
+  const da = d.getUTCDate();
+  const hh = d.getUTCHours();
+  const mi = d.getUTCMinutes();
+  return {
+    y,
+    mo,
+    da,
+    hh,
+    mi,
+    date: `${y}-${pad2n(mo)}-${pad2n(da)}`,
+    compact: `${y}${pad2n(mo)}${pad2n(da)}`,
+    hhmm: `${pad2n(hh)}:${pad2n(mi)}`,
+    minutes: hh * 60 + mi,
+    weekday: d.getUTCDay(),
+  };
+}
+
+function idxCacheGet(key, ttl) {
+  const hit = idxFlowMem.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.value;
+  return null;
+}
+function idxCacheSet(key, value) {
+  if (idxFlowMem.size > 32) idxFlowMem.clear();
+  idxFlowMem.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** 네이버 지수 분봉 원본 */
+async function fetchIndexMinutes(symbol) {
+  const url = 'https://api.stock.naver.com/chart/domestic/index/' + encodeURIComponent(symbol) + '/minute';
+  const j = await fetchJson(url, { headers: NAVER_HEADERS, timeout: 5000 });
+  if (!Array.isArray(j)) throw new Error(`naver minute(${symbol}): 배열이 아닌 응답`);
+  return j;
+}
+
+/** 분봉 → [{min, price, at}] — 오늘(KST) 것만, 시각 오름차순 */
+function minuteSeries(bars, compactDate) {
+  const out = [];
+  for (const b of bars) {
+    const dt = String((b && b.localDateTime) || '');
+    if (dt.length < 12 || dt.slice(0, 8) !== compactDate) continue;
+    const price = Number(b.currentPrice);
+    if (!Number.isFinite(price)) continue;
+    const hh = Number(dt.slice(8, 10));
+    const mi = Number(dt.slice(10, 12));
+    out.push({ min: hh * 60 + mi, price, at: `${pad2n(hh)}:${pad2n(mi)}` });
+  }
+  out.sort((a, b) => a.min - b.min);
+  return out;
+}
+
+/** target(분) 이후 첫 봉 — 없으면 target 까지의 마지막 봉. 없으면 null. */
+function seriesValue(series, target) {
+  if (!series.length) return null;
+  let before = null;
+  for (const r of series) {
+    if (r.min >= target) return r;
+    before = r;
+  }
+  return before;
+}
+
+/** 네이버 증권 투자자별 누적 수급(외인·기관·개인) — 억원 / 선물은 계약 */
+async function fetchIndexTrend(market) {
+  const d = await fetchJson('https://m.stock.naver.com/api/index/' + market + '/trend', {
+    headers: NAVER_HEADERS,
+    timeout: 5000,
+  });
+  const n = (v) => {
+    const t = String(v === null || v === undefined ? '' : v).replace(/[^0-9+-]/g, '');
+    if (!t || t === '+' || t === '-') return null;
+    const x = Number(t);
+    return Number.isFinite(x) ? x : null;
+  };
+  return {
+    foreign: n(d && d.foreignValue),
+    organ: n(d && d.institutionalValue),
+    personal: n(d && d.personalValue),
+    bizdate: (d && d.bizdate) || null,
+  };
+}
+
+/** 같은 배포의 타임라인 JSON — 슬롯별 실측 수급 스냅샷을 읽는다(실패는 3분간 기억). */
+async function fetchFlowTimeline(req) {
+  const raw = (req && req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
+  const host = String(raw).split(',')[0].trim();
+  if (!host) return null;
+  const key = 'timeline:' + host;
+  const hit = idxCacheGet(key, IDX_TIMELINE_TTL_MS);
+  if (hit !== null && hit !== undefined) return hit;
+  try {
+    const scheme = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? 'http' : 'https';
+    const j = await fetchJson(scheme + '://' + host + '/data/flow_timeline_today.json', {
+      headers: { Accept: 'application/json' },
+      timeout: 2500,
+    });
+    return idxCacheSet(key, j && typeof j === 'object' ? j : null);
+  } catch (e) {
+    return idxCacheSet(key, null);
+  }
+}
+
+const SUPPLY_SLOT_KEYS = ['kv', 'qv', 'f', 'o', 'qf', 'qo', 'ff', 'fo'];
+
+function numField(o, key) {
+  const v = o ? o[key] : null;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** 타임라인에서 'HH:00' 슬롯의 실측 수급·거래대금을 꺼낸다. 없으면 null. */
+function timelineSlotSupply(tl, t, todayIso) {
+  if (!tl) return null;
+  const out = {};
+  let at = null;
+  const slots = Array.isArray(tl.slots) ? tl.slots : [];
+  const row = slots.find((s) => s && s.t === t && s.state === 'done');
+  if (row && row.supply && typeof row.supply === 'object') {
+    const sp = row.supply;
+    out.f = numField(sp.kospi, 'foreign');
+    out.o = numField(sp.kospi, 'organ');
+    out.qf = numField(sp.kosdaq, 'foreign');
+    out.qo = numField(sp.kosdaq, 'organ');
+    out.ff = numField(sp.fut, 'foreign');
+    out.fo = numField(sp.fut, 'organ');
+    at = row.measured || sp.at || null;
+  }
+  /* 인트라데이 스크립트가 타임라인에 함께 저장하는 index_hourly_flow(백업) —
+     같은 날짜일 때만 쓴다(어제 값을 오늘 슬롯으로 물려받지 않는다). */
+  const fx = tl.index_hourly_flow;
+  if (fx && fx.date === todayIso && Array.isArray(fx.slots)) {
+    const frow = fx.slots.find((s) => s && s.t === t);
+    if (frow) {
+      SUPPLY_SLOT_KEYS.forEach((k) => {
+        if (out[k] === null || out[k] === undefined) out[k] = numField(frow, k);
+      });
+      if (!at && frow.m) at = frow.m;
+    }
+  }
+  const any = SUPPLY_SLOT_KEYS.some((k) => typeof out[k] === 'number');
+  if (!any) return null;
+  out.at = at;
+  return out;
+}
+
+function mdLabel(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? `${Number(m[2])}/${Number(m[3])}` : '';
+}
+
+/**
+ * 시간별 지수 흐름 + 현재 수급을 만든다.
+ *  · flow   : {date, updated, source, slots[8]} — 지난 시각만 채우고 미도래 시각은 null
+ *  · supply : {date, at, basis, kospi, kosdaq, fut, volume} — 모달 자동 코멘트용 최신 수급
+ *  · 분봉이 하나도 없으면(휴장·개장 전) flow 는 null — 화면의 기존 기록을 지우지 않는다.
+ */
+async function buildIndexFlowBundle(req, indices) {
+  const p = kstWall();
+  const cacheKey = `flow:${p.date}:${p.hhmm}`;
+  const hit = idxCacheGet(cacheKey, IDX_FLOW_TTL_MS);
+  if (hit) return hit;
+
+  const errors = [];
+  const settled = await Promise.allSettled([
+    fetchIndexMinutes('KOSPI'),
+    fetchIndexMinutes('KOSDAQ'),
+    fetchIndexTrend('KOSPI'),
+    fetchIndexTrend('KOSDAQ'),
+    fetchIndexTrend('FUT'),
+    fetchFlowTimeline(req),
+  ]);
+  const pick = (i, label) => {
+    const r = settled[i];
+    if (r.status === 'fulfilled') return r.value;
+    errors.push(`${label}: ${String((r.reason && r.reason.message) || r.reason)}`);
+    return null;
+  };
+  const kBars = pick(0, 'naver-minute-kospi') || [];
+  const qBars = pick(1, 'naver-minute-kosdaq') || [];
+  const tK = pick(2, 'naver-trend-kospi');
+  const tQ = pick(3, 'naver-trend-kosdaq');
+  const tF = pick(4, 'naver-trend-fut');
+  const tl = settled[5].status === 'fulfilled' ? settled[5].value : null;
+  if (settled[5].status === 'rejected') errors.push('flow-timeline: 응답 없음');
+
+  /* ----- 현재 수급(INDEX_FLOW_SUPPLY) ----- */
+  const biz = (tK && tK.bizdate) || (tQ && tQ.bizdate) || (tF && tF.bizdate) || null;
+  const bizIso = /^\d{8}$/.test(String(biz || ''))
+    ? `${String(biz).slice(0, 4)}-${String(biz).slice(4, 6)}-${String(biz).slice(6)}`
+    : null;
+  const stale = Boolean(bizIso && bizIso !== p.date);
+  const hasTrend = [tK, tQ, tF].some((x) => x && (x.foreign !== null || x.organ !== null));
+  const idxOf = (key) => (Array.isArray(indices) ? indices.find((x) => x && x.key === key) : null) || null;
+  const valEok = (row) => (row && typeof row.value === 'number' && Number.isFinite(row.value)
+    ? Math.round(row.value / 1e8)
+    : null);
+  let supply = null;
+  if (hasTrend) {
+    supply = {
+      date: bizIso || p.date,
+      at: p.hhmm,
+      basis: stale
+        ? `직전 거래일(${mdLabel(bizIso)}) 확정 수급 — 오늘 장 개시 전`
+        : (p.minutes < 15 * 60 + 30
+            ? '장중 잠정(네이버 투자자별 누적 · 현물 억원 · 선물 계약)'
+            : '15:30 정규장 마감 기준(잠정)'),
+      kospi: { foreign: tK ? tK.foreign : null, organ: tK ? tK.organ : null },
+      kosdaq: { foreign: tQ ? tQ.foreign : null, organ: tQ ? tQ.organ : null },
+      fut: { foreign: tF ? tF.foreign : null, organ: tF ? tF.organ : null },
+      volume: {
+        kospiToday: valEok(idxOf('KOSPI')),
+        kosdaqToday: valEok(idxOf('KOSDAQ')),
+        sameTimeLabel: p.hhmm,
+      },
+      source: 'naver-trend',
+      stale,
+    };
+  }
+
+  /* ----- 지수 슬롯 ----- */
+  const kSeries = minuteSeries(kBars, p.compact);
+  const qSeries = minuteSeries(qBars, p.compact);
+
+  if (!kSeries.length && !qSeries.length) {
+    /* 분봉이 없다 = 개장 전·휴장. 타임라인에 오늘 실측 백업이 있으면 그것만 쓴다. */
+    const fx = tl && tl.index_hourly_flow;
+    if (fx && fx.date === p.date && Array.isArray(fx.slots) && fx.slots.length) {
+      return idxCacheSet(cacheKey, {
+        flow: { date: fx.date, updated: fx.updated || p.hhmm, source: 'timeline', slots: fx.slots },
+        supply,
+        errors: errors.concat(['naver-minute: 오늘 분봉 없음 → 타임라인 백업 사용']),
+      });
+    }
+    return idxCacheSet(cacheKey, { flow: null, supply, errors: errors.concat(['naver-minute: 오늘 분봉 없음']) });
+  }
+
+  const prevClose = (key) => {
+    const row = idxOf(key);
+    if (!row) return null;
+    const price = Number(row.price);
+    const ch = Number(row.change);
+    return Number.isFinite(price) && Number.isFinite(ch) ? price - ch : null;
+  };
+  const prevK = prevClose('KOSPI');
+  const prevQ = prevClose('KOSDAQ');
+
+  const slots = [];
+  let lastK = null;
+  let lastQ = null;
+  for (const t of IDX_FLOW_SLOTS) {
+    const [hh, mi] = t.split(':').map(Number);
+    const tmin = hh * 60 + mi;
+    const row = {
+      t, m: null, k: null, q: null, kp: null, qp: null, dk: null, dq: null,
+      kv: null, qv: null, f: null, o: null, qf: null, qo: null, ff: null, fo: null, n: '',
+    };
+    const carry = timelineSlotSupply(tl, t, p.date);
+    if (carry) {
+      SUPPLY_SLOT_KEYS.forEach((k) => { row[k] = typeof carry[k] === 'number' ? carry[k] : null; });
+      if (carry.at && carry.at !== t) row.n = '수급 ' + carry.at;
+    }
+    if (tmin <= p.minutes) {
+      const kb = seriesValue(kSeries, tmin + 1);
+      const qb = seriesValue(qSeries, tmin + 1);
+      if (kb) {
+        row.k = r2(kb.price);
+        row.m = kb.at;
+        if (prevK) row.kp = r2(((kb.price - prevK) / prevK) * 100);
+        if (lastK !== null) row.dk = r2(kb.price - lastK);
+        lastK = kb.price;
+      }
+      if (qb) {
+        row.q = r2(qb.price);
+        if (prevQ) row.qp = r2(((qb.price - prevQ) / prevQ) * 100);
+        if (lastQ !== null) row.dq = r2(qb.price - lastQ);
+        lastQ = qb.price;
+      }
+    }
+    slots.push(row);
+  }
+
+  const flow = { date: p.date, updated: p.hhmm, source: 'naver-minute', slots };
+  return idxCacheSet(cacheKey, { flow, supply, errors });
+}
+
+/** ?mode=index_flow — 정적 페이지·점검이 쓰는 경량 경로(종목·선물·환율 수집 없음) */
+async function handleIndexFlow(res, req) {
+  const started = Date.now();
+  const errors = [];
+  let indices = [];
+  try {
+    indices = await fetchIndices();
+  } catch (e) {
+    errors.push(`naver-index: ${String((e && e.message) || e)}`);
+  }
+  let bundle = null;
+  try {
+    bundle = await buildIndexFlowBundle(req, indices);
+  } catch (e) {
+    errors.push(`index-flow: ${String((e && e.message) || e)}`);
+  }
+  const body = {
+    ok: Boolean(bundle && bundle.flow),
+    mode: 'index_flow',
+    generatedAtKst: kstLabel(new Date()),
+    elapsedMs: Date.now() - started,
+    indexHourlyFlow: (bundle && bundle.flow) || null,
+    indexFlowSupply: (bundle && bundle.supply) || null,
+    errors: errors.concat((bundle && bundle.errors) || []),
+  };
+  return sendJson(res, 200, body, CACHE_CONTROL);
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -2401,6 +2749,9 @@ module.exports = async function handler(req, res) {
 
   // ?mode=alerts — 공식 시장경보 목록 (서버리스 함수 수를 늘리지 않기 위한 내부 라우트)
   if (q.mode === 'alerts') return handleAlerts(res, fresh, q);
+
+  // ?mode=index_flow — 🕘 시간별 지수 흐름만(경량). 정적 페이지 60초 폴링·점검용
+  if (q.mode === 'index_flow') return handleIndexFlow(res, req);
 
   // ?kis_test=1 — KIS(한국투자증권) 공식 API 연동 진단 (토큰·시세·수급)
   if (q.kis_test === '1') return handleKisTest(res, q, fresh);
@@ -2526,6 +2877,22 @@ module.exports = async function handler(req, res) {
     return known ? { ...s, label: known.name } : s;
   });
 
+  /* 🕘 시간별 지수 흐름 — 같은 응답에 실어 보낸다(15초 폴링만으로 갱신되게).
+     · 계산은 1분 캐시라 매 폴링마다 네이버를 다시 부르지 않는다.
+     · 응답이 늦어지지 않게 2.4초를 넘기면 이번 응답은 흐름 없이 내려간다(다음 폴링에 채워진다). */
+  let indexFlowBundle = null;
+  try {
+    indexFlowBundle = await Promise.race([
+      buildIndexFlowBundle(req, indices),
+      new Promise((resolve) => setTimeout(() => resolve(null), 2400)),
+    ]);
+  } catch (e) {
+    errors.push(`index-flow: ${String((e && e.message) || e)}`);
+  }
+  if (indexFlowBundle && indexFlowBundle.errors && indexFlowBundle.errors.length) {
+    errors.push(...indexFlowBundle.errors);
+  }
+
   const body = {
     ok: indices.length > 0 || stocks.length > 0,
     generatedAt: new Date().toISOString(),
@@ -2541,6 +2908,9 @@ module.exports = async function handler(req, res) {
     sources,
     errors,
   };
+
+  if (indexFlowBundle && indexFlowBundle.flow) body.indexHourlyFlow = indexFlowBundle.flow;
+  if (indexFlowBundle && indexFlowBundle.supply) body.indexFlowSupply = indexFlowBundle.supply;
 
   if (kisSummary) {
     body.kis = {
