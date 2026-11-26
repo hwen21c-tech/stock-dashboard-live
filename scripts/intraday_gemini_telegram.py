@@ -8,6 +8,16 @@
 정규 브리핑의 70~80% 분량(2,000~3,200자) 장중 브리핑을 만들어
 텔레그램 채널(@fox_signal_stock)로 보낸다.
 
+발송 + 관제탑 타임라인
+  · 평일 09:30(장초반) · 10:00 · 11:00 · 13:00 · 14:00 회차를 텔레그램으로 보내고,
+    같은 회차를 관제탑 1·7번 「시간별 수급 이동」 타임라인 슬롯(flow_timeline_today.json,
+    index.html 내장 FLOW_TIMELINE, deploy_repo 미러)에 🤖 Gemini AI 작성 표기와 함께 넣는다.
+    (09:30 은 타임라인의 '09:30' 슬롯, 헤더는 '🦊 폭스시그널 · 09:30 장초반 브리핑')
+  · 텔레그램 공개 헤더에는 작성 주체 표기를 넣지 않는다(2026-11-26 사용자 요청).
+  · Actions 에서는 JSON 만 커밋·push 한다(contents: write 필요).
+  · 수동 백필: python3 scripts/intraday_gemini_telegram.py \
+        --timeline-from artifacts/intraday.json --timeline-write
+
 5블록 양식
   📌 한줄 요약            지수·외인 현선물 판정·대장 테마·대응 한 줄
   📊 핵심 지표 & 매크로    코스피·코스닥·선물(베이시스)·등락종목수·상한가·원/달러
@@ -2433,12 +2443,16 @@ def main(argv=None):
         log(f"✓ 텔레그램 발송 완료 message_id={message_id}")
 
     # ── 관제탑 1·7번 타임라인에 이번 회차를 남긴다(발송 성공본) ──────────
+    #   · GitHub Actions 에서는 JSON 만 바꾼다 — index.html 내장 블록까지 건드리면
+    #     30분 자동동기화와 같은 파일을 동시에 고쳐 push 충돌이 난다.
+    #     (동적 관제탑은 JSON 을 15초마다 읽고, 정적 Pages 는 다음 동기화 때 따라온다)
     if not args.no_timeline and (message_id or args.timeline_write):
         slot_t = target_slot(args.timeline_slot or slot)
+        in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
         apply_timeline(facts, slot_t, facts["asof"]["time"], message, generator, script_dir,
                        write=True,
-                       push=bool(args.push_timeline) or os.environ.get("GITHUB_ACTIONS") == "true",
-                       patch_html=not args.no_html)
+                       push=bool(args.push_timeline) or in_ci,
+                       patch_html=(not args.no_html) and not in_ci)
 
     if args.out_text:
         os.makedirs(os.path.dirname(os.path.abspath(args.out_text)), exist_ok=True)
