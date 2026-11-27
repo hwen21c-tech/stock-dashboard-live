@@ -6076,8 +6076,23 @@ async function ideaFetchImage(url, ms) {
       headers: { 'User-Agent': PHOTO_UA, Accept: 'image/*' },
     });
     if (!r.ok) {
+      const raw = await r.text().catch(() => '');
       const e = new Error('image_http_' + r.status);
       e.status = r.status;
+      // 402 = 무료 한도(45초에 1장) — 본문이 JSON이 아니어도 상태코드만으로 판단한다.
+      if (r.status === 402) {
+        e.code = 'free_limit';
+        e.retryAfterSec = 45;
+      }
+      try {
+        const j = JSON.parse(raw);
+        const msg = (j && j.error && j.error.message) || '';
+        if (r.status === 402 || /FREE_LIMIT/i.test(String((j && j.error && j.error.code) || ''))) {
+          const m = /retry after\s+(\d+)\s*s/i.exec(msg);
+          e.code = 'free_limit';
+          e.retryAfterSec = m ? Math.min(90, Math.max(5, parseInt(m[1], 10))) : 45;
+        }
+      } catch (_) {}
       throw e;
     }
     const ab = await r.arrayBuffer();
@@ -6511,6 +6526,7 @@ async function handleIdeaImage(res, body) {
     '?width=' + width + '&height=' + height + '&seed=' + sd + '&nologo=true&enhance=false';
   const tries = [];
   let got = null;
+  let retryAfterSec = 0;
   for (let i = 0; i < 2 && !got; i++) {
     const left = IDEA_IMAGE_TIMEOUT_MS - (Date.now() - started);
     if (left < 6000) break;
@@ -6518,8 +6534,17 @@ async function handleIdeaImage(res, body) {
       got = await ideaFetchImage(build(seed + i * 17), Math.min(left, 26000));
     } catch (e) {
       tries.push((e && e.message ? e.message : String(e)).slice(0, 120));
+      if (e && e.code === 'free_limit') { retryAfterSec = e.retryAfterSec || 45; break; }
       if (i === 0) await sleep(400);
     }
+  }
+  if (!got && retryAfterSec) {
+    return send(res, 200, {
+      ok: false, action: 'idea_image', engine: 'pollinations', reason: 'free_limit',
+      retryAfterSec,
+      message: '무료 이미지 서버는 IP당 45초에 1장만 그립니다. 약 ' + retryAfterSec + '초 뒤에 다시 시도해 주세요.',
+      tries,
+    });
   }
   if (!got) {
     return send(res, 200, {
