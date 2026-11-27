@@ -6925,8 +6925,14 @@ module.exports = async function handler(req, res) {
   }
 
   /* 💸 5분 거래대금 버킷 — 위에서 이미 출발시켰다(테마 시세만 있으면 되므로 전략·종가베팅과 동시).
-   *    이번 응답 종목의 대금을 공용 기록(Supabase)에 남기고, 이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다. */
-  const tvBuckets = await tvBucketsPromise;
+   *    이번 응답 종목의 대금을 공용 기록(Supabase)에 남기고, 이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다.
+   *  · Supabase 가 느릴 때 응답이 끝까지 끌려가지 않도록 1.2초만 기다린다 — 늦으면 이번에는 비우고
+   *    화면은 자기 localStorage 기록으로 그린다(예전과 같은 동작). */
+  const tvBuckets = await Promise.race([
+    tvBucketsPromise,
+    new Promise((resolve) => setTimeout(() => resolve(null), 1200)),
+  ]);
+  mark('tvBuckets');
 
   /* 🌙 선물 실시간 — 위에서 띄운 KIS 호출을 최대 2.5초만 기다린다. */
   let futuresKis = null;
