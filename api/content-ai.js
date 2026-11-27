@@ -6286,6 +6286,7 @@ async function handleEmoticonPlan(res, body, keyConfigured) {
     '[의인화 스타일] ' + (anthro || 'SD 2등장신 (팔·다리 추가)'),
     '[화풍] ' + (artStyle || '몽글 손그림'),
     '[기획 프리셋] ' + (EMOTICON_PRESET_HINT[preset] || preset),
+    preset !== 'basic' ? '[중요] 24개 문구는 반드시 위 프리셋의 사용 상황(예: 리뷰 글에 끼워 넣는 말)에 맞춰야 합니다. 일반 인사말로 채우지 마세요.' : '',
     '[플랫폼] ' + platform,
     '[상표 클린업] ' + (cleanup ? '브랜드 로고·실제 글씨는 모두 제거하고 하트 테이프·별 스티커 같은 오리지널 무늬로 치환' : '원본 유지'),
     theme ? '[추가 테마] ' + theme : '',
@@ -6310,7 +6311,7 @@ async function handleEmoticonPlan(res, body, keyConfigured) {
       schema: SCHEMA_EMOTICON_PLAN,
       temperature: 0.9,
       maxTokens: 3000,
-      fastFirst: false,
+      fastFirst: true,
     }, deadline);
 
     let parsed = null;
@@ -6441,6 +6442,7 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
     return {
       ok: false, reason: 'gemini_image_quota',
       message: 'Gemini 이미지 무료 한도를 다 썼습니다(429). 오늘은 내장 샘플로 UI를 확인하고, 한도가 풀리면 다시 시도해 주세요.',
+      detail: String(lastMsg || '').slice(0, 300),
     };
   }
   return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
