@@ -3024,12 +3024,22 @@ async function hamItem(cand, opts) {
         dateLabel: base.bigYang.dateLabel,
         pct: base.bigYang.pct,
         dayValueEok: base.bigYang.valueEok,
+        upperWickPct: base.bigYang.upperWickPct,
+        bodyPct: base.bigYang.bodyPct,
+        ohlcSrc: base.bigYang.ohlcSrc || null,
         open3mEok: base.bigYang.open3m ? base.bigYang.open3m.valueEok : null,
         open3m: base.bigYang.open3m || null,
         others: base.others || [],
+        skippedBases: base.skippedBases || [],
         reversal: base.reversal || null,
       }
-      : { ok: false, reason: (base && base.reason) || 'not_ready', message: (base && base.message) || '기준 대금 미계산' },
+      : {
+        ok: false,
+        reason: (base && base.reason) || 'not_ready',
+        message: (base && base.message) || '기준 대금 미계산',
+        skippedBases: (base && base.skippedBases) || [],
+        rejectedDays: (base && base.rejectedDays) || [],
+      },
     today: today && today.ok
       ? {
         ok: true,
