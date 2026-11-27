@@ -5639,6 +5639,589 @@ async function handleShortsTts(res, body) {
   }
 }
 
+
+/* ============================================================================
+ * 💡 아이디어 → AI 쇼츠 (Idea2Shorts 통합)
+ *   shorts-studio-pro(다른 오리진)가 절대 URL 로 부른다. 기존 액션은 그대로 둔다.
+ *   - idea_topics      : 장르·키워드 → 조회수 노리는 후킹 주제 3안
+ *   - idea_story       : 아이디어/자료 → 5컷 스토리보드(대사·자막·그림 프롬프트·카드·모션)
+ *   - idea_image       : Pollinations 서버 프록시 / Gemini Image → base64 (캔버스 오염 방지)
+ *   - idea_url_extract : 유튜브 자막·블로그 본문 → 아이디어 입력용 텍스트
+ * ========================================================================= */
+
+const IDEA_MAX_SCENES = 6;
+const IDEA_TEXT_MAX = 2600;
+const IDEA_IMAGE_TIMEOUT_MS = 30000;
+const IDEA_IMAGE_MAX_BYTES = 3800 * 1024;
+
+const IDEA_GENRE_LABEL = {
+  psychology: '심리·뇌과학 팩트',
+  story: '썰·반전 스토리',
+  history: '미스터리·역사 비화',
+  finance: '재테크·생활 꿀팁',
+};
+
+const IDEA_STYLE_PROMPT = {
+  webtoon: 'Korean webtoon digital illustration style, clean sharp lineart, vibrant cinematic lighting, vertical 9:16 composition, no text',
+  cinematic: 'Photorealistic cinematic film still, 35mm lens, shallow depth of field, dramatic lighting, vertical 9:16 composition, no text',
+  anime: 'Warm Studio Ghibli inspired anime art style, painterly background, soft sunlight, expressive mood, vertical 9:16 composition, no text',
+  noir: 'Dark mystery neo-noir aesthetic, high contrast shadows, moody neon rim light, vertical 9:16 composition, no text',
+};
+
+const IDEA_CAMERA_MOTIONS = ['zoom_in', 'zoom_out', 'pan_lr', 'shake'];
+
+const SCHEMA_IDEA_TOPICS = {
+  type: 'OBJECT',
+  properties: {
+    topics: {
+      type: 'ARRAY',
+      description: '서로 각도가 다른 주제 3개',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING', description: '쇼츠 주제 한 줄 (24자 이내)' },
+          hook: { type: 'STRING', description: '첫 2초에 실제로 말할 구어체 후킹 문장 (30자 이내)' },
+          angle: { type: 'STRING', description: '왜 클릭하게 되는지 한 줄 (20자 이내)' },
+        },
+        required: ['title', 'hook', 'angle'],
+      },
+    },
+  },
+  required: ['topics'],
+};
+
+const SCHEMA_IDEA_STORY = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING', description: '쇼츠 제목 (40자 이내, 클릭 유도)' },
+    hashtags: { type: 'ARRAY', description: '해시태그 5개 (# 포함)', items: { type: 'STRING' } },
+    hookOptions: {
+      type: 'ARRAY',
+      description: '화면 상단에 띄울 후킹 문구 3안 (서로 다른 말투)',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          tag: { type: 'STRING', description: 'curiosity / direct / twist 같은 짧은 유형명' },
+          text: { type: 'STRING', description: '24자 이내 한 줄' },
+        },
+        required: ['tag', 'text'],
+      },
+    },
+    arc: {
+      type: 'OBJECT',
+      properties: {
+        hook: { type: 'STRING', description: '초반 3초 후킹 요약 (30자 이내)' },
+        climax: { type: 'STRING', description: '핵심 전개 요약 (30자 이내)' },
+        outro: { type: 'STRING', description: '마무리·루프 연결 요약 (30자 이내)' },
+      },
+      required: ['hook', 'climax', 'outro'],
+    },
+    scenes: {
+      type: 'ARRAY',
+      description: '4~5개 컷 (순서대로)',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          narration: { type: 'STRING', description: '성우가 읽을 자연스러운 한국어 구어체 한두 문장 (3~4초 분량)' },
+          subtitle: { type: 'STRING', description: '화면 자막 14자 이내 임팩트 문구' },
+          speaker: { type: 'STRING', description: '대화 모드일 때 A(질문자) 또는 B(전문가). 1인 모드면 A' },
+          visualPrompt: { type: 'STRING', description: '영어 그림 프롬프트. 주인공 외형·배경을 모든 컷에서 똑같이 유지' },
+          cameraMotion: { type: 'STRING', description: 'zoom_in / zoom_out / pan_lr / shake 중 하나' },
+          cardType: { type: 'STRING', description: 'image(그림) 또는 card(숫자·비교 인포그래픽). 숫자·비교 컷은 card' },
+          cardData: {
+            type: 'OBJECT',
+            description: 'cardType 이 card 일 때만 채운다',
+            properties: {
+              kind: { type: 'STRING', description: 'numbers / compare / list 중 하나' },
+              title: { type: 'STRING', description: '카드 제목 (14자 이내)' },
+              items: {
+                type: 'ARRAY',
+                description: '2~3개 항목',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    label: { type: 'STRING', description: '항목 이름 (10자 이내)' },
+                    value: { type: 'STRING', description: '숫자·짧은 값 (8자 이내)' },
+                  },
+                  required: ['label', 'value'],
+                },
+              },
+              footnote: { type: 'STRING', description: '작은 각주 (선택, 20자 이내)' },
+            },
+          },
+          emphasizeWord: { type: 'STRING', description: '자막 안에서 강조할 단어 하나 (subtitle 에 실제로 있는 단어)' },
+        },
+        required: ['narration', 'subtitle', 'speaker', 'visualPrompt', 'cameraMotion', 'cardType'],
+      },
+    },
+  },
+  required: ['title', 'hashtags', 'scenes'],
+};
+
+function ideaCleanHash(list) {
+  return arr(list, 8)
+    .map((h) => s(h, 26).replace(/\s+/g, ''))
+    .filter(Boolean)
+    .map((h) => (h.charAt(0) === '#' ? h : '#' + h));
+}
+
+function normIdeaStory(data, idea) {
+  const d = data && typeof data === 'object' ? data : {};
+  const palettes = [
+    ['#1e1b4b', '#4338ca'],
+    ['#3b0764', '#9333ea'],
+    ['#0f172a', '#0284c7'],
+    ['#064e3b', '#10b981'],
+    ['#7c2d12', '#f97316'],
+  ];
+  const icons = ['🔥', '🧠', '⚡', '✨', '🎯'];
+  const scenes = arr(d.scenes, IDEA_MAX_SCENES)
+    .map((g, idx) => {
+      const sc = g && typeof g === 'object' ? g : {};
+      const narration = s(sc.narration, 220);
+      const subtitle = s(sc.subtitle, 40);
+      if (!narration && !subtitle) return null;
+      const cardType = String(sc.cardType || '').toLowerCase() === 'card' ? 'card' : 'image';
+      const cd = sc.cardData && typeof sc.cardData === 'object' ? sc.cardData : null;
+      const items = cd ? arr(cd.items, 4).map((it) => ({
+        label: s(it && it.label, 20),
+        value: s(it && it.value, 16),
+      })).filter((it) => it.label || it.value) : [];
+      return {
+        narration,
+        subtitle: subtitle || narration.slice(0, 14),
+        speaker: String(sc.speaker || '').toUpperCase() === 'B' ? 'B' : 'A',
+        visualPrompt: s(sc.visualPrompt, 900) || String(idea || '').slice(0, 600),
+        cameraMotion: IDEA_CAMERA_MOTIONS.indexOf(String(sc.cameraMotion)) >= 0 ? String(sc.cameraMotion) : 'zoom_in',
+        cardType: cardType === 'card' && items.length ? 'card' : 'image',
+        cardData: cardType === 'card' && items.length
+          ? {
+              kind: ['numbers', 'compare', 'list'].indexOf(String(cd.kind)) >= 0 ? String(cd.kind) : 'numbers',
+              title: s(cd.title, 30) || subtitle,
+              items,
+              footnote: s(cd.footnote, 40),
+            }
+          : null,
+        emphasizeWord: s(sc.emphasizeWord, 20),
+        palette: palettes[idx % palettes.length],
+        icon: icons[idx % icons.length],
+      };
+    })
+    .filter(Boolean);
+
+  const arc = d.arc && typeof d.arc === 'object' ? d.arc : {};
+  return {
+    title: s(d.title, 120) || s(idea, 80),
+    hashtags: ideaCleanHash(d.hashtags),
+    hookOptions: arr(d.hookOptions, 3).map((h) => ({
+      tag: s(h && h.tag, 14) || 'hook',
+      text: s(h && h.text, 60),
+    })).filter((h) => h.text),
+    arc: {
+      hook: s(arc.hook, 60) || scenes[0] && scenes[0].subtitle || '',
+      climax: s(arc.climax, 60) || (scenes[1] && scenes[1].subtitle) || '',
+      outro: s(arc.outro, 60) || (scenes[scenes.length - 1] && scenes[scenes.length - 1].subtitle) || '',
+    },
+    scenes,
+  };
+}
+
+async function handleIdeaTopics(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const genre = s(body.genre, 30) || 'psychology';
+  const keyword = s(body.keyword, 80).replace(/[#\n]/g, ' ').trim();
+  const label = IDEA_GENRE_LABEL[genre] || IDEA_GENRE_LABEL.psychology;
+  const user = [
+    '유튜브 쇼츠 "' + label + '" 장르에서 지금 조회수가 잘 나오는 주제 3개를 추천해 주세요.',
+    keyword ? '[키워드/관심사] ' + keyword : '[키워드/관심사] 없음 — 장르에서 흔히 먹히는 소재로',
+    '',
+    '[규칙]',
+    '1. 세 주제는 서로 완전히 다른 각도여야 합니다(예: 통념 반박 / 숫자 비교 / 실전 상황).',
+    '2. title 은 24자 이내 한 줄. hook 은 첫 2초에 실제로 말할 구어체 문장(30자 이내).',
+    '3. angle 은 "왜 클릭하게 되는지"를 20자 이내로.',
+    '4. 확인되지 않은 수치·고유명사·연구 결과를 사실처럼 쓰지 마세요. 필요한 수치는 "대부분", "절반쯤" 같은 안전한 표현으로.',
+    '5. JSON 만 돌려주세요.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system:
+        '당신은 유튜브 쇼츠 기획자입니다. 클릭을 부르는 주제 3개를 각도가 겹치지 않게 제안하고, ' +
+        '확인되지 않은 사실은 단정하지 않습니다.',
+      user,
+      schema: SCHEMA_IDEA_TOPICS,
+      temperature: 0.95,
+      maxTokens: 900,
+      fastFirst: true,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    const topics = arr(parsed && parsed.topics, 3)
+      .map((t) => ({
+        title: s(t && t.title, 60),
+        hook: s(t && t.hook, 80),
+        angle: s(t && t.angle, 60),
+      }))
+      .filter((t) => t.title);
+    if (!topics.length) {
+      return send(res, 200, {
+        ok: false, action: 'idea_topics', reason: 'empty_topics',
+        message: '주제를 만들지 못했습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+    return send(res, 200, { ok: true, action: 'idea_topics', model: out.model, genre, keyword, topics });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_topics', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 눌러 주세요.'
+        : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+      tries: (err && err.tries) || [],
+    });
+  }
+}
+
+async function handleIdeaStory(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const idea = s(body.idea, 1200);
+  const source = s(body.sourceText, IDEA_TEXT_MAX);
+  if (!idea && !source) {
+    return send(res, 400, {
+      ok: false, action: 'idea_story', reason: 'missing_idea',
+      message: '쇼츠로 만들 아이디어나 참고 자료(링크·글)를 먼저 넣어 주세요.',
+    });
+  }
+  const genre = s(body.genre, 30) || 'psychology';
+  const artStyle = s(body.artStyle, 30) || 'webtoon';
+  const character = s(body.character, 200);
+  const dialogue = body.dialogue === true || body.dialogue === 'true';
+  const loop = body.loop === true || body.loop === 'true';
+
+  const user = [
+    '아래 아이디어를 15~30초 유튜브 쇼츠로 만들 4~5컷 스토리보드로 바꿔 주세요.',
+    '',
+    '[아이디어] ' + (idea || '(링크에서 가져온 자료 — 아래 참고 자료 참조)'),
+    source ? '\n[참고 자료 — 링크에서 실제로 읽은 글]\n' + source : '',
+    '',
+    '[장르/톤] ' + (IDEA_GENRE_LABEL[genre] || IDEA_GENRE_LABEL.psychology),
+    '[화풍] ' + artStyle,
+    '[주인공 외형 고정] ' + (character || '아이디어에 어울리는 인물 하나를 정해 모든 컷에서 똑같이 유지'),
+    '[대화 모드] ' + (dialogue
+      ? '2인 티키타카 대화형 — A는 호기심 많은 질문자, B는 핵심을 찌르는 전문가. 두 사람이 번갈아 말한다.'
+      : '1인 내레이션 몰입형 — 모든 컷 speaker 는 A.'),
+    '[무한 루프] ' + (loop
+      ? '마지막 컷 대사가 첫 컷 대사로 자연스럽게 이어지도록 문장을 연결해 무한 반복 시청을 유도한다.'
+      : '깔끔한 결론으로 마무리한다.'),
+    '',
+    '[규칙]',
+    '1. 첫 컷은 3초 안에 손가락을 멈추게 하는 후킹. 마지막 컷은 저장·팔로우를 부르는 마무리(루프 모드면 첫 컷과 이어지게).',
+    '2. narration 은 성우가 3~4초에 읽을 한국어 구어체. 숫자를 그대로 낭독하지 말고 의미로 말하세요.',
+    '3. subtitle 은 14자 이내 임팩트 자막. narration 문장을 그대로 옮기지 마세요.',
+    '4. visualPrompt 는 반드시 영어. 주인공 외형·의상·배경이 모든 컷에서 일관되게 유지되도록 구체적으로 쓰세요.',
+    '5. cameraMotion 은 zoom_in / zoom_out / pan_lr / shake 중 장면에 맞게 다양하게.',
+    '6. 숫자·비교가 핵심인 컷은 cardType 을 card 로 하고 cardData 에 숫자 2~3개를 채우세요. 다섯 컷 중 최소 한 컷은 card 로 만들어 주세요. 근거 없는 통계를 지어내지 말고 "3가지", "2배", "절반"처럼 안전한 수치만 쓰세요. 나머지는 image.',
+    '7. emphasizeWord 는 그 컷 subtitle 안에 실제로 들어 있는 단어 하나.',
+    '8. 확인되지 않은 수치·가격·고유명사·연구 결과를 만들지 마세요. 모르면 일반화된 표현으로.',
+    '9. JSON 만 돌려주세요.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system:
+        '당신은 100만 조회수 유튜브 쇼츠 전문 작가·PD입니다. 주어진 아이디어와 참고 자료만 근거로 ' +
+        '짧고 리듬감 있는 스토리보드를 씁니다. 보이지 않는 사실은 만들지 않습니다.',
+      user,
+      schema: SCHEMA_IDEA_STORY,
+      temperature: 0.82,
+      maxTokens: 2400,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    if (!parsed || typeof parsed !== 'object') {
+      return send(res, 200, {
+        ok: false, action: 'idea_story', reason: 'parse_failed',
+        message: 'Gemini 응답을 JSON으로 읽지 못했습니다. 한 번 더 눌러 주세요.',
+        model: out.model, __raw: String(out.text || '').slice(0, 1200),
+      });
+    }
+    const story = normIdeaStory(parsed, idea || source.slice(0, 120));
+    if (!story.scenes.length) {
+      return send(res, 200, {
+        ok: false, action: 'idea_story', reason: 'empty_scenes',
+        message: '스토리보드가 비어 왔습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+    return send(res, 200, {
+      ok: true, action: 'idea_story', model: out.model,
+      artStyle: IDEA_STYLE_PROMPT[artStyle] ? artStyle : 'webtoon',
+      story,
+      warnings: source ? ['참고 자료는 링크에서 읽은 본문 일부(' + source.length + '자)만 반영했습니다.'] : [],
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_story', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 눌러 주세요.'
+        : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+      tries: (err && err.tries) || [],
+    });
+  }
+}
+
+async function ideaFetchImage(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.max(4000, ms));
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': PHOTO_UA, Accept: 'image/*' },
+    });
+    if (!r.ok) {
+      const e = new Error('image_http_' + r.status);
+      e.status = r.status;
+      throw e;
+    }
+    const ab = await r.arrayBuffer();
+    const mime = String(r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    if (ab.byteLength < 1200) throw new Error('image_too_small');
+    if (ab.byteLength > IDEA_IMAGE_MAX_BYTES) throw new Error('image_too_large');
+    return { mime: /^image\/(jpeg|jpg|png|webp)$/.test(mime) ? mime : 'image/jpeg', buf: Buffer.from(ab) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ideaGeminiImage(prompt, reference) {
+  const key = String(process.env.GEMINI_API_KEY || '').trim();
+  if (!key) return { ok: false, message: '서버 Gemini 키가 없어 Gemini Image 를 쓸 수 없습니다.' };
+  const models = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
+  let lastMsg = '';
+  for (const model of models) {
+    const parts = [];
+    if (reference && reference.data) {
+      parts.push({ text: 'Keep the exact same art style and the same main character appearance as this reference image.' });
+      parts.push({ inlineData: { mimeType: String(reference.mimeType || 'image/jpeg'), data: String(reference.data) } });
+    }
+    parts.push({ text: 'Create a vertical 9:16 image with no text: ' + prompt });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 24000);
+    try {
+      const r = await fetch(API_ROOT + model + ':generateContent?key=' + encodeURIComponent(key), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE'] } }),
+        signal: ctrl.signal,
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) {
+        const em = (j && j.error && j.error.message) || ('HTTP ' + r.status);
+        if (r.status === 429) {
+          return {
+            ok: false,
+            reason: 'gemini_image_quota',
+            message: 'Gemini 이미지 무료 한도를 다 썼습니다(429). 무료 Pollinations 엔진을 쓰거나 내장 모션 그래픽으로 대체해 주세요.',
+          };
+        }
+        lastMsg = String(em).slice(0, 200);
+        continue;
+      }
+      const cps = (j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+      const ip = cps.find((p) => p && p.inlineData && p.inlineData.data);
+      if (!ip) { lastMsg = 'Gemini 응답에 이미지가 포함되지 않았습니다.'; continue; }
+      return {
+        ok: true, engine: 'gemini', model,
+        mime: ip.inlineData.mimeType || 'image/png',
+        buf: Buffer.from(ip.inlineData.data, 'base64'),
+      };
+    } catch (e) {
+      lastMsg = String((e && e.message) || e).slice(0, 160);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
+}
+
+async function handleIdeaImage(res, body) {
+  const prompt = s(body.prompt, 1200);
+  if (!prompt) return send(res, 400, { ok: false, action: 'idea_image', reason: 'empty_prompt', message: '그림 프롬프트가 비어 있습니다.' });
+  const engine = s(body.engine, 20) || 'pollinations';
+  const width = Math.max(360, Math.min(1080, Math.trunc(num(body.width, 540))));
+  const height = Math.max(640, Math.min(1920, Math.trunc(num(body.height, 960))));
+  const seed = Math.max(1, Math.min(999999, Math.trunc(num(body.seed, 4200))));
+
+  if (engine === 'gemini') {
+    const ref = body.reference && body.reference.data
+      ? { data: String(body.reference.data).slice(0, 3 * 1024 * 1024), mimeType: s(body.reference.mimeType, 40) }
+      : null;
+    const out = await ideaGeminiImage(prompt, ref);
+    if (!out.ok) {
+      return send(res, 200, {
+        ok: false, action: 'idea_image', engine: 'gemini',
+        reason: out.reason || 'gemini_image_failed',
+        message: out.message || 'Gemini 이미지 생성에 실패했습니다.',
+      });
+    }
+    return send(res, 200, {
+      ok: true, action: 'idea_image', engine: 'gemini', model: out.model,
+      mime: out.mime, width, height, data: out.buf.toString('base64'),
+    });
+  }
+
+  /* Pollinations — 서버에서 받아 base64 로 내려 캔버스 오염(CORS taint)을 원천 차단한다. */
+  const started = Date.now();
+  const style = s(body.stylePrompt, 400);
+  const fullPrompt = style ? prompt + ', ' + style : prompt;
+  const build = (sd) =>
+    'https://image.pollinations.ai/prompt/' + encodeURIComponent(fullPrompt) +
+    '?width=' + width + '&height=' + height + '&seed=' + sd + '&nologo=true&enhance=false';
+  const tries = [];
+  let got = null;
+  for (let i = 0; i < 2 && !got; i++) {
+    const left = IDEA_IMAGE_TIMEOUT_MS - (Date.now() - started);
+    if (left < 6000) break;
+    try {
+      got = await ideaFetchImage(build(seed + i * 17), Math.min(left, 26000));
+    } catch (e) {
+      tries.push((e && e.message ? e.message : String(e)).slice(0, 120));
+      if (i === 0) await sleep(400);
+    }
+  }
+  if (!got) {
+    return send(res, 200, {
+      ok: false, action: 'idea_image', engine: 'pollinations', reason: 'pollinations_unavailable',
+      message: '무료 이미지 서버(Pollinations)가 응답하지 않았습니다. 내장 모션 그래픽으로 대체합니다.',
+      tries,
+    });
+  }
+  return send(res, 200, {
+    ok: true, action: 'idea_image', engine: 'pollinations',
+    mime: got.mime, width, height, seed, bytes: got.buf.length,
+    data: got.buf.toString('base64'),
+  });
+}
+
+async function handleIdeaUrlExtract(res, body) {
+  const raw = s(body.url || body.link || body.q, 600);
+  if (!raw) {
+    return send(res, 400, {
+      ok: false, action: 'idea_url_extract', reason: 'missing_url',
+      message: '뉴스·블로그·유튜브 링크를 넣어 주세요.',
+    });
+  }
+  const ytId = ytVideoId(raw);
+  if (ytId) {
+    try {
+      const out = await ytTranscript(ytId);
+      if (out && out.ok && out.text) {
+        return send(res, 200, {
+          ok: true, action: 'idea_url_extract', source: 'youtube', videoId: ytId,
+          title: out.title || '', author: out.author || '',
+          text: String(out.text).slice(0, IDEA_TEXT_MAX),
+          chars: out.chars || String(out.text).length,
+          notes: out.notes || [],
+        });
+      }
+      return send(res, 200, {
+        ok: false, action: 'idea_url_extract', source: 'youtube', videoId: ytId,
+        reason: (out && out.reason) || 'no_captions',
+        message: (out && out.message) || '이 영상의 자막을 읽지 못했습니다. 제목·설명을 직접 붙여넣어 주세요.',
+        title: (out && out.title) || '',
+      });
+    } catch (e) {
+      return send(res, 200, {
+        ok: false, action: 'idea_url_extract', source: 'youtube',
+        reason: 'extract_failed',
+        message: '유튜브 자막을 읽는 중 오류가 났습니다: ' + String((e && e.message) || e).slice(0, 140),
+      });
+    }
+  }
+  try {
+    const src = await readBloggerSource(raw);
+    return send(res, 200, {
+      ok: true, action: 'idea_url_extract', source: 'web',
+      title: src.title || '', author: src.author || '',
+      finalUrl: src.finalUrl || raw,
+      text: s(src.text, IDEA_TEXT_MAX),
+      chars: src.chars || 0,
+    });
+  } catch (e) {
+    return send(res, 200, {
+      ok: false, action: 'idea_url_extract', source: 'web',
+      reason: (e && e.code) || 'extract_failed',
+      message: String((e && e.message) || e).slice(0, 200) || '이 페이지의 본문을 읽지 못했습니다.',
+    });
+  }
+}
+
+
+const SCHEMA_IDEA_PROMPT = {
+  type: 'OBJECT',
+  properties: {
+    prompt: { type: 'STRING', description: '다시 쓴 영어 그림 프롬프트 (9:16, no text 유지)' },
+  },
+  required: ['prompt'],
+};
+
+/* 🎨 한 컷만 다시 그릴 때 — 한글 수정 요청을 영어 그림 프롬프트로 옮긴다. */
+async function handleIdeaPromptEdit(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const prompt = s(body.prompt, 1200);
+  const request = s(body.request, 300);
+  if (!prompt && !request) {
+    return send(res, 400, {
+      ok: false, action: 'idea_prompt_edit', reason: 'missing_input',
+      message: '고칠 그림 프롬프트나 수정 요청이 필요합니다.',
+    });
+  }
+  const user = [
+    '아래 영어 그림 프롬프트를, 사용자의 한글 수정 요청을 반영해 다시 써 주세요.',
+    '',
+    '[기존 프롬프트] ' + (prompt || '(없음 — 장면 설명을 새로 쓰세요)'),
+    '[수정 요청] ' + (request || '(없음 — 같은 장면을 조금 다르게)'),
+    '',
+    '[규칙]',
+    '1. 결과는 영어 한 문단(500자 이내).',
+    '2. 세로 9:16 구도와 "no text"(그림 안 글자 금지)를 반드시 유지하세요.',
+    '3. 인물의 외형(나이·머리·옷)과 화풍은 바꾸지 말고, 요청한 부분만 바꾸세요.',
+    '4. JSON 만 돌려주세요.',
+  ].join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system: '당신은 이미지 생성 프롬프트 편집자입니다. 짧고 구체적인 영어 프롬프트 한 문단만 씁니다.',
+      user,
+      schema: SCHEMA_IDEA_PROMPT,
+      temperature: 0.4,
+      maxTokens: 500,
+      fastFirst: true,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    const outPrompt = s(parsed && parsed.prompt, 900);
+    if (!outPrompt) {
+      return send(res, 200, {
+        ok: false, action: 'idea_prompt_edit', reason: 'empty_prompt',
+        message: '프롬프트를 고치지 못했습니다. 그대로 다시 그립니다.', model: out.model,
+      });
+    }
+    return send(res, 200, { ok: true, action: 'idea_prompt_edit', model: out.model, prompt: outPrompt });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_prompt_edit', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다.'
+        : 'Gemini가 응답하지 않았습니다.',
+    });
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -5759,6 +6342,12 @@ module.exports = async function handler(req, res) {
   if (action === 'shorts_analyze') return handleShortsAnalyze(res, body, keyConfigured);
   if (action === 'shorts_rewrite') return handleShortsRewrite(res, body, keyConfigured);
   if (action === 'shorts_tts') return handleShortsTts(res, body);
+  // 💡 아이디어 → AI 쇼츠 (shorts-studio-pro 통합) — 이미지 프록시는 Gemini 키와 무관하게 먼저 처리한다.
+  if (action === 'idea_topics') return handleIdeaTopics(res, body, keyConfigured);
+  if (action === 'idea_story') return handleIdeaStory(res, body, keyConfigured);
+  if (action === 'idea_prompt_edit') return handleIdeaPromptEdit(res, body, keyConfigured);
+  if (action === 'idea_image' || action === 'idea_image_proxy') return handleIdeaImage(res, body);
+  if (action === 'idea_url_extract') return handleIdeaUrlExtract(res, body);
   // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
   if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
     return handleWork(res, body, keyConfigured);
