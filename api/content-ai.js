@@ -6909,6 +6909,9 @@ async function emoticonPollinationsImage(prompt, seed, aspectRatio, budgetMs) {
         const raw = await r.text().catch(() => '');
         lastMsg = 'HTTP ' + r.status;
         let freeLimit = r.status === 402;
+        /* Retry-After 헤더 우선 — 402 응답 본문은 Accept: image/* 요청엔 HTML 카드라 파싱되지 않는다. */
+        const ra = String(r.headers.get('retry-after') || '').trim();
+        if (/^\d+$/.test(ra)) retryAfterSec = Math.min(90, Math.max(5, parseInt(ra, 10)));
         try {
           const j = JSON.parse(raw);
           const msg = (j && j.error && j.error.message) || '';
@@ -6917,6 +6920,7 @@ async function emoticonPollinationsImage(prompt, seed, aspectRatio, budgetMs) {
           const m = /retry after\s+(\d+)\s*s/i.exec(String(msg));
           if (m) retryAfterSec = Math.min(90, Math.max(5, parseInt(m[1], 10)));
         } catch (_) {}
+        if (r.status === 402 && !/FREE_LIMIT/i.test(raw) && !retryAfterSec) freeLimit = true;
         if (freeLimit || r.status === 429) {
           if (!retryAfterSec) retryAfterSec = 45;
           tries.push({ status: r.status, reason: 'free_limit', message: lastMsg });
