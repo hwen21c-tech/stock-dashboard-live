@@ -50,6 +50,15 @@ const {
 const { analyzeNewsItem } = require('../lib/news-impact');
 const { pickMaterialNews, isRealTheme, materialLine, materialTag } = require('../lib/chim-material');
 const { assignThemeRoles, themeRoleMap, liquidAvgPct, liquidBasisLabel } = require('../lib/theme-roles');
+/* 🔬 단계 프로파일 — TABS_PROFILE=1 일 때만 stderr 로 남긴다(응답·동작에는 영향 없음) */
+const PROF_ON = process.env.TABS_PROFILE === '1';
+const prof = (name, t0) => {
+  if (PROF_ON) {
+    try {
+      console.error('[prof] ' + name + ' ' + (Date.now() - t0) + 'ms');
+    } catch (e) { /* noop */ }
+  }
+};
 /* 📐 F존·K존 — 1분봉 조회와 파동 계산을 모달(stock-live)과 같은 함수로 쓴다(2026-11-26). */
 const fkzone = require('../lib/fkzone');
 /* KIS 공식 API — ?mode=supply_live(장중 기관·외국인 가집계) 에서만 쓴다. 없으면 null 로 두고 503 안내. */
@@ -135,7 +144,12 @@ if (LAST_DYNAMIC && Array.isArray(LAST_DYNAMIC.themes)) {
   });
 }
 
-const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=30';
+/* 장중 실시간성은 s-maxage=15 로 유지하고, stale-while-revalidate 는 90초로 넓힌다(2026-11-27).
+ *  · 30초 폴링 중에는 CDN 이 15초마다 배경에서 새 값을 받아 오므로 화면 값은 예전과 같은 15초 이내다.
+ *  · 폰을 한동안 닫았다가 열 때(콜드)에는 CDN 이 **가장 최근 값을 즉시** 돌려주고 뒤에서 갱신하므로
+ *    첫 화면이 0.1초대에 뜼다 — 계산이 길어지는 요청을 기다리지 않는다.
+ *  · ?fresh=1(사용자가 누르는 즉시 새로고침)은 그대로 짧게 둔다(5/10). */
+const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=90';
 const REFRESH_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=10';
 const NAVER_TIMEOUT = 5000;
 
@@ -747,16 +761,22 @@ async function pollQuotes(codes) {
   const map = {};
   const chunks = [];
   for (let i = 0; i < unique.length; i += POLL_MAX_CODES) chunks.push(unique.slice(i, i + POLL_MAX_CODES));
-  for (const chunk of chunks) {
-    const url =
-      'https://polling.finance.naver.com/api/realtime/domestic/stock/' + chunk.join(',') + '?_=' + Date.now();
-    const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
-    const rows = (data && data.datas) || [];
-    rows.forEach((d) => {
-      const q = normalizeQuote(d);
-      if (q && q.code) map[q.code] = q;
-    });
-  }
+  const tPoll = Date.now();
+  /* ⚡ 청크(최대 60종목)는 병렬로 받는다 — 순차 대기하면 144종목일 때 3번의 왕복(약 0.9초)이
+   *    그대로 응답 시간에 붙는다(2026-11-27 콜드 응답 단축). 네이버 polling 은 여러 요청을 동시에 받는다. */
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const url =
+        'https://polling.finance.naver.com/api/realtime/domestic/stock/' + chunk.join(',') + '?_=' + Date.now();
+      const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
+      const rows = (data && data.datas) || [];
+      rows.forEach((d) => {
+        const q = normalizeQuote(d);
+        if (q && q.code) map[q.code] = q;
+      });
+    }),
+  );
+  prof('pollQuotes(' + unique.length + ' codes / ' + chunks.length + ' chunks)', tPoll);
   return map;
 }
 
@@ -817,6 +837,27 @@ function mapStaticThemes(map, premarket) {
 /* ---------------- 네이버 테마 랭킹 · 구성종목 (동적 주도 테마) ---------------- */
 
 /** 테마 구성종목 1건 → 표준 시세 (open/high/low 는 이 API 에 없어 polling 으로 보강) */
+/* 🔁 같은 순간의 '테마 랭킹'·'테마 구성종목' 요청은 한 번만 나간다 (2026-11-27 콜드 응답 단축)
+ *  · 한 요청 안에서 1번 탭 테마맵(buildDynamicThemes)과 종가베팅 테마 풀(fetchClosingThemeMembers)이
+ *    같은 랭킹· 같은 구성종목을 각각 불러 30번 넘는 요청이 동시에 네이버로 몰렸다 —
+ *    그 탑으로 응답이 느려지고 구성종목이 일부 실패했다.
+ *  · 15초 안에 같은 키를 다시 찾으면 그 약속(Promise)을 그대로 돌려준다 — 실패한 약속은 재시도가
+ *    가능하도록 캐시에서 지운다(실패를 15초 동안 굳히지 않는다). */
+const THEME_SHARED_TTL_MS = 15000;
+const themeSharedMemo = new Map();
+function themeSharedFetch(key, fn) {
+  const hit = themeSharedMemo.get(key);
+  if (hit && Date.now() - hit.at < THEME_SHARED_TTL_MS) return hit.promise;
+  const promise = fn();
+  themeSharedMemo.set(key, { at: Date.now(), promise });
+  promise.catch(() => {
+    const cur = themeSharedMemo.get(key);
+    if (cur && cur.promise === promise) themeSharedMemo.delete(key);
+  });
+  if (themeSharedMemo.size > 80) themeSharedMemo.clear();  // 메모리 보호(오래된 키 정리)
+  return promise;
+}
+
 function normalizeThemeStock(d) {
   if (!d) return null;
   const sign = (d.compareToPreviousPrice && d.compareToPreviousPrice.name) || null;
@@ -846,7 +887,9 @@ function normalizeThemeStock(d) {
 /** 테마 번호 → 구성종목(주식만 · 우선주·스팩 제외) */
 async function fetchThemeStocks(no) {
   const url = THEME_DETAIL_URL + String(no) + '?page=1&pageSize=' + String(THEME_STOCK_PAGE);
-  const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: THEME_TIMEOUT });
+  const data = await themeSharedFetch('stocks:' + String(no), () =>
+    fetchJson(url, { headers: NAVER_HEADERS, timeout: THEME_TIMEOUT }),
+  );
   const rows = (data && data.stocks) || [];
   if (!rows.length) throw new Error('구성종목이 비었습니다');
   return rows
@@ -874,14 +917,17 @@ function pickThemeStocks(stocks) {
  *  · 값을 만들지 않는다 — 실패한 테마는 목록에서 빼고 errors 에 남긴다.
  */
 async function buildDynamicThemes() {
+  const tDyn = Date.now();
   const errors = [];
   let groups = [];
   let marketStatus = null;
   try {
-    const data = await fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
-      headers: NAVER_HEADERS,
-      timeout: THEME_TIMEOUT,
-    });
+    const data = await themeSharedFetch('rank:' + String(THEME_RANK_PAGE), () =>
+      fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
+        headers: NAVER_HEADERS,
+        timeout: THEME_TIMEOUT,
+      }),
+    );
     groups = (data && data.groups) || [];
     marketStatus = (data && data.marketStatus) || null;
     if (!groups.length) throw new Error('테마 랭킹 목록이 비었습니다');
@@ -919,7 +965,9 @@ async function buildDynamicThemes() {
     );
 
   const top = rows.slice(0, THEME_CANDIDATES);
+  prof('dyn.rank', tDyn);
   const settled = await Promise.allSettled(top.map((g) => fetchThemeStocks(g.no)));
+  prof('dyn.details(' + top.length + ')', tDyn);
   const themes = [];
   const codes = [];
   top.forEach((g, i) => {
@@ -1382,6 +1430,7 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
 }
 
 async function fetchThemeQuotes(extraCodes, premarket) {
+  const tTQ = Date.now();
   // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
   //    동시에 스탁이지 실시간 테마(Supabase 경유·1.5초 타임아웃)도 따로 받아 둔다 —
   //    이쪽이 실패해도 네이버 테마맵은 그대로 그린다.
@@ -1389,12 +1438,16 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     buildDynamicThemes(),
     fetchStockEasyThemes().catch((e) => ({ ok: false, themes: [], error: String((e && e.message) || e) })),
   ]);
+  prof('theme.dynThemes+stockEasy', tTQ);
   /* 장전(프리마켓)에는 랭킹이 비었거나 전 테마가 0.00%로 내려온다 → '오늘 강세'라 부를 근거가 없다.
    *  이때는 직전 거래일 장마감 Top 8 테마 스냅샷을 그대로 세우고 프리마켓 체결가만 덧씌운다. */
   const dynFlat = dynamicThemesFlat(dyn);
   const prevDayList = premarket && dynFlat ? lastDynamicSnapshotThemes() : null;
-  // 2) 고정 테마 32 + 감시군(RN존·종베) + NXT 랭킹 동적 + 신규 동적 테마 종목을 한 번에 polling
-  const extra = Array.isArray(extraCodes) ? extraCodes : [];
+  /* 2) 고정 테마 32 + 감시군(RN존·종베) + NXT 랭킹 동적 + 신규 동적 테마 종목을 한 번에 polling
+   *  ⚡ extraCodes 는 배열 또는 '배열을 돌려주는 Promise' 둘 다 받는다 — NXT 랭킹(0.5~0.9초)을
+   *     테마 랭킹·구성종목 수집과 동시에 출발시키기 위해서다(2026-11-27 콜드 응답 단축).
+   *     await 는 아래 테마 랭킹·구성종목이 끝난 뒤에 일어나므로 실제 대기는 거의 없다. */
+  const extra = Array.isArray(extraCodes) ? extraCodes : (await extraCodes) || [];
   const prevDayCodes = prevDayList
     ? prevDayList.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), [])
     : [];
@@ -1403,6 +1456,7 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     : [];
   const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes, prevDayCodes, seCodes);
   const map = await pollQuotes(pollCodes);
+  prof('theme.poll', tTQ);
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
@@ -3500,11 +3554,17 @@ let STRAT_QUOTE_MAP = null;
  *  기준선(정규장 종가) 대비 손절/익절 '판정'을 켜면 안 된다(11/24 실측: 삼현 63,000 기준선 vs 60,300 시간외 → 전 카드 이탈로 오인).
  */
 async function buildStrategyLive(map, phase, ctx) {
+  const tStrat = Date.now();
   const errors = [];
-  const [upR, valR] = await Promise.allSettled([
-    fetchKrxRank('up', KRX_PCT_TOP),
-    fetchKrxRank('quantTop', KRX_VALUE_TOP),
-  ]);
+  /* ⚡ KRX 등락률·거래대금 상위는 핸들러가 미리 띄워 둔 Promise 로 받는다(없으면 여기서 조회) —
+   *    테마·시세 수집과 동시에 시작해야 콜드 응답이 짧아진다(2026-11-27). */
+  const [upR, valR] = ctx && ctx.krxRank
+    ? await ctx.krxRank
+    : await Promise.allSettled([
+        fetchKrxRank('up', KRX_PCT_TOP),
+        fetchKrxRank('quantTop', KRX_VALUE_TOP),
+      ]);
+  prof('strategy.krxRank', tStrat);
   const byPct = upR.status === 'fulfilled' ? upR.value : [];
   const byVal = valR.status === 'fulfilled' ? valR.value : [];
   if (upR.status !== 'fulfilled') errors.push('등락률 상위: ' + String((upR.reason && upR.reason.message) || upR.reason));
@@ -3553,7 +3613,9 @@ async function buildStrategyLive(map, phase, ctx) {
     errors.push('후보 시세 polling: ' + String((e && e.message) || e));
   }
 
+  const tBars = Date.now();
   const settledBars = await Promise.allSettled(need.map((c) => fetchDailyBars(c.q.code)));
+  prof('strategy.dailyBars(' + need.length + ')', tBars);
   const bijFresh = [];
   const bijNear = [];
   const hongFresh = [];
@@ -3706,6 +3768,18 @@ async function buildStrategyLive(map, phase, ctx) {
     zero: 'D+0(기준일 당일)',
     nth: (n) => `D+${n}`,
   });
+  const tInt = Date.now();
+  const intraday = await buildIntradayHong({
+    pool: d0Pool,
+    valueRank,
+    memberRows: (ctx && ctx.memberRows) || [],
+    indexGate: (ctx && ctx.indexGate) || null,
+    supply: (ctx && ctx.supply) || null,
+    phase,
+    prevStrongThemes: (ctx && ctx.prevStrongThemes) || [],
+  });
+  prof('strategy.intradayHong', tInt);
+  prof('strategy.total', tStrat);
 
   return {
     ok: byPct.length + byVal.length > 0,
@@ -3733,19 +3807,10 @@ async function buildStrategyLive(map, phase, ctx) {
     kkangto,
     jongbe,
     rnzone,
-    intradayHong: await buildIntradayHong({
-      pool: d0Pool,
-      valueRank,
-      memberRows: (ctx && ctx.memberRows) || [],
-      indexGate: (ctx && ctx.indexGate) || null,
-      supply: (ctx && ctx.supply) || null,
-      phase,
-      prevStrongThemes: (ctx && ctx.prevStrongThemes) || [],
-    }),
+    intradayHong: intraday,
     errors,
   };
 }
-
 /* ============================================================================
  * 💸 5분 거래대금 버킷 — Supabase family_sync[stock_tv_5m_v1]
  * ----------------------------------------------------------------------------
@@ -3918,6 +3983,7 @@ function tvResponse(doc, nowBucket) {
  *  · marketLive: 정규장·프리마켓·애프터마켓 안에서만 기록한다(장외에는 기존 기록 그대로).
  */
 async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) {
+  const tTv = Date.now();
   const nowMin = Math.floor(now.getTime() / 60000);
   const nowBucket = tvBucketOfMinute(nowMin);
   const marketLive = session.phase === '정규장' || (overSession && overSession.inSession);
@@ -3954,6 +4020,7 @@ async function tvSyncBuckets({ themes, session, overSession, now, docPromise }) 
     src: 'tabs-live',
   };
   await tvWriteDoc(next);
+  prof('tv.write', tTv);
   return tvResponse(next, nowBucket);
 }
 
@@ -4006,6 +4073,7 @@ function cpConfirmedSupplyRows(n) {
  *  · 장전·주말·KIS 미설정·오류·0건이면 supply-latest.json 확정치로 폴백하고 confirmed=true.
  *  · 가집계를 확정치처럼, 확정치를 가집계처럼 적지 않는다(asOfLabel 로 구분). */
 async function fetchClosingSupplyRank(limit) {
+  const tSup = Date.now();
   const hit = supplyCache.get(CP_SUPPLY_CACHE_KEY);
   if (hit && Date.now() - hit.at < (hit.ttl || SUPPLY_TTL_MS)) return hit.value;
 
@@ -4153,6 +4221,7 @@ async function fetchClosingSupplyRank(limit) {
   /* 한쪽(특히 반대쪽 매도) 목록을 못 받았으면 60초씩 캐시해 두지 않는다 — 15초 뒤 다시 시도해
    *  다음 폴링에서 매도 금액을 채운다(실패를 1분간 '미확인'으로 고정하지 않기 위해서). */
   const complete = LIST_CALLS.every((c) => got[c.key] && got[c.key].ok);
+  prof('cp.supplyRank', tSup);
   return put(out, complete ? undefined : 15000);
 }
 
@@ -4164,6 +4233,7 @@ async function fetchClosingSupplyRank(limit) {
  *  · 랭킹·상세는 5분 캐시 — 30초 폴링마다 네이버를 10번씩 때리지 않는다.
  */
 async function fetchClosingThemeMembers() {
+  const tMem = Date.now();
   const hit = supplyCache.get(CP_POOL_CACHE_KEY);
   if (hit && Date.now() - hit.at < CP_POOL_TTL_MS) return hit.value;
 
@@ -4174,10 +4244,12 @@ async function fetchClosingThemeMembers() {
 
   let groups = [];
   try {
-    const data = await fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
-      headers: NAVER_HEADERS,
-      timeout: THEME_TIMEOUT,
-    });
+    const data = await themeSharedFetch('rank:' + String(THEME_RANK_PAGE), () =>
+      fetchJson(THEME_RANK_URL + '?page=1&pageSize=' + String(THEME_RANK_PAGE), {
+        headers: NAVER_HEADERS,
+        timeout: THEME_TIMEOUT,
+      }),
+    );
     groups = (data && data.groups) || [];
     if (!groups.length) throw new Error('테마 랭킹 목록이 비었습니다');
   } catch (e) {
@@ -4203,6 +4275,7 @@ async function fetchClosingThemeMembers() {
     .slice(0, CP_POOL_THEMES);
 
   const settled = await Promise.allSettled(ranks.map((g) => fetchThemeStocks(g.no)));
+  prof('cp.members.details(' + ranks.length + ')', tMem);
   ranks.forEach((g, i) => {
     const r = settled[i];
     if (r.status !== 'fulfilled' || !r.value.length) {
@@ -4225,6 +4298,7 @@ async function fetchClosingThemeMembers() {
     });
   });
   out.ok = out.rows.length > 0;
+  prof('cp.themeMembers', tMem);
   return put(out);
 }
 
@@ -4937,6 +5011,8 @@ async function fetchProgramBatch(codes, deadline) {
       else {
         out.set(code, {
           ok: false,
+          code: (s.reason && s.reason.code) || null,
+          msgCd: (s.reason && s.reason.msgCd) || null,
           error: String((s.reason && (s.reason.message || s.reason)) || 'KIS 응답 없음'),
         });
       }
@@ -4955,6 +5031,13 @@ function chimSignedEok(v) {
 /** 📘 침착해 종가베팅 트랙 — buildClosingPicks 안에서 호출한다. */
 async function buildChimchakhae(ctx) {
   const started = Date.now();
+  /* ⏱️ 이 단계(침착해) 안에서 어느 조회가 시간을 쓰는지 남긴다(진단용) */
+  const stageMs = [];
+  const tm = (name) => {
+    try {
+      stageMs.push({ stage: name, ms: Date.now() - started });
+    } catch (e) { /* noop */ }
+  };
   const { supplyPassed, themePassed, themeMembership, session } = ctx || {};
   const cached = cpChimCache.get('chim');
   if (cached && !(ctx && ctx.debug) && Date.now() - cached.at < CP_CHIM_CACHE_TTL_MS) return cached.value;
@@ -4987,6 +5070,7 @@ async function buildChimchakhae(ctx) {
     out.marketGate = chimMarketGate(null);
   }
   out.marketBanner = chimMarketBanner(out.marketGate, flow, { preopen, weekend, afterClose });
+  tm('gate');
   if (flow && flow.ok) {
     if (flow.fut && typeof flow.fut.foreign === 'number') out.marketGate.foreignFut = flow.fut.foreign;
     out.marketGate.foreignFutNote =
@@ -5075,6 +5159,7 @@ async function buildChimchakhae(ctx) {
     newsPromise,
     new Promise((resolve) => setTimeout(() => resolve(new Map()), CP_CHIM_NEWS_WAIT_MS)),
   ]);
+  tm('news');
 
   /* ②-c 재료 게이트 — 재료가 확인된 종목만 후보로 남긴다 */
   const materialGate = { theme: 0, news: 0, dart: 0, none: 0, adverse: 0, newsChecked: newsMap.size };
@@ -5118,16 +5203,24 @@ async function buildChimchakhae(ctx) {
     targets.map((t) => t.code),
     started + CP_CHIM_DEADLINE_MS,
   );
+  tm('program');
   /* 한 번 실패한 종목은 한 번만 더 시도한다 — 다른 탭의 동시 호출로 초당 제한(EGW00201)이
    *  걸려 '미수신'이 한 주기(60초) 동안 굳는 것을 줄인다. */
+  /* 다시 시도는 **초당 한도(EGW00201)로 막힌 종목만** 한다 — 응답 자체가 없는 장애나 권한 오류까지
+   *  한 번 더 돌면 0.8초를 그냥 버리게 된다(2026-11-27). */
   const retryCodes = Array.from(progMap.entries())
-    .filter(([, v]) => !v.ok)
+    .filter(([, v]) => {
+      if (!v || v.ok) return false;
+      const s = String(v.error || '');
+      return /EGW00201|초당|rate|제한|KIS_RATE_LIMIT/i.test(s) || /KIS_RATE_LIMIT/.test(String(v.code || ''));
+    })
     .map(([k]) => k);
   if (retryCodes.length && Date.now() < started + CP_CHIM_DEADLINE_MS) {
     await new Promise((r) => setTimeout(r, 350));
     const again = await fetchProgramBatch(retryCodes, started + CP_CHIM_DEADLINE_MS + 2500);
     again.forEach((v, k) => { if (v && v.ok) progMap.set(k, v); });
   }
+  tm('programRetry');
   out.programStats = {
     requested: targets.length,
     received: Array.from(progMap.values()).filter((x) => x.ok).length,
@@ -5520,6 +5613,9 @@ async function buildChimchakhae(ctx) {
     );
   }
   out.elapsedMs = Date.now() - started;
+  try {
+    out.stageMs = stageMs;
+  } catch (e) { /* noop */ }
   if (!(ctx && ctx.debug)) cpChimCache.set('chim', { at: Date.now(), value: out });
   return out;
 }
@@ -5691,7 +5787,9 @@ async function buildClosingPicks(ctx) {
   /* ---------------- 💰 트랙 2: 수급주도주 ---------------- */
   let sup = { ok: false, rows: [], asOfLabel: '', confirmed: false, source: 'kis', errors: [] };
   try {
-    sup = await fetchClosingSupplyRank(12);
+    /* ⚡ 핸들러가 미리 띄워 둔 KIS 가집계 Promise 가 있으면 그것을 기다린다(테마 풀을 만드는
+     *    동안 이미 돌고 있어 실제 대기는 거의 없다) — 2026-11-27 콜드 응답 단축. */
+    sup = ctx && ctx.supplyPromise ? await ctx.supplyPromise : await fetchClosingSupplyRank(12);
     if (sup.errors && sup.errors.length) out.errors.push(...sup.errors);
   } catch (e) {
     out.errors.push('KIS 가집계: ' + String((e && e.message) || e));
@@ -6304,6 +6402,19 @@ module.exports = async function handler(req, res) {
   }
 
   const started = Date.now();
+  /* ⏱️ 단계별 소요 시간 — 응답의 timings[] 로 그대로 내려 콜드 응답이 어디서 느린지 실측한다.
+   *   (화면 렌더에는 쓰지 않는 진단용 · 값은 '요청 시작부터 그 단계가 끝난 시각'의 누적 ms) */
+  const timings = [];
+  const mark = (name) => {
+    try {
+      timings.push({ stage: name, ms: Date.now() - started });
+    } catch (e) { /* noop */ }
+  };
+  /* 비동기 작업이 끝난 순간에 그 이름을 남긴다(동시 실행 단계의 실제 종료 시각) */
+  const markWhen = (promise, name) => promise.then((v) => {
+    mark(name);
+    return v;
+  });
   const now = new Date();
   const p = kstParts(now);
   const overSession = overSessionOf(p);
@@ -6331,13 +6442,48 @@ module.exports = async function handler(req, res) {
   const preOpenTheme =
     premarket || (p.wd !== 'Sat' && p.wd !== 'Sun' && p.minutes >= PRE_START && p.minutes < 9 * 60);
 
-  // 1) NXT 랭킹을 먼저 받아 "지금 실제로 움직이는 종목"을 감시군에 합친다.
-  //    (프리마켓에는 정규장 랭킹이 빈 목록이라 이 경로만 유효하다)
-  const nxt = await fetchNxtLeaders();
-  const dynCodes = nxt.ok ? pickDynamicCodes(nxt, WATCH_CODES) : [];
+  /* ==========================================================================
+   * ⚡ 콜드 응답 단축 (2026-11-27) — 서로 의존하지 않는 조회는 전부 여기서 동시에 출발시킨다.
+   *   예전 순서: NXT(0.6초) → 네이버 수집(2~3초) → 뉴스·보강 polling → 전략(1초) →
+   *               종가베팅(1.5초) → F존(0.6초) → 5분버킷(0.7초)  = 10~15초 직렬
+   *   지금 순서: NXT · 테마 · 목록 · 뉴스 · 검색순위 · KRX 랭킹 · KIS 가집계 · 지수 · 테마 풀 ·
+   *               F존이 한꺼번에 출발 → 끝난 것부터 이어 붙인다(값·규칙은 그대로).
+   * ========================================================================== */
+  // 1) NXT 랭킹 — '지금 실제로 움직이는 종목'을 감시군에 합친다(프리마켓에는 이 경로만 유효).
+  const nxtPromise = fetchNxtLeaders().catch((e) => ({
+    byPct: [], byValue: [], searchTop: [], sessionType: null,
+    errors: [String((e && e.message) || e)], ok: false,
+  }));
+  /* NXT 종목코드는 테마 polling 의 '추가 코드'로만 쓰인다 — 배열 대신 Promise 를 넘겨
+     테마 랭킹·구성종목·목록 수집과 동시에 출발시킨다(fetchThemeQuotes 가 끝난 뒤 await). */
+  const dynCodesPromise = nxtPromise.then((n) => (n && n.ok ? pickDynamicCodes(n, WATCH_CODES) : []));
+
+  /* 전략 탭이 쓰는 KRX 등락률·거래대금 상위 */
+  const krxRankPromise = Promise.allSettled([
+    fetchKrxRank('up', KRX_PCT_TOP),
+    fetchKrxRank('quantTop', KRX_VALUE_TOP),
+  ]).catch((e) => [
+    { status: 'rejected', reason: e },
+    { status: 'rejected', reason: e },
+  ]);
+  /* 지수 게이트·장중 가집계·종가베팅 수급(한투) — 모두 60초 캐시라 대부분 즉시 끝난다 */
+  const indexGatePromise = fetchIndexGate().catch(() => null);
+  const supplyMapPromise = hongSupplyMap().catch(() => null);
+  const closingSupplyPromise = fetchClosingSupplyRank(12).catch((e) => ({
+    ok: false, confirmed: false, source: 'kis', rows: [], asOfLabel: '',
+    basisDate: null, sides: {}, fallbackReason: 'exception',
+    errors: ['KIS 가집계: ' + String((e && e.message) || e)],
+  }));
+  /* F존·K존 — 테마 풀(cpMembers)만 있으면 테마맵·시세와 무관하게 계산된다 */
+  const fkZonePromise = markWhen(buildFkZone({ memberRows: cpMembersPromise }).catch((e) => ({
+    ok: false, items: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`,
+    prev: { label: '전일 강세주', themes: [], count: 0 },
+    today: { label: '오늘 강세주', themes: [], count: 0 },
+    errors: [String((e && e.message) || e)], note: 'F존 후보를 만들지 못했습니다.',
+  })), 'fkZone');
 
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR, searchR] = await Promise.allSettled([
-    fetchThemeQuotes(dynCodes, preOpenTheme),
+    fetchThemeQuotes(dynCodesPromise, preOpenTheme),
     fetchList('high52week', 'KOSPI'),
     fetchList('high52week', 'KOSDAQ'),
     fetchList('up', 'KOSPI'),
@@ -6345,6 +6491,10 @@ module.exports = async function handler(req, res) {
     fetchNews(),
     fetchSearchTopKRX(preOpenTheme),
   ]);
+  const nxt = await nxtPromise;   /* 위 allSettled 와 동시에 출발해 이미 끝나 있다 */
+  mark('nxt');
+  mark('naverBatch');
+  const dynCodes = nxt.ok ? pickDynamicCodes(nxt, WATCH_CODES) : [];
 
   const sources = [];
   const errors = [];
@@ -6486,6 +6636,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  mark('enrich');
   /* 장전(평일 09:00 이전)에는 정규장이 아직 열리지 않아 '당일 52주 신고가'가 존재하지 않는다.
    *  그래도 네이버 high52week 목록은 장전 잔여 응답(대금 0 · 0.00%)을 돌려주어
    *  엉뚱한 종목(11/19 08:24 실측: '유진 챔피언중단기크레딧 X클래스' · 대금 0)이 카드에 올라왔다.
@@ -6511,28 +6662,54 @@ module.exports = async function handler(req, res) {
     null;
   const session = sessionOf(p, naverStatus);
 
-  /* ---- 장중 전략 실시간 판정 (비중법사 · 홍인기) ---- */
+  /* ==========================================================================
+   * ⚡ 전략·종가베팅·F존·5분버킷은 서로 독립 — 동시에 돌리고 끝난 것부터 이어 붙인다.
+   *   (예전: 전략(1초) → 종가베팅(1.5초) → F존(0.6초) → 5분버킷(0.7초) 순차 = 3.8초)
+   * ========================================================================== */
   let strategyLive = null;
-  try {
-    strategyLive = await buildStrategyLive(knownMap, session && session.phase, {
-      /* ⚡ D+0 박스용 — 테마 구성종목·지수·KIS 가집계를 미리 띄워 두고 판정 뒤에 합류시킨다 */
-      memberRows: cpMembersPromise,
-      indexGate: fetchIndexGate().catch(() => null),
-      supply: hongSupplyMap(),
-      prevStrongThemes: lastStrongThemes(),
-    });
-    sources.push({
-      name: 'strategy-live',
-      ok: Boolean(strategyLive && strategyLive.ok),
-      detail: strategyLive
-        ? `비중법사 0일차 ${strategyLive.bij.fresh.length} · 홍인기 D+0 ${strategyLive.hong.fresh.length} · 일봉 판정 ${strategyLive.universe.judged}/${strategyLive.universe.candleChecks}`
-        : undefined,
-    });
-    if (strategyLive && strategyLive.errors.length) errors.push(...strategyLive.errors);
-  } catch (e) {
-    sources.push({ name: 'strategy-live', ok: false, error: String((e && e.message) || e) });
-    errors.push('strategy-live: ' + String((e && e.message) || e));
-  }
+  const strategyPromise = markWhen(buildStrategyLive(knownMap, session && session.phase, {
+    /* ⚡ D+0 박스용 — 테마 구성종목·지수·KIS 가집계·KRX 랭킹을 미리 띄워 둔 Promise 그대로 넘긴다 */
+    memberRows: cpMembersPromise,
+    indexGate: indexGatePromise,
+    supply: supplyMapPromise,
+    prevStrongThemes: lastStrongThemes(),
+    krxRank: krxRankPromise,
+  })
+    .then((v) => {
+      sources.push({
+        name: 'strategy-live',
+        ok: Boolean(v && v.ok),
+        detail: v
+          ? `비중법사 0일차 ${v.bij.fresh.length} · 홍인기 D+0 ${v.hong.fresh.length} · 일봉 판정 ${v.universe.judged}/${v.universe.candleChecks}`
+          : undefined,
+      });
+      if (v && v.errors.length) errors.push(...v.errors);
+      return v;
+    })
+    .catch((e) => {
+      sources.push({ name: 'strategy-live', ok: false, error: String((e && e.message) || e) });
+      errors.push('strategy-live: ' + String((e && e.message) || e));
+      return null;
+    }), 'strategyLive');
+
+  /* 🌙 종가베팅 2트랙 — 이미 받은 종목 풀 + KIS 가집계(60초 캐시)로 계산한다.
+   *   여기서 실패해도 본 응답(테마·전략·수급·시간외)은 그대로 내려간다. */
+  let closingPicks = null;
+  const closingPicksPromise = markWhen(buildClosingPicks({
+    themes, knownMap, nxt, high52, upperLimit, session,
+    membersPromise: cpMembersPromise, supplyPromise: closingSupplyPromise,
+    debug: q.cp_debug === '1',
+  }).catch((e) => {
+    errors.push('closingPicks: ' + String((e && e.message) || e));
+    return {
+      ok: false, themeTrack: [], supplyTrack: [],
+      error: String((e && e.message) || e), rules: CP_RULES,
+    };
+  }), 'closingPicks');
+
+  /* 💸 5분 거래대금 버킷 — 테마 시세만 있으면 되므로 여기서 동시에 출발 */
+  const tvBucketsPromise = markWhen(tvSyncBuckets({ themes, session, overSession, now, docPromise: tvDocPromise })
+    .catch(() => null), 'tvBuckets');
 
   // 3번 탭 — 감시군(고정 41 + NXT 랭킹 동적) 세션 체결 대금·등락 순위
   //  NXT 랭킹에서 찾은 종목은 같은 polling 응답(knownMap)에서 시세·체결 대금을 가져온다.
@@ -6544,32 +6721,23 @@ module.exports = async function handler(req, res) {
   const liveUniverse = WATCH.concat(dynamicUniverse);
   const aftermarket = buildAftermarket(knownMap, overSession, liveUniverse);
 
-  /* 🌙 종가베팅 2트랙 — 이미 받은 종목 풀 + KIS 가집계(60초 캐시)로 계산한다.
-   *   여기서 실패해도 본 응답(테마·전략·수급·시간외)은 그대로 내려간다. */
-  let closingPicks = null;
-  try {
-    closingPicks = await buildClosingPicks({ themes, knownMap, nxt, high52, upperLimit, session, membersPromise: cpMembersPromise, debug: q.cp_debug === '1' });
-  } catch (e) {
-    closingPicks = {
-      ok: false, themeTrack: [], supplyTrack: [],
-      error: String((e && e.message) || e), rules: CP_RULES,
-    };
-    errors.push('closingPicks: ' + String((e && e.message) || e));
+  /* 세 개를 기다리는 동안 위의 독립 작업도 같이 돌아간다 */
+  const [strategyRes, closingRes, fkZoneRes] = await Promise.all([
+    strategyPromise,
+    closingPicksPromise.catch((e) => {
+      errors.push('closingPicks: ' + String((e && e.message) || e));
+      return { ok: false, themeTrack: [], supplyTrack: [], error: String((e && e.message) || e), rules: CP_RULES };
+    }),
+    fkZonePromise,
+  ]);
+  strategyLive = strategyRes;
+  closingPicks = closingRes;
+  if (closingPicks && closingPicks.error && closingPicks.ok === false && !closingPicks.themeTrack) {
+    closingPicks = { ok: false, themeTrack: [], supplyTrack: [], error: closingPicks.error, rules: CP_RULES };
   }
 
-  /* ⚡ 장중매매 후보 (F존·K존) — 테마 대장·부대장 + 1분봉 파동. 실패해도 본 응답은 그대로 내려간다(60초 캐시) */
-  let fkZone = null;
-  try {
-    fkZone = await buildFkZone({ memberRows: cpMembersPromise });
-  } catch (e) {
-    fkZone = {
-      ok: false, items: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`,
-      prev: { label: '전일 강세주', themes: [], count: 0 },
-      today: { label: '오늘 강세주', themes: [], count: 0 },
-      errors: [String((e && e.message) || e)], note: 'F존 후보를 만들지 못했습니다.',
-    };
-    errors.push('fkZone: ' + String((e && e.message) || e));
-  }
+  /* ⚡ 장중매매 후보 (F존·K존) — 위에서 이미 출발시켰다(테마 대장·부대장 + 1분봉 파동, 60초 캐시) */
+  const fkZone = fkZoneRes;
 
   const nxtLeaders = {
     ok: nxt.ok,
@@ -6640,14 +6808,9 @@ module.exports = async function handler(req, res) {
     );
   }
 
-  /* 💸 5분 거래대금 버킷 — 이번 응답 종목의 대금을 공용 기록(Supabase)에 남기고,
-   *    이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다. 폰을 잠깐 열어도 `(25/5/6)`이 바로 보인다. */
-  let tvBuckets = null;
-  try {
-    tvBuckets = await tvSyncBuckets({ themes, session, overSession, now, docPromise: tvDocPromise });
-  } catch (e) {
-    tvBuckets = null;
-  }
+  /* 💸 5분 거래대금 버킷 — 위에서 이미 출발시켰다(테마 시세만 있으면 되므로 전략·종가베팅과 동시).
+   *    이번 응답 종목의 대금을 공용 기록(Supabase)에 남기고, 이미 쌓인 5분 칸을 tvBuckets 로 함께 내려준다. */
+  const tvBuckets = await tvBucketsPromise;
 
   /* 🌙 선물 실시간 — 위에서 띄운 KIS 호출을 최대 2.5초만 기다린다. */
   let futuresKis = null;
@@ -6664,6 +6827,7 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     futuresKis = null;
   }
+  mark('futuresKis');
 
   /* 🌙 침착해 시장 판별 배너에 야간선물 한 줄 — 이미 받은 KIS 야간선물(CM) 값을 그대로 붙인다
    *  (추가 조회 없음). 장전·주말에만 보이고 정규장·야간장 밖에서는 줄이 사라지며,
@@ -6725,6 +6889,7 @@ module.exports = async function handler(req, res) {
     notes,
     sources,
     errors,
+    timings,
     partial: errors.length > 0,
     elapsedMs: Date.now() - started,
     cacheControl: fresh ? REFRESH_CACHE_CONTROL : CACHE_CONTROL,
