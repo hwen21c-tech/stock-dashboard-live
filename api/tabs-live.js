@@ -1429,7 +1429,7 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
   });
 }
 
-async function fetchThemeQuotes(extraCodes, premarket) {
+async function fetchThemeQuotes(extraCodes, premarket, alsoPoll) {
   const tTQ = Date.now();
   // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
   //    동시에 스탁이지 실시간 테마(Supabase 경유·1.5초 타임아웃)도 따로 받아 둔다 —
@@ -1455,6 +1455,15 @@ async function fetchThemeQuotes(extraCodes, premarket) {
     ? se.themes.reduce((acc, t) => acc.concat((t.stocks || []).map((s) => s.code)), [])
     : [];
   const pollCodes = ALL_CODES.concat(WATCH_CODES, extra, STRAT_CARD_CODES, dyn.codes, prevDayCodes, seCodes);
+  /* ⚡ 다른 단계가 곧 필요로 할 종목코드(52주·상한가 후보, 뉴스 수혜주)를 이 polling 에 같이 넣는다 —
+   *   그 단계가 따로 polling 왕복(0.4~0.6초)을 하지 않게 된다(2026-11-27).
+   *   Promise 가 실패해도 그 코드만 빼고 원래 목록으로 그대로 진행한다. */
+  for (const p of Array.isArray(alsoPoll) ? alsoPoll : []) {
+    try {
+      const codes = await p;
+      if (Array.isArray(codes)) codes.forEach((c) => pollCodes.push(c));
+    } catch (e) { /* 이 코드 묶음은 건너뛴다 — 해당 단계가 필요할 때 직접 조회한다 */ }
+  }
   const map = await pollQuotes(pollCodes);
   prof('theme.poll', tTQ);
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
@@ -4998,12 +5007,14 @@ function chimStrategyLine(s) {
   );
 }
 
-/** 후보 코드별 프로그램 추이 병렬 조회(4개씩 · 마감시각 보호) */
+/** 후보 코드별 프로그램 추이 병렬 조회(8개씩 · 마감시각 보호)
+ *  · 예전에는 6개 청크로 나눠 **두 번 왕복**했다(8종목이면 6+2). KIS 호출 간격은 lib/kis 의 큐가
+ *    이미 보장하므로 한 번에 8개를 보내면 왕복이 한 번 줄어 0.4~0.5초가 줄어든다(2026-11-27). */
 async function fetchProgramBatch(codes, deadline) {
   const out = new Map();
-  for (let i = 0; i < codes.length; i += 6) {
+  for (let i = 0; i < codes.length; i += 8) {
     if (Date.now() > deadline) break;
-    const slice = codes.slice(i, i + 6);
+    const slice = codes.slice(i, i + 8);
     const settled = await Promise.allSettled(slice.map((c) => kisLib.fetchProgramTradeByStock(c)));
     settled.forEach((s, idx) => {
       const code = slice[idx];
@@ -6482,14 +6493,51 @@ module.exports = async function handler(req, res) {
     errors: [String((e && e.message) || e)], note: 'F존 후보를 만들지 못했습니다.',
   })), 'fkZone');
 
+  /* 목록·뉴스 요청을 '변수'로 먼저 받아 둔다 — 배치와 ‘미리 polling 할 코드’ 계산이 같은 Promise 를
+     두 번 때리지 않게 쓰기 위해서다(중복 네이버 요청 0). */
+  const listHighK = fetchList('high52week', 'KOSPI');
+  const listHighQ = fetchList('high52week', 'KOSDAQ');
+  const listUpK = fetchList('up', 'KOSPI');
+  const listUpQ = fetchList('up', 'KOSDAQ');
+  const newsPromise = fetchNews();
+  const searchPromise = fetchSearchTopKRX(preOpenTheme);
+
+  /* 52주·상한가 후보 코드 — 지금은 테마 polling 에 같이 넣어 그 왕복(0.4~0.6초)을 없앨 수 있도록
+     목록이 오는 대로 코드만 뽑아 넘긴다(병합·순위 로직은 아래에서 그대로 수행). */
+  const enrichCodesPromise = Promise.all([listHighK, listHighQ, listUpK, listUpQ])
+    .then(([hk, hq, uk, uq]) => {
+      const highLists = [hk, hq].filter(Boolean);
+      const upLs = [uk, uq].filter(Boolean);
+      const hc = highLists.length ? collectHigh52Candidates(highLists) : null;
+      const uc = upLs.length ? collectUpperCandidates(upLs) : null;
+      return []
+        .concat(hc ? hc.base : [], hc ? hc.byValue : [], hc ? hc.byPct : [])
+        .concat(uc ? uc.c25 : [], uc ? uc.cWatch : [])
+        .map((t) => t && t.code)
+        .filter(Boolean);
+    })
+    .catch(() => []);
+  /* 뉴스 수혜주 코드 — 같은 이유로 테마 polling 에 합류 */
+  const newsCodesPromise = newsPromise
+    .then((r) => {
+      const codes = [];
+      ((r && r.items) || []).forEach((n) => {
+        (n.beneficiaryStocks || []).forEach((bs) => {
+          if (bs && /^\d{6}$/.test(String(bs.code || '')) && codes.indexOf(bs.code) < 0) codes.push(bs.code);
+        });
+      });
+      return codes;
+    })
+    .catch(() => []);
+
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR, searchR] = await Promise.allSettled([
-    fetchThemeQuotes(dynCodesPromise, preOpenTheme),
-    fetchList('high52week', 'KOSPI'),
-    fetchList('high52week', 'KOSDAQ'),
-    fetchList('up', 'KOSPI'),
-    fetchList('up', 'KOSDAQ'),
-    fetchNews(),
-    fetchSearchTopKRX(preOpenTheme),
+    fetchThemeQuotes(dynCodesPromise, preOpenTheme, [enrichCodesPromise, newsCodesPromise]),
+    listHighK,
+    listHighQ,
+    listUpK,
+    listUpQ,
+    newsPromise,
+    searchPromise,
   ]);
   const nxt = await nxtPromise;   /* 위 allSettled 와 동시에 출발해 이미 끝나 있다 */
   mark('nxt');
