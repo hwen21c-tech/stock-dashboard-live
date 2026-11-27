@@ -6326,7 +6326,10 @@ module.exports = async function handler(req, res) {
       if (q.date && /^\d{8}$/.test(String(q.date))) {
         const code = codes[0];
         const b = await hamburger.getBase(code, { noCache: true });
-        const m = await kisLib.fetchMinuteBarsForDate(code, String(q.date), { hour: String(q.hour || '090300') });
+        const m = await kisLib.fetchMinuteBarsForDate(code, String(q.date), {
+          hour: String(q.hour || '090300'),
+          marketDiv: String(q.mk || 'J').toUpperCase(),
+        });
         /* ?prev=1 — 주말·휴장일·장초반 대체값(직전 거래일 09:00~09:02) 검증 */
         const prev = q.prev === '1' ? await hamburger.prevSessionOpen(code, String(q.date)) : null;
         return sendJson(res, 200, Object.assign(head, {
