@@ -2560,7 +2560,7 @@ def hourly_flow_comment(slot_t, kp, qp, f, o, ff, theme_name='', theme_chg=None)
     elif o is not None:
         sup = '기관 ' + ('매수' if o > 0 else '매도' if o < 0 else '중립')
     if ff is not None:
-        sup += (' · 선물 %+d계약' % int(ff))
+        sup += (' · 선물 ' + format(int(ff), '+,d') + '계약')
 
     th = ''
     if theme_name:
