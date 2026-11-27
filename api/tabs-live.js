@@ -5083,7 +5083,7 @@ async function buildChimchakhae(ctx) {
       stageMs.push({ stage: name, ms: Date.now() - started });
     } catch (e) { /* noop */ }
   };
-  const { supplyPassed, themePassed, themeMembership, session } = ctx || {};
+  const { supplyPassed, themePassed, themeMembership, session, marketFlowPromise } = ctx || {};
   const cached = cpChimCache.get('chim');
   if (cached && !(ctx && ctx.debug) && Date.now() - cached.at < CP_CHIM_CACHE_TTL_MS) return cached.value;
   const p0 = kstParts(new Date());
@@ -5107,7 +5107,10 @@ async function buildChimchakhae(ctx) {
   /* ① 시장 게이트 + ② 시장 판별 배너(3강 Ch.1) — 지수·외인 현물·외인 선물 */
   let flow = null;
   try {
-    const [idxGate, marketFlow] = await Promise.all([fetchIndexGate(), fetchChimMarketFlow()]);
+    /* 시장 수급(외인 현물·선물)은 핸들러가 미리 띄워 둔 Promise 가 있으면 그것을 기다린다 —
+     *  60초 캐시라 대부분 즉시 끝나고, 콜드에서도 테마 수집과 겹쳐 놓쳐진 시간이 없다(2026-11-27). */
+    const flowP = marketFlowPromise || fetchChimMarketFlow();
+    const [idxGate, marketFlow] = await Promise.all([fetchIndexGate(), flowP]);
     out.marketGate = chimMarketGate(idxGate);
     flow = marketFlow;
   } catch (e) {
@@ -5918,6 +5921,7 @@ async function buildClosingPicks(ctx) {
       themePassed,
       themeMembership,
       session,
+      marketFlowPromise: ctx && ctx.marketFlowPromise,
       debug: Boolean(ctx && ctx.debug),
     });
   } catch (e) {
@@ -6573,8 +6577,27 @@ module.exports = async function handler(req, res) {
     })
     .catch(() => []);
 
+  /* 종가베팅이 추가로 polling 하던 종목코드도 테마 polling 에 미리 넣는다(왕복 제거) —
+   *  · 수급 트랙 후보(외인·기관 상위 12) : KIS 가집계가 오는 대로 코드만 뽑는다.
+   *  · 확장 풀(상위 테마 구성종목) 중 이미 +3%·300억↑ 조건을 넘은 종목 : 윗꼬리(고가)만 없어서
+   *    따로 조회하던 무리다. 실패해도 빈 배열로 두면 기존처럼 그때 직접 조회한다. */
+  const supplyPollCodesPromise = closingSupplyPromise
+    .then((s) => ((s && s.rows) || []).slice(0, 12).map((r) => r && r.code).filter(Boolean))
+    .catch(() => []);
+  const memberPollCodesPromise = cpMembersPromise
+    .then((m) => ((m && m.rows) || [])
+      .filter((r) => {
+        const pct = r && typeof r.changePct === 'number' ? r.changePct : null;
+        const val = r && typeof r.value === 'number' ? r.value : null;
+        return pct !== null && pct >= CP_THEME_MIN_PCT && val !== null && val / 1e8 >= CP_THEME_MIN_VALUE_EOK;
+      })
+      .map((r) => r.code))
+    .catch(() => []);
+  /* 침착해 시장 배너(지수·선물 수급)도 미리 띄워 둔다 — 종가베팅 끝부분에서 처음 부르지 않게 */
+  const chimFlowPromise = fetchChimMarketFlow().catch(() => null);
+
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR, searchR] = await Promise.allSettled([
-    fetchThemeQuotes(dynCodesPromise, preOpenTheme, [enrichCodesPromise, newsCodesPromise], mark),
+    fetchThemeQuotes(dynCodesPromise, preOpenTheme, [enrichCodesPromise, newsCodesPromise, supplyPollCodesPromise, memberPollCodesPromise], mark),
     listHighK,
     listHighQ,
     listUpK,
@@ -6790,6 +6813,7 @@ module.exports = async function handler(req, res) {
   const closingPicksPromise = markWhen(buildClosingPicks({
     themes, knownMap, nxt, high52, upperLimit, session,
     membersPromise: cpMembersPromise, supplyPromise: closingSupplyPromise,
+    marketFlowPromise: chimFlowPromise,
     debug: q.cp_debug === '1',
   }).catch((e) => {
     errors.push('closingPicks: ' + String((e && e.message) || e));
