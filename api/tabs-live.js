@@ -3016,6 +3016,7 @@ async function hamItem(cand, opts) {
   ]);
   const verdict = hamburger.judge(base, today, { pctNow: cand.pctNow });
   return Object.assign({}, cand, {
+    price: numOrNull(cand.quotePrice),
     base: base && base.ok
       ? {
         ok: true,
