@@ -6141,6 +6141,331 @@ async function ideaGeminiImage(prompt, reference) {
   return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
 }
 
+/* ================================================================
+   🎨 이모티콘 스튜디오 AI Pro (emoticon-studio-pro) 전용 액션
+   · emoticon_plan  : 테마·컨셉·사진 → 24종 문구/표정/영문 프롬프트 + OGQ 제목·태그
+   · emoticon_image : 기준 캐릭터(레퍼런스) 1장을 함께 넘겨 24장 일관성을 잠그고,
+                      "NO text · pure white background" 를 강제해 AI 글씨 깨짐을 막는다.
+   ================================================================ */
+
+const EMOTICON_CATEGORIES = [
+  '인사', '인사', '인사',
+  '긍정/답변', '긍정/답변', '긍정/답변', '긍정/답변',
+  '감사/사과', '감사/사과', '감사/사과', '감사/사과',
+  '리액션/웃음', '리액션/웃음', '리액션/웃음', '리액션/웃음',
+  '부정/화남', '부정/화남', '부정/화남',
+  '특수상황', '특수상황',
+  '콤보 1-A', '콤보 1-B', '콤보 2-A', '콤보 2-B',
+];
+
+const EMOTICON_STYLE_LOCK =
+  'STRICT REQUIREMENTS: absolutely NO text, NO letters, NO numbers, NO speech bubbles, NO watermark, NO brand logo. ' +
+  'Exactly one character, fully visible and centered with margin. Pure solid flat white background (#FFFFFF) for easy cutout. ' +
+  'Clean bold sticker outline, consistent line weight and the same palette as the reference.';
+
+const SCHEMA_EMOTICON_PLAN = {
+  type: 'OBJECT',
+  properties: {
+    charName: { type: 'STRING' },
+    worldview: { type: 'STRING' },
+    visualPrompt: { type: 'STRING' },
+    ogqTitle: { type: 'STRING' },
+    ogqTags: { type: 'ARRAY', items: { type: 'STRING' } },
+    slots: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          text: { type: 'STRING' },
+          desc: { type: 'STRING' },
+          prompt: { type: 'STRING' },
+        },
+        required: ['text', 'desc', 'prompt'],
+      },
+    },
+  },
+  required: ['charName', 'worldview', 'visualPrompt', 'slots'],
+};
+
+const SCHEMA_EMOTICON_SEO = {
+  type: 'OBJECT',
+  properties: {
+    kr: { type: 'STRING' },
+    en: { type: 'STRING' },
+    jp: { type: 'STRING' },
+    tw: { type: 'STRING' },
+  },
+  required: ['kr', 'en', 'jp', 'tw'],
+};
+
+const EMOTICON_CATEGORY_LINE =
+  '24종 순서 고정: 1-3 인사 / 4-7 긍정·답변 / 8-11 감사·사과 / 12-15 리액션·웃음 / 16-18 부정·화남 / ' +
+  '19-20 특수상황 / 21-22 연속콤보1(A→B) / 23-24 연속콤보2(A→B). 반드시 정확히 24개.';
+
+const EMOTICON_PRESET_HINT = {
+  basic: '사물 의인화 기본 — 사진 속 사물의 성격을 살린 일상 리액션',
+  blogger: '블로거 리뷰용 — 내돈내산·협찬아님·강추·솔직후기·언박싱·구분선처럼 리뷰 글에 끼워 넣는 문구',
+  worker: '주식·직장인용 — 출근·칼퇴·회의·야근·상한가·손절·존버 같은 직장·투자 리액션',
+  couple: '가족·연인용 — 사랑해·보고싶어·고마워·잘자·놀자 같은 다정한 리액션',
+};
+
+function emoticonDefaultSlot(i) {
+  const cat = EMOTICON_CATEGORIES[i] || '리액션/웃음';
+  return {
+    text: '안녕',
+    desc: cat + ' 기본 표정',
+    prompt: 'friendly waving hello with a warm smile',
+    category: cat,
+  };
+}
+
+async function handleEmoticonPlan(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const mode = s(body.mode, 20);
+  const charName = s(body.charName, 40);
+  const concept = s(body.concept, 300);
+  const visualPrompt = s(body.visualPrompt, 600);
+  const anthro = s(body.anthro, 60);
+  const artStyle = s(body.artStyle, 60);
+  const preset = s(body.preset, 20) || 'basic';
+  const platform = s(body.platform, 20) || 'ogq';
+  const cleanup = body.cleanup !== false;
+  const theme = s(body.theme, 120);
+
+  const photo = body.photo && body.photo.data && /^image\/(jpeg|png|webp)$/.test(String(body.photo.mimeType || ''))
+    ? { data: String(body.photo.data).slice(0, 2.4 * 1024 * 1024), mimeType: String(body.photo.mimeType) }
+    : null;
+
+  const deadline = Date.now() + (mode === 'seo' ? 30000 : DEADLINE_MS);
+
+  if (mode === 'seo') {
+    const user = [
+      '이모티콘 마켓(네이버 OGQ / 라인 크리에이터스) 등록용 다국어 SEO 문구를 작성하세요.',
+      '[캐릭터] ' + (charName || '이름 없음'),
+      '[세계관/컨셉] ' + (concept || '사물 의인화 캐릭터'),
+      '[기획 프리셋] ' + (EMOTICON_PRESET_HINT[preset] || preset),
+      '',
+      '[형식]',
+      'kr: "[제목] ...\\n[소개] ...\\n[태그] #태그1 #태그2 ... (태그 10개, 명사 위주)"',
+      'en / jp / tw: 각각 "Title: ...\\nDesc: ...\\nTags: tag1, tag2 ...(10개)"',
+      '확인되지 않은 수치·고유명사·브랜드는 쓰지 마세요. JSON 만 돌려주세요.',
+    ].join('\n');
+    try {
+      const out = await generate({
+        system: '당신은 이모티콘 마켓 SEO 카피라이터입니다. 과장 없이 검색되는 명사 위주의 태그를 씁니다.',
+        user,
+        schema: SCHEMA_EMOTICON_SEO,
+        temperature: 0.7,
+        maxTokens: 1200,
+        fastFirst: true,
+      }, deadline);
+      let parsed = null;
+      try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+      const d = parsed || {};
+      return send(res, 200, {
+        ok: true, action: 'emoticon_plan', mode: 'seo', model: out.model,
+        data: { kr: s(d.kr, 1600), en: s(d.en, 1200), jp: s(d.jp, 1200), tw: s(d.tw, 1200) },
+      });
+    } catch (err) {
+      const code = (err && err.code) || 'gemini_unavailable';
+      return send(res, code === 'quota_exceeded' ? 429 : 503, {
+        ok: false, action: 'emoticon_plan', mode: 'seo', reason: code,
+        message: code === 'quota_exceeded'
+          ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+          : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+        tries: (err && err.tries) || [],
+      });
+    }
+  }
+
+  const user = [
+    '상업용 이모티콘 24종을 기획하세요.',
+    '[캐릭터 이름] ' + (charName || '(사진에서 새로 지어 주세요)'),
+    '[세계관/한 줄 컨셉] ' + (concept || '(사진을 보고 정해 주세요)'),
+    '[비주얼 DNA] ' + (visualPrompt || '(사진을 보고 영문 1~2문장으로 정리해 주세요)'),
+    '[의인화 스타일] ' + (anthro || 'SD 2등장신 (팔·다리 추가)'),
+    '[화풍] ' + (artStyle || '몽글 손그림'),
+    '[기획 프리셋] ' + (EMOTICON_PRESET_HINT[preset] || preset),
+    '[플랫폼] ' + platform,
+    '[상표 클린업] ' + (cleanup ? '브랜드 로고·실제 글씨는 모두 제거하고 하트 테이프·별 스티커 같은 오리지널 무늬로 치환' : '원본 유지'),
+    theme ? '[추가 테마] ' + theme : '',
+    '',
+    '[규칙]',
+    EMOTICON_CATEGORY_LINE,
+    '1. text 는 실제 채팅에 쓰는 짧은 한국어 문구(공백 포함 10자 이내, 이모지 1개까지). 24개 모두 서로 달라야 합니다.',
+    '2. desc 는 한국어로 그 컷의 표정·포즈 설명(30자 이내).',
+    '3. prompt 는 이미지 생성용 영문 한 줄(포즈·표정·소품). 그림 속 글씨를 넣으라는 표현은 절대 쓰지 마세요.',
+    '4. 콤보 21→22, 23→24 는 이어 보냈을 때 이야기가 이어지도록 A/B 를 짝으로 설계하세요.',
+    '5. ogqTitle 은 20자 이내, ogqTags 는 검색용 명사 10개(# 없이).',
+    '6. 확인되지 않은 브랜드·유명인·수치는 쓰지 마세요.',
+  ].filter(Boolean).join('\n');
+
+  try {
+    const out = await generate({
+      system:
+        '당신은 네이버 OGQ 마켓·라인 크리에이터스에서 실제 판매되는 이모티콘을 기획하는 아트디렉터입니다. ' +
+        '짧고 바로 쓰이는 한국어 문구와, 그림에 글씨를 넣지 않는 영문 포즈 프롬프트를 씁니다.',
+      user,
+      images: photo ? [photo] : [],
+      schema: SCHEMA_EMOTICON_PLAN,
+      temperature: 0.9,
+      maxTokens: 3000,
+      fastFirst: false,
+    }, deadline);
+
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    if (!parsed) {
+      return send(res, 200, {
+        ok: false, action: 'emoticon_plan', reason: 'empty_plan',
+        message: '기획을 만들지 못했습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+    const rawSlots = arr(parsed.slots, 40);
+    const slots = [];
+    for (let i = 0; i < 24; i++) {
+      const it = rawSlots[i] || {};
+      const fallback = emoticonDefaultSlot(i);
+      slots.push({
+        text: s(it.text, 24) || fallback.text,
+        desc: s(it.desc, 60) || fallback.desc,
+        prompt: s(it.prompt, 220) || fallback.prompt,
+        category: EMOTICON_CATEGORIES[i],
+      });
+    }
+    return send(res, 200, {
+      ok: true, action: 'emoticon_plan', model: out.model, preset, platform,
+      data: {
+        charName: s(parsed.charName, 40) || charName || '이모티콘 캐릭터',
+        worldview: s(parsed.worldview, 120) || concept,
+        visualPrompt: s(parsed.visualPrompt, 600) || visualPrompt,
+        ogqTitle: s(parsed.ogqTitle, 80),
+        ogqTags: arr(parsed.ogqTags, 12).map((t) => s(t, 30).replace(/^#/, '')).filter(Boolean),
+        slots,
+      },
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'emoticon_plan', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+        : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+      tries: (err && err.tries) || [],
+    });
+  }
+}
+
+async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
+  const key = String(process.env.GEMINI_API_KEY || '').trim();
+  if (!key) return { ok: false, reason: 'missing_gemini_key', message: '서버 Gemini 키가 없어 이미지를 만들 수 없습니다.' };
+  const models = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
+  const started = Date.now();
+  let lastMsg = '';
+
+  for (const model of models) {
+    const parts = [];
+    if (reference && reference.data) {
+      parts.push({
+        text: mode === 'edit'
+          ? 'This is the sticker image to edit. Keep the same character, same art style and the same composition.'
+          : 'REFERENCE CHARACTER — the SAME character must appear in the new image with identical face shape, eye style, proportions, colors and line weight.',
+      });
+      parts.push({ inlineData: { mimeType: String(reference.mimeType || 'image/jpeg'), data: String(reference.data) } });
+    }
+    parts.push({ text: prompt + '\n\n' + EMOTICON_STYLE_LOCK });
+
+    const bodyBase = {
+      contents: [{ role: 'user', parts }],
+      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: aspectRatio || '1:1' } },
+    };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 26000);
+    try {
+      let r = await fetch(API_ROOT + model + ':generateContent?key=' + encodeURIComponent(key), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyBase),
+        signal: ctrl.signal,
+      });
+      let j = await r.json().catch(() => null);
+      if (!r.ok && r.status === 400) {
+        // imageConfig 를 지원하지 않는 모델이면 비율 없이 한 번 더
+        const msg = String((j && j.error && j.error.message) || '');
+        if (/imageConfig|aspect|Unknown name/i.test(msg)) {
+          const retryBody = { contents: bodyBase.contents, generationConfig: { responseModalities: ['IMAGE'] } };
+          r = await fetch(API_ROOT + model + ':generateContent?key=' + encodeURIComponent(key), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(retryBody),
+            signal: ctrl.signal,
+          });
+          j = await r.json().catch(() => null);
+        }
+      }
+      if (!r.ok) {
+        if (r.status === 429) {
+          return {
+            ok: false, reason: 'gemini_image_quota',
+            message: 'Gemini 이미지 무료 한도를 다 썼습니다(429). 잠시 뒤 다시 시도해 주세요.',
+          };
+        }
+        lastMsg = String((j && j.error && j.error.message) || ('HTTP ' + r.status)).slice(0, 220);
+        continue;
+      }
+      const cps = (j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+      const ip = cps.find((p) => p && p.inlineData && p.inlineData.data);
+      if (!ip) {
+        const fr = (j && j.candidates && j.candidates[0] && j.candidates[0].finishReason) || '';
+        lastMsg = 'Gemini 응답에 이미지가 없습니다.' + (fr ? ' (' + fr + ')' : '');
+        continue;
+      }
+      const buf = Buffer.from(ip.inlineData.data, 'base64');
+      return {
+        ok: true, engine: 'gemini', model,
+        mime: ip.inlineData.mimeType || 'image/png',
+        data: ip.inlineData.data,
+        bytes: buf.length,
+        ms: Date.now() - started,
+      };
+    } catch (e) {
+      lastMsg = (e && e.name === 'AbortError')
+        ? model + ' 응답 시간 초과(26초)'
+        : String((e && e.message) || e).slice(0, 180);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
+}
+
+async function handleEmoticonImage(res, body) {
+  const prompt = s(body.prompt, 1600);
+  if (!prompt) {
+    return send(res, 400, { ok: false, action: 'emoticon_image', reason: 'empty_prompt', message: '그림 프롬프트가 비어 있습니다.' });
+  }
+  const mode = s(body.mode, 20) || 'sticker';
+  const aspect = ['1:1', '16:9', '9:16', '4:3', '3:4'].indexOf(s(body.aspectRatio, 10)) >= 0 ? s(body.aspectRatio, 10) : '1:1';
+  const src = body.reference || body.image || null;
+  const reference = src && src.data
+    ? { data: String(src.data).slice(0, 3.6 * 1024 * 1024), mimeType: s(src.mimeType, 40) || 'image/png' }
+    : null;
+
+  const out = await emoticonGeminiImage(prompt, reference, aspect, mode);
+  if (!out.ok) {
+    return send(res, 200, {
+      ok: false, action: 'emoticon_image', engine: 'gemini', mode,
+      reason: out.reason || 'gemini_image_failed',
+      message: out.message || 'Gemini 이미지 생성에 실패했습니다.',
+    });
+  }
+  return send(res, 200, {
+    ok: true, action: 'emoticon_image', engine: 'gemini', mode,
+    model: out.model, mime: out.mime, aspectRatio: aspect,
+    bytes: out.bytes, ms: out.ms, data: out.data,
+  });
+}
+
 async function handleIdeaImage(res, body) {
   const prompt = s(body.prompt, 1200);
   if (!prompt) return send(res, 400, { ok: false, action: 'idea_image', reason: 'empty_prompt', message: '그림 프롬프트가 비어 있습니다.' });
@@ -6356,6 +6681,13 @@ module.exports = async function handler(req, res) {
           "→ { ok, queryEn, source:'openalex'|'crossref', papers:[{title,year,journal,authors,doi,cited,abstract}], answer:{headline,principle[],practice[],paperNotes[],cautions[]}, ai }",
         note: '논문은 OpenAlex → CrossRef 순으로 실제 조회한다. 논문·DOI를 지어내지 않는다.',
       },
+      emoticon_studio: {
+        page: 'https://emoticon-studio-pro.vercel.app',
+        actions: ['emoticon_plan', 'emoticon_image'],
+        plan: "POST { action:'emoticon_plan', charName, concept, visualPrompt, anthro, artStyle, preset:'basic'|'blogger'|'worker'|'couple', photo:{data,mimeType}(선택) } → { ok, data:{ charName, worldview, visualPrompt, ogqTitle, ogqTags[], slots[24]{text,desc,prompt,category} } }",
+        seo: "POST { action:'emoticon_plan', mode:'seo', charName, concept } → { ok, data:{ kr, en, jp, tw } }",
+        image: "POST { action:'emoticon_image', prompt, mode:'sticker'|'sheet'|'edit', aspectRatio:'1:1'|'16:9', reference:{data,mimeType} | image:{data,mimeType} } → { ok, model, mime, data(base64) } — 기준 캐릭터를 함께 넘기고 'NO text · pure white background' 를 강제한다.",
+      },
       shorts_editor: {
         page: '/shorts-editor.html',
         actions: ['shorts_analyze', 'shorts_rewrite', 'shorts_tts'],
@@ -6443,6 +6775,9 @@ module.exports = async function handler(req, res) {
   if (action === 'idea_prompt_edit') return handleIdeaPromptEdit(res, body, keyConfigured);
   if (action === 'idea_image' || action === 'idea_image_proxy') return handleIdeaImage(res, body);
   if (action === 'idea_url_extract') return handleIdeaUrlExtract(res, body);
+  // 🎨 이모티콘 스튜디오 AI Pro — 24종 기획 · 기준 캐릭터 고정 이미지(레퍼런스+글씨금지)
+  if (action === 'emoticon_plan') return handleEmoticonPlan(res, body, keyConfigured);
+  if (action === 'emoticon_image') return handleEmoticonImage(res, body);
   // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
   if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
     return handleWork(res, body, keyConfigured);
