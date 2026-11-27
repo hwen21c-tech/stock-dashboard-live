@@ -185,7 +185,11 @@ const HIGH52_LIMIT = 5;
 const UPPER_LIMIT_MAX = 6;
 const NEAR_LIMIT_MAX = 6;
 const WATCH_MAX = 6;
-const POLL_MAX_CODES = 60;
+/* 네이버 polling 한 번에 넣을 종목 수. 2026-11-27 실측: 138종목을 한 요청으로 보내도
+ *  0.2~0.3초에 전부 돌아온다(응답 226KB). 60 으로 자를면 3번 나눠 나가는데,
+ *  서버리스 콜드에서는 새 TLS 연결을 그만큼 더 맺어 왕복이 1.8초까지 늘었다.
+ *  → 한 번에 다 넣고(최대 160), 그 이상일 때만 나눈다. */
+const POLL_MAX_CODES = 160;
 
 /* ---------------- 네이버 실시간 테마 랭킹 (동적 주도 테마) ---------------- */
 const THEME_RANK_URL = 'https://m.stock.naver.com/api/stocks/theme';
