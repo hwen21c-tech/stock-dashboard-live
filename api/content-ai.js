@@ -5269,6 +5269,17 @@ const SHORTS_SCHEMA = {
     youtubeTitle: { type: 'STRING' },
     youtubeDescription: { type: 'STRING' },
     bgmMood: { type: 'STRING', enum: SHORTS_BGMS },
+    hookOptions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          type: { type: 'STRING', enum: ['curiosity', 'direct', 'twist'] },
+          text: { type: 'STRING' },
+        },
+        required: ['type', 'text'],
+      },
+    },
     segments: {
       type: 'ARRAY',
       items: {
@@ -5317,6 +5328,30 @@ function shortsClipLines(body) {
   return { clips: clips, images: images, lines: lines, dropped: dropped };
 }
 
+/* 후킹 3안 정규화 — 모델이 타입을 한글로 주든 영어로 주든 curiosity/direct/twist 로 맞춘다. */
+function normalizeHookOptions(list, fallbackHook) {
+  const pick = (raw) => {
+    const v = String(raw || '').toLowerCase();
+    if (v.indexOf('호기심') >= 0 || v.indexOf('curio') >= 0) return 'curiosity';
+    if (v.indexOf('반전') >= 0 || v.indexOf('twist') >= 0) return 'twist';
+    if (v.indexOf('직설') >= 0 || v.indexOf('direct') >= 0) return 'direct';
+    return '';
+  };
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach((o) => {
+    const text = s(o && (o.text || o.hook || o.line || o.title), 40);
+    if (!text) return;
+    const type = pick(o && (o.type || o.kind || o.label)) || (out.length === 0 ? 'curiosity' : out.length === 1 ? 'direct' : 'twist');
+    if (out.some((x) => x.text === text)) return;
+    out.push({ type, text });
+  });
+  if (!out.length && fallbackHook) {
+    const h = s(fallbackHook, 40);
+    if (h) out.push({ type: 'direct', text: h });
+  }
+  return out.slice(0, 3);
+}
+
 async function handleShortsAnalyze(res, body, keyConfigured) {
   if (!keyConfigured) return send(res, 503, noKeyBody());
   const pack = shortsClipLines(body);
@@ -5350,8 +5385,10 @@ async function handleShortsAnalyze(res, body, keyConfigured) {
     '6. 첫 컷은 3초 안에 멈추게 하는 후킹, 마지막 컷은 저장·팔로우를 부르는 마무리.',
     '7. youtubeTitle 은 40자 안팎의 클릭을 부르는 제목, youtubeDescription 은 2~3줄 요약 + 해시태그 5개.',
     '8. bgmMood 는 upbeat / chill / tense / none 중 하나. 영상 분위기에 맞게.',
-    '9. 화면에 실제로 보이는 것만 근거로 쓰세요. 확인되지 않은 가게 이름·가격·수치를 지어내지 마세요.',
-    '10. 마지막에 JSON 만 돌려주세요.',
+    '9. hookOptions 는 화면 상단에 띄울 후킹 문구 3안 — type 은 curiosity(호기심형) / direct(직설형) / twist(반전형), ' +
+      'text 는 24자 이내 한 줄. 서로 말투가 확실히 달라야 하고, 같은 문장을 복사하지 마세요.',
+    '10. 화면에 실제로 보이는 것만 근거로 쓰세요. 확인되지 않은 가게 이름·가격·수치를 지어내지 마세요.',
+    '11. 마지막에 JSON 만 돌려주세요.',
   ].join('\n');
 
   const deadline = Date.now() + DEADLINE_MS;
@@ -5430,6 +5467,7 @@ async function handleShortsAnalyze(res, body, keyConfigured) {
         youtubeTitle: s(parsed.youtubeTitle, 120),
         youtubeDescription: s(parsed.youtubeDescription, 900),
         bgmMood: SHORTS_BGMS.indexOf(String(parsed.bgmMood || '')) >= 0 ? String(parsed.bgmMood) : 'upbeat',
+        hookOptions: normalizeHookOptions(parsed.hookOptions, arc.hook),
         segments: segs,
       },
       imagesUsed: pack.images.length,
@@ -5643,7 +5681,7 @@ module.exports = async function handler(req, res) {
       shorts_editor: {
         page: '/shorts-editor.html',
         actions: ['shorts_analyze', 'shorts_rewrite', 'shorts_tts'],
-        analyze: "POST { action:'shorts_analyze', tone:'energetic'|'vlog'|'info'|'dramatic', hint:'방향', clips:[{name,duration,width,height,frames:[{tSec,data(base64 jpeg)}]}] } → { ok, data:{ storyArc, youtubeTitle, youtubeDescription, bgmMood, segments[] } } — 키프레임 최대 15장",
+        analyze: "POST { action:'shorts_analyze', tone:'energetic'|'vlog'|'info'|'dramatic', hint:'방향', clips:[{name,duration,width,height,frames:[{tSec,data(base64 jpeg)}]}] } → { ok, data:{ storyArc, youtubeTitle, youtubeDescription, bgmMood, hookOptions[{type,text}], segments[] } } — 키프레임 최대 15장·후킹 3안(curiosity/direct/twist)",
         rewrite: "POST { action:'shorts_rewrite', narration, subtitle, tone } → { ok, data:{ narration, subtitle } }",
         tts: "POST { action:'shorts_tts', text, voiceId?, key? } → { ok, audio(base64), alignment } / 키 없으면 reason:'no_eleven_key' → /api/tts 무료 성우 사용",
       },

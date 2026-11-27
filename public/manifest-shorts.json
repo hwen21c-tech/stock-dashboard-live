@@ -1,0 +1,21 @@
+{
+  "id": "/shorts-editor.html",
+  "name": "쇼츠 스튜디오 PRO",
+  "short_name": "쇼츠편집기",
+  "description": "영상·사진 클립 5개를 올리면 AI가 스토리·컷·자막·성우·BGM을 입혀 주는 쇼츠 전용 편집기 (가족 PIN 0623)",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "/shorts-editor.html",
+  "scope": "/shorts-editor.html",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "categories": ["productivity", "video", "utilities"],
+  "icons": [
+    { "src": "/icons/shorts-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/shorts-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/shorts-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
