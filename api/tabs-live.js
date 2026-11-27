@@ -916,8 +916,9 @@ function pickThemeStocks(stocks) {
  *  · 스팩·우선주·ETF 계열 테마는 제외하고, 등락률 내림차순(동률이면 상승종목 비율)으로 자른다.
  *  · 값을 만들지 않는다 — 실패한 테마는 목록에서 빼고 errors 에 남긴다.
  */
-async function buildDynamicThemes() {
+async function buildDynamicThemes(mark) {
   const tDyn = Date.now();
+  const mm = typeof mark === 'function' ? mark : () => {};
   const errors = [];
   let groups = [];
   let marketStatus = null;
@@ -966,8 +967,10 @@ async function buildDynamicThemes() {
 
   const top = rows.slice(0, THEME_CANDIDATES);
   prof('dyn.rank', tDyn);
+  mm('theme.rank');
   const settled = await Promise.allSettled(top.map((g) => fetchThemeStocks(g.no)));
   prof('dyn.details(' + top.length + ')', tDyn);
+  mm('theme.details');
   const themes = [];
   const codes = [];
   top.forEach((g, i) => {
@@ -1429,16 +1432,18 @@ function mapPrevDayThemes(snapshot, themes, map, premarket) {
   });
 }
 
-async function fetchThemeQuotes(extraCodes, premarket, alsoPoll) {
+async function fetchThemeQuotes(extraCodes, premarket, alsoPoll, marks) {
   const tTQ = Date.now();
+  const mm = typeof marks === 'function' ? marks : () => {};
   // 1) 오늘 장중 실제 강세 테마 Top 8 을 네이버 테마 랭킹에서 먼저 받아 온다.
   //    동시에 스탁이지 실시간 테마(Supabase 경유·1.5초 타임아웃)도 따로 받아 둔다 —
   //    이쪽이 실패해도 네이버 테마맵은 그대로 그린다.
   const [dyn, se] = await Promise.all([
-    buildDynamicThemes(),
+    buildDynamicThemes(marks),
     fetchStockEasyThemes().catch((e) => ({ ok: false, themes: [], error: String((e && e.message) || e) })),
   ]);
   prof('theme.dynThemes+stockEasy', tTQ);
+  mm('theme.dyn+se');
   /* 장전(프리마켓)에는 랭킹이 비었거나 전 테마가 0.00%로 내려온다 → '오늘 강세'라 부를 근거가 없다.
    *  이때는 직전 거래일 장마감 Top 8 테마 스냅샷을 그대로 세우고 프리마켓 체결가만 덧씌운다. */
   const dynFlat = dynamicThemesFlat(dyn);
@@ -1466,6 +1471,7 @@ async function fetchThemeQuotes(extraCodes, premarket, alsoPoll) {
   }
   const map = await pollQuotes(pollCodes);
   prof('theme.poll', tTQ);
+  mm('theme.poll');
   if (!Object.keys(map).length) throw new Error('네이버 polling 응답에 종목이 없습니다');
 
   // 3) 동적 테마가 있으면 고정 THEMES 로 덮어쓰지 않는다(폴백은 랭킹 자체가 죽었을 때만).
@@ -3558,15 +3564,13 @@ const STRAT_CARD_CODES = strategyCardCodes();
 /* packStrat 이 참조하는 '이번 호출의 시세 map' — buildStrategyLive 진입 때 채우고 끝나면 비운다 */
 let STRAT_QUOTE_MAP = null;
 
-/** 장중 실시간 전략 판정을 통으로 만든다.
- *  phase: sessionOf() 의 phase — '장마감'이면 현재가가 NXT 시간외 체결가라
- *  기준선(정규장 종가) 대비 손절/익절 '판정'을 켜면 안 된다(11/24 실측: 삼현 63,000 기준선 vs 60,300 시간외 → 전 카드 이탈로 오인).
- */
-async function buildStrategyLive(map, phase, ctx) {
+/** ⚡ ① 전략 '유니버스' 계산 — KRX 등락률·거래대금 상위 → 후보 축소 → 통합 시세·일봉 판정.
+ *  테마맵(knownMap) 없이 끝나므로 핸들러가 **요청 시작과 동시에** 띄워 둔다(2026-11-27 콜드 응답 단축).
+ *  판정 규칙(judgeMover)·한도(STRAT_MAX_CANDLES)는 하나도 바꾸지 않는다. */
+async function buildStrategyUniverse(ctx) {
   const tStrat = Date.now();
   const errors = [];
-  /* ⚡ KRX 등락률·거래대금 상위는 핸들러가 미리 띄워 둔 Promise 로 받는다(없으면 여기서 조회) —
-   *    테마·시세 수집과 동시에 시작해야 콜드 응답이 짧아진다(2026-11-27). */
+  /* ⚡ KRX 등락률·거래대금 상위는 핸들러가 미리 띄워 둔 Promise 로 받는다(없으면 여기서 조회) */
   const [upR, valR] = ctx && ctx.krxRank
     ? await ctx.krxRank
     : await Promise.allSettled([
@@ -3674,7 +3678,25 @@ async function buildStrategyLive(map, phase, ctx) {
   });
   bijFresh.sort((a, b) => (b.valueEok || 0) - (a.valueEok || 0));
   hongFresh.sort((a, b) => (b.pct || 0) - (a.pct || 0));
+  prof('strategy.universe', tStrat);
+  return {
+    ok: byPct.length + byVal.length > 0,
+    byPct, byVal, pool, need, valueRank,
+    bijFresh, bijNear, hongFresh, hongNear, d0Pool, scanned,
+    errors,
+  };
+}
 
+/** 장중 실시간 전략 판정을 통으로 만든다.
+ *  phase: sessionOf() 의 phase — '장마감'이면 현재가가 NXT 시간외 체결가라
+ *  기준선(정규장 종가) 대비 손절/익절 '판정'을 켜면 안 된다(11/24 실측: 삼현 63,000 기준선 vs 60,300 시간외 → 전 카드 이탈로 오인).
+ *  유니버스(후보·일봉 판정)는 ctx.universePromise 로 미리 계산된 것을 받는다.
+ */
+async function buildStrategyLive(map, phase, ctx) {
+  const tStrat = Date.now();
+  const U = ctx && ctx.universePromise ? await ctx.universePromise : await buildStrategyUniverse(ctx || {});
+  const errors = U.errors;
+  const { byPct, byVal, valueRank, bijFresh, bijNear, hongFresh, hongNear, d0Pool, scanned, need, pool } = U;
   const today = kstTodayYmd();
   const pack = (data, judgeFn, key) => {
     const basisDate = (data && data.basisDate) || null;
@@ -6477,6 +6499,15 @@ module.exports = async function handler(req, res) {
     { status: 'rejected', reason: e },
     { status: 'rejected', reason: e },
   ]);
+  /* ⚡ 전략 유니버스(KRX 랭킹 → 후보 → 통합 시세·일봉 판정)는 테마맵이 필요 없다 — 여기서 출발.
+   *    예전에는 테마 수집(3초)이 끝난 뒤에야 시작해서 응답 뒤미가 그만큼 늘어났다. */
+  const strategyUniversePromise = buildStrategyUniverse({
+    krxRank: krxRankPromise,
+  }).catch((e) => ({
+    ok: false, byPct: [], byVal: [], pool: [], need: [], valueRank: {},
+    bijFresh: [], bijNear: [], hongFresh: [], hongNear: [], d0Pool: [], scanned: 0,
+    errors: ['전략 유니버스: ' + String((e && e.message) || e)],
+  }));
   /* 지수 게이트·장중 가집계·종가베팅 수급(한투) — 모두 60초 캐시라 대부분 즉시 끝난다 */
   const indexGatePromise = fetchIndexGate().catch(() => null);
   const supplyMapPromise = hongSupplyMap().catch(() => null);
@@ -6531,7 +6562,7 @@ module.exports = async function handler(req, res) {
     .catch(() => []);
 
   const [themeR, highKospiR, highKosdaqR, upKospiR, upKosdaqR, newsR, searchR] = await Promise.allSettled([
-    fetchThemeQuotes(dynCodesPromise, preOpenTheme, [enrichCodesPromise, newsCodesPromise]),
+    fetchThemeQuotes(dynCodesPromise, preOpenTheme, [enrichCodesPromise, newsCodesPromise], mark),
     listHighK,
     listHighQ,
     listUpK,
@@ -6722,6 +6753,7 @@ module.exports = async function handler(req, res) {
     supply: supplyMapPromise,
     prevStrongThemes: lastStrongThemes(),
     krxRank: krxRankPromise,
+    universePromise: strategyUniversePromise,
   })
     .then((v) => {
       sources.push({
