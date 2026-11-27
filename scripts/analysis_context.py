@@ -558,7 +558,7 @@ def theme_continuity(script_dir, today_themes, theme_rank=None, max_days=5):
         prev_rank = pt.get("rank")
         today_rank = (tr or {}).get("rank") if tr else ((tt or {}).get("rank") if tt else None)
         if today_rank is None:
-            status = f"이탈(상위 {rank_scope}테마 밖)" if rank_scope else "순위 미수신"
+            status = "이탈(관제탑 목록 밖)" if rank_scope else "순위 미수신"
         elif prev_rank and today_rank <= prev_rank:
             status = "유지"
         elif prev_rank and today_rank <= prev_rank + 2:
@@ -608,7 +608,7 @@ def theme_continuity(script_dir, today_themes, theme_rank=None, max_days=5):
             "name": pt["name"],
             "prev_rank": prev_rank, "prev_avg": pt.get("avg_pct"),
             "today_rank": today_rank,
-            "today_avg": _num((tr or {}).get("avg_pct")) if tr else _num((tt or {}).get("avg_pct")),
+            "today_avg": _num((tt or {}).get("avg_pct")) if tt else _num((tr or {}).get("avg_pct")),
             "today_basis": (tt or {}).get("basis_label") or (tr or {}).get("basis_label"),
             "status": status,
             "leader_prev": leader_prev, "leader_now": leader_now,
@@ -619,7 +619,11 @@ def theme_continuity(script_dir, today_themes, theme_rank=None, max_days=5):
             "appear_days": appear, "history_days": len(hist),
         })
     kept = sum(1 for r in rows if r["status"] in ("유지", "약화"))
-    leader_up = sum(1 for r in rows if r["prev4_up"] >= 1)
+    checked_rows = [r for r in rows if r["prev4_checked"]]
+    leader_up = sum(1 for r in checked_rows if r["prev4_up"] >= 1)
+    summary = {"rank_kept": f"{kept}/{len(rows)}"}
+    if checked_rows:
+        summary["leader_up"] = f"{leader_up}/{len(checked_rows)}"
     return {
         "ok": True,
         "prev_date": prev.get("date"), "prev_label": prev.get("label"),
@@ -627,7 +631,7 @@ def theme_continuity(script_dir, today_themes, theme_rank=None, max_days=5):
         "history_days": len(hist),
         "history_dates": [h["date"] for h in hist],
         "themes": rows,
-        "summary": {"rank_kept": f"{kept}/{len(rows)}", "leader_up": f"{leader_up}/{len(rows)}"},
+        "summary": summary,
     }
 
 

@@ -936,13 +936,17 @@ def collect(script_dir, use_fixture=None, verbose=True, deep=True, deep_budget=2
     #   · 네트워크 작업은 내부 시간 예산 안에서만 돌고, 실패해도 발송을 막지 않는다.
     facts["deep"] = None
     if deep and analysis_ctx is not None and not use_fixture:
-        # 오늘 테마 순위 — 네이버 테마 랭킹(장중) 우선, 장전에는 관제탑 테마 목록으로
-        rank_rows = [{"rank": x.get("rank"), "name": x.get("name"), "avg_pct": x.get("pct"),
-                      "basis_label": "네이버 테마 등락(실시간)"} for x in themes or [] if x.get("name")]
+        # 오늘 테마 순위 — 관제탑(tabs-live) 테마 목록이 단일 진실(순위·기준일 포함).
+        #   관제탑 목록이 비어 있을 때만 네이버 테마 등락을 등락률순으로 임시 순위로 쓴다.
+        rank_rows = [{"rank": t.get("rank"), "name": t.get("name"), "avg_pct": t.get("avgPct"),
+                      "basis_label": t.get("avgPctBasisLabel")}
+                     for t in (tabs or {}).get("themes") or [] if t.get("name")]
         if not rank_rows:
-            rank_rows = [{"rank": t.get("rank"), "name": t.get("name"), "avg_pct": t.get("avgPct"),
-                          "basis_label": t.get("avgPctBasisLabel")}
-                         for t in (tabs or {}).get("themes") or [] if t.get("name")]
+            rank_rows = [{"rank": None, "name": x.get("name"), "avg_pct": x.get("pct"),
+                          "basis_label": "네이버 테마 등락(실시간)"} for x in themes or [] if x.get("name")]
+            rank_rows.sort(key=lambda r: -(r["avg_pct"] if r.get("avg_pct") is not None else -1e9))
+            for i, r in enumerate(rank_rows, 1):
+                r["rank"] = i
         try:
             facts["deep"] = analysis_ctx.build_deep_context(
                 script_dir, facts["themes"], theme_rank=rank_rows,
@@ -1092,7 +1096,8 @@ def deep_text(f):
             seg.append(f"보관 {r.get('history_days')}일 중 상위권 {r.get('appear_days')}일")
             L.append(f"- {r['name']}: " + " · ".join(seg))
         sm = ct.get("summary") or {}
-        L.append(f"  요약: 전일 상위 테마 중 오늘도 상위권 {sm.get('rank_kept')} · 전일 주도주가 오늘 상승한 테마 {sm.get('leader_up')}")
+        tail = f" · 전일 주도주가 오늘 상승한 테마 {sm['leader_up']}" if sm.get("leader_up") else ""
+        L.append(f"  요약: 전일 상위 테마 중 오늘도 상위권 {sm.get('rank_kept')}" + tail)
         if stale:
             L.append(f"  ※ 지금 받는 쪽 테마 값은 '{stale}' 기준이라 오늘 장중 값이 아니다 — 연속성 판정은 장중에 의미가 있다.")
         L.append("")
