@@ -6859,6 +6859,207 @@ async function handleEmoticonImage(res, body) {
   });
 }
 
+/* ================================================================
+   🎵 AURA Studio Pro (aura-studio-pro) 전용 액션 — aura_compose
+   · 한글 무드 한 줄 → 제목·BPM·키·스케일·코드 보이싱·멜로디 노트·드럼 패턴 JSON.
+   · 프런트(AURA)가 이 JSON 을 그대로 피아노 롤에 채운다.
+   · 서버 쿼터·오류 시 프런트의 내장 작곡 엔진이 같은 무드로 대신 만든다.
+   ================================================================ */
+
+const AURA_KEYS = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+const AURA_SCALES = ['major', 'minor', 'dorian'];
+const AURA_KITS = ['kit-cr78', 'kit-acoustic', 'kit-kpr77', 'kit-linn', 'kit-r8', 'kit-stark'];
+
+const SCHEMA_AURA_COMPOSE = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING', description: '한국어 곡 제목 (20자 이내)' },
+    bpm: { type: 'NUMBER', description: '60~170 사이 정수' },
+    key: { type: 'STRING', description: 'C, C#, D, Eb, E, F, F#, G, Ab, A, Bb, B 중 하나' },
+    scaleType: { type: 'STRING', description: 'major | minor | dorian' },
+    tip: { type: 'STRING', description: '어울리는 장면·편집 팁 한두 문장 (한국어)' },
+    chords: {
+      type: 'ARRAY',
+      description: '4개 또는 8개의 코드 (4마디 단위로 반복 재생)',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          degree: { type: 'NUMBER', description: '스케일 도수 0~6 (0=으뜸음)' },
+          extension: { type: 'STRING', description: '5 | 7 | 9' },
+          name: { type: 'STRING', description: 'Am9, Fmaj7 같은 표기' },
+          midi: { type: 'ARRAY', items: { type: 'NUMBER' }, description: '실제 들리는 코드 보이싱 4~5음 (36~72)' },
+        },
+        required: ['degree', 'extension', 'name', 'midi'],
+      },
+    },
+    melody: {
+      type: 'ARRAY',
+      description: '멜로디 노트 12~60개',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          bar: { type: 'NUMBER', description: '0부터 시작하는 마디 번호' },
+          step: { type: 'NUMBER', description: '16분 음표 칸 0~15' },
+          midi: { type: 'NUMBER', description: '60~88' },
+          dur: { type: 'NUMBER', description: '길이(16분 단위) 1~8' },
+          vel: { type: 'NUMBER', description: '세기 0.3~1' },
+        },
+        required: ['bar', 'step', 'midi', 'dur'],
+      },
+    },
+    drums: {
+      type: 'OBJECT',
+      properties: {
+        kit: { type: 'STRING', description: 'kit-cr78 | kit-acoustic | kit-kpr77 | kit-linn | kit-r8 | kit-stark' },
+        kick: { type: 'STRING', description: '16글자 0/1' },
+        snare: { type: 'STRING', description: '16글자 0/1' },
+        hat: { type: 'STRING', description: '16글자 0/1' },
+        openhat: { type: 'STRING', description: '16글자 0/1' },
+      },
+      required: ['kick', 'snare', 'hat'],
+    },
+  },
+  required: ['title', 'bpm', 'key', 'scaleType', 'chords', 'melody', 'drums'],
+};
+
+function auraPattern(v) {
+  const raw = Array.isArray(v) ? v.map((x) => (x === 1 || x === true || x === '1' ? '1' : '0')).join('') : String(v || '').replace(/[^01]/g, '');
+  const s16 = (raw + '0000000000000000').slice(0, 16);
+  return s16;
+}
+
+async function handleAuraCompose(res, body, keyConfigured) {
+  const mood = s(body.mood, 300);
+  if (!mood) {
+    return send(res, 400, {
+      ok: false, action: 'aura_compose', reason: 'empty_mood',
+      message: '분위기를 한 줄 적어 주세요.',
+    });
+  }
+  if (!keyConfigured) return send(res, 503, { ...noKeyBody(), action: 'aura_compose' });
+
+  const bars = Math.max(4, Math.min(16, Math.trunc(num(body.bars, 16)) || 16));
+  const wantKey = AURA_KEYS.indexOf(s(body.key, 4)) >= 0 ? s(body.key, 4) : 'A';
+  const wantScale = AURA_SCALES.indexOf(s(body.scaleType, 8)) >= 0 ? s(body.scaleType, 8) : 'minor';
+  const wantBpm = Math.max(60, Math.min(170, Math.trunc(num(body.bpm, 0)) || 0));
+  const genre = s(body.genre, 20);
+  const energy = Math.max(0, Math.min(100, Math.trunc(num(body.energy, 70))));
+  const bright = Math.max(0, Math.min(100, Math.trunc(num(body.brightness, 60))));
+
+  const user = [
+    `다음 무드의 ${bars}마디 연주곡(보컬 없음)을 작곡해 JSON 으로만 답하세요.`,
+    `[무드] ${mood}`,
+    wantBpm ? `[희망 템포] ${wantBpm} BPM (크게 다르지 않으면 그대로)` : '',
+    `[키] ${wantKey} / [스케일] ${wantScale} (바꾸지 마세요)`,
+    genre ? `[장르 힌트] ${genre}` : '',
+    `[에너지] ${energy}/100 · [밝기] ${bright}/100`,
+    '',
+    '[규칙]',
+    '1. chords 는 정확히 4개 또는 8개. 4마디마다 반복되므로 4개면 충분합니다. 실제로 들리는 보이싱(midi 4~5음, 36~72)을 쓰고 7th/9th 텐션을 넣어 풍성하게.',
+    '2. degree 는 스케일 도수(0=으뜸음). 단조에서 0,2,5,6 이 자연스럽습니다.',
+    '3. melody 는 12~40개 노트. bar 0~3(또는 0~7) 안에서 16분 칸(step 0~15)으로. 강박(step 0,4,8,12)은 코드음, 약박은 스케일 통과음. 도약은 7반음 이내. midi 60~84.',
+    '4. 첫 두 마디에 기억에 남는 4~8음 모티프를 만들고, 뒤에서 변주하세요.',
+    '5. drums 는 16글자 0/1 문자열 1마디 패턴. kick/snare/hat 필수, openhat 선택. 쇼츠 BGM 이므로 과하게 시끄럽지 않게.',
+    '6. title 은 한국어 20자 이내, tip 은 어울리는 장면 1~2문장.',
+    '7. 확인되지 않은 곡명·아티스트·브랜드를 쓰지 마세요. JSON 만.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + 34000;
+  try {
+    const out = await generate({
+      system:
+        '당신은 쇼츠·유튜브용 BGM 을 쓰는 작곡가 겸 편곡자입니다. 반주(연주) 특화이며, ' +
+        '실제로 피아노 롤에 넣을 수 있는 코드 보이싱·멜로디 노트·16스텝 드럼 패턴을 정확한 JSON 으로 냅니다.',
+      user,
+      schema: SCHEMA_AURA_COMPOSE,
+      temperature: 0.95,
+      maxTokens: 3200,
+      fastFirst: true,
+    }, deadline);
+
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    if (!parsed) {
+      return send(res, 200, {
+        ok: false, action: 'aura_compose', reason: 'empty_compose',
+        message: '작곡 결과를 만들지 못했습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+
+    const key = AURA_KEYS.indexOf(s(parsed.key, 4)) >= 0 ? s(parsed.key, 4) : wantKey;
+    const scaleType = AURA_SCALES.indexOf(s(parsed.scaleType, 8)) >= 0 ? s(parsed.scaleType, 8) : wantScale;
+    const bpm = Math.max(58, Math.min(172, Math.trunc(num(parsed.bpm, wantBpm || 96)) || 96));
+
+    const chords = [];
+    arr(parsed.chords, 10).forEach((c) => {
+      const midi = arr(c && c.midi, 6)
+        .map((n) => Math.round(num(n, 0)))
+        .filter((n) => n >= 30 && n <= 88);
+      if (midi.length < 3) return;
+      chords.push({
+        degree: Math.max(0, Math.min(6, Math.trunc(num(c && c.degree, 0)) || 0)),
+        extension: ['5', '7', '9'].indexOf(s(c && c.extension, 4)) >= 0 ? s(c && c.extension, 4) : '7',
+        name: s(c && c.name, 20) || '',
+        midi: midi.sort((a, b) => a - b).slice(0, 6),
+      });
+    });
+    if (chords.length < 2) {
+      return send(res, 200, {
+        ok: false, action: 'aura_compose', reason: 'bad_chords',
+        message: '코드 진행이 비어 있습니다. 다시 시도해 주세요.', model: out.model,
+      });
+    }
+
+    const melody = [];
+    arr(parsed.melody, 80).forEach((n) => {
+      const midi = Math.round(num(n && n.midi, 0));
+      if (midi < 36 || midi > 96) return;
+      melody.push({
+        bar: Math.max(0, Math.min(bars - 1, Math.trunc(num(n && n.bar, 0)) || 0)),
+        step: Math.max(0, Math.min(15, Math.trunc(num(n && n.step, 0)) || 0)),
+        midi,
+        dur: Math.max(1, Math.min(16, Math.trunc(num(n && n.dur, 2)) || 2)),
+        vel: Math.max(0.25, Math.min(1, Number(num(n && n.vel, 0.78)) || 0.78)),
+      });
+    });
+
+    const d = parsed.drums || {};
+    const drums = {
+      kit: AURA_KITS.indexOf(s(d.kit, 20)) >= 0 ? s(d.kit, 20) : 'kit-cr78',
+      kick: auraPattern(d.kick),
+      snare: auraPattern(d.snare),
+      hat: auraPattern(d.hat),
+      openhat: auraPattern(d.openhat || d.ohat),
+    };
+    if (drums.kick === '0000000000000000' && drums.snare === '0000000000000000') {
+      drums.kick = '1000000010000000';
+      drums.snare = '0000100000001000';
+      drums.hat = '1010101010101010';
+    }
+
+    return send(res, 200, {
+      ok: true, action: 'aura_compose', model: out.model, fellBack: !!out.fellBack,
+      data: {
+        title: s(parsed.title, 40) || 'AURA 편곡',
+        tip: s(parsed.tip, 300),
+        bpm, key, scaleType,
+        chords,
+        melody,
+        drums,
+      },
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'aura_compose', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+        : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+      tries: (err && err.tries) || [],
+    });
+  }
+}
+
 async function handleIdeaImage(res, body) {
   const prompt = s(body.prompt, 1200);
   if (!prompt) return send(res, 400, { ok: false, action: 'idea_image', reason: 'empty_prompt', message: '그림 프롬프트가 비어 있습니다.' });
@@ -7367,6 +7568,7 @@ module.exports = async function handler(req, res) {
   // 🎨 이모티콘 스튜디오 AI Pro — 24종 기획 · 기준 캐릭터 고정 이미지(레퍼런스+글씨금지)
   if (action === 'emoticon_plan') return handleEmoticonPlan(res, body, keyConfigured);
   if (action === 'emoticon_image') return handleEmoticonImage(res, body);
+  if (action === 'aura_compose') return handleAuraCompose(res, body, keyConfigured);
   // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
   if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
     return handleWork(res, body, keyConfigured);
