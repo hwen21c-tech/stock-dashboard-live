@@ -3057,10 +3057,11 @@ async function buildHamburger(ctx) {
       minStockPct: HAM_RULES.minStockPct,
       maxCodes: HAM_RULES.maxCodes,
       candidateRule: '오늘 강한 테마(평균 +' + HAM_RULES.minThemePct + '%↑)의 대장(상승률)·부대장(대금) · 종목 +' + HAM_RULES.minStockPct + '%↑',
+      showRule: '성립 종목만 카드로 — 기준 미달·실패 패턴은 숫자로만 남깁니다',
     }),
     themes: [],
     items: [],
-    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0, noBase: 0, valueShort: 0, excluded: 0, shown: 0 },
     errors: [],
     note: '',
     sourceLabel: '/api/tabs-live hamburger (테마 대장·부대장 + KIS 일봉·과거 분봉·오늘 분봉 실측)',
@@ -3107,16 +3108,28 @@ async function buildHamburger(ctx) {
   }
 
   out.items.forEach((x) => {
-    if (x.verdict && x.verdict.pass) out.counts.pass += 1;
-    else if (x.verdict && x.verdict.tagKind === 'dn') out.counts.blocked += 1;
+    const v = x.verdict || {};
+    if (v.pass) out.counts.pass += 1;
+    else if (v.baseMissing) out.counts.noBase += 1;
+    else if (v.tagKind === 'dn') out.counts.blocked += 1;
+    else if (v.tagKind === 'mute') out.counts.valueShort += 1;
     else out.counts.wait += 1;
   });
   out.counts.candidates = out.items.length;
+  out.counts.excluded = out.items.length - out.counts.pass;
+  out.counts.shown = out.counts.pass;
   out.note =
-    '기준은 <b>최근 ' + hamburger.HAM.lookbackDays + '거래일 안 가장 최근 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑) 날의 09:00~09:02 3분봉 거래대금</b>입니다. ' +
-    '오늘 장초반 3분봉 대금이 그 기준 이상이면 햄버거 성립, 미만이면 <b>대금 미달</b>로 둡니다. ' +
-    '긴 위꼬리·도지·음봉·일봉 역배열은 대금이 넘어도 <b>실패 패턴</b>으로 뺍니다. ' +
-    '후보는 오늘 강한 테마의 대장·부대장이고, 기준 미계산 종목은 요청마다 ' + HAM_RULES.lazyBaseCodes + '종목까지 즉석 계산해 채웁니다.';
+    '<b>성립 종목만</b> 올립니다. 후보 ' + out.counts.candidates + '종목 중 <b>' + out.counts.pass + '종목 성립</b>' +
+    (out.counts.excluded
+      ? ' (나머지 ' + out.counts.excluded + '종목 제외: 대금 미달 ' + out.counts.valueShort +
+        ' · 실패 패턴 ' + out.counts.blocked + ' · 기준 없음/미달 ' + out.counts.noBase +
+        (out.counts.wait ? ' · 오늘 분봉 대기 ' + out.counts.wait : '') + ')'
+      : '') + '. ' +
+    '기준은 <b>최근 ' + hamburger.HAM.lookbackDays + '거래일 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
+    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 날의 09:00~09:02 3분봉 거래대금 ' +
+    hamburger.HAM.minBase3mEok + '억↑</b>이고(날 시/고/저/종은 네이버 정규장 일봉으로 교차 검증), ' +
+    '오늘 장초반 3분봉 대금이 그 기준을 넘고 · 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다. ' +
+    '기준 미계산 종목은 요청마다 ' + HAM_RULES.lazyBaseCodes + '종목까지 즉석 계산해 채웁니다.';
 
   if (!out.errors.length) HAM_CACHE = { at: Date.now(), value: out };
   return out;
@@ -6782,7 +6795,7 @@ module.exports = async function handler(req, res) {
    *   F존과 같은 테마 풀 Promise 를 공유해 네이버 요청은 늘리지 않는다. */
   const hamPromise = markWhen(buildHamburger({ memberRows: cpMembersPromise }).catch((e) => ({
     ok: false, items: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`, themes: [],
-    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0, noBase: 0, valueShort: 0, excluded: 0, shown: 0 },
     errors: [String((e && e.message) || e)], note: '햄버거 후보를 만들지 못했습니다.',
   })), 'hamburger');
 
@@ -7107,7 +7120,7 @@ module.exports = async function handler(req, res) {
   /* 🍔 장중매매 후보 (불개미·햄버거) — 예산을 넘기면 null 로 두고 다음 폴링에서 받는다 */
   const hamburgerSec = hamRes || {
     ok: false, items: [], themes: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`,
-    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0, noBase: 0, valueShort: 0, excluded: 0, shown: 0 },
     errors: ['hamburger: 조회 예산 초과'],
     note: '기준·분봉 조회가 늦어 이번 응답에서 비웠습니다 — 다음 폴링에서 받습니다(값을 지어내지 않습니다).',
   };
