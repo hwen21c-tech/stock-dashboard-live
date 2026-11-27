@@ -6607,6 +6607,7 @@
       '<span class="op-chg" style="color:' + upColor(it.pctNow) + ';">' + pctf(it.pctNow) + '</span></div>' +
       '<div class="op-chips">' + chips.join('') + '</div>' +
       cmpLine(it) +
+      (v.warn ? '<div class="op-chips" style="margin-top:4px;">' + chip('⚠ ' + v.warn, 'warm') + '</div>' : '') +
       (v.blocks && v.blocks.length
         ? '<div class="op-chips" style="margin-top:4px;">' + v.blocks.map(function (b) { return chip('⛔ ' + b, 'dn'); }).join('') + '</div>'
         : '') +
@@ -6786,6 +6787,7 @@
     if (info.ma20 && info.ma20.ok) rows.push(row('3분봉 20선', comma(info.ma20.ma20) + '원 <span style="color:#94a3b8;">(현재가 ' + comma(info.last || 0) + '원)</span>', '#cbd5e1'));
     else rows.push(row('3분봉 20선', '아직 20개(60분)가 쌓이지 않았습니다', '#94a3b8'));
     if (v.blocks && v.blocks.length) rows.push(row('제외 사유', v.blocks.map(function (x) { return '⛔ ' + esc(x); }).join(' · '), '#fda4af'));
+    if (v.warn) rows.push(row('주의', '⚠ ' + esc(v.warn), '#fdba74'));
     if (v.reasons && v.reasons.length) rows.push(row('근거', v.reasons.map(esc).join(' · '), '#94a3b8'));
     if (b.others && b.others.length) {
       rows.push(row('다른 장대양봉', b.others.map(function (o) { return esc(o.dateLabel) + ' ' + pctf(o.pct) + ' · ' + eok(o.valueEok); }).join(' / '), '#94a3b8'));

@@ -2976,7 +2976,7 @@ const HAM_RULES = {
   minThemePct: 1.0,
   minStockPct: 5.0,
   maxCodes: 8,          // 기준·오늘 분봉 조회 예산(8종목 ≈ 1~2초)
-  lazyBaseCodes: 3,     // 요청당 즉석 계산할 기준 수
+  lazyBaseCodes: 8,     // 요청당 즉석 계산할 기준 수 — 계산값은 Supabase·메모리에 남아 다음부터는 즉시
   budgetMs: 6500,
   ttlMs: 60000,
 };
