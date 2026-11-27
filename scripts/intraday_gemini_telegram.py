@@ -2535,6 +2535,8 @@ def hourly_flow_comment(slot_t, kp, qp, f, o, ff, theme_name='', theme_chg=None)
         return v if isinstance(v, (int, float)) else None
 
     kp, qp, f, o, ff = _n(kp), _n(qp), _n(f), _n(o), _n(ff)
+    if kp is None and qp is None and f is None and o is None and ff is None:
+        return ''                  # 지수·수급이 하나도 없는 시각은 코멘트를 만들지 않는다
     hh = str(slot_t or '')[:2]
     bits = []
     if kp is not None:
