@@ -3,15 +3,15 @@
  "source": "스탁이지(stockeasy.intellio.kr) 테마보드 실시간 미리보기 · 익명 공개 응답",
  "sourceApi": "https://stockeasy.intellio.kr/stockdata/api/v1/market-board/landing-data",
  "via": "landing-data",
- "fetchedAt": "2026-11-27 15:12:45",
- "updatedAt": "2026-11-27T15:12:29.518117+09:00",
- "updatedAgeMin": 0.3,
+ "fetchedAt": "2026-11-27 16:29:18",
+ "updatedAt": "2026-11-27T16:28:47.551814+09:00",
+ "updatedAgeMin": 0.5,
  "stale": false,
  "themeCount": 6,
  "codes": [
   "439960",
-  "317830",
   "138360",
+  "317830",
   "115180",
   "298380",
   "174900",
@@ -30,13 +30,20 @@
   {
    "rank": 1,
    "name": "로봇",
-   "avgRS": 36,
+   "avgRS": 43,
    "stocks": [
     {
      "code": "439960",
      "name": "코스모로보틱스",
      "chg": 30.0,
-     "value_eok": 351.24,
+     "value_eok": 351.42,
+     "verified": true
+    },
+    {
+     "code": "138360",
+     "name": "앤로보틱스",
+     "chg": 30.0,
+     "value_eok": 268.58,
      "verified": true
     },
     {
@@ -45,40 +52,33 @@
      "chg": 29.9,
      "value_eok": 28.13,
      "verified": true
-    },
-    {
-     "code": "138360",
-     "name": "앤로보틱스",
-     "chg": 29.9,
-     "value_eok": 257.89,
-     "verified": true
     }
    ]
   },
   {
    "rank": 2,
    "name": "면역항암제",
-   "avgRS": 26,
+   "avgRS": 30,
    "stocks": [
     {
      "code": "115180",
      "name": "큐리언트",
      "chg": 30.0,
-     "value_eok": 119.39,
+     "value_eok": 119.71,
      "verified": true
     },
     {
      "code": "298380",
      "name": "에이비엘바이오",
-     "chg": 25.6,
-     "value_eok": 949.49,
+     "chg": 26.5,
+     "value_eok": 977.51,
      "verified": true
     },
     {
      "code": "174900",
      "name": "앱클론",
-     "chg": 22.8,
-     "value_eok": 104.25,
+     "chg": 24.2,
+     "value_eok": 109.07,
      "verified": true
     }
    ]
@@ -86,13 +86,13 @@
   {
    "rank": 3,
    "name": "스마트팩토리",
-   "avgRS": 44,
+   "avgRS": 67,
    "stocks": [
     {
      "code": "381620",
      "name": "제닉스로보틱스",
      "chg": 30.0,
-     "value_eok": 177.02,
+     "value_eok": 177.12,
      "verified": true
     },
     {
@@ -105,8 +105,8 @@
     {
      "code": "232680",
      "name": "라온로보틱스",
-     "chg": 20.0,
-     "value_eok": 675.16,
+     "chg": 21.7,
+     "value_eok": 703.57,
      "verified": true
     }
    ]
@@ -114,76 +114,76 @@
   {
    "rank": 4,
    "name": "전력저장장치",
-   "avgRS": 53,
+   "avgRS": 60,
    "stocks": [
     {
      "code": "348370",
      "name": "엔켐",
-     "chg": 27.7,
-     "value_eok": 207.97,
+     "chg": 27.3,
+     "value_eok": 214.73,
      "verified": true
     },
     {
      "code": "009470",
      "name": "삼화전기",
-     "chg": 26.4,
-     "value_eok": 78.91
+     "chg": 26.2,
+     "value_eok": 79.95
     },
     {
      "code": "178320",
      "name": "서진시스템",
-     "chg": 20.7,
-     "value_eok": 481.24
+     "chg": 21.1,
+     "value_eok": 496.82
     }
    ]
   },
   {
    "rank": 5,
    "name": "피지컬 AI",
-   "avgRS": 72,
+   "avgRS": 81,
    "stocks": [
     {
      "code": "466100",
      "name": "클로봇",
      "chg": 29.9,
-     "value_eok": 1426.99
+     "value_eok": 1430.29
     },
     {
      "code": "348340",
      "name": "뉴로메카",
-     "chg": 13.2,
-     "value_eok": 84.12
+     "chg": 13.8,
+     "value_eok": 86.72
     },
     {
      "code": "277810",
      "name": "레인보우로보틱스",
-     "chg": 12.8,
-     "value_eok": 3841.44
+     "chg": 13.7,
+     "value_eok": 3937.12
     }
    ]
   },
   {
    "rank": 6,
    "name": "5G",
-   "avgRS": 81,
+   "avgRS": 90,
    "stocks": [
     {
      "code": "032500",
      "name": "케이엠더블유",
-     "chg": 21.1,
-     "value_eok": 455.24
+     "chg": 23.0,
+     "value_eok": 466.5
     },
     {
      "code": "178320",
      "name": "서진시스템",
-     "chg": 20.7,
-     "value_eok": 481.24
+     "chg": 21.1,
+     "value_eok": 496.82
     },
     {
      "code": "230240",
      "name": "에치에프알",
      "chg": 17.5,
-     "value_eok": 37.1
+     "value_eok": 38.02
     }
    ]
   }
