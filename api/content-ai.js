@@ -6833,6 +6833,14 @@ const EMOTICON_STYLE_LOCK =
   'Exactly one character, fully visible and centered with margin. Pure solid flat white background (#FFFFFF) for easy cutout. ' +
   'Clean bold sticker outline, consistent line weight and the same palette as the reference.';
 
+/* 3×3 그리드 시트 모드 — 스티커 락('캐릭터 정확히 1명')은 9컷 시트와 정면으로 충돌한다.
+   시트는 9칸 그리드를 요구하는 전용 락을 쓴다(프론트·API 호출 1/9 절감). */
+const EMOTICON_SHEET_STYLE_LOCK =
+  'STRICT REQUIREMENTS: one single 3x3 GRID SHEET with exactly 9 poses of the SAME character — exactly 3 equal columns and 3 equal rows, equal cell size, even spacing, no cell borders or grid lines. ' +
+  'Each character fully visible and centered inside its own cell with margin; identical face shape, eye style, proportions, palette and line weight in all 9 cells. ' +
+  'absolutely NO text, NO letters, NO numbers, NO speech bubbles, NO watermark, NO brand logo. ' +
+  'Pure solid flat white (#FFFFFF) background in every cell for easy cutout. Clean bold sticker outline.';
+
 const SCHEMA_EMOTICON_PLAN = {
   type: 'OBJECT',
   properties: {
@@ -7041,11 +7049,13 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
       parts.push({
         text: mode === 'edit'
           ? 'This is the sticker image to edit. Keep the same character, same art style and the same composition.'
-          : 'REFERENCE CHARACTER — the SAME character must appear in the new image with identical face shape, eye style, proportions, colors and line weight.',
+          : (mode === 'sheet'
+            ? 'REFERENCE CHARACTER — the SAME character must appear 9 times inside a 3x3 grid sheet with identical face shape, eye style, proportions, colors and line weight.'
+            : 'REFERENCE CHARACTER — the SAME character must appear in the new image with identical face shape, eye style, proportions, colors and line weight.'),
       });
       parts.push({ inlineData: { mimeType: String(reference.mimeType || 'image/jpeg'), data: String(reference.data) } });
     }
-    parts.push({ text: prompt + '\n\n' + EMOTICON_STYLE_LOCK });
+    parts.push({ text: prompt + '\n\n' + (mode === 'sheet' ? EMOTICON_SHEET_STYLE_LOCK : EMOTICON_STYLE_LOCK) });
 
     const bodyBase = {
       contents: [{ role: 'user', parts }],
