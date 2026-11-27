@@ -4317,8 +4317,10 @@ ${clipMetaLines.join('\n')}
     function applyIdeaStory(story) {
       stopPlayback();
       state.currentTime = 0;
-      state.clips = state.clips.filter((c) => !c.isIdea);
-      state.segments = state.segments.filter((s) => !String(s.clipId || '').startsWith('idea_'));
+      const keptUploads = state.clips.filter((c) => !c.isDemo && !c.isIdea).length;
+      // 타임라인은 아이디어 컷으로 새로 시작한다(내 사진·영상은 클립 목록에 남아 섞을 수 있다)
+      state.clips = state.clips.filter((c) => !c.isDemo && !c.isIdea);
+      state.segments = [];
       const scenes = Array.isArray(story.scenes) ? story.scenes : [];
       scenes.forEach((sc, idx) => {
         const seg = makeIdeaSegment(sc, idx);
@@ -4339,6 +4341,7 @@ ${clipMetaLines.join('\n')}
       const hi = document.getElementById('topHookInput');
       if (hi) hi.value = state.topHook;
       state.selectedSegmentId = state.segments.length ? state.segments[0].id : null;
+      if (keptUploads) showToast('타임라인은 아이디어 컷으로 바뀝니다. 내 클립 ' + keptUploads + '개는 클립 목록에 남아 있어요.', 'info');
       renderClips();
       renderSegments();
       renderStoryArc();
