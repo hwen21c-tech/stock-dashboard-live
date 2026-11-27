@@ -2482,6 +2482,12 @@ const FK_RULES = {
   minStockPct: 5.0,   // 대장·부대장 최소 상승률 +5% (홍인기 D+0와 같은 '강세' 기준)
   maxPct: 100,        // ±100% 이상 이상치(신규상장 첫날 등) 제외
   bigValueEok: 300,   // 실질 주도주 기준 — 이만큼 거래된 종목이 있는 테마를 먼저 본다
+  /* 전일 강세주 부대장 하한 — 2026-11-27 사용자 지시
+     "전일강세주에 상한가가 아닌 이상은 300억 이하인 종목은 제외해줘 대장이 아닌 이상"
+     → 대장(상승률 1위)과 상한가는 대금과 무관하게 유지, 그 밖의 부대장은 대금 300억↑만.
+     전일 스냅샷의 등락률은 종가 확정값이라 상한가가 29.5~30% 사이로 반올림돼 들어온다. */
+  prevDeputyMinEok: 300,
+  limitUpPct: 29.5,
   maxCodes: 14,       // 두 섹션 합계 최대 종목(분봉 조회 예산 · 14종목 병렬 실측 ≈0.6초)
   minuteBudgetMs: 5000,
   ttlMs: 60000,
@@ -2514,6 +2520,17 @@ function fkSkippedLine(skipped, sectionLabel) {
   );
 }
 
+/** 전일 강세주에서 대금 미달·비상한가로 뺀 부대장 후보 — 화면 각주용 한 문장 */
+function fkDroppedDeputyLine(list) {
+  const arr = (list || []).filter((x) => x && x.name);
+  if (!arr.length) return '';
+  return (
+    '전일 부대장 후보 ' + arr.length + '종목(' +
+    arr.map((x) => x.name + ' ' + (x.valueEok === null || x.valueEok === undefined ? '대금 미확인' : x.valueEok + '억')).join(' · ') +
+    ')은 비상한가·대금 ' + FK_RULES.prevDeputyMinEok + '억 미만이라 뺐습니다. '
+  );
+}
+
 /**
  * 테마 주도력 정렬 — 2026-11-27 사용자 승인
  *   ① 대금 FK_RULES.bigValueEok(300억)↑ 종목이 있는 테마를 먼저 (실질 주도 테마)
@@ -2531,11 +2548,28 @@ function fkThemeStrength(a, b) {
   return (a.rank || 99) - (b.rank || 99);
 }
 
-/** 테마 구성종목 rows → 테마당 대장(상승률)·부대장(대금) — used 로 중복 종목을 막는다 */
+/** 상한가(가격제한폭 +30%) 판정 — 반올림 오차를 감안해 29.5%↑를 상한가로 본다 */
+function fkIsLimitUp(pct) {
+  const v = numOrNull(pct);
+  return v !== null && v >= FK_RULES.limitUpPct;
+}
+
+/** 전일 강세주 부대장 자격 — 대장은 대상 아님, 상한가는 대금 무관, 나머지는 대금 하한 이상만 */
+function fkDeputyEligible(r, minEok) {
+  if (!r) return false;
+  if (fkIsLimitUp(r.changePct)) return true;
+  const value = numOrNull(r.value);
+  const eok = value === null ? null : Math.round(value / 1e8);
+  return eok !== null && eok >= minEok;
+}
+
+/** 테마 구성종목 rows → 테마당 대장(상승률)·부대장(대금) — used 로 중복 종목을 막는다
+ *  opts.deputyMinEok 를 주면 부대장은 '상한가이거나 대금 deputyMinEok억↑'만 남긴다(전일 강세주 전용). */
 function fkPickLeaders(rows, used, opts) {
   const o = opts || {};
   const taken = used || new Set();
   const themeLimit = Math.max(1, Math.min(FK_RULES.themeTop, numOrNull(o.themeLimit) || FK_RULES.themeTop));
+  const deputyMinEok = numOrNull(o.deputyMinEok);
   const byTheme = new Map();
   (rows || []).forEach((r) => {
     if (!r || !r.code || !r.themeName) return;
@@ -2573,6 +2607,7 @@ function fkPickLeaders(rows, used, opts) {
   const picked = [];
   const pickedThemes = [];
   const skipped = [];
+  const deputyDropped = [];
   for (let i = 0; i < themes.length && pickedThemes.length < themeLimit; i += 1) {
     const t = themes[i];
     const headline = t.items[0];   // 테마 1순위 대장주(상승률 1위)
@@ -2590,7 +2625,27 @@ function fkPickLeaders(rows, used, opts) {
     }
     const leader = pool[0];
     const rest = pool.slice(1);
-    const deputy = rest.slice().sort((a, b) => (numOrNull(b.value) || 0) - (numOrNull(a.value) || 0))[0] || null;
+    let deputy = null;
+    if (deputyMinEok !== null) {
+      const byValue = (a, b) => (numOrNull(b.value) || 0) - (numOrNull(a.value) || 0);
+      /* 부대장은 '대금 1위' 후보 하나만 본다 — 그 후보가 기준 미달이면 뺀 종목으로 남기고,
+         같은 테마에서 기준을 넘는 다른 후보가 있으면 그 종목을 부대장으로 올린다. */
+      const top = rest.slice().sort(byValue)[0] || null;
+      if (top && !fkDeputyEligible(top, deputyMinEok)) {
+        deputyDropped.push({
+          code: top.code,
+          name: top.name,
+          themeName: t.name,
+          pct: round2(numOrNull(top.changePct)),
+          valueEok: top.value ? Math.round(top.value / 1e8) : null,
+        });
+        deputy = rest.filter((r) => fkDeputyEligible(r, deputyMinEok)).sort(byValue)[0] || null;
+      } else {
+        deputy = top;
+      }
+    } else {
+      deputy = rest.slice().sort((a, b) => (numOrNull(b.value) || 0) - (numOrNull(a.value) || 0))[0] || null;
+    }
     const add = (r, role) => {
       taken.add(r.code);
       picked.push({
@@ -2623,6 +2678,7 @@ function fkPickLeaders(rows, used, opts) {
     })),
     items: picked,
     skipped,
+    deputyDropped,
     themeLimit,
   };
 }
@@ -2659,8 +2715,11 @@ async function buildFkZone(ctx) {
       b1: '-8%', b2: '-10%', b3: '-12%', rebound: '+4%',
       themeTop: FK_RULES.themeTop, minStockPct: FK_RULES.minStockPct, maxPct: FK_RULES.maxPct,
       bigValueEok: FK_RULES.bigValueEok,
+      prevDeputyMinEok: FK_RULES.prevDeputyMinEok,
+      limitUpPct: FK_RULES.limitUpPct,
       basis: '오늘(당일) 고가 기준',
       themeRule: '대금 ' + FK_RULES.bigValueEok + '억↑ 주도 테마 우선 · 대장주가 겹치는 유사 테마는 건너뜀',
+      prevDeputyRule: '전일 강세주 부대장은 상한가이거나 대금 ' + FK_RULES.prevDeputyMinEok + '억↑만 (대장은 대금 무관)',
     },
     prev: { label: '전일 강세주', asOf: null, asOfLabel: null, isToday: false, themes: [], count: 0 },
     today: { label: '오늘 강세주', asOf: todayKey, themes: [], count: 0 },
@@ -2709,9 +2768,10 @@ async function buildFkZone(ctx) {
       if (!rankByTheme.has(r.themeName)) rankByTheme.set(r.themeName, ++rk);
       r.themeRank = r.themeRank || rankByTheme.get(r.themeName);
     });
-    const prevPick = fkPickLeaders(rows, used);
+    const prevPick = fkPickLeaders(rows, used, { deputyMinEok: FK_RULES.prevDeputyMinEok });
     out.prev.themes = prevPick.themes;
     out.prev.skippedThemes = prevPick.skipped;
+    out.prev.droppedDeputies = prevPick.deputyDropped || [];
     prevItems = prevPick.items.map((x) => Object.assign({}, x, { section: 'prev', prevClose: x.quotePrice }));
   } else {
     out.errors.push('prev: 직전 거래일 강세 테마 스냅샷을 읽지 못했습니다');
@@ -2794,6 +2854,8 @@ async function buildFkZone(ctx) {
     'F존 진입(1분봉 저가 ≤ B1) 뒤 실제 저점(L) 대비 +4% 반등이 나오면 반등 파동으로 보고, 그 뒤 새 고점(H1) 대비 같은 -8/-10/-12%를 K존으로 표시합니다. ' +
     '후보는 강세 테마(평균 +1%↑) 중 <b>대금 ' + FK_RULES.bigValueEok + '억↑ 실질 주도주가 있는 테마를 먼저</b>, 그 다음 테마 거래대금 합·평균 등락률 순으로 서로 다른 테마 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다. ' +
     '대장주가 이미 뽑힌 테마(코로나19 진단·백신/방역 등)는 유사 중복 테마로 보고 자리를 양보합니다. ' +
+    '<b>전일 강세주는 대장이 아니면 상한가이거나 대금 ' + FK_RULES.prevDeputyMinEok + '억↑인 종목만</b> 싣습니다. ' +
+    fkDroppedDeputyLine(out.prev.droppedDeputies) +
     fkSkippedLine(out.prev.skippedThemes, '전일') + fkSkippedLine(out.today.skippedThemes, '오늘') +
     (out.droppedToday && out.droppedToday.length
       ? '오늘 강세주 중 1분봉 실측 등락률이 +' + FK_RULES.minStockPct + '% 아래로 내려온 ' + out.droppedToday.length + '종목(' + out.droppedToday.map((d) => d.name).join('·') + ')은 뺐습니다.'

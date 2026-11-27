@@ -59,7 +59,8 @@ prevRows.forEach((r) => {
 });
 
 const used = new Set();
-const prevPick = fkPickLeaders(prevRows, used);
+/* 2026-11-27 사용자 지시 — 전일 강세주는 대장·상한가가 아니면 대금 300억↑만 */
+const prevPick = fkPickLeaders(prevRows, used, { deputyMinEok: FK_RULES.prevDeputyMinEok });
 const prevNames = prevPick.items.map((x) => x.name);
 const prevThemeNames = prevPick.themes.map((t) => t.name);
 console.log('\n▶ 전일 강세주 (11/26 스냅샷)');
@@ -95,6 +96,30 @@ check(
   prevPick.items.every((x) => x.pct >= FK_RULES.minStockPct),
   prevPick.items.map((x) => `${x.name} ${x.pct}%`).join(' · '),
 );
+/* ---- 2026-11-27 전일 강세주 300억 필터 ---- */
+const prevDeputies = prevPick.items.filter((x) => x.role === '부대장');
+check(
+  `전일 부대장은 상한가이거나 대금 ${FK_RULES.prevDeputyMinEok}억↑만`,
+  prevDeputies.every((x) => x.valueEok >= FK_RULES.prevDeputyMinEok || x.pct >= FK_RULES.limitUpPct),
+  prevDeputies.map((x) => `${x.name} ${x.valueEok}억`).join(' · ') || '없음',
+);
+check(
+  '전일 비대장·비상한가 300억 미만 0건',
+  prevPick.items.filter((x) => x.role !== '대장' && x.pct < FK_RULES.limitUpPct && !(x.valueEok >= FK_RULES.prevDeputyMinEok)).length === 0,
+  prevPick.items.map((x) => `${x.role === '대장' ? '👑' : '💰'}${x.name} ${x.valueEok}억`).join(' · '),
+);
+check('아주IB투자(405억)는 부대장 유지', prevPick.items.some((x) => x.name === '아주IB투자' && x.role === '부대장'), prevNames.join(', '));
+check(' 쓰리빌리언(116억·비상한가)은 제외', !prevPick.items.some((x) => x.name === '쓰리빌리언'), prevNames.join(', '));
+check('리가켐바이오(198억·비상한가)는 제외', !prevPick.items.some((x) => x.name === '리가켐바이오'), prevNames.join(', '));
+check('인제니아테라퓨틱스(180억·비상한가)는 제외', !prevPick.items.some((x) => /인제니아/.test(x.name)), prevNames.join(', '));
+check('하나에어로(227억·대장·상한가)는 유지', prevPick.items.some((x) => x.name === '하나에어로' && x.role === '대장'), prevNames.join(', '));
+check('아리바이오랩(347억·상한가 대장)은 유지', prevPick.items.some((x) => x.name === '아리바이오랩'), prevNames.join(', '));
+check(
+  '제외된 부대장은 deputyDropped 에 이름·대금과 함께 남는다(각주 근거)',
+  prevPick.deputyDropped.length >= 3 && prevPick.deputyDropped.every((x) => x.name && x.valueEok !== null),
+  prevPick.deputyDropped.map((x) => `${x.name} ${x.valueEok}억`).join(' · '),
+);
+
 check(
   '대금 300억↑ 테마가 앞 순서',
   prevPick.themes.every((t, i, arr) => i === 0 || !t.bigMoney || arr.slice(0, i).every((p) => p.bigMoney)),
@@ -122,11 +147,11 @@ check('오늘 후보가 전일 후보와 겹치지 않음', todayPick.items.ever
 check('오늘 섹션도 대장주 중복 테마는 건너뜀', todayPick.skipped.some((s) => s.reason === 'leader_taken' && s.leader === '아리바이오랩'), todayPick.skipped.map((s) => `${s.name}(${s.reason})`).join(' · ') || '없음');
 check('오늘 후보에 실제 강세주(클로봇·코스모로보틱스 등) 포함', todayPick.items.length >= 2 && todayPick.items.filter((x) => x.section === undefined).length === todayPick.items.length, `${todayPick.items.length}종목`);
 
-/* ---------------- 3) 오늘 예산 배분 — 전일 8종목이면 오늘 테마 3개까지 ---------------- */
-const limitFromBudget = Math.max(1, Math.min(FK_RULES.themeTop, Math.floor(Math.max(2, FK_RULES.maxCodes - 8) / 2)));
+/* ---------------- 3) 오늘 예산 배분 — 전일 후보 수에 따라 오늘 테마 수가 줄어든다 ---------------- */
+const limitFromBudget = Math.max(1, Math.min(FK_RULES.themeTop, Math.floor(Math.max(2, FK_RULES.maxCodes - prevPick.items.length) / 2)));
 check(
-  '분봉 예산 배분: 전일 8종목 → 오늘 테마 3개(총 14종목)',
-  limitFromBudget === 3 && prevPick.items.length + limitFromBudget * 2 <= FK_RULES.maxCodes,
+  `분봉 예산 배분: 전일 ${prevPick.items.length}종목 → 오늘 테마 ${limitFromBudget}개(총 ${FK_RULES.maxCodes}종목 이내)`,
+  prevPick.items.length + limitFromBudget * 2 <= FK_RULES.maxCodes,
   `전일 ${prevPick.items.length} + 오늘 최대 ${limitFromBudget * 2} = ${prevPick.items.length + limitFromBudget * 2} (maxCodes ${FK_RULES.maxCodes})`,
 );
 
@@ -145,6 +170,31 @@ const synPick = fkPickLeaders(synthetic, new Set());
 const synThemes = synPick.themes.map((t) => t.name);
 check('합성 데이터: 대장주 중복 테마는 1회만 채택', synThemes.filter((n) => /테마A/.test(n)).length === 1, synThemes.join(' > '));
 check('합성 데이터: 300억↑ 테마(B)가 등락률 1위 소형 테마(C)보다 앞', synThemes.indexOf('테마B') >= 0 && synThemes.indexOf('테마B') < synThemes.indexOf('테마C'), synThemes.join(' > '));
+
+/* ---------------- 4b) 전일 300억 필터 합성 검증 ---------------- */
+const synthPrev = [
+  /* 테마1: 대장은 소형이어도 유지, 부대장은 350억이라 유지 */
+  { code: 'D1', name: '대장D', changePct: 12.0, value: 120e8, themeName: '테마D', themeRank: 1, themePct: 6 },
+  { code: 'D2', name: '부대장D', changePct: 7.0, value: 350e8, themeName: '테마D', themeRank: 1, themePct: 6 },
+  /* 테마2: 부대장이 90억·비상한가 → 제외, 대장만 남는다 */
+  { code: 'E1', name: '대장E', changePct: 15.0, value: 40e8, themeName: '테마E', themeRank: 2, themePct: 5 },
+  { code: 'E2', name: '부대장E', changePct: 6.0, value: 90e8, themeName: '테마E', themeRank: 2, themePct: 5 },
+  /* 테마3: 상한가가 둘(29.95·29.9) — 부대장이 40억이어도 상한가라 유지 */
+  { code: 'F1', name: '대장F(상한가)', changePct: 29.95, value: 30e8, themeName: '테마F', themeRank: 3, themePct: 4 },
+  { code: 'F2', name: '부대장F(상한가)', changePct: 29.9, value: 40e8, themeName: '테마F', themeRank: 3, themePct: 4 },
+  /* 테마4: 부대장 후보 중 300억↑가 하나뿐이면 그것이 부대장 */
+  { code: 'G1', name: '대장G', changePct: 10.0, value: 20e8, themeName: '테마G', themeRank: 4, themePct: 3 },
+  { code: 'G2', name: '부대장G', changePct: 6.0, value: 320e8, themeName: '테마G', themeRank: 4, themePct: 3 },
+];
+const synPrevPick = fkPickLeaders(synthPrev, new Set(), { deputyMinEok: FK_RULES.prevDeputyMinEok });
+const synPrevNames = synPrevPick.items.map((x) => x.name);
+check('합성: 대장은 대금 미달이어도 유지(대장D 120억)', synPrevPick.items.some((x) => x.name === '대장D' && x.role === '대장'), synPrevNames.join(', '));
+check('합성: 부대장 350억↑는 유지', synPrevPick.items.some((x) => x.name === '부대장D' && x.role === '부대장'), synPrevNames.join(', '));
+check('합성: 부대장 90억·비상한가는 제외', !synPrevNames.includes('부대장E'), synPrevNames.join(', '));
+check('합성: 비상한가 부대장이 빠진 테마는 대장 1종목만', synPrevPick.items.filter((x) => x.themeName === '테마E').length === 1, synPrevNames.join(', '));
+check('합성: 상한가 부대장은 40억이어도 유지(같은 테마 상한가 2종)', synPrevPick.items.some((x) => x.name === '부대장F(상한가)' && x.role === '부대장'), synPrevNames.join(', '));
+check('합성: 300억↑ 부대장 후보가 있으면 그 종목이 부대장', synPrevPick.items.some((x) => x.name === '부대장G' && x.role === '부대장'), synPrevNames.join(', '));
+check('합성: 필터를 안 주면(오늘 섹션) 기존 규칙 그대로', fkPickLeaders(synthPrev, new Set()).items.some((x) => x.name === '부대장E'), '오늘 섹션은 소형 부대장 허용');
 
 /* ---------------- 5) 회귀: 후보 없음·이상치 처리 ---------------- */
 check('후보 없음 → 빈 배열(가짜 후보 생성 없음)', fkPickLeaders([], new Set()).items.length === 0);

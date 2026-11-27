@@ -1474,25 +1474,18 @@
    *    포함시켜, 다시 그려져도 사용자가 접어 둔 상태가 그대로 유지되게 한다.
    *  · 상태는 localStorage 에 남겨 새로고침·재방문에도 유지된다.
    */
-  var NEWS_FOLD_KEY = 'tabs_news_fold_v1';
-
-  function newsFoldMap() {
-    try {
-      var raw = window.localStorage ? window.localStorage.getItem(NEWS_FOLD_KEY) : null;
-      var o = raw ? JSON.parse(raw) : {};
-      return (o && typeof o === 'object') ? o : {};
-    } catch (e) { return {}; }
-  }
+  /* 2026-11-27 사용자 지시 — 접는 박스는 기본 접힘.
+     상태는 이 화면(세션)에서만 기억한다 — 새로고침하면 다시 접힌 채로 뜬다. */
+  var NEWS_FOLD_MEM = {};
 
   function newsBoxFolded(key) {
-    var m = newsFoldMap();
-    return m[key] === true || m[key] === 1 || m[key] === '1';
+    if (!key) return false;
+    return NEWS_FOLD_MEM[key] === undefined ? true : Boolean(NEWS_FOLD_MEM[key]);
   }
 
   function setNewsBoxFolded(key, folded) {
-    var m = newsFoldMap();
-    m[key] = Boolean(folded);
-    try { if (window.localStorage) window.localStorage.setItem(NEWS_FOLD_KEY, JSON.stringify(m)); } catch (e) { /* 저장소 없음 */ }
+    if (!key) return false;
+    NEWS_FOLD_MEM[key] = Boolean(folded);
     return Boolean(folded);
   }
 
@@ -3191,26 +3184,21 @@
    *  · 접어도 아래 종목 카드·차트는 그대로 — 상자 본문만 숨긴다.
    *  · 400px: 제목은 한 줄 말줄임, 버튼은 flex:0 0 auto 라 헤더가 깨지지 않는다.
    */
+  /* (구) localStorage 키 — 2026-11-27 기본 접힘으로 바꾸며 저장값은 더 이상 읽지 않는다. */
   var BOX_FOLD_STORE = 'sd_strat_box_fold_v1';
 
-  function slBoxFolds() {
-    try {
-      var raw = window.localStorage ? window.localStorage.getItem(BOX_FOLD_STORE) : null;
-      var o = raw ? JSON.parse(raw) : {};
-      return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
-    } catch (e) { return {}; }
-  }
+  /* 2026-11-27 사용자 지시 — 판정 상자는 기본 접힘.
+     펼친 상자만 이 화면(세션)에서 기억한다 — 새로고침하면 다시 접힌 채로 뜬다. */
+  var BOX_FOLD_MEM = {};   /* key → 펼침 여부 */
 
   function slBoxCollapsed(key) {
     if (!key) return false;
-    return Boolean(slBoxFolds()[key]);
+    return !BOX_FOLD_MEM[key];
   }
 
   function slBoxSetCollapsed(key, on) {
     if (!key) return;
-    var all = slBoxFolds();
-    if (on) all[key] = 1; else delete all[key];
-    try { if (window.localStorage) window.localStorage.setItem(BOX_FOLD_STORE, JSON.stringify(all)); } catch (e) { /* 저장 실패 — 이번 화면에서만 접힌다 */ }
+    BOX_FOLD_MEM[key] = !on;
   }
 
   function slBoxToggle(key) {

@@ -5148,8 +5148,9 @@
     ['break', 'near'].forEach(function (k) {
       var sec = document.querySelector('#tabKkangto .kk-sec[data-kkc="' + k + '"]');
       if (!sec) return;
-      if (st[k]) sec.classList.add('kk-collapsed');
-      paintBtn(sec, !!st[k]);
+      /* 2026-11-27 사용자 지시 — 기본 접힘(저장값과 무관) */
+      sec.classList.add('kk-collapsed');
+      paintBtn(sec, true);
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
@@ -6140,10 +6141,8 @@
         if (tp) tp.addEventListener('click', function(){ setTrack('picks'); });
         if (tl) tl.addEventListener('click', function(){ setTrack('leader'); });
         if (!(D().picks || []).length && (D().leaderPicks || []).length) track = 'leader';
-        if (!touched) {
-          var openMin = String(D().openTime || '10:00').split(':');
-          collapsed = nowKst().min >= (parseInt(openMin[0], 10) || 10) * 60 + (parseInt(openMin[1], 10) || 0);
-        }
+        /* 2026-11-27 사용자 지시 — 접는 박스는 시각과 무관하게 기본 접힘으로 시작한다. */
+        if (!touched) collapsed = true;
         render(); state(); refreshLive();
         setInterval(function(){ if (!document.hidden) refreshLive(); }, 120000);
         setInterval(function(){ if (!document.hidden) { var tb = $('opTimeBadge'), ti = timeInfo(); if (tb) { tb.className = 'op-badge op-time ' + ti.cls; tb.textContent = ti.text; } } }, 30000);
@@ -6415,9 +6414,9 @@
       function bindToggle() {
         var btn = $('ihToggleBtn'), box = $('intradayHongBox');
         if (!btn || !box) return;
-        var saved = null;
-        try { saved = window.localStorage.getItem('intradayHongCollapsed'); } catch (e) {}
-        if (saved === '1') { box.className += ' collapsed'; btn.textContent = '펼치기'; btn.setAttribute('aria-expanded', 'false'); }
+        /* 2026-11-27 사용자 지시 — 접는 박스는 기본 접힘(저장값과 무관하게 접힌 채로 뜬다) */
+        if (box.className.indexOf('collapsed') < 0) box.className += ' collapsed';
+        btn.textContent = '펼치기'; btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', function () {
           var col = box.className.indexOf('collapsed') >= 0;
           box.className = col ? box.className.replace(/\s*collapsed/g, '') : box.className + ' collapsed';
@@ -6646,9 +6645,9 @@
     var btn = $('fkToggleBtn');
     var box = $('fkZoneBox');
     if (!btn || !box) return;
-    var saved = null;
-    try { saved = window.localStorage.getItem('fkZoneCollapsed'); } catch (e) {}
-    if (saved === '1') { box.className += ' collapsed'; btn.textContent = '펼치기'; btn.setAttribute('aria-expanded', 'false'); }
+    /* 2026-11-27 사용자 지시 — 접는 박스는 기본 접힘(저장값과 무관하게 접힌 채로 뜬다) */
+    if (box.className.indexOf('collapsed') < 0) box.className += ' collapsed';
+    btn.textContent = '펼치기'; btn.setAttribute('aria-expanded', 'false');
     btn.addEventListener('click', function () {
       var col = box.className.indexOf('collapsed') >= 0;
       box.className = col ? box.className.replace(/\s*collapsed/g, '') : box.className + ' collapsed';
@@ -7128,12 +7127,9 @@
       try { window.localStorage.setItem('themeWatchCollapsed', collapsed ? '0' : '1'); } catch (e) { /* 저장소 없음 */ }
     }
     function themeWatchInit() {
-      try {
-        if (window.localStorage.getItem('themeWatchCollapsed') === '1') {
-          var box = document.getElementById('watchBox');
-          if (box && box.className.indexOf('collapsed') < 0) box.className += ' collapsed';
-        }
-      } catch (e) { /* 저장소 없음 */ }
+      /* 2026-11-27 사용자 지시 — 기본 접힘(저장값과 무관) */
+      var box = document.getElementById('watchBox');
+      if (box && box.className.indexOf('collapsed') < 0) box.className += ' collapsed';
     }
     function themeWatchFocus(idx) {
       var blocks = document.querySelectorAll('#tabOverview .theme-grid-8 .theme-block');
@@ -7210,7 +7206,7 @@
   if (window.IpoThemeCard && window.IpoThemeCard.__ready) return;
   var RECENT_DAYS = 28, MAX_TILES = 8, OPEN_MS = 60000, CLOSED_MS = 300000, INIT_TRIES = 40;
   var card=null, headEl=null, bodyEl=null, sumEl=null, badgeEl=null, subEl=null;
-  var st={collapsed:true, inited:false, tries:0, list:[], quotes:{}, next:null, iso:'', at:'', err:'', timer:null};
+  var st={collapsed:true, touched:false, inited:false, tries:0, list:[], quotes:{}, next:null, iso:'', at:'', err:'', timer:null};
 
   function pad(n){ return (n<10?'0':'')+n; }
   function kstNow(){ var d=new Date(); return new Date(d.getTime()+d.getTimezoneOffset()*60000+9*3600000); }
@@ -7267,8 +7263,8 @@
         ? ('최근 4주 '+r+'종목 함께 · 실시간 등락률·통합 대금')
         : ('최근 4주 상장 '+r+'종목 · 실시간 등락률·통합 대금');
     }
-    var saved=readSaved();
-    st.collapsed = (saved===null) ? !(n>0) : (saved==='1');
+    /* 2026-11-27 사용자 지시 — 기본 접힘. 사용자가 [펼치기]를 누른 뒤에는 그 상태를 유지한다. */
+    if(!st.touched) st.collapsed = true;
     paint();
   }
 
@@ -7432,7 +7428,7 @@
 
   window.IpoThemeCard = {
     __ready: true,
-    toggle: function(){ st.collapsed = !st.collapsed; writeSaved(st.collapsed); paint(); if(!st.collapsed) refresh(); },
+    toggle: function(){ st.touched = true; st.collapsed = !st.collapsed; writeSaved(st.collapsed); paint(); if(!st.collapsed) refresh(); },
     refresh: function(){ if(st.inited) refresh(); },
     state: function(){ return { collapsed:st.collapsed, hasToday:card?card.getAttribute('data-has-today'):null, list:st.list, quotes:st.quotes, iso:st.iso }; }
   };
@@ -17748,10 +17744,12 @@ var FOLD = (function () {
   try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; }
 })();
 function foldSave() { try { localStorage.setItem(FOLD_KEY, JSON.stringify(FOLD)); } catch (e) {} }
+/* 2026-11-27 사용자 지시 — 접이식 그룹 기본 접힘. 기록이 없는 키는 접힘(true)으로 본다. */
+function foldOf(k) { var v = FOLD[k]; return v === undefined ? true : !!v; }
 function applyFold() {
   var els = document.querySelectorAll('#tabHonginki [data-fold]');
   for (var i = 0; i < els.length; i++) {
-    var el = els[i], k = el.getAttribute('data-fold'), f = !!FOLD[k];
+    var el = els[i], k = el.getAttribute('data-fold'), f = foldOf(k);
     el.classList.toggle('folded', f);
     el.setAttribute('aria-expanded', f ? 'false' : 'true');
     var car = el.querySelector('.fold-car'); if (car) car.textContent = f ? '▸' : '▾';
@@ -17761,7 +17759,7 @@ function applyFold() {
 }
 function fold(key) {
   if (!key) return;
-  FOLD[key] = !FOLD[key];
+  FOLD[key] = !foldOf(key);
   foldSave();
   applyFold();
 }
@@ -17808,7 +17806,7 @@ function cardHtml(c) {
 
 /* 접이식 카드 그룹 — 헤더는 항상 남고 카드만 깔끔히 접힌다 */
 function foldGroup(key, cls, title, sub, arr) {
-  var f = !!FOLD[key];
+  var f = foldOf(key);
   var body = arr.length
     ? '<div class="stock-grid">' + arr.map(cardHtml).join('') + '</div>'
     : '<div class="empty-note">이 단계에 해당하는 종목이 <b>0건</b>입니다 — ' + L2 + ' 실측 기준으로 이 단계 성립 종목이 없습니다.</div>';
