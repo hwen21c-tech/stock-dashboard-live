@@ -2739,7 +2739,8 @@ def write_timeline(root, slot_t, slot, now, patch_html=True):
             continue
         if now.hour * 60 + now.minute >= hh * 60 + mm + 30:
             s["state"] = "miss"
-            s.setdefault("waitLabel", "미집계 — 그 시각 기록 없음(추측값 없음)")
+            # '자동동기화 대기' 같은 옛 문구는 지난 시각에 남겨 두지 않는다(그 시각 기록이 없다는 사실로 바꾼다)
+            s["waitLabel"] = "미집계 — 그 시각 기록 없음(추측값 없음)"
     merge_index_hourly_flow(data, slots, now)
 
     changed = []
