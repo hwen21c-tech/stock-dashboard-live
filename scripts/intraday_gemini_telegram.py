@@ -36,6 +36,16 @@
   TELEGRAM_BOT_TOKEN    텔레그램 봇 토큰 (필수, --dry-run 이면 없어도 됨)
   TELEGRAM_CHAT_ID      채널/채팅 id  예) @fox_signal_stock
 
+중복 발송 방지 (기본 동작)
+  · --dry-run 도 --force 도 없는 일반 운영 실행이면, 시작하자마자
+    public/data/flow_timeline_today.json 을 읽어 오늘(date == 오늘) 그 회차(slot)가
+    이미 state == 'done' 인지 본다. 이미 있으면 Gemini 호출·텔레그램 발송·타임라인
+    덮어쓰기를 모두 건너뛰고 exit 0 으로 끝낸다(로그: [SKIP] today {slot} already done).
+  · 이유: cron-job.org 가 정시에 부른 뒤 GitHub 자체 cron 이 몇 분 늦게 따라붙으면
+    같은 회차가 두 번 발송됐다(2026-11-27).
+  · 수동 재발송이 필요하면 --force 를 붙인다(가드 통과). --dry-run 도 가드를 지나
+    실제로 생성·검증을 해 본다.
+
 사용 예
   python3 scripts/intraday_gemini_telegram.py --dry-run
   python3 scripts/intraday_gemini_telegram.py --dry-run --slot 10:00 --force
@@ -68,10 +78,14 @@
       {"date":"2026-11-26","kospi":{"s1":4672.55,"s2":4586.8,"r1":4708.54,"r2":4809,"close":4697.51}}
       없으면 전일 종가를 기준선으로 쓴다.
 
-Gemini 모델
-  기본 체인 gemini-3.8-flash → 3.5-flash → 3.1-flash-lite → 3.1-flash-lite-preview.
-  2026-11 기준 2.5 계열은 신규 사용자에게 닫혀 있고(404), 3.8/3.5 는 429·503 이 잦아
-  실제로는 flash-lite 가 먼저 성공하는 날이 많다. 모두 실패하면 실측 대체 본문으로 보낸다.
+Gemini 모델 (2026-11-27 재정렬)
+  기본 체인 gemini-3.1-flash-lite → 3.5-flash → 3.8-flash → 3.1-flash-lite-preview.
+  2026-11 기준 2.5 계열은 신규 사용자에게 닫혀 있고(404), 3.8/3.5 는 429·503 과
+  50초 타임아웃이 잦아 실제로는 flash-lite 가 먼저 성공하는 날이 많다.
+  그래서 응답이 가장 안정적인 flash-lite 를 앞에 두고, 큰 모델은 뒤 폴백으로만 쓴다.
+  호출 타임아웃은 1회 30초(lite) / 35초(그 외) — 예전엔 50~55초여서 세 모델이
+  연달아 타임아웃되면 발송까지 3분이 걸렸다(2026-11-27 10:00 실행 2분47초).
+  모두 실패하면 실측 대체 본문으로 보낸다.
 """
 
 import argparse
@@ -120,12 +134,18 @@ UA = (
 
 BIG_VALUE_WON = 30_000_000_000  # 300억 — 사용자 확정 기준
 
+# 모델 체인 — 빠르고 안정적인 flash-lite 를 먼저, 큰 모델은 뒤 폴백으로.
+#   (2026-11-27: 3.8-flash 타임아웃 → 3.5-flash 타임아웃·검증실패 → lite 통과에 2분47초 걸린 실행을 보고 재정렬)
 DEFAULT_MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.8-flash",
     "gemini-3.1-flash-lite-preview",
 ]
+
+# 1회 호출 타임아웃 — 이 시간을 넘긴 모델은 버리고 다음 모델로 간다(총 소요 상한은 GEMINI_WALL_BUDGET).
+GEMINI_TIMEOUT_DEFAULT = 30
+GEMINI_WALL_BUDGET = 150  # 초 — Gemini 생성에 쓸 수 있는 전체 시간(3분 → 2분30초)
 RETRYABLE = {429, 500, 502, 503, 504}
 
 # 텔레그램 한 통 4,096자 · 목표 2,000~3,200자
@@ -2788,7 +2808,8 @@ def main(argv=None):
                     help="심화 분석(뉴스·공시·연속 수급·테마 연속성·오답 노트·미장) 생략")
     ap.add_argument("--deep-budget", type=float, default=25.0,
                     help="심화 분석(네트워크)에 쓸 최대 초 — 넘기면 남은 항목은 버린다")
-    ap.add_argument("--timeout", type=int, default=60, help="Gemini 호출 타임아웃(초)")
+    ap.add_argument("--timeout", type=int, default=GEMINI_TIMEOUT_DEFAULT,
+                    help=f"Gemini 호출 1회 타임아웃(초, 기본 {GEMINI_TIMEOUT_DEFAULT}) — 큰 모델은 +5초")
     ap.add_argument("--max-tokens", type=int, default=4096, help="Gemini maxOutputTokens")
     ap.add_argument("--summary", default=None, help="결과 JSON 을 Actions 요약(markdown)으로 출력")
     ap.add_argument("--timeline-slot", default=None,
@@ -2802,7 +2823,7 @@ def main(argv=None):
     ap.add_argument("--push-timeline", action="store_true",
                     help="타임라인 커밋을 원격에 push (GitHub Actions 에서는 자동)")
     ap.add_argument("--skip-if-done", action="store_true",
-                    help="오늘 그 회차가 이미 기록됐으면 발송·생성 없이 종료(예약 중복·백업 슬롯용)")
+                    help="오늘 그 회차가 이미 기록됐으면 발송·생성 없이 종료(기본 운영 실행은 이 가드가 자동 적용)")
     args = ap.parse_args(argv)
 
     if args.summary:
@@ -2834,9 +2855,31 @@ def main(argv=None):
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 예약 코른이 지연·중복으로 겹칠 때 같은 회차를 두 번 보내지 않는다.
-    # (오늘 그 슬롯이 이미 done 이면 Gemini 호출·발송 없이 종료 — 수동 workflow_dispatch 는 이 플래그를 안 쓴다)
-    if args.skip_if_done and not args.timeline_from:
+    # ── 중복 발송 가드 (2026-11-27) ──────────────────────────────────────
+    #   cron-job.org 가 정시에 부른 뒤 GitHub 자체 cron 이 몇 분 늦게 따라붙으면
+    #   같은 회차가 두 번 발송됐다. 일반 운영 실행(--dry-run·--force 아님)이면
+    #   오늘 그 회차가 이미 done 인지 먼저 보고, 있으면 아무것도 하지 않고 끝낸다.
+    #   · --force : 수동 재실행 — 그대로 통과(재발송 의도)
+    #   · --dry-run : 발송하지 않는 검사 — 생성·검증을 해 볼 수 있게 통과
+    #   · --timeline-from : 저장된 발송본으로 타임라인만 재생성 — 가드 대상 아님
+    if not args.timeline_from and not args.dry_run and not args.force:
+        pre_slot = target_slot(args.timeline_slot or args.slot or kst_now().strftime("%H:%M"))
+        done_already, done_slot = slot_done_today(script_dir, pre_slot)
+        if done_already:
+            measured = (done_slot or {}).get("measured") or "-"
+            log(f"[SKIP] today {pre_slot} already done")
+            log(f"⏭ 오늘 {pre_slot} 회차는 이미 기록·발송됐습니다(발송 {measured}) — 중복 발송 생략")
+            if args.out:
+                write_out(args.out, {"skipped": True, "reason": f"duplicate {pre_slot}",
+                                    "slot": pre_slot, "timeline_slot": done_slot})
+            if args.out_text:
+                os.makedirs(os.path.dirname(os.path.abspath(args.out_text)), exist_ok=True)
+                with open(args.out_text, "w", encoding="utf-8") as fh:
+                    fh.write(f"[SKIP] today {pre_slot} already done (발송 {measured})\n")
+            return 0
+
+    # 예전 --skip-if-done 플래그도 그대로 받는다(dry-run 검사·수동 백업 호출호환)
+    if args.skip_if_done and not args.timeline_from and (args.dry_run or args.force):
         pre_slot = target_slot(args.timeline_slot or args.slot or kst_now().strftime("%H:%M"))
         done_already, done_slot = slot_done_today(script_dir, pre_slot)
         if done_already:
@@ -2876,15 +2919,16 @@ def main(argv=None):
         started = time.time()
 
         def model_timeout(name):
-            base = args.timeout if args.timeout != 60 else 40
-            return base + 15 if "lite" in name else base + 10
+            """1회 호출 타임아웃 — lite 30초, 큰 모델 35초(기본값 기준)."""
+            return args.timeout + (0 if "flash-lite" in name else 5)
 
         def try_models(model_list, pass_no):
             nonlocal body, validation, soft_best
             for model in model_list:
                 prompt = base_text
                 for attempt in (1, 2):
-                    if time.time() - started > 240:
+                    if time.time() - started > GEMINI_WALL_BUDGET:
+                        log(f"… Gemini 전체 시간 {GEMINI_WALL_BUDGET}초 초과 — 남은 모델 건너뜀")
                         return
                     try:
                         t0 = time.time()
