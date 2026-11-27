@@ -1777,6 +1777,8 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
         #   예: '11/26 정규장 마감 기준', '11/26(목) 마감', '전일 거래일 마감'
         probe = re.sub(r"\d{1,2}/\d{1,2}\s*(?:\([월화수목금토일]\))?\s*(?:정규장|정규|장)?\s*마감", " ", probe)
         probe = re.sub(r"(?:직전|전일)\s*(?:거래일)?[^\n]{0,6}마감", " ", probe)
+        # '장 마감까지·마감 전' 처럼 앞을 가리키는 말은 '이미 끝났다'는 서술이 아니다
+        probe = re.sub(r"마감\s*(?:까지|전|무렵|직전)", " ", probe)
         mm = re.search(r"(?:정규장|장)\s*마감|종가\s*확정|마감했|(?:상승|하락|보합|급등|급락)\s*마감", probe)
         if mm:
             ctx = probe[max(0, mm.start() - 12):mm.end() + 8].replace("\n", " ")
@@ -1822,9 +1824,11 @@ def validate_body(body, ftext, phase=None, min_chars=BODY_MIN):
         n = int(m.group(1))
         fm = re.search(r"\[상한가\] 확정 (\d+)종목", ftext)
         nm = re.search(r"상한가 임박 (\d+)종목", ftext)
+        bm = re.search(r"상한 (\d+)", ftext)      # 등락종목수 줄의 '상한 N'도 FACTS 실측치다
         confirmed = {float(fm.group(1))} if fm else set()
         near = {float(nm.group(1))} if nm else set()
-        if confirmed and float(n) not in confirmed and float(n) not in near:
+        breadth = {float(bm.group(1))} if bm else set()
+        if float(n) not in (confirmed | near | breadth):
             problems.append(f"상한가 수 불일치({n}종목 — FACTS와 다름)")
     return (not problems), problems
 
