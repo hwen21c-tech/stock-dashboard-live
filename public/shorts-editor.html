@@ -1,0 +1,2834 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>쇼츠 전용 편집기 · ShortsAI Studio Pro</title>
+  <meta name="theme-color" content="#090d16" />
+  <meta name="description" content="AI 쇼츠 자동 편집기 — 클립 5개, 9:16 캔버스 프리뷰, 단어별 하이라이트 자막, BGM 더킹, WebM 내보내기. 서버 Gemini 키로 바로 동작." />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #090d16;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    .phone-frame {
+      aspect-ratio: 9 / 16;
+      max-height: 540px;
+      width: 100%;
+      max-width: 304px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(148, 163, 184, 0.18);
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .seg-active {
+      border-color: #3b82f6 !important;
+      background: rgba(30, 58, 138, 0.24) !important;
+    }
+    .track-block {
+      transition: filter 0.15s ease, transform 0.15s ease;
+    }
+    .track-block:hover {
+      filter: brightness(1.18);
+    }
+
+    /* ===== 가로 넘침 방지 (폴드8 외부 412px 포함) ===== */
+    html, body { max-width: 100%; }
+    body { overflow-x: hidden; }
+    .se-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; flex: 1 1 auto; min-width: 0; }
+    #settingsModal > div, #exportModal > div { max-width: min(100%, 42rem); }
+
+    /* ===== 가족 PIN 0623 잠금 (화면 가림 전용) ===== */
+    #pinLockOverlay { display: none; }
+    html.pin-locked body > *:not(#pinLockOverlay) { visibility: hidden !important; }
+    html.pin-locked #pinLockOverlay { display: flex !important; }
+    @keyframes pinShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-9px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(4px); }
+    }
+    .pin-key {
+      width: 62px; height: 52px; border-radius: 14px; border: 1px solid rgba(148,163,184,.35);
+      background: rgba(15,23,42,.9); color: #e2e8f0; font-size: 19px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      transition: background .12s ease, transform .08s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin-key:active { transform: scale(.95); background: rgba(30,58,138,.7); }
+    .pin-dot { width: 12px; height: 12px; border-radius: 9999px; border: 1.5px solid #38bdf8; transition: all .12s ease; }
+  </style>
+  <script>
+    /* PIN 0623 잠금 — 첫 진입 시 화면만 가린다. 저장소를 못 쓰는 환경이면 잠그지 않는다(잠김 사고 방지). */
+    (function () {
+      var unlocked = null;
+      try {
+        unlocked = (localStorage.getItem('stock_dashboard_pin_auth') === '0623_verified') ||
+                   (sessionStorage.getItem('stock_dashboard_pin_auth') === '0623_verified');
+      } catch (e) { unlocked = null; }
+      if (unlocked === false) document.documentElement.className += ' pin-locked';
+    })();
+  </script>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- ===== 가족 PIN 0623 잠금 오버레이 (서버 Gemini 키 보호) ===== -->
+  <div id="pinLockOverlay" style="position: fixed; inset: 0; width: 100vw; height: 100vh; background: #070c14; z-index: 999999; display: none; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
+    <div id="pinCard" style="width: 100%; max-width: 320px; display: flex; flex-direction: column; align-items: center; gap: 18px;">
+      <div style="width: 54px; height: 54px; border-radius: 16px; background: linear-gradient(135deg,#3b82f6,#6366f1 60%,#8b5cf6); display: flex; align-items: center; justify-content: center; box-shadow: 0 12px 32px -12px rgba(59,130,246,.8);">
+        <span style="font-size: 26px; line-height: 1;">🎬</span>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 16px; font-weight: 800; color: #f1f5f9; letter-spacing: -0.01em;">쇼츠 전용 편집기</div>
+        <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px;">가족 PIN 4자리를 입력해 주세요</div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin: 2px 0 2px;">
+        <div class="pin-dot" id="dot0"></div>
+        <div class="pin-dot" id="dot1"></div>
+        <div class="pin-dot" id="dot2"></div>
+        <div class="pin-dot" id="dot3"></div>
+      </div>
+
+      <div id="pinErrMsg" style="min-height: 16px; font-size: 11.5px; color: #fb7185; text-align: center;"></div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 62px); gap: 10px;">
+        <button type="button" class="pin-key" onclick="pressPin(1)">1</button>
+        <button type="button" class="pin-key" onclick="pressPin(2)">2</button>
+        <button type="button" class="pin-key" onclick="pressPin(3)">3</button>
+        <button type="button" class="pin-key" onclick="pressPin(4)">4</button>
+        <button type="button" class="pin-key" onclick="pressPin(5)">5</button>
+        <button type="button" class="pin-key" onclick="pressPin(6)">6</button>
+        <button type="button" class="pin-key" onclick="pressPin(7)">7</button>
+        <button type="button" class="pin-key" onclick="pressPin(8)">8</button>
+        <button type="button" class="pin-key" onclick="pressPin(9)">9</button>
+        <button type="button" class="pin-key" onclick="clearPin()" style="font-size: 12px; color:#94a3b8;">C</button>
+        <button type="button" class="pin-key" onclick="pressPin(0)">0</button>
+        <button type="button" class="pin-key" onclick="backspacePin()" style="font-size: 15px; color:#94a3b8;">⌫</button>
+      </div>
+
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #cbd5e1; cursor: pointer; user-select: none;">
+        <input type="checkbox" id="chkAutoLogin" checked style="accent-color: #0284c7; width: 15px; height: 15px;">
+        <span>이 기기에서 유지 (다음부터 바로 열림)</span>
+      </label>
+      <div style="font-size: 10.5px; color: #64748b; line-height: 1.5; text-align: center;">
+        관제탑과 같은 가족 PIN입니다 · 키보드 숫자키·Backspace·Enter 로도 입력할 수 있어요
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN 잠금 엔진 (별도 블록 — 본문 스크립트가 멈춰도 해제는 항상 동작) -->
+  <script>
+  (function () {
+    var PIN = '0623';
+    var KEY = 'stock_dashboard_pin_auth';
+    var VAL = '0623_verified';
+    var entered = '';
+
+    function isUnlocked() {
+      try { return (localStorage.getItem(KEY) === VAL) || (sessionStorage.getItem(KEY) === VAL); }
+      catch (e) { return true; }
+    }
+    function paint(locked) {
+      try {
+        var root = document.documentElement;
+        if (locked) { if (root.className.indexOf('pin-locked') < 0) root.className += ' pin-locked'; }
+        else { root.className = root.className.replace(/\s*pin-locked/g, ''); }
+        var ov = document.getElementById('pinLockOverlay');
+        if (ov) ov.style.display = locked ? 'flex' : 'none';
+      } catch (e) {}
+    }
+    function dots() {
+      for (var i = 0; i < 4; i++) {
+        var d = document.getElementById('dot' + i);
+        if (!d) continue;
+        if (i < entered.length) { d.style.background = '#38bdf8'; d.style.transform = 'scale(1.2)'; }
+        else { d.style.background = 'transparent'; d.style.transform = 'scale(1)'; }
+      }
+    }
+    function say(msg) { var e = document.getElementById('pinErrMsg'); if (e) e.textContent = msg || ''; }
+    function shake() {
+      var c = document.getElementById('pinCard');
+      if (!c) return;
+      c.style.animation = 'pinShake .34s ease';
+      setTimeout(function () { c.style.animation = ''; }, 360);
+    }
+    function remember() {
+      var chk = document.getElementById('chkAutoLogin');
+      return !chk || chk.checked;
+    }
+    function unlock() {
+      var keep = remember();
+      try {
+        if (keep) { localStorage.setItem(KEY, VAL); try { sessionStorage.removeItem(KEY); } catch (e) {} }
+        else { try { localStorage.removeItem(KEY); } catch (e) {} sessionStorage.setItem(KEY, VAL); }
+      } catch (e) { try { sessionStorage.setItem(KEY, VAL); } catch (e2) {} }
+      entered = ''; dots(); say(''); paint(false);
+      try { window.dispatchEvent(new CustomEvent('shorts:unlocked')); } catch (e) {}
+    }
+    function verify() {
+      if (entered === PIN) { unlock(); return; }
+      say('❌ PIN이 맞지 않습니다. 다시 입력해 주세요.');
+      entered = ''; dots(); shake();
+    }
+
+    window.pressPin = function (n) {
+      n = String(n);
+      if (!/^[0-9]$/.test(n)) return;
+      if (entered.length >= 4) return;
+      entered += n; dots(); say('');
+      if (entered.length === 4) setTimeout(verify, 120);
+    };
+    window.clearPin = function () { entered = ''; dots(); say(''); };
+    window.backspacePin = function () { if (!entered.length) return; entered = entered.slice(0, -1); dots(); say(''); };
+    window.lockShortsEditor = function () {
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      try { sessionStorage.removeItem(KEY); } catch (e) {}
+      entered = ''; dots(); say(''); paint(true);
+    };
+
+    window.addEventListener('keydown', function (e) {
+      if (!isUnlocked()) {
+        if (/^[0-9]$/.test(e.key)) { e.preventDefault(); window.pressPin(e.key); }
+        else if (e.key === 'Backspace') { e.preventDefault(); window.backspacePin(); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (entered.length === 4) verify(); }
+        else if (e.key === 'Escape') { e.preventDefault(); window.clearPin(); }
+      }
+    });
+
+    if (isUnlocked()) paint(false);
+    else paint(true);
+  })();
+  </script>
+
+  <!-- Top Navigation Bar -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
+    <div class="max-w-[1480px] mx-auto px-4 sm:px-6 min-h-14 py-2 flex items-center justify-between gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/20">
+          <i data-lucide="clapperboard" class="w-4 h-4 text-white"></i>
+        </div>
+        <div class="truncate">
+          <span class="font-bold text-sm sm:text-base tracking-tight text-white">ShortsAI Studio</span>
+          <span class="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-blue-300 border border-blue-500/30">PRO</span>
+          <span class="hidden lg:inline-block ml-2 text-[11px] text-slate-400">정적 웹 · 정밀 자막 · SFX · LUT · 썸네일</span>
+        </div>
+      </div>
+
+      <div class="se-actions flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <span id="autosaveBadge" class="hidden xl:inline-flex items-center gap-1 text-[11px] text-slate-400 mr-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>자동 저장됨
+        </span>
+        <div class="flex items-center bg-slate-900 border border-slate-700 rounded-lg p-0.5">
+          <button id="btnUndo" type="button" disabled class="p-1.5 rounded text-slate-400 hover:text-white disabled:opacity-35 transition" title="실행 취소 (Ctrl+Z)">
+            <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="btnRedo" type="button" disabled class="p-1.5 rounded text-slate-400 hover:text-white disabled:opacity-35 transition" title="다시 실행 (Ctrl+Y)">
+            <i data-lucide="redo-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+        <button id="btnLoadDemo" type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>데모 체험</span>
+        </button>
+        <button id="btnCaptureThumb" type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5" title="현재 화면으로 9:16 썸네일 PNG 저장">
+          <i data-lucide="image" class="w-3.5 h-3.5 text-pink-400"></i>
+          <span class="hidden sm:inline">썸네일 저장</span>
+        </button>
+        <button id="btnOpenSettings" type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+          <i data-lucide="key-round" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span>API 설정</span>
+          <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+        </button>
+        <button id="btnOpenExport" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition flex items-center gap-1.5">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>내보내기</span>
+        </button>
+        <button id="btnLockNow" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition" title="지금 잠그기 (PIN 다시 입력)" onclick="lockShortsEditor()">
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+    <!-- Left Column: Clips + AI Story & Sound Controls (3 cols) -->
+    <section class="lg:col-span-3 flex flex-col gap-4">
+      <!-- Upload Clips Card -->
+      <div class="glass-panel rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+            <i data-lucide="film" class="w-4 h-4 text-blue-400"></i>
+            원본 클립 (최대 5개)
+          </h2>
+          <span id="clipCountBadge" class="text-xs text-slate-400">0 / 5</span>
+        </div>
+
+        <label id="dropZone" for="videoFileInput" class="block border-2 border-dashed border-slate-700 hover:border-blue-500/70 rounded-xl p-3.5 text-center cursor-pointer transition bg-slate-900/50">
+          <input id="videoFileInput" type="file" accept="video/*" multiple class="hidden" />
+          <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-400 mx-auto mb-1"></i>
+          <p class="text-xs font-medium text-slate-200">동영상 3~5개 드래그 또는 클릭</p>
+          <p class="text-[11px] text-slate-400 mt-0.5">MP4, MOV, WebM (브라우저 내 처리)</p>
+        </label>
+
+        <div id="clipList" class="mt-2.5 space-y-1.5 max-h-44 overflow-y-auto pr-1"></div>
+      </div>
+
+      <!-- AI Story & Visual/Audio Styling Card -->
+      <div class="glass-panel rounded-2xl p-4 space-y-3">
+        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+          <i data-lucide="wand-2" class="w-4 h-4 text-purple-400"></i>
+          AI 스토리 &amp; 연출 스튜디오
+        </h2>
+
+        <div>
+          <label for="storyPromptInput" class="block text-xs text-slate-400 mb-1">스토리 방향 / 주제 (선택)</label>
+          <textarea id="storyPromptInput" rows="2" placeholder="예: 주말 카페 투어 브이로그 느낌으로, 초반 3초에 반전 후킹 넣어줘" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="toneSelect" class="block text-xs text-slate-400 mb-1">스토리 톤</label>
+            <select id="toneSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="energetic">유쾌한 예능·후킹</option>
+              <option value="vlog">감성 브이로그</option>
+              <option value="info">빠른 정보 요약</option>
+              <option value="dramatic">반전·긴장감</option>
+            </select>
+          </div>
+          <div>
+            <label for="captionStyleSelect" class="block text-xs text-slate-400 mb-1">자막 스타일</label>
+            <select id="captionStyleSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="capcut">캡컷 볼드 (노랑)</option>
+              <option value="neon">네온 박스 (시안)</option>
+              <option value="pop">팝업 배지 (핑크)</option>
+              <option value="minimal">미니멀 화이트</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="lutSelect" class="block text-xs text-slate-400 mb-1">색감 필터 (LUT)</label>
+            <select id="lutSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="none">원본 색감</option>
+              <option value="vivid">비비드 쇼츠</option>
+              <option value="warm">시네마틱 웜</option>
+              <option value="cool">쿨 도시감성</option>
+              <option value="film">빈티지 필름</option>
+            </select>
+          </div>
+          <div>
+            <label for="transitionSelect" class="block text-xs text-slate-400 mb-1">컷 전환 효과</label>
+            <select id="transitionSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="fade">0.2초 크로스페이드</option>
+              <option value="flash">화이트 플래시 컷</option>
+              <option value="zoom">줌 펀치 전환</option>
+              <option value="cut">하드 컷</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="bgmMoodSelect" class="block text-xs text-slate-400 mb-1">BGM 트랙</label>
+            <select id="bgmMoodSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="upbeat">내장 Lo-fi Beat</option>
+              <option value="chill">내장 감성 피아노</option>
+              <option value="tense">내장 신스 펄스</option>
+              <option value="custom">커스텀 MP3 사용</option>
+              <option value="none">BGM 끄기</option>
+            </select>
+          </div>
+          <div>
+            <label for="sfxSelect" class="block text-xs text-slate-400 mb-1">전환 효과음 (SFX)</label>
+            <select id="sfxSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="whoosh">Whoosh (바람 컷)</option>
+              <option value="pop">Pop (경쾌한 팝)</option>
+              <option value="none">효과음 없음</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom BGM Upload + Caption Y Position -->
+        <div class="rounded-xl bg-slate-900/70 border border-slate-800 p-2.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <label for="bgmFileInput" class="cursor-pointer text-[11px] font-medium text-blue-300 hover:text-blue-200 flex items-center gap-1">
+              <i data-lucide="music" class="w-3.5 h-3.5"></i>
+              <span id="customBgmLabel" class="truncate max-w-[140px]">내 BGM MP3 올리기</span>
+              <input id="bgmFileInput" type="file" accept="audio/*" class="hidden" />
+            </label>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] text-slate-400">자막 위치</span>
+              <input id="captionYSlider" type="range" min="55" max="85" value="75" class="w-16 accent-blue-500 h-1 bg-slate-800 rounded" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+              <input id="toggleKenBurns" type="checkbox" checked class="rounded border-slate-600 bg-slate-900 text-blue-500" />
+              <span>미세 줌인</span>
+            </label>
+            <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+              <input id="toggleAudioDucking" type="checkbox" checked class="rounded border-slate-600 bg-slate-900 text-blue-500" />
+              <span>다이나믹 BGM 더킹</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="pt-0.5 space-y-2">
+          <button id="btnAnalyzeGemini" type="button" class="w-full py-2.5 px-3 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/20 transition flex items-center justify-center gap-2">
+            <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+            <span>Gemini로 영상 분석 &amp; 스토리·메타 생성</span>
+          </button>
+          <button id="btnGenerateAllTts" type="button" class="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition flex items-center justify-center gap-2">
+            <i data-lucide="mic" class="w-3.5 h-3.5"></i>
+            <span>전체 성우(TTS) + 단어 타임스탬프 동기화</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Center Column: 9:16 Live Canvas Preview + Visual Multi-Track Strip (4 cols) -->
+    <section class="lg:col-span-4 flex flex-col gap-4 items-center">
+      <div class="glass-panel rounded-2xl p-4 w-full flex flex-col items-center">
+        <div class="w-full flex items-center justify-between mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h2 class="text-sm font-bold text-white">실시간 9:16 Canvas 프리뷰</h2>
+          </div>
+          <span id="previewTimecode" class="text-xs font-mono text-slate-300">00:00.0 / 00:00.0</span>
+        </div>
+
+        <!-- 9:16 Phone Canvas Container -->
+        <div class="phone-frame relative rounded-2xl overflow-hidden bg-black border border-slate-700/80">
+          <canvas id="previewCanvas" width="540" height="960" class="w-full h-full object-contain block"></canvas>
+
+          <!-- Safe-zone overlay guide -->
+          <div id="safeZoneOverlay" class="hidden pointer-events-none absolute inset-0">
+            <div class="absolute right-2 bottom-20 w-10 h-44 border border-dashed border-rose-400/70 rounded bg-rose-500/10 flex items-center justify-center">
+              <span class="text-[9px] text-rose-200 -rotate-90 whitespace-nowrap">쇼츠 버튼 영역</span>
+            </div>
+            <div class="absolute left-3 right-14 bottom-4 h-16 border border-dashed border-amber-400/70 rounded bg-amber-500/10 flex items-center justify-center">
+              <span class="text-[10px] text-amber-200">채널명·설명 영역</span>
+            </div>
+          </div>
+
+          <!-- Recording indicator -->
+          <div id="recordingBadge" class="hidden absolute top-3 left-3 px-2.5 py-1 rounded-full bg-rose-600/90 text-white text-[11px] font-bold flex items-center gap-1.5 shadow">
+            <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+            <span>실시간 렌더링 녹화 중...</span>
+          </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="w-full mt-3 space-y-2">
+          <input id="timelineScrubber" type="range" min="0" max="100" step="0.1" value="0" class="w-full accent-blue-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg" />
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <button id="btnPlayPause" type="button" class="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                <span id="playBtnLabel">재생</span>
+              </button>
+              <button id="btnStop" type="button" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="처음으로">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <label class="flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700">
+                <input id="toggleTitleBanner" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-blue-500" />
+                <span>상단 타이틀</span>
+              </label>
+              <button id="btnToggleSafeZone" type="button" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] flex items-center gap-1 transition">
+                <i data-lucide="smartphone" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span>세이프존</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Multi-Track Timeline Strip -->
+        <div class="w-full mt-3 pt-3 border-t border-slate-800/90 space-y-1.5">
+          <div class="flex items-center justify-between text-[10px] text-slate-400">
+            <span class="font-semibold text-slate-300">멀티트랙 타임라인 · Space 재생 · ←/→ 탐색</span>
+            <span id="duckingStatusText" class="text-emerald-400">BGM 더킹 활성</span>
+          </div>
+          <div id="visualTrackVideo" class="w-full h-6 rounded-md bg-slate-950 border border-slate-800 flex overflow-hidden p-0.5 gap-0.5"></div>
+          <div id="visualTrackAudio" class="w-full h-4 rounded-md bg-slate-950 border border-slate-800 flex overflow-hidden p-0.5 gap-0.5"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Tabs (Timeline Editor / YouTube Metadata & Story Arc) (5 cols) -->
+    <section class="lg:col-span-5 flex flex-col gap-4">
+      <!-- Story Arc & YouTube Metadata Panel with Tabs -->
+      <div class="glass-panel rounded-2xl p-4">
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <div class="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button id="tabBtnStory" type="button" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white transition">스토리 아크</button>
+            <button id="tabBtnMeta" type="button" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-400 hover:text-white transition">유튜브 제목·태그</button>
+          </div>
+          <span id="totalDurationBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-blue-300">총 0.0초</span>
+        </div>
+
+        <!-- Tab 1: Story Arc -->
+        <div id="panelStoryArc" class="grid grid-cols-3 gap-2 text-xs">
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2.5">
+            <div class="text-[10px] font-semibold text-rose-400 mb-0.5">초반 3초 후킹</div>
+            <div id="arcHook" class="text-slate-200 line-clamp-2">-</div>
+          </div>
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2.5">
+            <div class="text-[10px] font-semibold text-blue-400 mb-0.5">핵심 전개</div>
+            <div id="arcClimax" class="text-slate-200 line-clamp-2">-</div>
+          </div>
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2.5">
+            <div class="text-[10px] font-semibold text-emerald-400 mb-0.5">마무리</div>
+            <div id="arcOutro" class="text-slate-200 line-clamp-2">-</div>
+          </div>
+        </div>
+
+        <!-- Tab 2: YouTube Shorts Metadata -->
+        <div id="panelYtMeta" class="hidden space-y-2 text-xs">
+          <div class="flex items-center gap-2">
+            <input id="ytTitleInput" type="text" placeholder="쇼츠 업로드용 후킹 제목" class="flex-1 rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-semibold" />
+            <button id="btnCopyMeta" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] shrink-0">전체 복사</button>
+          </div>
+          <textarea id="ytDescInput" rows="2" placeholder="쇼츠 설명 및 해시태그" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300"></textarea>
+        </div>
+      </div>
+
+      <!-- Timeline Segments List -->
+      <div class="glass-panel rounded-2xl p-4 flex-1 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-4 h-4 text-blue-400"></i>
+            타임라인 세그먼트 편집
+          </h2>
+          <button id="btnAddSegment" type="button" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>컷 추가</span>
+          </button>
+        </div>
+
+        <div id="segmentsContainer" class="space-y-3 overflow-y-auto max-h-[520px] pr-1"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- API Settings Modal -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="key-round" class="w-4 h-4 text-blue-400"></i>
+          API 키 설정 (브라우저 로컬 저장)
+        </h3>
+        <button id="btnCloseSettings" type="button" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400 leading-relaxed">
+        이 페이지는 <b class="text-slate-200">서버에 연결된 Gemini 키</b>로 바로 동작합니다 — 여기서 키를 넣지 않아도 됩니다.
+        내 키로 바꾸고 싶을 때만 <b class="text-slate-200">내 키 직접 입력</b>을 고르세요. 입력한 키는 이 브라우저의
+        <code class="text-slate-200">localStorage</code>에만 저장되고 서버로 보내지 않습니다.
+      </p>
+
+      <div class="grid grid-cols-2 gap-2">
+        <label id="keyModeServerCard" class="cursor-pointer rounded-xl border border-blue-500/60 bg-blue-500/10 px-2.5 py-2">
+          <input type="radio" name="keyMode" id="keyModeServer" value="server" class="accent-blue-500 mr-1.5" checked />
+          <span class="text-[11px] font-semibold text-slate-100">서버 기본 키 사용</span>
+          <span class="block text-[10px] text-blue-300 mt-0.5 ml-5" id="serverKeyState">확인 중…</span>
+        </label>
+        <label id="keyModeOwnCard" class="cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2">
+          <input type="radio" name="keyMode" id="keyModeOwn" value="own" class="accent-blue-500 mr-1.5" />
+          <span class="text-[11px] font-semibold text-slate-100">내 키 직접 입력</span>
+          <span class="block text-[10px] text-slate-400 mt-0.5 ml-5">브라우저에만 저장</span>
+        </label>
+      </div>
+
+      <div class="space-y-3">
+        <div id="ownKeyFields" class="hidden space-y-3">
+          <div>
+            <label for="inputGeminiKey" class="block text-xs font-medium text-slate-300 mb-1">Gemini API Key (Google AI Studio)</label>
+            <input id="inputGeminiKey" type="password" placeholder="AIzaSy..." class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label for="selectGeminiModel" class="block text-xs font-medium text-slate-300 mb-1">Gemini 모델</label>
+            <select id="selectGeminiModel" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+              <option value="gemini-2.5-flash">gemini-2.5-flash (빠르고 저렴, 추천)</option>
+              <option value="gemini-2.5-pro">gemini-2.5-pro (복잡한 스토리텔링)</option>
+            </select>
+          </div>
+          <div>
+            <label for="inputProxyUrl" class="block text-xs font-medium text-slate-300 mb-1">커스텀 프록시 URL (선택 · Cloudflare Workers 배포용)</label>
+            <input id="inputProxyUrl" type="url" placeholder="https://your-worker.workers.dev (비워두면 직접 호출)" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div class="border-t border-slate-800 pt-3">
+          <label for="selectTtsProvider" class="block text-xs font-medium text-slate-300 mb-1">성우(TTS) 엔진</label>
+          <select id="selectTtsProvider" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+            <option value="server">서버 무료 성우 (키 불필요 · MP3 · 기본)</option>
+            <option value="webspeech">브라우저 내장 한국어 TTS (기기 음성)</option>
+            <option value="elevenlabs">ElevenLabs (내 키 · 정밀 단어 타임스탬프)</option>
+          </select>
+        </div>
+
+        <div id="serverTtsFields" class="space-y-2.5">
+          <div>
+            <label for="selectServerVoice" class="block text-xs font-medium text-slate-300 mb-1">서버 성우</label>
+            <select id="selectServerVoice" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500">
+              <option value="ko-KR-SunHiNeural">선히 (밝은 여성 · 릴스·쇼핑 톤)</option>
+              <option value="ko-KR-InJoonNeural">인준 (차분한 남성 · 정보 전달)</option>
+              <option value="ko-KR-HyunsuMultilingualNeural">현수 (또렷한 남성 · 다국어)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="elevenLabsFields" class="hidden space-y-2.5">
+          <div>
+            <label for="inputElevenKey" class="block text-xs font-medium text-slate-300 mb-1">ElevenLabs API Key</label>
+            <input id="inputElevenKey" type="password" placeholder="sk_..." class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label for="inputElevenVoiceId" class="block text-xs font-medium text-slate-300 mb-1">Voice ID (기본: Rachel / 다국어 v2)</label>
+            <input id="inputElevenVoiceId" type="text" value="21m00Tcm4TlvDq8ikWAM" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btnClearKeys" type="button" class="px-3 py-1.5 rounded-lg text-xs text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 transition">키 초기화</button>
+        <button id="btnSaveSettings" type="button" class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div id="exportModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="download" class="w-4 h-4 text-blue-400"></i>
+          쇼츠 내보내기 (브라우저 녹화 · JSON · FFmpeg)
+        </h3>
+        <button id="btnCloseExport" type="button" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex flex-col justify-between gap-3">
+          <div>
+            <div class="text-xs font-bold text-blue-400 mb-1">방법 1. 브라우저 즉시 녹화 (WebM)</div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              9:16 캔버스(LUT 색감·정밀 자막·줌인·전환)와 성우·BGM(더킹)·효과음(SFX)을 실시간 캡처해 바로 다운로드합니다.
+            </p>
+          </div>
+          <button id="btnRecordWebm" type="button" class="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition flex items-center justify-center gap-1.5">
+            <i data-lucide="video" class="w-3.5 h-3.5"></i>
+            <span>지금 렌더링 &amp; 다운로드</span>
+          </button>
+        </div>
+
+        <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex flex-col justify-between gap-3">
+          <div>
+            <div class="text-xs font-bold text-emerald-400 mb-1">방법 2. 타임라인 JSON &amp; 메타 저장</div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              컷 구간, 배속, 크롭, 단어 타임스탬프, 유튜브 제목·태그가 담긴 표준 JSON을 저장합니다.
+            </p>
+          </div>
+          <button id="btnDownloadJson" type="button" class="w-full py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition flex items-center justify-center gap-1.5">
+            <i data-lucide="file-json" class="w-3.5 h-3.5"></i>
+            <span>timeline.json 다운로드</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 min-h-0 flex flex-col">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-slate-300">자동 생성된 FFmpeg 1080×1920 스크립트 (배속·더킹·줌·자막 포함)</span>
+          <button id="btnCopyFfmpeg" type="button" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 border border-slate-700 flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i>
+            <span>명령어 복사</span>
+          </button>
+        </div>
+        <pre id="ffmpegCommandPreview" class="flex-1 overflow-auto rounded-xl bg-slate-950 border border-slate-800 p-3 text-[11px] font-mono text-slate-300 leading-relaxed max-h-56 whitespace-pre"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    // =========================================================================
+    // Application State
+    // =========================================================================
+    const state = {
+      settings: {
+        keyMode: 'server',        // 'server' = 서버 Gemini 키(/api/content-ai) · 'own' = 내 키 직접 입력
+        geminiKey: '',
+        geminiModel: 'gemini-2.5-flash',
+        proxyUrl: '',
+        ttsProvider: 'server',    // 'server' = /api/tts 무료 성우 · 'webspeech' = 기기 음성 · 'elevenlabs' = 내 키
+        serverVoice: 'ko-KR-SunHiNeural',
+        elevenKey: '',
+        elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
+      },
+      server: { checked: false, keyConfigured: false, model: '' },
+      undoStack: [],
+      redoStack: [],
+      clips: [],
+      storyArc: {
+        hook: '클립을 올리거나 데모 체험을 눌러 시작하세요.',
+        climax: '-',
+        outro: '-',
+      },
+      ytMeta: {
+        title: '',
+        description: '',
+      },
+      customBgmBuffer: null,
+      customBgmName: '',
+      segments: [], // { id, clipId, startSec, durationSec, speed, cropFocus, narration, subtitle, muteOrig, ttsAudioUrl, ttsAudioBuffer, wordTimings, ttsStatus }
+      selectedSegmentId: null,
+      isPlaying: false,
+      isRecording: false,
+      currentTime: 0,
+      showSafeZone: false,
+      rafId: null,
+      lastTickMs: 0,
+      audioCtx: null,
+      bgmGainNode: null,
+      activeBgmNodes: [],
+      activeTtsSource: null,
+      lastPlayedSegId: null,
+    };
+
+    const TRACK_COLORS = ['bg-blue-600/80', 'bg-indigo-600/80', 'bg-purple-600/80', 'bg-emerald-600/80', 'bg-amber-600/80', 'bg-rose-600/80'];
+
+    // =========================================================================
+    // Storage & Toast Helpers
+    // =========================================================================
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem('shorts_ai_studio_settings_v1');
+        if (raw) Object.assign(state.settings, JSON.parse(raw));
+      } catch (_) {}
+      syncSettingsUI();
+    }
+
+    function saveSettings() {
+      try {
+        localStorage.setItem('shorts_ai_studio_settings_v1', JSON.stringify(state.settings));
+      } catch (_) {}
+      syncSettingsUI();
+    }
+
+    function syncSettingsUI() {
+      const g = (id) => document.getElementById(id);
+      if (g('keyModeServer')) g('keyModeServer').checked = state.settings.keyMode !== 'own';
+      if (g('keyModeOwn')) g('keyModeOwn').checked = state.settings.keyMode === 'own';
+      if (g('inputGeminiKey')) g('inputGeminiKey').value = state.settings.geminiKey || '';
+      if (g('selectGeminiModel')) g('selectGeminiModel').value = state.settings.geminiModel || 'gemini-2.5-flash';
+      if (g('inputProxyUrl')) g('inputProxyUrl').value = state.settings.proxyUrl || '';
+      if (g('selectTtsProvider')) g('selectTtsProvider').value = state.settings.ttsProvider || 'server';
+      if (g('selectServerVoice')) g('selectServerVoice').value = state.settings.serverVoice || 'ko-KR-SunHiNeural';
+      if (g('inputElevenKey')) g('inputElevenKey').value = state.settings.elevenKey || '';
+      if (g('inputElevenVoiceId')) g('inputElevenVoiceId').value = state.settings.elevenVoiceId || '21m00Tcm4TlvDq8ikWAM';
+
+      const ownMode = state.settings.keyMode === 'own';
+      if (g('ownKeyFields')) g('ownKeyFields').classList.toggle('hidden', !ownMode);
+      if (g('keyModeServerCard')) {
+        g('keyModeServerCard').className = 'cursor-pointer rounded-xl border px-2.5 py-2 ' +
+          (ownMode ? 'border-slate-700 bg-slate-950' : 'border-blue-500/60 bg-blue-500/10');
+      }
+      if (g('keyModeOwnCard')) {
+        g('keyModeOwnCard').className = 'cursor-pointer rounded-xl border px-2.5 py-2 ' +
+          (ownMode ? 'border-blue-500/60 bg-blue-500/10' : 'border-slate-700 bg-slate-950');
+      }
+
+      const tts = state.settings.ttsProvider || 'server';
+      if (g('elevenLabsFields')) g('elevenLabsFields').classList.toggle('hidden', tts !== 'elevenlabs');
+      if (g('serverTtsFields')) g('serverTtsFields').classList.toggle('hidden', tts !== 'server');
+      paintApiDot();
+    }
+
+    /* 상단 API 상태 점 — 서버 키가 살아 있는지 실제로 확인한 값만 초록으로 칠한다 */
+    function paintApiDot() {
+      const dot = document.getElementById('apiStatusDot');
+      const own = state.settings.keyMode === 'own';
+      const ok = own ? !!(state.settings.geminiKey || state.settings.proxyUrl) : !!state.server.keyConfigured;
+      if (dot) {
+        dot.className = ok ? 'w-2 h-2 rounded-full bg-emerald-400' : 'w-2 h-2 rounded-full bg-amber-400';
+        dot.title = own
+          ? (ok ? '내 Gemini 키 사용' : '내 키를 넣어 주세요')
+          : (state.server.checked
+              ? (state.server.keyConfigured ? '서버 Gemini 키 연결됨 · ' + (state.server.model || 'Gemini') : '서버 키 미설정')
+              : '서버 상태 확인 중…');
+      }
+      const st = document.getElementById('serverKeyState');
+      if (st) {
+        st.textContent = !state.server.checked
+          ? '확인 중…'
+          : state.server.keyConfigured
+            ? '연결됨 · ' + (state.server.model || 'Gemini')
+            : '서버 키 미설정 — 내 키를 넣어 주세요';
+      }
+    }
+
+    /* 서버 상태 확인 (GET /api/content-ai?ping=1) */
+    async function pingServerAI() {
+      try {
+        const res = await fetch('/api/content-ai?ping=1', { cache: 'no-store' });
+        const json = await res.json();
+        state.server.checked = true;
+        state.server.keyConfigured = !!json.keyConfigured;
+        state.server.model = json.model || '';
+      } catch (_) {
+        state.server.checked = true;
+        state.server.keyConfigured = false;
+      }
+      paintApiDot();
+      return state.server;
+    }
+
+    function apiFailureMessage(json, fallback) {
+      const j = json || {};
+      if (j.reason === 'missing_gemini_key') return '서버 Gemini 키가 설정되지 않았습니다. [API 설정]에서 내 키를 넣어 주세요.';
+      if (j.reason === 'quota_exceeded') return 'Gemini 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.';
+      if (j.message) return j.message;
+      return fallback || 'AI 호출에 실패했습니다.';
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-800 border-slate-700 text-slate-100',
+        success: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200',
+        error: 'bg-rose-950/95 border-rose-500/50 text-rose-200',
+        warn: 'bg-amber-950/95 border-amber-500/50 text-amber-200',
+      };
+      el.className = `pointer-events-auto px-4 py-2.5 rounded-xl border text-xs font-medium shadow-xl transition-all duration-300 ${colors[type] || colors.info}`;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(6px)';
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    // =========================================================================
+    // Undo / Redo History & Project Auto-Save
+    // =========================================================================
+    function cloneProjectSnapshot() {
+      return {
+        storyArc: { ...state.storyArc },
+        ytMeta: { ...state.ytMeta },
+        segments: state.segments.map(({ ttsAudioBuffer, ttsAudioUrl, ...rest }) => ({ ...rest })),
+      };
+    }
+
+    function updateHistoryButtons() {
+      const undoBtn = document.getElementById('btnUndo');
+      const redoBtn = document.getElementById('btnRedo');
+      if (undoBtn) undoBtn.disabled = state.undoStack.length === 0;
+      if (redoBtn) redoBtn.disabled = state.redoStack.length === 0;
+    }
+
+    function pushHistory() {
+      state.undoStack.push(cloneProjectSnapshot());
+      if (state.undoStack.length > 30) state.undoStack.shift();
+      state.redoStack = [];
+      updateHistoryButtons();
+      saveProjectAutosave();
+    }
+
+    function applySnapshot(snap) {
+      if (!snap) return;
+      state.storyArc = { ...snap.storyArc };
+      state.ytMeta = { ...snap.ytMeta };
+      state.segments = snap.segments.map((seg) => ({
+        ...seg,
+        ttsAudioBuffer: null,
+        ttsAudioUrl: null,
+      }));
+      if (state.segments.length && !state.segments.some((x) => x.id === state.selectedSegmentId)) {
+        state.selectedSegmentId = state.segments[0].id;
+      }
+      renderStoryArc();
+      renderYtMeta();
+      renderSegments();
+      renderVisualTracks();
+      renderPreviewFrame(Math.min(state.currentTime, getTotalDuration()));
+      saveProjectAutosave();
+    }
+
+    function performUndo() {
+      if (!state.undoStack.length) return;
+      state.redoStack.push(cloneProjectSnapshot());
+      const prev = state.undoStack.pop();
+      applySnapshot(prev);
+      updateHistoryButtons();
+      showToast('이전 상태로 되돌렸습니다 (Undo).', 'info');
+    }
+
+    function performRedo() {
+      if (!state.redoStack.length) return;
+      state.undoStack.push(cloneProjectSnapshot());
+      const next = state.redoStack.pop();
+      applySnapshot(next);
+      updateHistoryButtons();
+      showToast('작업을 다시 실행했습니다 (Redo).', 'info');
+    }
+
+    function saveProjectAutosave() {
+      try {
+        const payload = {
+          savedAt: Date.now(),
+          storyArc: state.storyArc,
+          ytMeta: state.ytMeta,
+          segments: state.segments.map(({ ttsAudioBuffer, ttsAudioUrl, ...rest }) => rest),
+          styles: {
+            tone: document.getElementById('toneSelect').value,
+            captionStyle: document.getElementById('captionStyleSelect').value,
+            lut: document.getElementById('lutSelect').value,
+            transition: document.getElementById('transitionSelect').value,
+            bgmMood: document.getElementById('bgmMoodSelect').value,
+            sfx: document.getElementById('sfxSelect').value,
+            captionY: document.getElementById('captionYSlider').value,
+          },
+        };
+        localStorage.setItem('shorts_ai_studio_autosave_v2', JSON.stringify(payload));
+        const badge = document.getElementById('autosaveBadge');
+        if (badge) {
+          badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>자동 저장됨';
+        }
+      } catch (_) {}
+    }
+
+    function restoreAutosaveIfAvailable() {
+      try {
+        const raw = localStorage.getItem('shorts_ai_studio_autosave_v2');
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.segments) || parsed.segments.length === 0) return false;
+        // Restore into demo clip context if clipIds match demo clips
+        const allDemo = parsed.segments.every((seg) => String(seg.clipId || '').startsWith('demo_'));
+        if (!allDemo) return false;
+        state.storyArc = parsed.storyArc || state.storyArc;
+        state.ytMeta = parsed.ytMeta || state.ytMeta;
+        state.segments = parsed.segments.map((seg) => ({
+          ...seg,
+          ttsAudioBuffer: null,
+          ttsAudioUrl: null,
+        }));
+        if (parsed.styles) {
+          if (parsed.styles.tone) document.getElementById('toneSelect').value = parsed.styles.tone;
+          if (parsed.styles.captionStyle) document.getElementById('captionStyleSelect').value = parsed.styles.captionStyle;
+          if (parsed.styles.lut) document.getElementById('lutSelect').value = parsed.styles.lut;
+          if (parsed.styles.transition) document.getElementById('transitionSelect').value = parsed.styles.transition;
+          if (parsed.styles.bgmMood && parsed.styles.bgmMood !== 'custom') document.getElementById('bgmMoodSelect').value = parsed.styles.bgmMood;
+          if (parsed.styles.sfx) document.getElementById('sfxSelect').value = parsed.styles.sfx;
+          if (parsed.styles.captionY) document.getElementById('captionYSlider').value = parsed.styles.captionY;
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function rewriteSingleSegmentWithAI(seg) {
+      pushHistory();
+      const tone = document.getElementById('toneSelect').value;
+
+      const rewriteOnServer = state.settings.keyMode !== 'own';
+
+      // Demo smart punch-up when no Gemini key or proxy is configured (내 키 모드에서만)
+      if (!rewriteOnServer && !state.settings.geminiKey && !state.settings.proxyUrl) {
+        const punchyHooks = [
+          { sub: '이건 무조건 저장 각!', nar: '솔직히 이건 보자마자 바로 저장하게 될 겁니다. 디테일이 완전히 다르거든요!' },
+          { sub: '끝까지 보면 진짜 반전!', nar: '잠깐, 여기서 끝이 아닙니다. 다음 장면에서 진짜 하이라이트가 터집니다!' },
+          { sub: '웨이팅 1시간 아깝지 않은 이유', nar: '줄 서서 기다린 보람이 한 번에 풀리는 순간, 직접 보시면 바로 납득되실 거예요.' },
+          { sub: '알고 가면 2배 더 즐기는 꿀팁', nar: '이 타이밍만 맞춰서 방문하면 웨이팅 없이 인생샷까지 한 번에 건질 수 있습니다!' },
+        ];
+        const pick = punchyHooks[Math.floor(Math.random() * punchyHooks.length)];
+        seg.subtitle = pick.sub;
+        seg.narration = pick.nar;
+        seg.ttsStatus = 'idle';
+        renderSegments();
+        renderPreviewFrame(state.currentTime);
+        saveProjectAutosave();
+        showToast('데모 스마트 리라이팅이 적용되었습니다. (API 키 입력 시 Gemini가 문맥에 맞춰 작성)', 'success');
+        return;
+      }
+
+      try {
+        showToast('Gemini가 해당 컷의 대본과 자막을 더 임팩트 있게 다듬는 중...', 'info');
+
+        let parsed = null;
+        if (rewriteOnServer) {
+          const res = await fetch('/api/content-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'shorts_rewrite',
+              narration: seg.narration || '',
+              subtitle: seg.subtitle || '',
+              tone: tone,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!json || !json.ok) throw new Error(apiFailureMessage(json, '컷 리라이팅에 실패했습니다.'));
+          parsed = json.data || {};
+        } else {
+          const baseUrl = state.settings.proxyUrl
+            ? `${state.settings.proxyUrl.replace(/\/$/, '')}/gemini/${encodeURIComponent(state.settings.geminiModel)}`
+            : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(state.settings.geminiModel)}:generateContent?key=${encodeURIComponent(state.settings.geminiKey)}`;
+
+          const res = await fetch(baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                role: 'user',
+                parts: [{
+                  text: `유튜브 쇼츠의 한 컷 대본과 자막을 더 몰입감 있고 후킹하게 리라이팅해줘.
+현재 대본: "${seg.narration}"
+현재 자막: "${seg.subtitle}"
+원하는 톤: ${tone}
+규칙: narration은 성우가 3~4초 안에 읽을 자연스러운 한국어 구어체 한 문장, subtitle은 14자 이내 임팩트 자막으로 JSON 반환.`
+                }]
+              }],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'OBJECT',
+                  properties: {
+                    narration: { type: 'STRING' },
+                    subtitle: { type: 'STRING' },
+                  },
+                  required: ['narration', 'subtitle'],
+                },
+              },
+            }),
+          });
+          if (!res.ok) throw new Error(`Gemini 리라이팅 오류 (${res.status})`);
+          const data = await res.json();
+          parsed = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+        }
+
+        if (parsed.narration) seg.narration = parsed.narration;
+        if (parsed.subtitle) seg.subtitle = parsed.subtitle;
+        seg.ttsStatus = 'idle';
+        seg.ttsAudioBuffer = null;
+        seg.wordTimings = null;
+        renderSegments();
+        renderPreviewFrame(state.currentTime);
+        saveProjectAutosave();
+        showToast('컷 대본과 자막을 AI로 리라이팅했습니다!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'AI 리라이팅 중 오류가 발생했습니다.', 'error');
+      }
+    }
+
+    // =========================================================================
+    // Clip Loading, Custom BGM Upload & Demo Project
+    // =========================================================================
+    function formatTime(sec) {
+      const s = Math.max(0, Number(sec) || 0);
+      const mins = Math.floor(s / 60);
+      const rem = (s % 60).toFixed(1).padStart(4, '0');
+      return `${String(mins).padStart(2, '0')}:${rem}`;
+    }
+
+    function getTotalDuration() {
+      return state.segments.reduce((acc, seg) => acc + (Number(seg.durationSec) || 0), 0);
+    }
+
+    async function handleBgmUpload(file) {
+      if (!file) return;
+      try {
+        const buf = await file.arrayBuffer();
+        const ctx = getAudioContext();
+        state.customBgmBuffer = await ctx.decodeAudioData(buf);
+        state.customBgmName = file.name;
+        document.getElementById('customBgmLabel').textContent = file.name;
+        document.getElementById('bgmMoodSelect').value = 'custom';
+        showToast(`커스텀 BGM '${file.name}'을 불러왔습니다.`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('오디오 파일을 디코딩하지 못했습니다. MP3/WAV 파일을 사용해 주세요.', 'error');
+      }
+    }
+
+    async function handleFilesAdded(fileList) {
+      const incoming = Array.from(fileList).filter((f) => f.type.startsWith('video/'));
+      if (!incoming.length) {
+        showToast('동영상 파일(MP4, MOV, WebM)만 업로드할 수 있습니다.', 'warn');
+        return;
+      }
+
+      if (state.clips.some((c) => c.isDemo)) {
+        state.clips = [];
+        state.segments = [];
+      }
+
+      const available = 5 - state.clips.length;
+      if (available <= 0) {
+        showToast('최대 5개의 클립까지 올릴 수 있습니다.', 'warn');
+        return;
+      }
+
+      const toProcess = incoming.slice(0, available);
+      for (const file of toProcess) {
+        const url = URL.createObjectURL(file);
+        const videoEl = document.createElement('video');
+        videoEl.src = url;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        videoEl.preload = 'auto';
+
+        await new Promise((resolve) => {
+          videoEl.onloadedmetadata = () => resolve();
+          videoEl.onerror = () => resolve();
+        });
+
+        state.clips.push({
+          id: 'clip_' + Math.random().toString(36).slice(2, 8),
+          name: file.name,
+          file,
+          url,
+          duration: isFinite(videoEl.duration) && videoEl.duration > 0 ? videoEl.duration : 10,
+          width: videoEl.videoWidth || 1080,
+          height: videoEl.videoHeight || 1920,
+          videoEl,
+          isDemo: false,
+        });
+      }
+
+      if (state.segments.length === 0 && state.clips.length > 0) {
+        state.segments = state.clips.map((c, idx) => ({
+          id: 'seg_' + Math.random().toString(36).slice(2, 8),
+          clipId: c.id,
+          startSec: 0,
+          durationSec: Math.min(4.0, Math.max(2.0, Number(c.duration.toFixed(1)))),
+          speed: 1.0,
+          cropFocus: 'center',
+          narration: `${idx + 1}번째 장면입니다. Gemini 분석을 눌러 스토리를 자동 생성해 보세요.`,
+          subtitle: `장면 #${idx + 1} 미리보기`,
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        }));
+        state.selectedSegmentId = state.segments[0].id;
+      }
+
+      renderClips();
+      renderSegments();
+      renderVisualTracks();
+      renderPreviewFrame(0);
+      showToast(`${toProcess.length}개의 클립을 불러왔습니다.`, 'success');
+    }
+
+    function loadDemoProject() {
+      stopPlayback();
+      state.clips = [
+        { id: 'demo_1', name: '01_성수동_카페_입구.mp4', duration: 8.5, width: 1080, height: 1920, isDemo: true, demoPalette: ['#1e3a8a', '#3b82f6'], demoIcon: '☕', demoLabel: '성수동 골목 히든 카페' },
+        { id: 'demo_2', name: '02_라떼아트_클로즈업.mp4', duration: 7.2, width: 1920, height: 1080, isDemo: true, demoPalette: ['#7c2d12', '#f97316'], demoIcon: '🥛', demoLabel: '크림 라떼 붓는 순간' },
+        { id: 'demo_3', name: '03_디저트_커팅_반전.mp4', duration: 6.8, width: 1080, height: 1920, isDemo: true, demoPalette: ['#4c1d95', '#a855f7'], demoIcon: '🍰', demoLabel: '티라미수 반전 커팅' },
+        { id: 'demo_4', name: '04_루프탑_노을_마무리.mp4', duration: 9.0, width: 1080, height: 1920, isDemo: true, demoPalette: ['#064e3b', '#10b981'], demoIcon: '🌇', demoLabel: '노을 지는 루프탑 뷰' },
+      ];
+
+      state.storyArc = {
+        hook: '웨이팅 1시간짜리 성수동 카페, 진짜 갈 가치 있을까?',
+        climax: '시그니처 크림 라떼와 반전 티라미수 커팅 클로즈업',
+        outro: '노을 타임 루프탑 좌석 꿀팁으로 저장 유도',
+      };
+
+      state.ytMeta = {
+        title: '성수동 1시간 웨이팅 카페, 반전 티라미수 실화? ☕🍰 #성수동카페',
+        description: '요즘 성수동에서 가장 핫한 히든 카페 직접 다녀왔습니다! 오후 5시 노을 타임 루프탑 자리 꿀팁까지 영상 끝까지 확인하세요.\n\n#성수동카페 #성수핫플 #티라미수 #카페투어 #쇼츠',
+      };
+
+      state.segments = [
+        {
+          id: 'seg_d1',
+          clipId: 'demo_1',
+          startSec: 1.0,
+          durationSec: 3.6,
+          speed: 1.1,
+          cropFocus: 'center',
+          narration: '성수동에서 요즘 줄 제일 길다는 카페, 직접 가봤습니다.',
+          subtitle: '성수동 1시간 웨이팅 카페 실화?',
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        },
+        {
+          id: 'seg_d2',
+          clipId: 'demo_2',
+          startSec: 2.0,
+          durationSec: 3.8,
+          speed: 1.2,
+          cropFocus: 'center',
+          narration: '시그니처 크림 라떼는 한 모금 마시자마자 고소함이 확 퍼지는데요.',
+          subtitle: '미친 비주얼 시그니처 크림 라떼',
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        },
+        {
+          id: 'seg_d3',
+          clipId: 'demo_3',
+          startSec: 1.5,
+          durationSec: 3.6,
+          speed: 1.0,
+          cropFocus: 'right',
+          narration: '근데 진짜 반전은 이 티라미수! 반으로 가르면 에스프레소가 쏟아집니다.',
+          subtitle: '반전 주의! 쏟아지는 티라미수',
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        },
+        {
+          id: 'seg_d4',
+          clipId: 'demo_4',
+          startSec: 3.0,
+          durationSec: 3.8,
+          speed: 1.0,
+          cropFocus: 'center',
+          narration: '오후 5시 노을 타임에 루프탑 자리 노려보세요. 저장해두고 주말에 꼭 가보세요!',
+          subtitle: '오후 5시 루프탑 노을 꿀팁 저장',
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        },
+      ];
+
+      state.selectedSegmentId = state.segments[0].id;
+      state.currentTime = 0;
+
+      renderClips();
+      renderStoryArc();
+      renderYtMeta();
+      renderSegments();
+      renderVisualTracks();
+      renderPreviewFrame(0);
+      showToast('데모 쇼츠 프로젝트를 불러왔습니다. 재생 버튼을 눌러 프리뷰와 SFX를 확인해 보세요!', 'success');
+    }
+
+    // =========================================================================
+    // Gemini API Integration (Keyframe Sampling + Story + YouTube Metadata)
+    // =========================================================================
+    async function extractKeyframesFromClip(clip, count = 3) {
+      if (clip.isDemo) return [];
+      const canvas = document.createElement('canvas');
+      canvas.width = 360;
+      canvas.height = Math.round((360 * (clip.height || 1920)) / (clip.width || 1080));
+      const ctx = canvas.getContext('2d');
+      const frames = [];
+      const v = clip.videoEl;
+
+      for (let i = 0; i < count; i++) {
+        const t = Math.min(clip.duration - 0.1, Math.max(0.1, (clip.duration * (i + 0.5)) / count));
+        await new Promise((resolve) => {
+          const onSeeked = () => {
+            v.removeEventListener('seeked', onSeeked);
+            resolve();
+          };
+          v.addEventListener('seeked', onSeeked);
+          v.currentTime = t;
+        });
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+        frames.push({ timeSec: Number(t.toFixed(1)), base64: dataUrl.split(',')[1] });
+      }
+      return frames;
+    }
+
+    async function runGeminiAnalysis() {
+      if (state.clips.length === 0) {
+        showToast('먼저 동영상 클립을 올리거나 데모 체험을 불러와 주세요.', 'warn');
+        return;
+      }
+
+      const useServer = state.settings.keyMode !== 'own';
+      if (!useServer && !state.settings.geminiKey && !state.settings.proxyUrl) {
+        showToast('내 키 모드입니다. 우측 상단 [API 설정]에서 키를 넣거나 서버 기본 키로 바꿔 주세요.', 'warn');
+        document.getElementById('settingsModal').classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.getElementById('btnAnalyzeGemini');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>키프레임 분석 및 스토리·메타 생성 중...</span>';
+
+      try {
+        const parts = [];
+        const tone = document.getElementById('toneSelect').value;
+        const userHint = document.getElementById('storyPromptInput').value.trim();
+
+        const clipMetaLines = [];
+        const clipPayload = [];
+        for (let i = 0; i < state.clips.length; i++) {
+          const c = state.clips[i];
+          clipMetaLines.push(`Clip ${i}: 파일명="${c.name}", 길이=${c.duration.toFixed(1)}초, 해상도=${c.width}x${c.height}`);
+          const frames = await extractKeyframesFromClip(c, 3);
+          clipPayload.push({
+            name: c.name,
+            duration: Number((c.duration || 0).toFixed(1)),
+            width: c.width,
+            height: c.height,
+            frames: frames.map((fr) => ({ tSec: fr.timeSec, data: fr.base64 })),
+          });
+          if (!useServer) {
+            for (const fr of frames) {
+              parts.push({ text: `[Clip ${i} @ ${fr.timeSec}s]` });
+              parts.push({ inlineData: { mimeType: 'image/jpeg', data: fr.base64 } });
+            }
+          }
+        }
+
+        const promptText = `당신은 조회수 높은 유튜브 쇼츠 전문 PD입니다.
+아래 ${state.clips.length}개의 클립 정보와 키프레임 이미지를 분석해서 15~45초 쇼츠 편집 타임라인과 유튜브 업로드 메타데이터를 JSON으로 생성하세요.
+
+[클립 목록]
+${clipMetaLines.join('\n')}
+
+[사용자 톤]: ${tone}
+[사용자 방향]: ${userHint || '초반 3초 후킹이 강하고 자연스럽게 이어지는 스토리'}
+
+[규칙]
+1. clipIndex는 0 ~ ${state.clips.length - 1} 사이의 정수.
+2. speed는 1.0(기본) ~ 1.3(빠른 템포) 사이.
+3. narration은 성우가 읽을 자연스러운 한국어 구어체 한 문장, subtitle은 14자 이내 임팩트 자막.
+4. youtubeTitle은 클릭을 유도하는 쇼츠 제목, youtubeDescription은 요약 설명과 추천 해시태그 5개 포함.`;
+
+        if (!useServer) parts.push({ text: promptText });
+
+        let parsed = null;
+        let answeredBy = '';
+
+        if (useServer) {
+          // 서버 프록시(/api/content-ai) — 키 입력 없이 동작. 서버가 Gemini 응답을 검증·정규화해 준다.
+          const res = await fetch('/api/content-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'shorts_analyze',
+              tone: tone,
+              hint: userHint,
+              clips: clipPayload,
+            }),
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!json || !json.ok) throw new Error(apiFailureMessage(json, '영상 분석에 실패했습니다.'));
+          parsed = json.data || {};
+          answeredBy = json.model || '';
+          if (Array.isArray(json.warnings) && json.warnings.length) console.warn('[shorts]', json.warnings.join(' / '));
+        } else {
+          const endpoint = state.settings.proxyUrl
+            ? `${state.settings.proxyUrl.replace(/\/$/, '')}/gemini/${encodeURIComponent(state.settings.geminiModel)}`
+            : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(state.settings.geminiModel)}:generateContent?key=${encodeURIComponent(state.settings.geminiKey)}`;
+
+          const payload = {
+            contents: [{ role: 'user', parts }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  storyArc: {
+                    type: 'OBJECT',
+                    properties: {
+                      hook: { type: 'STRING' },
+                      climax: { type: 'STRING' },
+                      outro: { type: 'STRING' },
+                    },
+                    required: ['hook', 'climax', 'outro'],
+                  },
+                  youtubeTitle: { type: 'STRING' },
+                  youtubeDescription: { type: 'STRING' },
+                  bgmMood: { type: 'STRING' },
+                  segments: {
+                    type: 'ARRAY',
+                    items: {
+                      type: 'OBJECT',
+                      properties: {
+                        clipIndex: { type: 'INTEGER' },
+                        startSec: { type: 'NUMBER' },
+                        durationSec: { type: 'NUMBER' },
+                        speed: { type: 'NUMBER' },
+                        cropFocus: { type: 'STRING' },
+                        narration: { type: 'STRING' },
+                        subtitle: { type: 'STRING' },
+                      },
+                      required: ['clipIndex', 'startSec', 'durationSec', 'cropFocus', 'narration', 'subtitle'],
+                    },
+                  },
+                },
+                required: ['storyArc', 'youtubeTitle', 'youtubeDescription', 'segments'],
+              },
+            },
+          };
+
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Gemini API 오류 (${res.status}): ${errText.slice(0, 140)}`);
+          }
+
+          const data = await res.json();
+          const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!rawJson) throw new Error('Gemini 응답에서 JSON 결과를 찾지 못했습니다.');
+          parsed = JSON.parse(rawJson);
+        }
+        state.storyArc = parsed.storyArc || state.storyArc;
+        state.ytMeta = {
+          title: parsed.youtubeTitle || '',
+          description: parsed.youtubeDescription || '',
+        };
+
+        if (['upbeat', 'chill', 'tense', 'none'].includes(parsed.bgmMood) && !state.customBgmBuffer) {
+          document.getElementById('bgmMoodSelect').value = parsed.bgmMood;
+        }
+
+        state.segments = (parsed.segments || []).map((s) => {
+          const idx = Math.min(state.clips.length - 1, Math.max(0, Number(s.clipIndex) || 0));
+          const clip = state.clips[idx];
+          const start = Math.max(0, Math.min(clip.duration - 1, Number(s.startSec) || 0));
+          const dur = Math.max(1.5, Math.min(clip.duration - start, Number(s.durationSec) || 3.5));
+          return {
+            id: 'seg_' + Math.random().toString(36).slice(2, 8),
+            clipId: clip.id,
+            startSec: Number(start.toFixed(1)),
+            durationSec: Number(dur.toFixed(1)),
+            speed: Math.min(1.5, Math.max(0.8, Number(s.speed) || 1.0)),
+            cropFocus: ['center', 'left', 'right'].includes(s.cropFocus) ? s.cropFocus : 'center',
+            narration: s.narration || '',
+            subtitle: s.subtitle || '',
+            muteOrig: true,
+            ttsAudioUrl: null,
+            ttsAudioBuffer: null,
+            wordTimings: null,
+            ttsStatus: 'idle',
+          };
+        });
+
+        if (state.segments.length) state.selectedSegmentId = state.segments[0].id;
+        state.currentTime = 0;
+
+        renderStoryArc();
+        renderYtMeta();
+        renderSegments();
+        renderVisualTracks();
+        renderPreviewFrame(0);
+        showToast(`Gemini${answeredBy ? ' (' + answeredBy + ')' : ''}가 ${state.segments.length}개 컷과 유튜브 제목·해시태그를 완성했습니다!`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Gemini 분석 중 오류가 발생했습니다.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+      }
+    }
+
+    // =========================================================================
+    // TTS Generation (ElevenLabs with-timestamps + Web Speech fallback)
+    // =========================================================================
+    function getAudioContext() {
+      if (!state.audioCtx) {
+        state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume();
+      }
+      return state.audioCtx;
+    }
+
+    function parseWordTimingsFromAlignment(alignment) {
+      if (!alignment || !Array.isArray(alignment.characters)) return null;
+      const chars = alignment.characters;
+      const starts = alignment.character_start_times_seconds || [];
+      const ends = alignment.character_end_times_seconds || [];
+      const words = [];
+      let curWord = '';
+      let curStart = null;
+      let curEnd = 0;
+
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
+        if (/\s/.test(ch)) {
+          if (curWord) {
+            words.push({ word: curWord, start: curStart, end: curEnd });
+            curWord = '';
+            curStart = null;
+          }
+        } else {
+          if (curStart === null) curStart = starts[i] ?? curEnd;
+          curWord += ch;
+          curEnd = ends[i] ?? curStart + 0.1;
+        }
+      }
+      if (curWord) words.push({ word: curWord, start: curStart ?? 0, end: curEnd });
+      return words.length ? words : null;
+    }
+
+    function base64ToArrayBuffer(b64) {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    /* 단어 타임스탬프를 못 받았을 때(서버 무료 성우·기기 음성) — 글자 가중치로 고르게 나눈다.
+       한국어 TTS 는 발음 속도가 거의 일정해서 글자 수 비례로도 하이라이트가 어긋나지 않는다. */
+    function estimateWordTimings(text, durationSec) {
+      const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+      if (!words.length || !durationSec || !isFinite(durationSec)) return null;
+      const weights = words.map((w) => {
+        let v = 0;
+        for (const ch of w) {
+          if (/[가-힣]/.test(ch)) v += 1;
+          else if (/[0-9]/.test(ch)) v += 0.75;
+          else if (/[a-zA-Z]/.test(ch)) v += 0.55;
+          else v += 0.35;
+        }
+        return Math.max(0.6, v);
+      });
+      const total = weights.reduce((a, b) => a + b, 0);
+      const speak = Math.max(0.4, durationSec * 0.94);
+      let t = durationSec * 0.03;
+      return words.map((w, i) => {
+        const d = (weights[i] / total) * speak;
+        const start = t;
+        t += d;
+        return { word: w, start: Number(start.toFixed(3)), end: Number(t.toFixed(3)) };
+      });
+    }
+
+    /* 서버 무료 성우(/api/tts · Edge 신경망) — API 키 불필요 */
+    async function generateServerTts(seg) {
+      const voice = state.settings.serverVoice || 'ko-KR-SunHiNeural';
+      const q = new URLSearchParams({ text: seg.narration, voice: voice, rate: '+8%' });
+      const res = await fetch('/api/tts?' + q.toString(), { cache: 'no-store' });
+      const ctype = res.headers.get('content-type') || '';
+      if (!res.ok || ctype.indexOf('audio') < 0) {
+        let msg = '서버 성우 합성에 실패했습니다.';
+        try {
+          const j = await res.json();
+          if (j && j.message) msg = j.message;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      const buf = await res.arrayBuffer();
+      if (!buf.byteLength) throw new Error('서버 성우 음성이 비어 왔습니다.');
+      const ctx = getAudioContext();
+      const decoded = await ctx.decodeAudioData(buf.slice(0));
+      seg.ttsAudioBuffer = decoded;
+      seg.ttsAudioUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+      seg.wordTimings = estimateWordTimings(seg.narration, decoded.duration);
+      seg.durationSec = Number(Math.max(1.5, decoded.duration + 0.15).toFixed(1));
+      seg.ttsStatus = 'ready';
+    }
+
+    async function generateTtsForSegment(seg) {
+      if (!seg.narration || !seg.narration.trim()) return;
+      seg.ttsStatus = 'loading';
+      renderSegments();
+
+      const provider = state.settings.ttsProvider || 'server';
+
+      if (provider === 'server') {
+        try {
+          await generateServerTts(seg);
+        } catch (err) {
+          console.error(err);
+          seg.ttsStatus = 'error';
+          showToast(err.message || '서버 성우 생성 실패 — 내 키 모드의 ElevenLabs 나 기기 음성을 써 보세요.', 'error');
+        }
+      } else if (provider === 'elevenlabs') {
+        try {
+          // 내 ElevenLabs 키가 있으면 서버(/api/content-ai shorts_tts)가 대신 호출해 정확한 단어 타임스탬프를 준다.
+          // 서버 키가 없으면 예전처럼 브라우저에서 직접 호출한다.
+          const voiceId = state.settings.elevenVoiceId || '21m00Tcm4TlvDq8ikWAM';
+          let json = null;
+          const viaServer = await fetch('/api/content-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'shorts_tts', text: seg.narration, voiceId: voiceId, key: state.settings.elevenKey || '' }),
+          }).then((r) => r.json()).catch(() => null);
+
+          if (viaServer && viaServer.ok && viaServer.audio) {
+            json = viaServer;
+          } else if (state.settings.elevenKey) {
+            const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`, {
+              method: 'POST',
+              headers: { 'xi-api-key': state.settings.elevenKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: seg.narration,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: { stability: 0.45, similarity_boost: 0.78 },
+              }),
+            });
+            if (!res.ok) throw new Error(`ElevenLabs 오류 (${res.status})`);
+            json = await res.json();
+          } else {
+            throw new Error('ElevenLabs 키가 없습니다. [API 설정]에서 키를 넣거나 서버 무료 성우로 바꿔 주세요.');
+          }
+
+          const arrayBuf = base64ToArrayBuffer(json.audio_base64 || json.audio);
+          const ctx = getAudioContext();
+          const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
+
+          seg.ttsAudioBuffer = decoded;
+          seg.ttsAudioUrl = URL.createObjectURL(new Blob([arrayBuf], { type: 'audio/mpeg' }));
+          seg.wordTimings = parseWordTimingsFromAlignment(json.alignment) ||
+            estimateWordTimings(seg.narration, decoded.duration);
+          seg.durationSec = Number(Math.max(1.5, decoded.duration + 0.25).toFixed(1));
+          seg.ttsStatus = 'ready';
+        } catch (err) {
+          console.error(err);
+          seg.ttsStatus = 'error';
+          showToast(err.message || '성우 음성 생성 실패', 'error');
+        }
+      } else {
+        const estSec = Math.max(1.8, Math.min(8.0, seg.narration.replace(/\s+/g, '').length / 5.0 + 0.4));
+        seg.durationSec = Number(estSec.toFixed(1));
+        seg.ttsAudioBuffer = null;
+        seg.wordTimings = estimateWordTimings(seg.narration, estSec);
+        seg.ttsStatus = 'webspeech';
+      }
+
+      renderSegments();
+      renderVisualTracks();
+      renderPreviewFrame(state.currentTime);
+    }
+
+    async function generateAllTts() {
+      if (!state.segments.length) {
+        showToast('먼저 세그먼트를 생성하거나 데모를 불러와 주세요.', 'warn');
+        return;
+      }
+      const btn = document.getElementById('btnGenerateAllTts');
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>성우 음성 및 타임스탬프 동기화 중...</span>';
+
+      for (const seg of state.segments) {
+        await generateTtsForSegment(seg);
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = orig;
+      lucide.createIcons();
+      showToast('전체 성우 음성 및 컷 길이 동기화가 완료되었습니다.', 'success');
+    }
+
+    // =========================================================================
+    // Web Audio BGM (Custom MP3 or Synth), Dynamic Ducking & Transition SFX
+    // =========================================================================
+    function setBgmDucking(isSpeaking) {
+      if (!state.bgmGainNode || !state.audioCtx) return;
+      const duckEnabled = document.getElementById('toggleAudioDucking').checked;
+      const targetVol = duckEnabled && isSpeaking ? 0.05 : 0.18;
+      const now = state.audioCtx.currentTime;
+      state.bgmGainNode.gain.cancelScheduledValues(now);
+      state.bgmGainNode.gain.setTargetAtTime(targetVol, now, 0.12);
+    }
+
+    function playTransitionSfx(destNode) {
+      const sfx = document.getElementById('sfxSelect').value;
+      if (sfx === 'none') return;
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+
+      if (sfx === 'whoosh') {
+        const dur = 0.22;
+        const bufSize = Math.floor(ctx.sampleRate * dur);
+        const noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.value = 2.2;
+        filter.frequency.setValueAtTime(280, now);
+        filter.frequency.exponentialRampToValueAtTime(2400, now + dur * 0.5);
+        filter.frequency.exponentialRampToValueAtTime(350, now + dur);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.24, now + dur * 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        if (destNode) gain.connect(destNode);
+        src.start(now);
+      } else if (sfx === 'pop') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(620, now);
+        osc.frequency.exponentialRampToValueAtTime(180, now + 0.11);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        if (destNode) gain.connect(destNode);
+        osc.start(now);
+        osc.stop(now + 0.13);
+      }
+    }
+
+    function startBgm(destNode) {
+      stopBgm();
+      const mood = document.getElementById('bgmMoodSelect').value;
+      if (mood === 'none') return;
+
+      const ctx = getAudioContext();
+      const masterGain = ctx.createGain();
+      const ducking = document.getElementById('toggleAudioDucking').checked;
+      masterGain.gain.value = ducking ? 0.05 : 0.18;
+      masterGain.connect(ctx.destination);
+      if (destNode) masterGain.connect(destNode);
+      state.bgmGainNode = masterGain;
+
+      if (mood === 'custom' && state.customBgmBuffer) {
+        const src = ctx.createBufferSource();
+        src.buffer = state.customBgmBuffer;
+        src.loop = true;
+        src.connect(masterGain);
+        src.start();
+        state.activeBgmNodes = [src, masterGain];
+        return;
+      }
+
+      const chords = {
+        upbeat: [261.63, 329.63, 392.0, 493.88],
+        chill: [220.0, 261.63, 329.63, 392.0],
+        tense: [146.83, 220.0, 261.63, 311.13],
+      };
+      const notes = chords[mood] || chords.upbeat;
+
+      const oscs = notes.map((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = mood === 'tense' ? 'sawtooth' : 'triangle';
+        osc.frequency.value = freq;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = mood === 'tense' ? 520 : 900;
+
+        g.gain.value = 0.25 / (idx + 1);
+        osc.connect(filter);
+        filter.connect(g);
+        g.connect(masterGain);
+        osc.start();
+        return osc;
+      });
+
+      state.activeBgmNodes = [...oscs, masterGain];
+    }
+
+    function stopBgm() {
+      for (const n of state.activeBgmNodes) {
+        try {
+          if (typeof n.stop === 'function') n.stop();
+          if (typeof n.disconnect === 'function') n.disconnect();
+        } catch (_) {}
+      }
+      state.activeBgmNodes = [];
+      state.bgmGainNode = null;
+    }
+
+    function playSegmentVoice(seg, destNode) {
+      if (state.activeTtsSource) {
+        try { state.activeTtsSource.stop(); } catch (_) {}
+        state.activeTtsSource = null;
+      }
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      }
+
+      if (seg.ttsAudioBuffer) {
+        const ctx = getAudioContext();
+        const src = ctx.createBufferSource();
+        src.buffer = seg.ttsAudioBuffer;
+        src.connect(ctx.destination);
+        if (destNode) src.connect(destNode);
+        setBgmDucking(true);
+        src.onended = () => setBgmDucking(false);
+        src.start();
+        state.activeTtsSource = src;
+      } else if (seg.narration && 'speechSynthesis' in window && !state.isRecording) {
+        const utter = new SpeechSynthesisUtterance(seg.narration);
+        utter.lang = 'ko-KR';
+        utter.rate = 1.12;
+        setBgmDucking(true);
+        utter.onend = () => setBgmDucking(false);
+        window.speechSynthesis.speak(utter);
+      } else {
+        setBgmDucking(false);
+      }
+    }
+
+    // =========================================================================
+    // Canvas 9:16 Rendering Engine (LUT, Ken Burns, Exact Word Sync, Banner)
+    // =========================================================================
+    function getLutFilterString() {
+      const lut = document.getElementById('lutSelect').value;
+      switch (lut) {
+        case 'vivid': return 'contrast(1.14) saturate(1.32) brightness(1.03)';
+        case 'warm': return 'contrast(1.06) sepia(0.22) saturate(1.18)';
+        case 'cool': return 'contrast(1.08) hue-rotate(-12deg) saturate(1.1)';
+        case 'film': return 'contrast(0.95) sepia(0.18) brightness(0.96) saturate(0.88)';
+        default: return 'none';
+      }
+    }
+
+    function findSegmentAtTime(t) {
+      let acc = 0;
+      for (let i = 0; i < state.segments.length; i++) {
+        const seg = state.segments[i];
+        const dur = Number(seg.durationSec) || 0;
+        if (t >= acc && t < acc + dur) {
+          return { seg, index: i, localTime: t - acc, segStart: acc, segDuration: dur };
+        }
+        acc += dur;
+      }
+      if (state.segments.length > 0) {
+        const last = state.segments[state.segments.length - 1];
+        return { seg: last, index: state.segments.length - 1, localTime: last.durationSec, segStart: Math.max(0, acc - last.durationSec), segDuration: last.durationSec };
+      }
+      return null;
+    }
+
+    function drawDemoBackground(ctx, W, H, clip, zoom, localTime) {
+      const [c1, c2] = clip.demoPalette || ['#1e293b', '#334155'];
+      const grad = ctx.createLinearGradient(0, 0, W, H);
+      grad.addColorStop(0, c1);
+      grad.addColorStop(1, c2);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(zoom, zoom);
+      ctx.fillStyle = 'rgba(255,255,255,0.09)';
+      ctx.beginPath();
+      ctx.arc(Math.sin(localTime * 1.2) * 40, -140 + Math.cos(localTime) * 20, 140, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(-80 + Math.cos(localTime * 0.9) * 30, 180, 180, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = '110px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(clip.demoIcon || '🎬', 0, -60);
+
+      ctx.font = '700 26px "Noto Sans KR", sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      ctx.fillText(clip.demoLabel || clip.name, 0, 50);
+
+      ctx.font = '500 14px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.fillText('DEMO CLIP · 9:16 LIVE PREVIEW', 0, 88);
+      ctx.restore();
+    }
+
+    function drawWordHighlightCaption(ctx, W, H, seg, localTime, progress) {
+      const text = seg.subtitle;
+      if (!text || !text.trim()) return;
+      const style = document.getElementById('captionStyleSelect').value;
+      const yPercent = (Number(document.getElementById('captionYSlider').value) || 75) / 100;
+      const words = text.trim().split(/\s+/);
+
+      // Use exact ElevenLabs word timings if available, else proportional progress
+      let activeIdx = Math.min(words.length - 1, Math.floor(progress * words.length));
+      if (Array.isArray(seg.wordTimings) && seg.wordTimings.length > 0) {
+        const matchedIdx = seg.wordTimings.findIndex((wt) => localTime >= wt.start && localTime <= wt.end + 0.15);
+        if (matchedIdx !== -1) {
+          activeIdx = Math.min(words.length - 1, Math.floor((matchedIdx / seg.wordTimings.length) * words.length));
+        }
+      }
+
+      ctx.save();
+      ctx.font = style === 'minimal'
+        ? '700 32px "Noto Sans KR", sans-serif'
+        : '900 38px "Noto Sans KR", sans-serif';
+      ctx.textBaseline = 'middle';
+
+      const maxWidth = W - 72;
+      const lines = [];
+      let currentLine = [];
+      let currentW = 0;
+      const spaceW = ctx.measureText(' ').width;
+
+      words.forEach((w, idx) => {
+        const ww = ctx.measureText(w).width;
+        if (currentLine.length > 0 && currentW + spaceW + ww > maxWidth) {
+          lines.push(currentLine);
+          currentLine = [{ word: w, idx, width: ww }];
+          currentW = ww;
+        } else {
+          currentLine.push({ word: w, idx, width: ww });
+          currentW += (currentLine.length > 1 ? spaceW : 0) + ww;
+        }
+      });
+      if (currentLine.length) lines.push(currentLine);
+
+      const lineH = 52;
+      const baseY = H * yPercent - ((lines.length - 1) * lineH) / 2;
+
+      lines.forEach((line, lineIdx) => {
+        const totalLineW = line.reduce((s, item) => s + item.width, 0) + spaceW * Math.max(0, line.length - 1);
+        let curX = (W - totalLineW) / 2;
+        const y = baseY + lineIdx * lineH;
+
+        if (style === 'neon') {
+          ctx.fillStyle = 'rgba(9, 13, 22, 0.8)';
+          ctx.beginPath();
+          ctx.roundRect(curX - 16, y - 24, totalLineW + 32, 48, 12);
+          ctx.fill();
+        }
+
+        line.forEach((item) => {
+          const isActive = item.idx === activeIdx;
+          if (style === 'capcut') {
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 9;
+            ctx.strokeStyle = '#000000';
+            ctx.strokeText(item.word, curX, y);
+            ctx.fillStyle = isActive ? '#FACC15' : '#FFFFFF';
+            ctx.fillText(item.word, curX, y);
+          } else if (style === 'neon') {
+            ctx.fillStyle = isActive ? '#22D3EE' : '#F8FAFC';
+            ctx.fillText(item.word, curX, y);
+          } else if (style === 'pop') {
+            if (isActive) {
+              ctx.fillStyle = '#EC4899';
+              ctx.beginPath();
+              ctx.roundRect(curX - 8, y - 22, item.width + 16, 44, 10);
+              ctx.fill();
+            }
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = '#090d16';
+            ctx.strokeText(item.word, curX, y);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(item.word, curX, y);
+          } else {
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+            ctx.strokeText(item.word, curX, y);
+            ctx.fillStyle = isActive ? '#FFFFFF' : 'rgba(255,255,255,0.75)';
+            ctx.fillText(item.word, curX, y);
+          }
+          curX += item.width + spaceW;
+        });
+      });
+
+      ctx.restore();
+    }
+
+    function drawTopTitleBanner(ctx, W) {
+      if (!document.getElementById('toggleTitleBanner').checked) return;
+      const title = (state.ytMeta.title || state.storyArc.hook || '').replace(/#\S+/g, '').trim();
+      if (!title) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(9, 13, 22, 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(24, 42, W - 48, 64, 16);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = '800 22px "Noto Sans KR", sans-serif';
+      ctx.fillStyle = '#FACC15';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const clipped = title.length > 24 ? title.slice(0, 24) + '…' : title;
+      ctx.fillText(clipped, W / 2, 74);
+      ctx.restore();
+    }
+
+    function renderPreviewFrame(timeSec) {
+      const canvas = document.getElementById('previewCanvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
+
+      const total = getTotalDuration();
+      document.getElementById('previewTimecode').textContent = `${formatTime(timeSec)} / ${formatTime(total)}`;
+      const scrubber = document.getElementById('timelineScrubber');
+      scrubber.max = Math.max(0.1, total);
+      scrubber.value = Math.min(total, timeSec);
+
+      ctx.filter = 'none';
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(0, 0, W, H);
+
+      const hit = findSegmentAtTime(timeSec);
+      if (!hit) {
+        ctx.fillStyle = '#475569';
+        ctx.font = '600 20px "Noto Sans KR", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('클립을 올리거나 [데모 체험]을 눌러주세요', W / 2, H / 2);
+        return;
+      }
+
+      const { seg, localTime, segDuration } = hit;
+      const clip = state.clips.find((c) => c.id === seg.clipId);
+      const progress = segDuration > 0 ? Math.min(1, Math.max(0, localTime / segDuration)) : 0;
+      const useZoom = document.getElementById('toggleKenBurns').checked;
+      const trans = document.getElementById('transitionSelect').value;
+
+      let zoom = useZoom ? 1 + progress * 0.07 : 1;
+      if (trans === 'zoom' && hit.index > 0 && localTime < 0.2) {
+        zoom += (1 - localTime / 0.2) * 0.16;
+      }
+
+      ctx.save();
+      ctx.filter = getLutFilterString();
+      if (clip && clip.isDemo) {
+        drawDemoBackground(ctx, W, H, clip, zoom, localTime);
+      } else if (clip && clip.videoEl && clip.videoEl.readyState >= 2) {
+        const v = clip.videoEl;
+        const speed = Number(seg.speed) || 1.0;
+        const targetVTime = seg.startSec + localTime * speed;
+        if (!state.isPlaying && Math.abs(v.currentTime - targetVTime) > 0.15) {
+          v.currentTime = Math.min(clip.duration - 0.05, targetVTime);
+        }
+
+        const vw = v.videoWidth || 1080;
+        const vh = v.videoHeight || 1920;
+        const targetRatio = W / H;
+        const videoRatio = vw / vh;
+
+        let sx = 0, sy = 0, sw = vw, sh = vh;
+        if (videoRatio > targetRatio) {
+          sw = vh * targetRatio;
+          if (seg.cropFocus === 'left') sx = 0;
+          else if (seg.cropFocus === 'right') sx = vw - sw;
+          else sx = (vw - sw) / 2;
+        } else {
+          sh = vw / targetRatio;
+          sy = (vh - sh) / 2;
+        }
+
+        ctx.translate(W / 2, H / 2);
+        ctx.scale(zoom, zoom);
+        ctx.drawImage(v, sx, sy, sw, sh, -W / 2, -H / 2, W, H);
+      }
+      ctx.restore();
+
+      // Transition overlay between cuts
+      if ((trans === 'fade' || trans === 'flash') && hit.index > 0 && localTime < 0.22) {
+        const alpha = 1 - localTime / 0.22;
+        ctx.fillStyle = trans === 'flash'
+          ? `rgba(255, 255, 255, ${(alpha * 0.85).toFixed(2)})`
+          : `rgba(9, 13, 22, ${(alpha * 0.9).toFixed(2)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Bottom gradient vignette for caption legibility
+      const vig = ctx.createLinearGradient(0, H * 0.62, 0, H);
+      vig.addColorStop(0, 'rgba(0,0,0,0)');
+      vig.addColorStop(1, 'rgba(0,0,0,0.68)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, H * 0.62, W, H * 0.38);
+
+      drawTopTitleBanner(ctx, W);
+      drawWordHighlightCaption(ctx, W, H, seg, localTime, progress);
+
+      // Top progress bar inside preview
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(18, 16, W - 36, 4);
+      ctx.fillStyle = '#3B82F6';
+      ctx.fillRect(18, 16, (W - 36) * (total > 0 ? timeSec / total : 0), 4);
+    }
+
+    // =========================================================================
+    // Playback Loop, Thumbnail Capture & WebM Recorder
+    // =========================================================================
+    function startPlayback(destNode = null, onEndedCallback = null) {
+      const total = getTotalDuration();
+      if (total <= 0) {
+        showToast('재생할 세그먼트가 없습니다.', 'warn');
+        return;
+      }
+
+      if (state.currentTime >= total - 0.05) state.currentTime = 0;
+
+      state.isPlaying = true;
+      state.lastTickMs = performance.now();
+      state.lastPlayedSegId = null;
+      document.getElementById('playBtnLabel').textContent = '일시정지';
+
+      startBgm(destNode);
+
+      const tick = (now) => {
+        if (!state.isPlaying) return;
+        const dt = Math.min(0.1, (now - state.lastTickMs) / 1000);
+        state.lastTickMs = now;
+        state.currentTime += dt;
+
+        const totalDur = getTotalDuration();
+        if (state.currentTime >= totalDur) {
+          state.currentTime = totalDur;
+          renderPreviewFrame(state.currentTime);
+          stopPlayback();
+          if (typeof onEndedCallback === 'function') onEndedCallback();
+          return;
+        }
+
+        const hit = findSegmentAtTime(state.currentTime);
+        if (hit && hit.seg.id !== state.lastPlayedSegId) {
+          const isCutChange = state.lastPlayedSegId !== null;
+          state.lastPlayedSegId = hit.seg.id;
+          state.selectedSegmentId = hit.seg.id;
+          highlightSelectedSegment();
+
+          if (isCutChange) playTransitionSfx(destNode);
+
+          const clip = state.clips.find((c) => c.id === hit.seg.clipId);
+          state.clips.forEach((c) => {
+            if (c.videoEl && (!clip || c.id !== clip.id)) {
+              try { c.videoEl.pause(); } catch (_) {}
+            }
+          });
+          if (clip && clip.videoEl) {
+            clip.videoEl.muted = Boolean(hit.seg.muteOrig);
+            clip.videoEl.playbackRate = Number(hit.seg.speed) || 1.0;
+            clip.videoEl.currentTime = Math.min(clip.duration - 0.05, hit.seg.startSec + hit.localTime * (Number(hit.seg.speed) || 1.0));
+            clip.videoEl.play().catch(() => {});
+          }
+
+          playSegmentVoice(hit.seg, destNode);
+        }
+
+        renderPreviewFrame(state.currentTime);
+        state.rafId = requestAnimationFrame(tick);
+      };
+
+      if (state.rafId) cancelAnimationFrame(state.rafId);
+      state.rafId = requestAnimationFrame(tick);
+    }
+
+    function stopPlayback() {
+      state.isPlaying = false;
+      if (state.rafId) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = null;
+      }
+      stopBgm();
+      if (state.activeTtsSource) {
+        try { state.activeTtsSource.stop(); } catch (_) {}
+        state.activeTtsSource = null;
+      }
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (_) {}
+      }
+      state.clips.forEach((c) => {
+        if (c.videoEl) {
+          try { c.videoEl.pause(); } catch (_) {}
+        }
+      });
+      document.getElementById('playBtnLabel').textContent = '재생';
+    }
+
+    function captureThumbnailPng() {
+      const canvas = document.getElementById('previewCanvas');
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `shorts_thumbnail_${Date.now()}.png`;
+      a.click();
+      showToast('현재 9:16 프레임을 썸네일(PNG)로 저장했습니다.', 'success');
+    }
+
+    async function recordAndDownloadWebm() {
+      const total = getTotalDuration();
+      if (total <= 0) {
+        showToast('내보낼 세그먼트가 없습니다.', 'warn');
+        return;
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        showToast('현재 브라우저에서는 MediaRecorder 녹화를 지원하지 않습니다. FFmpeg 명령어를 사용해 주세요.', 'error');
+        return;
+      }
+
+      document.getElementById('exportModal').classList.add('hidden');
+      stopPlayback();
+      state.currentTime = 0;
+      state.isRecording = true;
+      document.getElementById('recordingBadge').classList.remove('hidden');
+
+      const canvas = document.getElementById('previewCanvas');
+      const videoStream = canvas.captureStream(30);
+      const ctx = getAudioContext();
+      const audioDest = ctx.createMediaStreamDestination();
+
+      const combinedStream = new MediaStream([
+        ...videoStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks(),
+      ]);
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : 'video/webm';
+
+      const chunks = [];
+      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4500000 });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        state.isRecording = false;
+        document.getElementById('recordingBadge').classList.add('hidden');
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shorts_ai_pro_${Date.now()}.webm`;
+        a.click();
+        showToast('쇼츠 영상(WebM) 렌더링 및 다운로드가 완료되었습니다!', 'success');
+      };
+
+      recorder.start();
+      showToast(`실시간 렌더링 녹화를 시작합니다 (${total.toFixed(1)}초)...`, 'info');
+      startPlayback(audioDest, () => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      });
+    }
+
+    // =========================================================================
+    // FFmpeg Command Generator
+    // =========================================================================
+    function buildFfmpegScript() {
+      if (!state.segments.length) return '# 세그먼트가 비어 있습니다.';
+      const useZoom = document.getElementById('toggleKenBurns').checked;
+      const ducking = document.getElementById('toggleAudioDucking').checked;
+      const yRatio = ((Number(document.getElementById('captionYSlider').value) || 75) / 100).toFixed(2);
+      const lines = ['# ShortsAI Studio Pro 자동 생성 FFmpeg 1080x1920 스크립트'];
+
+      state.segments.forEach((seg, i) => {
+        const clip = state.clips.find((c) => c.id === seg.clipId);
+        const fileName = clip ? clip.name : `input_${i}.mp4`;
+        const speed = Number(seg.speed) || 1.0;
+        const ptsExpr = speed !== 1.0 ? `setpts=${(1 / speed).toFixed(3)}*PTS,` : '';
+        const cropExpr = seg.cropFocus === 'left'
+          ? 'crop=1080:1920:0:0'
+          : seg.cropFocus === 'right'
+            ? 'crop=1080:1920:iw-1080:0'
+            : 'crop=1080:1920:(iw-1080)/2:(ih-1920)/2';
+        const zoomFilter = useZoom ? `,zoompan=z='min(zoom+0.0008,1.07)':d=1:s=1080x1920:fps=30` : '';
+        const safeSub = (seg.subtitle || '').replace(/[:'\\]/g, '');
+
+        lines.push(
+          `ffmpeg -y -ss ${seg.startSec} -t ${(seg.durationSec * speed).toFixed(2)} -i "${fileName}" -i "tts_${i}.mp3" \\`,
+          `  -vf "${ptsExpr}scale=1080:1920:force_original_aspect_ratio=increase,${cropExpr}${zoomFilter},drawtext=fontfile=NotoSansKR-Bold.ttf:text='${safeSub}':fontcolor=yellow:fontsize=58:borderw=5:bordercolor=black:x=(w-text_w)/2:y=h*${yRatio}" \\`,
+          `  -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 20 -c:a aac -shortest "seg_${i}.mp4"`
+        );
+      });
+
+      lines.push('', '# 세그먼트 병합 및 BGM 오디오 더킹 믹싱');
+      const bgmFile = state.customBgmName || 'bgm.mp3';
+      const duckFilter = ducking
+        ? `[1:a]volume=0.22[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]`
+        : `[0:a][1:a]amix=inputs=2:duration=first[aout]`;
+
+      lines.push(
+        `ffmpeg -y -f concat -safe 0 -i concat.txt -i "${bgmFile}" \\`,
+        `  -filter_complex "${duckFilter}" -map 0:v -map "[aout]" -c:v copy -c:a aac "final_shorts_1080x1920.mp4"`
+      );
+
+      return lines.join('\n');
+    }
+
+    // =========================================================================
+    // UI Renderers
+    // =========================================================================
+    function renderClips() {
+      const container = document.getElementById('clipList');
+      document.getElementById('clipCountBadge').textContent = `${state.clips.length} / 5`;
+
+      if (!state.clips.length) {
+        container.innerHTML = `<div class="text-center py-4 text-xs text-slate-500">아직 업로드된 클립이 없습니다.</div>`;
+        return;
+      }
+
+      container.innerHTML = state.clips.map((c, idx) => `
+        <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/90 border border-slate-800">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-5 h-5 rounded-md bg-blue-500/20 text-blue-300 text-[10px] font-bold flex items-center justify-center shrink-0">${idx + 1}</span>
+            <div class="min-w-0">
+              <div class="text-xs font-medium text-slate-200 truncate">${c.name}</div>
+              <div class="text-[10px] text-slate-400 font-mono">${c.duration.toFixed(1)}s · ${c.width}×${c.height}</div>
+            </div>
+          </div>
+          <button type="button" data-remove-clip="${c.id}" class="p-1 text-slate-500 hover:text-rose-400 transition" title="클립 삭제">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('[data-remove-clip]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-remove-clip');
+          state.clips = state.clips.filter((c) => c.id !== id);
+          state.segments = state.segments.filter((s) => s.clipId !== id);
+          renderClips();
+          renderSegments();
+          renderVisualTracks();
+          renderPreviewFrame(0);
+        });
+      });
+
+      lucide.createIcons();
+    }
+
+    function renderStoryArc() {
+      document.getElementById('arcHook').textContent = state.storyArc.hook || '-';
+      document.getElementById('arcClimax').textContent = state.storyArc.climax || '-';
+      document.getElementById('arcOutro').textContent = state.storyArc.outro || '-';
+    }
+
+    function renderYtMeta() {
+      document.getElementById('ytTitleInput').value = state.ytMeta.title || '';
+      document.getElementById('ytDescInput').value = state.ytMeta.description || '';
+    }
+
+    function renderVisualTracks() {
+      const vTrack = document.getElementById('visualTrackVideo');
+      const aTrack = document.getElementById('visualTrackAudio');
+      const total = getTotalDuration();
+
+      if (!state.segments.length || total <= 0) {
+        vTrack.innerHTML = '<div class="w-full h-full flex items-center justify-center text-[10px] text-slate-600">비디오 트랙 비어 있음</div>';
+        aTrack.innerHTML = '<div class="w-full h-full flex items-center justify-center text-[10px] text-slate-600">오디오/TTS 트랙</div>';
+        return;
+      }
+
+      let acc = 0;
+      vTrack.innerHTML = state.segments.map((seg, idx) => {
+        const pct = ((seg.durationSec / total) * 100).toFixed(2);
+        const startAt = acc;
+        acc += seg.durationSec;
+        const color = TRACK_COLORS[idx % TRACK_COLORS.length];
+        return `<button type="button" data-jump-time="${startAt}" data-jump-seg="${seg.id}" style="width:${pct}%" class="track-block h-full rounded ${color} text-[9px] font-bold text-white truncate px-1 text-left" title="컷 ${idx + 1} (${seg.durationSec}s)">C${idx + 1}</button>`;
+      }).join('');
+
+      aTrack.innerHTML = state.segments.map((seg, idx) => {
+        const pct = ((seg.durationSec / total) * 100).toFixed(2);
+        const bg = seg.ttsStatus === 'ready' ? 'bg-emerald-500/70' : 'bg-teal-700/60';
+        return `<div style="width:${pct}%" class="h-full rounded ${bg} text-[8px] text-emerald-100 truncate px-1 leading-3">${seg.ttsStatus === 'ready' ? 'TTS' : '대본'}</div>`;
+      }).join('');
+
+      vTrack.querySelectorAll('[data-jump-time]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.currentTime = Number(btn.getAttribute('data-jump-time')) || 0;
+          state.selectedSegmentId = btn.getAttribute('data-jump-seg');
+          highlightSelectedSegment();
+          renderPreviewFrame(state.currentTime);
+        });
+      });
+    }
+
+    function highlightSelectedSegment() {
+      document.querySelectorAll('[data-seg-card]').forEach((el) => {
+        el.classList.toggle('seg-active', el.getAttribute('data-seg-card') === state.selectedSegmentId);
+      });
+    }
+
+    function renderSegments() {
+      const container = document.getElementById('segmentsContainer');
+      document.getElementById('totalDurationBadge').textContent = `총 ${getTotalDuration().toFixed(1)}초`;
+
+      if (!state.segments.length) {
+        container.innerHTML = `<div class="text-center py-10 text-xs text-slate-500">동영상을 올린 뒤 [Gemini 분석]을 실행하거나 상단 [데모 체험]을 눌러보세요.</div>`;
+        return;
+      }
+
+      container.innerHTML = state.segments.map((seg, idx) => {
+        const clipOptions = state.clips.map((c, cIdx) =>
+          `<option value="${c.id}" ${c.id === seg.clipId ? 'selected' : ''}>#${cIdx + 1} ${c.name}</option>`
+        ).join('');
+
+        const ttsBadge = seg.ttsStatus === 'ready'
+          ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">${seg.wordTimings ? '정밀싱크 완료' : 'TTS 완료'}</span>`
+          : seg.ttsStatus === 'webspeech'
+            ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">내장음성 동기화</span>'
+            : seg.ttsStatus === 'loading'
+              ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">생성 중...</span>'
+              : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">음성 대기</span>';
+
+        return `
+          <div data-seg-card="${seg.id}" class="rounded-xl bg-slate-900/80 border border-slate-800 p-3 space-y-2 transition ${seg.id === state.selectedSegmentId ? 'seg-active' : ''}">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-blue-400">컷 ${idx + 1}</span>
+                ${ttsBadge}
+              </div>
+              <div class="flex items-center gap-1">
+                <button type="button" data-action="rewrite" data-id="${seg.id}" class="px-2 py-1 rounded bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 text-[11px] font-medium transition" title="이 컷의 대본과 자막만 AI로 다시 쓰기">✨ AI 다시쓰기</button>
+                <button type="button" data-action="tts" data-id="${seg.id}" class="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 text-[11px] font-medium transition">성우 생성</button>
+                <button type="button" data-action="up" data-id="${seg.id}" class="p-1 rounded hover:bg-slate-800 text-slate-400" title="위로"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>
+                <button type="button" data-action="down" data-id="${seg.id}" class="p-1 rounded hover:bg-slate-800 text-slate-400" title="아래로"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>
+                <button type="button" data-action="del" data-id="${seg.id}" class="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400" title="삭제"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-2">
+              <div class="col-span-5">
+                <label class="block text-[10px] text-slate-400 mb-0.5">원본 클립</label>
+                <select data-field="clipId" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-xs text-slate-200">${clipOptions}</select>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-[10px] text-slate-400 mb-0.5">시작(초)</label>
+                <input type="number" step="0.1" min="0" data-field="startSec" data-id="${seg.id}" value="${seg.startSec}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs font-mono text-slate-200" />
+              </div>
+              <div class="col-span-2">
+                <label class="block text-[10px] text-slate-400 mb-0.5">길이(초)</label>
+                <input type="number" step="0.1" min="0.5" max="15" data-field="durationSec" data-id="${seg.id}" value="${seg.durationSec}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs font-mono text-slate-200" />
+              </div>
+              <div class="col-span-3">
+                <label class="block text-[10px] text-slate-400 mb-0.5">배속</label>
+                <select data-field="speed" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1.5 py-1 text-xs font-mono text-slate-200">
+                  <option value="0.8" ${seg.speed === 0.8 ? 'selected' : ''}>0.8x</option>
+                  <option value="1" ${seg.speed === 1 ? 'selected' : ''}>1.0x</option>
+                  <option value="1.1" ${seg.speed === 1.1 ? 'selected' : ''}>1.1x</option>
+                  <option value="1.2" ${seg.speed === 1.2 ? 'selected' : ''}>1.2x</option>
+                  <option value="1.5" ${seg.speed === 1.5 ? 'selected' : ''}>1.5x</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-2">
+              <div class="col-span-8">
+                <label class="block text-[10px] text-slate-400 mb-0.5">화면 자막 (단어별 강조)</label>
+                <input type="text" data-field="subtitle" data-id="${seg.id}" value="${seg.subtitle.replace(/"/g, '&quot;')}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs text-amber-200 font-medium" />
+              </div>
+              <div class="col-span-4">
+                <label class="block text-[10px] text-slate-400 mb-0.5">9:16 크롭</label>
+                <select data-field="cropFocus" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-xs text-slate-200">
+                  <option value="center" ${seg.cropFocus === 'center' ? 'selected' : ''}>중앙</option>
+                  <option value="left" ${seg.cropFocus === 'left' ? 'selected' : ''}>왼쪽</option>
+                  <option value="right" ${seg.cropFocus === 'right' ? 'selected' : ''}>오른쪽</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-0.5">성우(TTS) 내레이션 대본</label>
+              <textarea rows="2" data-field="narration" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200">${seg.narration}</textarea>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('[data-seg-card]').forEach((card) => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('button, input, select, textarea')) return;
+          const id = card.getAttribute('data-seg-card');
+          state.selectedSegmentId = id;
+          highlightSelectedSegment();
+          let acc = 0;
+          for (const s of state.segments) {
+            if (s.id === id) break;
+            acc += Number(s.durationSec) || 0;
+          }
+          state.currentTime = acc;
+          renderPreviewFrame(state.currentTime);
+        });
+      });
+
+      container.querySelectorAll('[data-field]').forEach((el) => {
+        el.addEventListener('input', () => {
+          const id = el.getAttribute('data-id');
+          const field = el.getAttribute('data-field');
+          const seg = state.segments.find((s) => s.id === id);
+          if (!seg) return;
+          if (field === 'startSec' || field === 'durationSec' || field === 'speed') {
+            seg[field] = Math.max(field === 'durationSec' ? 0.5 : 0, Number(el.value) || (field === 'speed' ? 1 : 0));
+            document.getElementById('totalDurationBadge').textContent = `총 ${getTotalDuration().toFixed(1)}초`;
+            renderVisualTracks();
+          } else {
+            seg[field] = el.value;
+          }
+          renderPreviewFrame(state.currentTime);
+          saveProjectAutosave();
+        });
+      });
+
+      container.querySelectorAll('[data-action]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const action = btn.getAttribute('data-action');
+          const id = btn.getAttribute('data-id');
+          const idx = state.segments.findIndex((s) => s.id === id);
+          if (idx === -1) return;
+
+          if (action === 'rewrite') {
+            rewriteSingleSegmentWithAI(state.segments[idx]);
+          } else if (action === 'tts') {
+            generateTtsForSegment(state.segments[idx]);
+          } else if (action === 'up' && idx > 0) {
+            pushHistory();
+            [state.segments[idx - 1], state.segments[idx]] = [state.segments[idx], state.segments[idx - 1]];
+            renderSegments();
+            renderVisualTracks();
+          } else if (action === 'down' && idx < state.segments.length - 1) {
+            pushHistory();
+            [state.segments[idx + 1], state.segments[idx]] = [state.segments[idx], state.segments[idx + 1]];
+            renderSegments();
+            renderVisualTracks();
+          } else if (action === 'del') {
+            pushHistory();
+            state.segments.splice(idx, 1);
+            renderSegments();
+            renderVisualTracks();
+            renderPreviewFrame(0);
+          }
+        });
+      });
+
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // Event Listeners & Init
+    // =========================================================================
+    async function copyText(text, successMsg) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(successMsg, 'success');
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showToast(successMsg, 'success');
+      }
+    }
+
+    function init() {
+      loadSettings();
+
+      const fileInput = document.getElementById('videoFileInput');
+      const dropZone = document.getElementById('dropZone');
+      fileInput.addEventListener('change', (e) => {
+        handleFilesAdded(e.target.files);
+        fileInput.value = '';
+      });
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-blue-500', 'bg-blue-500/10');
+      });
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-blue-500', 'bg-blue-500/10');
+      });
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-blue-500/10');
+        handleFilesAdded(e.dataTransfer.files);
+      });
+
+      document.getElementById('bgmFileInput').addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) handleBgmUpload(e.target.files[0]);
+      });
+
+      // Top bar buttons
+      document.getElementById('btnLoadDemo').addEventListener('click', loadDemoProject);
+      document.getElementById('btnCaptureThumb').addEventListener('click', captureThumbnailPng);
+      document.getElementById('btnOpenSettings').addEventListener('click', () => {
+        syncSettingsUI();
+        if (!state.server.checked) pingServerAI();
+        document.getElementById('settingsModal').classList.remove('hidden');
+      });
+      document.getElementById('btnCloseSettings').addEventListener('click', () => {
+        document.getElementById('settingsModal').classList.add('hidden');
+      });
+      document.getElementById('selectTtsProvider').addEventListener('change', (e) => {
+        const v = e.target.value;
+        document.getElementById('elevenLabsFields').classList.toggle('hidden', v !== 'elevenlabs');
+        const sv = document.getElementById('serverTtsFields');
+        if (sv) sv.classList.toggle('hidden', v !== 'server');
+      });
+
+      // 서버 기본 키 / 내 키 직접 입력
+      ['keyModeServer', 'keyModeOwn'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+          state.settings.keyMode = document.getElementById('keyModeOwn').checked ? 'own' : 'server';
+          saveSettings();
+          if (state.settings.keyMode === 'server') pingServerAI();
+        });
+      });
+      document.getElementById('btnSaveSettings').addEventListener('click', () => {
+        state.settings.keyMode = document.getElementById('keyModeOwn').checked ? 'own' : 'server';
+        state.settings.geminiKey = document.getElementById('inputGeminiKey').value.trim();
+        state.settings.geminiModel = document.getElementById('selectGeminiModel').value;
+        state.settings.proxyUrl = document.getElementById('inputProxyUrl').value.trim();
+        state.settings.ttsProvider = document.getElementById('selectTtsProvider').value;
+        const svSel = document.getElementById('selectServerVoice');
+        if (svSel) state.settings.serverVoice = svSel.value;
+        state.settings.elevenKey = document.getElementById('inputElevenKey').value.trim();
+        state.settings.elevenVoiceId = document.getElementById('inputElevenVoiceId').value.trim() || '21m00Tcm4TlvDq8ikWAM';
+        saveSettings();
+        document.getElementById('settingsModal').classList.add('hidden');
+        if (state.settings.keyMode === 'server') pingServerAI();
+        showToast('설정을 저장했습니다.', 'success');
+      });
+      document.getElementById('btnClearKeys').addEventListener('click', () => {
+        state.settings.geminiKey = '';
+        state.settings.elevenKey = '';
+        saveSettings();
+        showToast('저장된 API 키를 초기화했습니다.', 'info');
+      });
+
+      // Story Arc vs YouTube Metadata Tabs
+      const tabBtnStory = document.getElementById('tabBtnStory');
+      const tabBtnMeta = document.getElementById('tabBtnMeta');
+      const panelStoryArc = document.getElementById('panelStoryArc');
+      const panelYtMeta = document.getElementById('panelYtMeta');
+
+      tabBtnStory.addEventListener('click', () => {
+        tabBtnStory.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white transition';
+        tabBtnMeta.className = 'px-2.5 py-1 rounded-md text-xs font-medium text-slate-400 hover:text-white transition';
+        panelStoryArc.classList.remove('hidden');
+        panelYtMeta.classList.add('hidden');
+      });
+      tabBtnMeta.addEventListener('click', () => {
+        tabBtnMeta.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white transition';
+        tabBtnStory.className = 'px-2.5 py-1 rounded-md text-xs font-medium text-slate-400 hover:text-white transition';
+        panelYtMeta.classList.remove('hidden');
+        panelStoryArc.classList.add('hidden');
+      });
+
+      document.getElementById('ytTitleInput').addEventListener('input', (e) => {
+        state.ytMeta.title = e.target.value;
+        renderPreviewFrame(state.currentTime);
+      });
+      document.getElementById('ytDescInput').addEventListener('input', (e) => {
+        state.ytMeta.description = e.target.value;
+      });
+      document.getElementById('btnCopyMeta').addEventListener('click', () => {
+        const text = `${state.ytMeta.title}\n\n${state.ytMeta.description}`;
+        copyText(text, '유튜브 쇼츠 제목과 설명·해시태그를 복사했습니다.');
+      });
+
+      // Export modal
+      document.getElementById('btnOpenExport').addEventListener('click', () => {
+        document.getElementById('ffmpegCommandPreview').textContent = buildFfmpegScript();
+        document.getElementById('exportModal').classList.remove('hidden');
+      });
+      document.getElementById('btnCloseExport').addEventListener('click', () => {
+        document.getElementById('exportModal').classList.add('hidden');
+      });
+      document.getElementById('btnRecordWebm').addEventListener('click', recordAndDownloadWebm);
+      document.getElementById('btnDownloadJson').addEventListener('click', () => {
+        const exportObj = {
+          project: {
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            bgmMood: document.getElementById('bgmMoodSelect').value,
+            lut: document.getElementById('lutSelect').value,
+            sfx: document.getElementById('sfxSelect').value,
+          },
+          storyArc: state.storyArc,
+          youtubeMetadata: state.ytMeta,
+          segments: state.segments.map(({ ttsAudioBuffer, ttsAudioUrl, ...rest }) => rest),
+        };
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'shorts_timeline_pro.json';
+        a.click();
+        showToast('timeline.json 파일을 다운로드했습니다.', 'success');
+      });
+      document.getElementById('btnCopyFfmpeg').addEventListener('click', () => {
+        copyText(document.getElementById('ffmpegCommandPreview').textContent, 'FFmpeg 명령어를 클립보드에 복사했습니다.');
+      });
+
+      // AI & TTS buttons
+      document.getElementById('btnAnalyzeGemini').addEventListener('click', runGeminiAnalysis);
+      document.getElementById('btnGenerateAllTts').addEventListener('click', generateAllTts);
+
+      // Playback & preview controls
+      document.getElementById('btnPlayPause').addEventListener('click', () => {
+        if (state.isPlaying) stopPlayback();
+        else startPlayback();
+      });
+      document.getElementById('btnStop').addEventListener('click', () => {
+        stopPlayback();
+        state.currentTime = 0;
+        renderPreviewFrame(0);
+      });
+      document.getElementById('timelineScrubber').addEventListener('input', (e) => {
+        state.currentTime = Number(e.target.value) || 0;
+        renderPreviewFrame(state.currentTime);
+      });
+      document.getElementById('btnToggleSafeZone').addEventListener('click', () => {
+        state.showSafeZone = !state.showSafeZone;
+        document.getElementById('safeZoneOverlay').classList.toggle('hidden', !state.showSafeZone);
+      });
+      document.getElementById('toggleAudioDucking').addEventListener('change', (e) => {
+        document.getElementById('duckingStatusText').textContent = e.target.checked ? 'BGM 더킹 활성' : 'BGM 더킹 꺼짐';
+      });
+
+      ['captionStyleSelect', 'lutSelect', 'transitionSelect', 'toggleKenBurns', 'toggleTitleBanner', 'captionYSlider'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', () => renderPreviewFrame(state.currentTime));
+        document.getElementById(id).addEventListener('change', () => renderPreviewFrame(state.currentTime));
+      });
+
+      document.getElementById('btnAddSegment').addEventListener('click', () => {
+        if (!state.clips.length) {
+          showToast('먼저 클립을 올리거나 데모 체험을 불러와 주세요.', 'warn');
+          return;
+        }
+        const newSeg = {
+          id: 'seg_' + Math.random().toString(36).slice(2, 8),
+          clipId: state.clips[0].id,
+          startSec: 0,
+          durationSec: 3.0,
+          speed: 1.0,
+          cropFocus: 'center',
+          narration: '새로 추가된 장면의 내레이션을 입력하세요.',
+          subtitle: '새 자막 입력',
+          muteOrig: true,
+          ttsAudioUrl: null,
+          ttsAudioBuffer: null,
+          wordTimings: null,
+          ttsStatus: 'idle',
+        };
+        pushHistory();
+        state.segments.push(newSeg);
+        state.selectedSegmentId = newSeg.id;
+        renderSegments();
+        renderVisualTracks();
+        renderPreviewFrame(state.currentTime);
+      });
+
+      document.getElementById('btnUndo').addEventListener('click', performUndo);
+      document.getElementById('btnRedo').addEventListener('click', performRedo);
+
+      // Global keyboard shortcuts (Space: Play/Pause, Arrows: Seek 1s, Ctrl+Z/Y: Undo/Redo)
+      window.addEventListener('keydown', (e) => {
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !isTyping) {
+          e.preventDefault();
+          if (e.shiftKey) performRedo();
+          else performUndo();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && !isTyping) {
+          e.preventDefault();
+          performRedo();
+          return;
+        }
+        if (isTyping) return;
+
+        if (e.code === 'Space') {
+          e.preventDefault();
+          if (state.isPlaying) stopPlayback();
+          else startPlayback();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          state.currentTime = Math.min(getTotalDuration(), state.currentTime + 1.0);
+          renderPreviewFrame(state.currentTime);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          state.currentTime = Math.max(0, state.currentTime - 1.0);
+          renderPreviewFrame(state.currentTime);
+        }
+      });
+
+      // 서버 키 상태를 먼저 확인한다(키 입력 없이 바로 쓸 수 있는지 화면에 정직하게 표시).
+      pingServerAI();
+
+      loadDemoProject();
+      if (restoreAutosaveIfAvailable()) {
+        renderStoryArc();
+        renderYtMeta();
+        renderSegments();
+        renderVisualTracks();
+        renderPreviewFrame(0);
+      }
+      updateHistoryButtons();
+      lucide.createIcons();
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

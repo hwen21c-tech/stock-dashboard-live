@@ -2882,9 +2882,11 @@ async function callModel(model, prompt, attemptDeadline, thinkingOff) {
   const wantThinkingOff = thinkingOff !== false && THINKING_UNSUPPORTED.indexOf(model) < 0;
   if (wantThinkingOff) gen.thinkingConfig = THINKING_OFF;
   // 📷 내 사진 — Gemini 멀티모달(inlineData). 본문 텍스트보다 앞에 두고 같이 보낸다.
+  // 프롬프트별 이미지 상한 — 쇼츠 키프레임(최대 15장)은 기본값(4장)보다 더 보낸다.
+  const imgCap = Math.max(1, Math.min(16, Number(prompt.maxImages) || MAX_INLINE_IMAGES));
   const imgParts = (Array.isArray(prompt.images) ? prompt.images : [])
     .filter((im) => im && im.data && /^image\/(jpeg|png|webp)$/.test(String(im.mimeType || '')))
-    .slice(0, MAX_INLINE_IMAGES)
+    .slice(0, imgCap)
     .map((im) => ({ inlineData: { mimeType: im.mimeType, data: im.data } }));
   const mediaParts = (Array.isArray(prompt.media) ? prompt.media : [])
     .filter((m) => m && m.data && SUMMARY_MEDIA_MIMES.indexOf(String(m.mimeType || '').toLowerCase()) >= 0)
@@ -5172,6 +5174,377 @@ async function handleBatteryResearch(res, body, keyConfigured) {
   }
 }
 
+/* ---------------------------------------------------------------- 🎬 쇼츠 전용 편집기 (shorts-editor.html)
+ *
+ * POST /api/content-ai { action:'shorts_analyze', tone, hint, clips:[{name,duration,width,height,frames:[{tSec,data}]}] }
+ *   → { ok, model, data:{ storyArc{hook,climax,outro}, youtubeTitle, youtubeDescription, bgmMood,
+ *                         segments:[{clipIndex,startSec,durationSec,speed,cropFocus,narration,subtitle}] } }
+ * POST /api/content-ai { action:'shorts_rewrite', narration, subtitle, tone }
+ *   → { ok, data:{ narration, subtitle } }
+ * POST /api/content-ai { action:'shorts_tts', text, voiceId?, key? }
+ *   → { ok, audio(base64), mime, alignment{characters[],character_start_times_seconds[],character_end_times_seconds[]} }
+ *      ElevenLabs 키(서버 환경변수 ELEVENLABS_API_KEY 또는 요청의 key)가 없으면 ok:false + reason:'no_eleven_key'
+ *      → 클라이언트는 /api/tts(무료 Edge 성우)로 폴백한다.
+ */
+
+const SHORTS_MAX_IMAGES = 15;
+const SHORTS_MAX_ONE_B64 = 900 * 1024;      // 키프레임 1장(약 640KB JPEG → base64 870KB)
+const SHORTS_MAX_TOTAL_B64 = 3300 * 1024;   // 요청 본문 한도(4.2MB) 안쪽
+const SHORTS_BGMS = ['upbeat', 'chill', 'tense', 'none'];
+const SHORTS_TONES = {
+  energetic: '유쾌한 예능·후킹 (빠른 템포, 감탄사 활용)',
+  vlog: '감성 브이로그 (차분하고 따뜻한 구어체)',
+  info: '빠른 정보 요약 (숫자·포인트 먼저)',
+  dramatic: '반전·긴장감 (짧은 문장, 궁금증 유발)',
+};
+
+const SHORTS_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    storyArc: {
+      type: 'OBJECT',
+      properties: {
+        hook: { type: 'STRING' },
+        climax: { type: 'STRING' },
+        outro: { type: 'STRING' },
+      },
+      required: ['hook', 'climax', 'outro'],
+    },
+    youtubeTitle: { type: 'STRING' },
+    youtubeDescription: { type: 'STRING' },
+    bgmMood: { type: 'STRING', enum: SHORTS_BGMS },
+    segments: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          clipIndex: { type: 'INTEGER' },
+          startSec: { type: 'NUMBER' },
+          durationSec: { type: 'NUMBER' },
+          speed: { type: 'NUMBER' },
+          cropFocus: { type: 'STRING', enum: ['center', 'left', 'right'] },
+          narration: { type: 'STRING' },
+          subtitle: { type: 'STRING' },
+        },
+        required: ['clipIndex', 'startSec', 'durationSec', 'speed', 'cropFocus', 'narration', 'subtitle'],
+      },
+    },
+  },
+  required: ['storyArc', 'youtubeTitle', 'youtubeDescription', 'bgmMood', 'segments'],
+};
+
+function shortsClipLines(body) {
+  const clips = arr(body.clips, 5);
+  const images = [];
+  const lines = [];
+  let totalB64 = 0;
+  let dropped = 0;
+  clips.forEach((c, i) => {
+    const frames = arr(c && c.frames, 6);
+    lines.push(
+      'Clip ' + i + ': 파일명="' + s(c && c.name, 80) + '", 길이=' + round1(num(c && c.duration, 0)) +
+      '초, 해상도=' + Math.trunc(num(c && c.width, 1080)) + 'x' + Math.trunc(num(c && c.height, 1920)) +
+      ', 키프레임 ' + frames.length + '장'
+    );
+    frames.forEach((f) => {
+      const d = s(f && f.data, SHORTS_MAX_ONE_B64 + 1);
+      if (!d) return;
+      if (d.length > SHORTS_MAX_ONE_B64 || images.length >= SHORTS_MAX_IMAGES || totalB64 + d.length > SHORTS_MAX_TOTAL_B64) {
+        dropped += 1;
+        return;
+      }
+      totalB64 += d.length;
+      images.push({ mimeType: 'image/jpeg', data: d });
+      lines.push('  · 이미지 #' + images.length + ' = Clip ' + i + ' @ ' + round1(num(f && f.tSec, 0)) + '초');
+    });
+  });
+  return { clips: clips, images: images, lines: lines, dropped: dropped };
+}
+
+async function handleShortsAnalyze(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const pack = shortsClipLines(body);
+  if (!pack.clips.length) {
+    return send(res, 400, {
+      ok: false,
+      reason: 'no_clips',
+      message: '분석할 클립이 없습니다. 동영상을 올리거나 데모 체험을 먼저 불러와 주세요.',
+    });
+  }
+  const toneKey = s(body.tone, 30) || 'energetic';
+  const tone = SHORTS_TONES[toneKey] || SHORTS_TONES.energetic;
+  const hint = s(body.hint, 400);
+  const n = pack.clips.length;
+
+  const user = [
+    '아래 ' + n + '개 클립의 정보' + (pack.images.length ? '와 키프레임 이미지' : '') + '를 분석해서 15~45초 유튜브 쇼츠 편집 타임라인과 업로드 메타데이터를 만들어 주세요.',
+    '',
+    '[클립 목록]',
+    pack.lines.join('\n'),
+    '',
+    '[원하는 톤] ' + tone,
+    '[사용자 방향] ' + (hint || '초반 3초 후킹이 강하고 자연스럽게 이어지는 스토리'),
+    '',
+    '[규칙]',
+    '1. clipIndex 는 0 ~ ' + (n - 1) + ' 사이의 정수. 실제로 없는 클립 번호를 쓰지 마세요.',
+    '2. startSec 은 그 클립 길이 안쪽, durationSec 은 1.5~5.0초, speed 는 1.0~1.3 사이.',
+    '3. cropFocus 는 화면에서 중요한 피사체 위치 — center / left / right 중 하나.',
+    '4. narration 은 성우가 3~4초에 읽을 자연스러운 한국어 구어체 한 문장(20자 안팎).',
+    '5. subtitle 은 14자 이내 임팩트 자막. 같은 문장을 그대로 옮기지 말고 핵심만 남기세요.',
+    '6. 첫 컷은 3초 안에 멈추게 하는 후킹, 마지막 컷은 저장·팔로우를 부르는 마무리.',
+    '7. youtubeTitle 은 40자 안팎의 클릭을 부르는 제목, youtubeDescription 은 2~3줄 요약 + 해시태그 5개.',
+    '8. bgmMood 는 upbeat / chill / tense / none 중 하나. 영상 분위기에 맞게.',
+    '9. 화면에 실제로 보이는 것만 근거로 쓰세요. 확인되지 않은 가게 이름·가격·수치를 지어내지 마세요.',
+    '10. 마지막에 JSON 만 돌려주세요.',
+  ].join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate(
+      {
+        system:
+          '당신은 조회수 높은 유튜브 쇼츠 전문 PD입니다. 주어진 클립·키프레임만 근거로 편집 타임라인을 설계하고, ' +
+          '보이지 않는 사실은 만들지 않습니다. 대사는 사람이 실제로 말하듯 짧고 자연스러운 한국어 구어체로 씁니다.',
+        user: user,
+        schema: SHORTS_SCHEMA,
+        temperature: 0.75,
+        maxTokens: 2600,
+        images: pack.images,
+        maxImages: SHORTS_MAX_IMAGES,
+      },
+      deadline
+    );
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(out.text);
+    } catch (_) {
+      const j = extractJson(out.text);
+      parsed = j || null;
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return send(res, 200, {
+        ok: false,
+        action: 'shorts_analyze',
+        reason: 'parse_failed',
+        message: 'Gemini 응답을 JSON으로 읽지 못했습니다. 한 번 더 눌러 주세요.',
+        model: out.model,
+        __raw: String(out.text || '').slice(0, 1200),
+      });
+    }
+
+    const arc = parsed.storyArc || {};
+    const segs = arr(parsed.segments, 12)
+      .map((g) => ({
+        clipIndex: Math.max(0, Math.min(n - 1, Math.trunc(num(g && g.clipIndex, 0)))),
+        startSec: Math.max(0, round1(num(g && g.startSec, 0))),
+        durationSec: Math.max(1.5, Math.min(6, round1(num(g && g.durationSec, 3.4)))),
+        speed: Math.max(0.8, Math.min(1.4, round1(num(g && g.speed, 1.0)))),
+        cropFocus: ['center', 'left', 'right'].indexOf(String((g && g.cropFocus) || 'center')) >= 0
+          ? String(g.cropFocus)
+          : 'center',
+        narration: s(g && g.narration, 220),
+        subtitle: s(g && g.subtitle, 40),
+      }))
+      .filter((g) => g.narration || g.subtitle);
+
+    if (!segs.length) {
+      return send(res, 200, {
+        ok: false,
+        action: 'shorts_analyze',
+        reason: 'empty_segments',
+        message: '편집안이 비어 왔습니다. 한 번 더 눌러 주세요.',
+        model: out.model,
+      });
+    }
+
+    const warnings = [];
+    if (pack.dropped) warnings.push('용량 때문에 키프레임 ' + pack.dropped + '장은 보내지 못했습니다.');
+
+    return send(res, 200, {
+      ok: true,
+      action: 'shorts_analyze',
+      model: out.model,
+      data: {
+        storyArc: {
+          hook: s(arc.hook, 120),
+          climax: s(arc.climax, 120),
+          outro: s(arc.outro, 120),
+        },
+        youtubeTitle: s(parsed.youtubeTitle, 120),
+        youtubeDescription: s(parsed.youtubeDescription, 900),
+        bgmMood: SHORTS_BGMS.indexOf(String(parsed.bgmMood || '')) >= 0 ? String(parsed.bgmMood) : 'upbeat',
+        segments: segs,
+      },
+      imagesUsed: pack.images.length,
+      warnings: warnings,
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    const status = code === 'quota_exceeded' ? 429 : 503;
+    return send(res, status, {
+      ok: false,
+      action: 'shorts_analyze',
+      reason: code,
+      message:
+        code === 'quota_exceeded'
+          ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+          : 'Gemini가 응답하지 않았습니다. 잠시 뒤 다시 눌러 주세요.',
+      tries: (err && err.tries) || [],
+    });
+  }
+}
+
+const SHORTS_REWRITE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    narration: { type: 'STRING' },
+    subtitle: { type: 'STRING' },
+  },
+  required: ['narration', 'subtitle'],
+};
+
+async function handleShortsRewrite(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const narration = s(body.narration, 300);
+  const subtitle = s(body.subtitle, 60);
+  if (!narration && !subtitle) {
+    return send(res, 400, {
+      ok: false,
+      reason: 'empty_text',
+      message: '다시 쓸 대본이나 자막이 비어 있습니다.',
+    });
+  }
+  const toneKey = s(body.tone, 30) || 'energetic';
+  const tone = SHORTS_TONES[toneKey] || SHORTS_TONES.energetic;
+
+  try {
+    const out = await generate(
+      {
+        system:
+          '당신은 유튜브 쇼츠 대본 작가입니다. 한 컷 분량의 성우 대사와 자막을 더 몰입감 있게 다듬습니다. ' +
+          '없는 사실을 만들지 않고, 사람이 실제로 말하는 구어체로 씁니다.',
+        user: [
+          '유튜브 쇼츠의 한 컷 대본과 자막을 더 몰입감 있고 후킹하게 리라이팅해 주세요.',
+          '현재 대본: "' + narration + '"',
+          '현재 자막: "' + subtitle + '"',
+          '원하는 톤: ' + tone,
+          '규칙: narration 은 성우가 3~4초 안에 읽을 자연스러운 한국어 구어체 한 문장(20자 안팎), ' +
+            'subtitle 은 14자 이내 임팩트 자막. 원래 뜻과 정보는 유지하세요.',
+        ].join('\n'),
+        schema: SHORTS_REWRITE_SCHEMA,
+        temperature: 0.85,
+        maxTokens: 400,
+        fastFirst: true,
+      },
+      Date.now() + DEADLINE_MS
+    );
+    let parsed = null;
+    try {
+      parsed = JSON.parse(out.text);
+    } catch (_) {
+      const j = extractJson(out.text);
+      parsed = j || null;
+    }
+    const nNar = s(parsed && parsed.narration, 220);
+    const nSub = s(parsed && parsed.subtitle, 60);
+    if (!nNar && !nSub) {
+      return send(res, 200, {
+        ok: false,
+        action: 'shorts_rewrite',
+        reason: 'parse_failed',
+        message: '다시 쓴 문장이 비어 왔습니다. 한 번 더 눌러 주세요.',
+        model: out.model,
+      });
+    }
+    return send(res, 200, {
+      ok: true,
+      action: 'shorts_rewrite',
+      model: out.model,
+      data: { narration: nNar || narration, subtitle: nSub || subtitle },
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false,
+      action: 'shorts_rewrite',
+      reason: code,
+      message:
+        code === 'quota_exceeded'
+          ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+          : 'Gemini가 응답하지 않았습니다. 잠시 뒤 다시 눌러 주세요.',
+    });
+  }
+}
+
+/* ElevenLabs with-timestamps — 서버 환경변수 키가 있으면 키 입력 없이 단어 타임스탬프까지.
+   키가 없으면 ok:false(no_eleven_key) 로 알리고, 클라이언트는 /api/tts 무료 성우로 폴백한다. */
+async function handleShortsTts(res, body) {
+  const text = s(body.text, 600);
+  if (!text) return send(res, 400, { ok: false, reason: 'empty_text', message: '읽을 문장이 비어 있습니다.' });
+  const envKey = s(process.env.ELEVENLABS_API_KEY, 200);
+  const key = s(body.key, 200) || envKey;
+  if (!key) {
+    return send(res, 200, {
+      ok: false,
+      reason: 'no_eleven_key',
+      message: 'ElevenLabs 키가 없습니다. 무료 서버 성우(/api/tts)로 대신 읽습니다.',
+    });
+  }
+  const voiceId = s(body.voiceId, 60) || s(process.env.ELEVENLABS_VOICE_ID, 60) || '21m00Tcm4TlvDq8ikWAM';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const r = await fetch(
+      'https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voiceId) + '/with-timestamps',
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.45, similarity_boost: 0.78 },
+        }),
+        signal: ctrl.signal,
+      }
+    );
+    if (!r.ok) {
+      const t = await r.text().catch(() => '');
+      return send(res, r.status === 401 || r.status === 403 ? 401 : 502, {
+        ok: false,
+        reason: r.status === 401 || r.status === 403 ? 'eleven_key_rejected' : 'eleven_error',
+        status: r.status,
+        message: 'ElevenLabs 응답 오류(' + r.status + ') ' + String(t).slice(0, 140),
+      });
+    }
+    const j = await r.json();
+    if (!j || !j.audio_base64) {
+      return send(res, 502, { ok: false, reason: 'eleven_empty', message: 'ElevenLabs 음성이 비어 왔습니다.' });
+    }
+    const al = j.alignment || j.normalized_alignment || {};
+    return send(res, 200, {
+      ok: true,
+      engine: 'elevenlabs',
+      mime: 'audio/mpeg',
+      voiceId: voiceId,
+      audio: j.audio_base64,
+      alignment: {
+        characters: arr(al.characters, 2000).map((c) => String(c)),
+        character_start_times_seconds: arr(al.character_start_times_seconds, 2000).map((v) => num(v, 0)),
+        character_end_times_seconds: arr(al.character_end_times_seconds, 2000).map((v) => num(v, 0)),
+      },
+    });
+  } catch (err) {
+    return send(res, 504, {
+      ok: false,
+      reason: 'eleven_timeout',
+      message: 'ElevenLabs 응답이 늦어 실패했습니다. 무료 서버 성우로 대신 읽습니다.',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -5210,6 +5583,13 @@ module.exports = async function handler(req, res) {
           "POST { action:'battery_research', q:'질문', notes:'대백과 발췌(선택)', lite:true|false } " +
           "→ { ok, queryEn, source:'openalex'|'crossref', papers:[{title,year,journal,authors,doi,cited,abstract}], answer:{headline,principle[],practice[],paperNotes[],cautions[]}, ai }",
         note: '논문은 OpenAlex → CrossRef 순으로 실제 조회한다. 논문·DOI를 지어내지 않는다.',
+      },
+      shorts_editor: {
+        page: '/shorts-editor.html',
+        actions: ['shorts_analyze', 'shorts_rewrite', 'shorts_tts'],
+        analyze: "POST { action:'shorts_analyze', tone:'energetic'|'vlog'|'info'|'dramatic', hint:'방향', clips:[{name,duration,width,height,frames:[{tSec,data(base64 jpeg)}]}] } → { ok, data:{ storyArc, youtubeTitle, youtubeDescription, bgmMood, segments[] } } — 키프레임 최대 15장",
+        rewrite: "POST { action:'shorts_rewrite', narration, subtitle, tone } → { ok, data:{ narration, subtitle } }",
+        tts: "POST { action:'shorts_tts', text, voiceId?, key? } → { ok, audio(base64), alignment } / 키 없으면 reason:'no_eleven_key' → /api/tts 무료 성우 사용",
       },
       youtube: {
         action: 'youtube_transcript',
@@ -5281,6 +5661,10 @@ module.exports = async function handler(req, res) {
   }
   // 유튜브 자막은 Gemini 호출이 아니라서 키 설정과 무관하게 먼저 처리한다.
   if (action === 'youtube_transcript') return handleYoutubeTranscript(res, body);
+  // 🎬 쇼츠 전용 편집기 — 키프레임 스토리 분석 · 컷 리라이팅 · (선택) ElevenLabs 성우
+  if (action === 'shorts_analyze') return handleShortsAnalyze(res, body, keyConfigured);
+  if (action === 'shorts_rewrite') return handleShortsRewrite(res, body, keyConfigured);
+  if (action === 'shorts_tts') return handleShortsTts(res, body);
   // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
   if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
     return handleWork(res, body, keyConfigured);
