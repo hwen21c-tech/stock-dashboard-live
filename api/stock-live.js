@@ -1119,8 +1119,10 @@ async function handleMinuteCandles(res, q, fresh) {
    *   · 3분봉 20선은 이미 받은 오늘 1분봉으로 계산한다 */
   if (q.ham === '1') {
     try {
-      const info = await hamburgerLib.inspect(code, { pctNow: null });
+      const pctParam = q.pct === undefined || q.pct === '' ? null : Number(q.pct);
+      const info = await hamburgerLib.inspect(code, { pctNow: Number.isFinite(pctParam) ? pctParam : null });
       info.ma20 = hamburgerLib.threeMinMA20(bars);
+      info.last = bars[bars.length - 1].c;
       body.hamburger = info;
     } catch (e) {
       body.hamburger = { ok: false, code, reason: 'ham_error', message: String((e && e.message) || e) };
