@@ -2072,6 +2072,374 @@ function normSummary(data, meta) {
   return out;
 }
 
+/* ==========================================================================
+   🧭 BRIEF 리포트 — 멀티 소스 종합 · 3관점 렌즈 · 수치 차트 · 구조 다이어그램
+   · 여러 자료(유튜브 자막 · 웹 본문 · PDF · 이미지 · 텍스트 · 짧은 영상)를
+     한 번에 종합해 컨설팅 형태 보고서를 만든다.
+   · 자료에 없는 수치·고유명사·링크는 만들지 않는다(HONESTY 그대로).
+   · chart·mermaid 는 자료에 실제로 있는 숫자·요소만 쓴다. 없으면 비워 둔다.
+   ========================================================================== */
+const BRIEF_SRC_MAX = 8;
+const BRIEF_ITEM_CHARS = 16000;
+const BRIEF_TOTAL_CHARS = 60000;
+
+const SCHEMA_BRIEF = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '보고서 제목 20~40자 — 자료들이 함께 말하는 결론' },
+    subtitle: { type: 'string', description: '한 줄 부제 30~60자' },
+    densityScore: { type: 'integer', description: '정보 밀도 0~100 — 자료에서 실제로 확인된 근거의 비중(추측·일반론이 많으면 낮게)' },
+    skipGuide: { type: 'string', description: '어디부터 보면 되는지 1~2문장. 소스 번호와 위치를 짚는다' },
+    lenses: {
+      type: 'object',
+      properties: {
+        executive: { type: 'array', description: '의사결정자·투자자 시선 3줄 — 기회·리스크·판단 기준', items: { type: 'string' } },
+        practitioner: { type: 'array', description: '실무자 시선 3줄 — 방법·한계·적용 조건', items: { type: 'string' } },
+        beginner: { type: 'array', description: '초보자 시선 3줄 — 쉬운 비유와 용어 풀이', items: { type: 'string' } },
+      },
+      required: ['executive', 'practitioner', 'beginner'],
+    },
+    kpis: {
+      type: 'array',
+      description: '핵심 지표 3~4개 — 값은 자료에 있는 숫자만 (없으면 빈 배열)',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: '지표명 10자 내외' },
+          value: { type: 'string', description: '값 (단위 포함)' },
+          delta: { type: 'string', description: '변화·기준 (예: +68% YoY · 소스2 3:12)' },
+        },
+        required: ['label', 'value'],
+      },
+    },
+    chart: {
+      type: 'object',
+      description: '수치 차트 — 자료에 숫자가 2개 이상 있을 때만. 없으면 labels·values 를 빈 배열로',
+      properties: {
+        title: { type: 'string', description: '차트 제목' },
+        type: { type: 'string', enum: ['bar', 'line'] },
+        labels: { type: 'array', items: { type: 'string' }, description: '항목 이름 2~8개 (10자 내외)' },
+        values: { type: 'array', items: { type: 'number' }, description: 'labels 와 같은 순서의 숫자' },
+      },
+      required: ['labels', 'values'],
+    },
+    mermaid: { type: 'string', description: 'flowchart LR 또는 TD 코드 3~7노드. 노드 라벨은 14자 이내, 따옴표·괄호 중첩 금지. 자료에 나온 요소만. 없으면 빈 문자열' },
+    sections: {
+      type: 'array',
+      description: '본문 2~4개 — 결론 → 근거 → 한계 순서',
+      items: {
+        type: 'object',
+        properties: {
+          heading: { type: 'string', description: '소제목 (결론형 또는 질문형, 20자 내외)' },
+          bullets: { type: 'array', description: '근거 2~4개 — 각 끝에 [소스1] 같은 출처 표기', items: { type: 'string' } },
+        },
+        required: ['heading', 'bullets'],
+      },
+    },
+    table: {
+      type: 'object',
+      description: '비교·정리표 — 비교 모드면 A/B/시사점 3열',
+      properties: {
+        title: { type: 'string' },
+        headers: { type: 'array', items: { type: 'string' }, description: '열 이름 2~4개' },
+        rows: {
+          type: 'array',
+          description: '행 2~6개',
+          items: {
+            type: 'object',
+            properties: { cells: { type: 'array', items: { type: 'string' }, description: 'headers 와 같은 순서의 짧은 구절' } },
+            required: ['cells'],
+          },
+        },
+      },
+      required: ['headers', 'rows'],
+    },
+    fiveLineBrief: { type: 'array', description: '5줄 브리핑 — 1~4 핵심, 5는 할 일', items: { type: 'string' } },
+    factChecks: { type: 'array', description: '자료끼리 어긋나는 주장·빠진 전제·과대 추정 위험 2~4개', items: { type: 'string' } },
+    warnings: { type: 'array', description: '확인하지 못한 값·사실 (지어내지 말고 여기에)', items: { type: 'string' } },
+    needsCheck: { type: 'array', description: '[확인 필요]로 남긴 항목', items: { type: 'string' } },
+  },
+  required: ['title', 'subtitle', 'lenses', 'sections', 'table', 'fiveLineBrief'],
+};
+
+function promptBrief(b) {
+  const srcs = arr(b.sources, BRIEF_SRC_MAX);
+  const compare = b.compare === true && srcs.length >= 2;
+  const focus = s(b.focus, 200);
+  const nameOf = (i) => s(srcs[i] && srcs[i].title, 40) || ('소스' + (i + 1));
+
+  const blocks = srcs.map((x, i) => {
+    const t = s(x && x.title, 160) || ('소스 ' + (i + 1));
+    const k = s(x && x.type, 16) || 'text';
+    const body = s(x && x.content, BRIEF_ITEM_CHARS);
+    return '### 소스 ' + (i + 1) + ' [' + k + '] ' + t + '\n' + (body || '(본문 없음 — 첨부 이미지·영상으로만 전달됨)');
+  }).join('\n\n');
+
+  const names = srcs.map((x, i) => '소스' + (i + 1) + '=' + (s(x && x.title, 50) || '자료')).join(' · ');
+
+  const modeLine = compare
+    ? '[비교 모드] 소스1과 소스2를 A/B로 나란히 놓는다. table 은 [' + '항목 | A(' + nameOf(0) + ') | B(' + nameOf(1) + ') | 시사점] 4열로 만들고, sections 에는 공통점 1개와 차이점 2개 이상을 넣는다. 두 자료가 같은 주제인지부터 판단해 skipGuide 에 밝힌다. A·B 중 어느 쪽도 우열을 근거 없이 정하지 않는다.'
+    : srcs.length > 1
+      ? '[종합 모드] 여러 소스를 하나의 결론으로 묶는다. 서로 다른 말을 하면 어느 소스의 어떤 근거인지 밝히고, 어긋나면 factChecks 에 적는다.'
+      : '[단일 소스] 이 자료 하나만 근거로 쓴다. 없는 배경지식을 덧붙이지 않는다.';
+
+  const user = [
+    '자료 목록: ' + names,
+    modeLine,
+    focus ? '[사용자가 특히 뽑고 싶은 것]\n' + focus : '',
+    '[규칙]\n' +
+      '1) 자료에 없는 수치·고유명사·날짜·링크를 만들지 않는다. 없으면 [확인 필요]로 남기고 needsCheck 에 적는다.\n' +
+      '2) 모든 주장 끝에 출처를 [소스1] · [소스2 3:12] 처럼 붙인다.\n' +
+      '3) lenses 세 관점은 각각 정확히 3줄, 서로 다른 시선이어야 한다(같은 말 반복 금지). beginner 는 전문용어를 괄호로 풀어 쓴다.\n' +
+      '4) chart 는 자료에 실제로 있는 숫자만. 단위가 같은 값끼리만 한 차트에 묶는다(%·달러·배를 섞지 않는다 — 섞이면 한 단위만 남기거나 차트를 비운다). 숫자가 2개 미만이면 labels·values 를 빈 배열로 두고 억지로 만들지 않는다.\n' +
+      '5) mermaid 는 자료에 나온 요소와 관계만 그린다. flowchart 로 시작하는 코드만, 노드 라벨 14자 이내, 특수문자 최소화.\n' +
+      '6) 표의 칸은 짧은 구절로. 문장을 통째로 넣지 않는다.\n' +
+      '7) fiveLineBrief 의 5번은 "그래서 무엇을 할지" 행동 하나로 끝낸다.\n' +
+      '8) densityScore 는 자료에서 실제로 확인된 근거의 비중. 추측·일반론이 많으면 낮게 준다.\n' +
+      '9) skipGuide 는 "어느 소스의 어느 부분부터 보라"를 구체적으로 적는다.',
+    '[자료]\n' + blocks,
+  ].filter(Boolean).join('\n\n');
+
+  return {
+    system:
+      '너는 맥킨지 수준의 리서치 애널리스트다. 주어진 자료 안에서만 근거를 찾아 컨설팅 보고서를 쓴다. ' +
+      '출처 없는 주장과 자료에 없는 숫자는 쓰지 않는다. 결론을 먼저 쓰고 근거를 붙인다. ' +
+      '문장은 짧고 정보 밀도가 높게. ' + HONESTY,
+    user,
+    schema: SCHEMA_BRIEF,
+    maxTokens: 5200,
+    temperature: 0.25,
+    images: arr(b.images, 4),
+    media: arr(b.media, 1),
+  };
+}
+
+const SCHEMA_BRIEF_CHAT = {
+  type: 'object',
+  properties: {
+    answer: { type: 'string', description: '보고서와 자료에 근거한 답변 (3~6문장, 한국어). 근거가 없으면 없다고 밝힌다' },
+    followups: { type: 'array', description: '이어서 물어볼 만한 질문 2개', items: { type: 'string' } },
+  },
+  required: ['answer'],
+};
+
+function promptBriefChat(b) {
+  const r = b.report || {};
+  const srcs = arr(b.sources, BRIEF_SRC_MAX);
+  const lines = [];
+  if (r.title) lines.push('제목: ' + s(r.title, 200));
+  if (r.subtitle) lines.push('부제: ' + s(r.subtitle, 300));
+  const lz = r.lenses || {};
+  ['executive', 'practitioner', 'beginner'].forEach((k) => {
+    const v = arr(lz[k], 4).map((x) => s(typeof x === 'string' ? x : x && x.text, 300)).filter(Boolean);
+    if (v.length) lines.push('[' + k + '] ' + v.join(' / '));
+  });
+  arr(r.sections, 5).forEach((sec) => {
+    if (!sec) return;
+    lines.push('## ' + s(sec.heading, 120) + '\n' + arr(sec.bullets, 5).map((x) => '- ' + s(typeof x === 'string' ? x : x && x.text, 400)).filter((x) => x !== '- ').join('\n'));
+  });
+  if (arr(r.factChecks, 5).length) lines.push('팩트체크: ' + arr(r.factChecks, 5).map((x) => s(x, 300)).join(' / '));
+  if (arr(r.fiveLineBrief, 6).length) lines.push('5줄 브리핑: ' + arr(r.fiveLineBrief, 6).map((x) => s(x, 200)).join(' / '));
+
+  const srcBlock = srcs.map((x, i) => '### 소스 ' + (i + 1) + ' ' + (s(x && x.title, 80) || '') + '\n' + s(x && x.content, 9000)).join('\n\n');
+
+  const user = [
+    '아래는 이미 만든 보고서이고, 사용자가 그 보고서에 대해 이어서 묻는다.',
+    '[보고서]\n' + lines.join('\n'),
+    srcBlock ? '[원자료 발췌]\n' + srcBlock : '',
+    '[질문]\n' + s(b.question, 600),
+    '[답변 규칙]\n' +
+      '1) 보고서와 원자료 안에 있는 내용으로만 답한다. 없으면 "자료에는 그 내용이 없습니다"라고 밝히고, 확인하려면 무엇을 봐야 하는지 한 줄 적는다.\n' +
+      '2) 새 숫자·고유명사를 만들지 않는다. 자료의 수치는 출처 표기([소스2 3:12])를 유지한다.\n' +
+      '3) 3~6문장. 첫 문장이 답이고, 그 뒤가 근거다. 인사·군더더기 없이.',
+  ].filter(Boolean).join('\n\n');
+
+  return {
+    system: '너는 리서치 보고서를 옆에서 설명해 주는 애널리스트다. 보고서와 원자료 밖의 사실을 지어내지 않는다. ' + HONESTY,
+    user,
+    schema: SCHEMA_BRIEF_CHAT,
+    maxTokens: 1400,
+    temperature: 0.3,
+    fastFirst: true,
+  };
+}
+
+function briefMermaid(v) {
+  let t = String(v || '').trim();
+  t = t.replace(/^```[a-zA-Z]*\s*/, '').replace(/```\s*$/, '').trim();
+  if (!t) return '';
+  if (!/^(flowchart|graph)\s/.test(t)) return '';
+  return t.slice(0, 1600);
+}
+
+function briefCollectLinks(srcs) {
+  const out = [];
+  const seen = Object.create(null);
+  arr(srcs, BRIEF_SRC_MAX).forEach((x, i) => {
+    const text = String((x && x.content) || '');
+    const urls = text.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+    urls.slice(0, 3).forEach((u) => {
+      const clean = u.replace(/[.,;:!?]+$/, '').slice(0, 300);
+      if (!clean || seen[clean]) return;
+      seen[clean] = 1;
+      out.push({
+        title: (s(x && x.title, 60) || '소스 ' + (i + 1)) + ' 안의 링크',
+        url: clean,
+        summary: '이 자료 본문에 실제로 들어 있던 주소 (외부 검증은 하지 않았습니다)',
+      });
+    });
+  });
+  return out.slice(0, 6);
+}
+
+function briefMarkdown(r) {
+  const L = [];
+  const h = (t) => { L.push(''); L.push(t); };
+  if (r.title) L.push('# ' + r.title);
+  if (r.subtitle) L.push('> ' + r.subtitle);
+  if (r.densityScore != null) L.push('');
+  if (r.densityScore != null) L.push('정보 밀도 ' + r.densityScore + '/100' + (r.timeSaved ? ' · ' + r.timeSaved : ''));
+  if (r.skipGuide) L.push('건너뛰기 가이드: ' + r.skipGuide);
+  const lensName = { executive: '💼 의사결정자', practitioner: '🛠️ 실무자', beginner: '💡 초보자' };
+  ['executive', 'practitioner', 'beginner'].forEach((k) => {
+    const v = (r.lenses || {})[k] || [];
+    if (!v.length) return;
+    h('## ' + (lensName[k] || k) + ' 관점');
+    v.forEach((x, i) => L.push(i + 1 + '. ' + x));
+  });
+  if (r.chart && (r.chart.labels || []).length) {
+    h('## 📈 ' + (r.chart.title || '핵심 수치'));
+    L.push('| 항목 | 값 |');
+    L.push('| --- | --- |');
+    r.chart.labels.forEach((lb, i) => L.push('| ' + lb + ' | ' + r.chart.values[i] + ' |'));
+  }
+  if (r.mermaid) {
+    h('## 🧩 구조 다이어그램');
+    L.push('```mermaid');
+    L.push(r.mermaid);
+    L.push('```');
+  }
+  (r.sections || []).forEach((sec) => {
+    h('## ' + sec.heading);
+    (sec.bullets || []).forEach((b) => L.push('- ' + b));
+  });
+  if (r.table && (r.table.headers || []).length) {
+    h('## 📋 ' + (r.table.title || '비교표'));
+    L.push('| ' + r.table.headers.join(' | ') + ' |');
+    L.push('| ' + r.table.headers.map(() => '---').join(' | ') + ' |');
+    (r.table.rows || []).forEach((row) => L.push('| ' + row.join(' | ') + ' |'));
+  }
+  if ((r.fiveLineBrief || []).length) {
+    h('## ⚡ 5줄 브리핑');
+    r.fiveLineBrief.forEach((x, i) => L.push(i + 1 + '. ' + x));
+  }
+  if ((r.factChecks || []).length) {
+    h('## 🔎 팩트체크 · 비판적 시각');
+    r.factChecks.forEach((x) => L.push('- ' + x));
+  }
+  if ((r.kpis || []).length) {
+    h('## 📊 핵심 지표');
+    L.push('| 지표 | 값 | 변화 |');
+    L.push('| --- | --- | --- |');
+    r.kpis.forEach((k) => L.push('| ' + k.label + ' | ' + k.value + ' | ' + (k.delta || '—') + ' |'));
+  }
+  if ((r.relatedLinks || []).length) {
+    h('## 🔗 자료 안의 링크');
+    r.relatedLinks.forEach((x) => L.push('- [' + x.title + '](' + x.url + ')'));
+  }
+  if ((r.needsCheck || []).length) {
+    h('## ⚠️ 확인 필요');
+    r.needsCheck.forEach((x) => L.push('- ' + x));
+  }
+  if ((r.warnings || []).length) {
+    h('## 메모');
+    r.warnings.forEach((x) => L.push('- ' + x));
+  }
+  return L.join('\n').trim();
+}
+
+function normBrief(d, meta) {
+  const src = d || {};
+  const m = meta || {};
+  const lens = (v) => arr(v, 4)
+    .map((x) => s(typeof x === 'string' ? x : x && x.text, 300))
+    .filter(Boolean)
+    .slice(0, 3);
+  const lenses = {
+    executive: lens(src.lenses && src.lenses.executive),
+    practitioner: lens(src.lenses && src.lenses.practitioner),
+    beginner: lens(src.lenses && src.lenses.beginner),
+  };
+
+  const kpis = arr(src.kpis, 4)
+    .map((k) => ({ label: s(k && k.label, 40), value: s(k && k.value, 40), delta: s(k && k.delta, 60) }))
+    .filter((k) => k.label && k.value);
+
+  const chartIn = src.chart || {};
+  const labels = arr(chartIn.labels, 8).map((x) => s(x, 40)).filter(Boolean);
+  const values = arr(chartIn.values, 8).map((x) => num(x, NaN)).filter((n) => Number.isFinite(n));
+  const cn = Math.min(labels.length, values.length);
+  const chart = cn >= 2
+    ? { title: s(chartIn.title, 80) || '핵심 수치', type: s(chartIn.type, 10) === 'line' ? 'line' : 'bar', labels: labels.slice(0, cn), values: values.slice(0, cn) }
+    : null;
+
+  const sections = arr(src.sections, 5)
+    .map((x) => ({
+      heading: s(x && x.heading, 120),
+      bullets: arr(x && x.bullets, 5).map((y) => s(typeof y === 'string' ? y : y && y.text, 400)).filter(Boolean),
+    }))
+    .filter((x) => x.heading && x.bullets.length);
+
+  const tblIn = src.table || {};
+  const headers = arr(tblIn.headers, 6).map((h) => s(h, 40)).filter(Boolean);
+  const rows = arr(tblIn.rows, 8)
+    .map((row) => {
+      const cells = Array.isArray(row) ? row : arr(row && (row.cells || row.cols), 6);
+      return arr(cells, 6).map((c) => s(typeof c === 'string' ? c : c && c.text, 160));
+    })
+    .filter((cells) => cells.length && cells.some(Boolean));
+  const table = headers.length && rows.length ? { title: s(tblIn.title, 80) || '비교표', headers, rows } : null;
+
+  const chars = num(m.chars, 0);
+  const savedMin = chars > 0 ? Math.max(3, Math.round(chars / 600) - 2) : null;
+  const density = Math.trunc(num(src.densityScore, 0));
+  const out = {
+    title: s(src.title, 200),
+    subtitle: s(src.subtitle, 300),
+    densityScore: density > 0 ? Math.min(100, density) : null,
+    timeSaved: savedMin ? '약 ' + savedMin + '분 절약(예상)' : '',
+    skipGuide: s(src.skipGuide, 400),
+    lenses,
+    kpis,
+    chart,
+    mermaid: briefMermaid(src.mermaid),
+    sections,
+    table,
+    fiveLineBrief: arr(src.fiveLineBrief, 6).map((x) => s(typeof x === 'string' ? x : x && x.text, 240)).filter(Boolean).slice(0, 5),
+    factChecks: arr(src.factChecks, 5).map((x) => s(typeof x === 'string' ? x : x && x.text, 320)).filter(Boolean),
+    relatedLinks: briefCollectLinks(m.sources),
+    warnings: arr(src.warnings, 8).map((x) => s(x, 240)).filter(Boolean),
+    needsCheck: arr(src.needsCheck, 8).map((x) => s(x, 200)).filter(Boolean),
+  };
+  if (src.mermaid && !out.mermaid) out.warnings.push('다이어그램 코드가 flowchart 형식이 아니어서 표시하지 않았습니다.');
+  if (!out.lenses.executive.length) out.warnings.push('의사결정자 관점 핵심이 비어 왔습니다.');
+  if (!out.sections.length) out.warnings.push('본문 섹션이 비어 왔습니다 — 다시 눌러 주세요.');
+  if (m.truncated) out.warnings.push('자료가 길어 소스 일부를 앞부분만 넣었습니다(합계 ' + BRIEF_TOTAL_CHARS.toLocaleString('en-US') + '자 상한).');
+  if (m.count > 1 && m.compare) out.warnings.push('비교 모드: 소스1·소스2를 A/B로 비교했습니다.');
+  out.count = num(m.count, 0);
+  out.chars = chars;
+  out.markdown = briefMarkdown(out);
+  return out;
+}
+
+function normBriefChat(d) {
+  const src = d || {};
+  return {
+    answer: s(src.answer || src.text, 4000),
+    followups: arr(src.followups, 3).map((x) => s(x, 120)).filter(Boolean),
+  };
+}
+
 /* ---------------------------------------------------------------- 공통 규칙 */
 
 const HONESTY = [
@@ -6677,6 +7045,183 @@ async function handleIdeaPromptEdit(res, body, keyConfigured) {
   }
 }
 
+/* 🧭 BRIEF 리포트 · 이어서 묻기 — 멀티 소스 종합 보고서 전용 핸들러 */
+function sendBriefGeminiError(res, err, action) {
+  const status = err && err.status === 400 ? 400 : 200;
+  const hours = err && err.retryDelaySec ? Math.round(err.retryDelaySec / 360) / 10 : null;
+  const message =
+    err && err.code === 'quota_exceeded'
+      ? 'Gemini 무료 티어의 모델별 하루 요청 한도를 다 썼습니다(3.8 Flash 기준 20회/일). ' +
+        (hours ? `약 ${hours}시간 뒤에 자동으로 풀립니다. ` : '') +
+        '급하면 Google AI Studio(aistudio.google.com)에서 결제(종량제)를 켜면 바로 늘어납니다.'
+      : err && err.status === 504
+        ? 'Gemini 응답이 시간 안에 오지 않았습니다. 자료 수를 줄이거나 잠시 뒤 다시 눌러 주세요(긴 자료는 한 번 더 걸릴 수 있습니다).'
+        : err && err.code === 'all_models_busy'
+          ? 'Gemini 모델이 지금 몰려서 응답하지 않았습니다(3.8 Flash → Flash Lite Latest → 3 Flash 순으로 시도). 1~2분 뒤 다시 눌러 주세요.'
+          : `Gemini 호출 실패: ${String((err && err.message) || '').slice(0, 200)}`;
+  return send(res, status, {
+    ok: false,
+    action,
+    reason: (err && err.code) || (err && err.status === 504 ? 'timeout' : 'gemini_unavailable'),
+    message,
+    keyConfigured: true,
+    model: PRIMARY_MODEL,
+    quota: err && err.code === 'quota_exceeded' ? { quotaId: err.quotaId, retryDelaySec: err.retryDelaySec } : undefined,
+    tries: (err && err.tries) || [],
+  });
+}
+
+async function handleBrief(res, body, keyConfigured) {
+  const action = s(body.action, 20);
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  if (process.env.DISABLE_GEMINI === '1') {
+    return send(res, 503, {
+      ok: false,
+      action,
+      reason: 'disabled',
+      message: '이 환경에서는 Gemini 호출이 꺼져 있습니다(DISABLE_GEMINI=1).',
+      keyConfigured: true,
+      model: PRIMARY_MODEL,
+    });
+  }
+  const started = Date.now();
+  const deadline = started + DEADLINE_MS;
+  const banPhrases = arr(body.banPhrases, 30).map((x) => s(x, 30)).filter(Boolean);
+
+  /* ---------- 이어서 묻기 ---------- */
+  if (action === 'brief_chat') {
+    const question = s(body.question, 600);
+    if (question.length < 2) {
+      return send(res, 400, { ok: false, action, reason: 'missing_question', message: '이어서 물을 질문을 넣어 주세요.' });
+    }
+    const sources = arr(body.sources, BRIEF_SRC_MAX)
+      .map((x, i) => ({ type: s(x && x.type, 12) || 'text', title: s(x && x.title, 80) || '소스 ' + (i + 1), content: s(x && x.content, 9000) }))
+      .filter((x) => x.content);
+    const prompt = promptBriefChat({ question, report: body.report || {}, sources, banPhrases });
+    let out;
+    try {
+      out = await generate(prompt, deadline);
+    } catch (err) {
+      return sendBriefGeminiError(res, err, action);
+    }
+    const parsed = extractJson(out.text) || {};
+    const data = normBriefChat(parsed);
+    if (!data.answer) {
+      return send(res, 200, {
+        ok: false,
+        action,
+        reason: 'empty_result',
+        message: '답이 비어 왔습니다. 한 번 더 눌러 주세요.',
+        model: out.model,
+        tries: out.tries,
+      });
+    }
+    return send(res, 200, { ok: true, action, model: out.model, fellBack: !!out.fellBack, elapsedMs: Date.now() - started, answer: data.answer, followups: data.followups, tries: out.tries });
+  }
+
+  /* ---------- 멀티 소스 종합 보고서 ---------- */
+  const raw = arr(body.sources, BRIEF_SRC_MAX + 4);
+  const sources = [];
+  const images = [];
+  const media = [];
+  let chars = 0;
+  let truncated = false;
+  raw.forEach((x, i) => {
+    if (!x) return;
+    const type = ['youtube', 'url', 'pdf', 'image', 'text', 'media', 'doc'].indexOf(s(x.type, 12)) >= 0 ? s(x.type, 12) : 'text';
+    const title = s(x.title, 160) || '소스 ' + (i + 1);
+    let content = s(x.content, BRIEF_ITEM_CHARS);
+    const img = x.image && x.image.data && /^image\/(jpeg|png|webp)$/.test(s(x.image.mimeType, 40))
+      ? { mimeType: s(x.image.mimeType, 40), data: String(x.image.data).replace(/^data:[^,]*,/, '') }
+      : null;
+    const md = x.media && x.media.data && SUMMARY_MEDIA_MIMES.indexOf(s(x.media.mimeType, 40).toLowerCase()) >= 0
+      ? { mimeType: s(x.media.mimeType, 40).toLowerCase(), data: String(x.media.data).replace(/^data:[^,]*,/, '') }
+      : null;
+    if (!content.trim() && !img && !md) return;
+    if (chars + content.length > BRIEF_TOTAL_CHARS) {
+      content = content.slice(0, Math.max(0, BRIEF_TOTAL_CHARS - chars));
+      truncated = true;
+    }
+    chars += content.length;
+    sources.push({ type, title, content, image: img, media: md });
+    if (img && images.length < 4) images.push(img);
+    if (md && media.length < 1) media.push(md);
+  });
+
+  if (!sources.length) {
+    return send(res, 400, {
+      ok: false,
+      action,
+      reason: 'missing_sources',
+      message: '종합할 자료가 없습니다. 소스 큐에 유튜브·웹·PDF·이미지·텍스트 중 하나 이상을 담아 주세요.',
+    });
+  }
+
+  const compare = body.compare === true && sources.length >= 2;
+  const meta = {
+    count: sources.length,
+    chars,
+    truncated,
+    compare,
+    sources: sources.map(({ type, title, content }) => ({ type, title, content })),
+  };
+
+  const prompt = promptBrief({
+    sources,
+    images,
+    media,
+    compare,
+    focus: body.focus,
+    banPhrases,
+  });
+
+  let out;
+  try {
+    out = await generate(prompt, deadline);
+  } catch (err) {
+    return sendBriefGeminiError(res, err, action);
+  }
+
+  const parsed = extractJson(out.text);
+  const notes = [];
+  if (!parsed) notes.push('모델이 JSON 형식을 어겼습니다. 원문(__raw)을 그대로 돌려줍니다.');
+  if (out.finish === 'MAX_TOKENS') notes.push('출력이 토큰 한도에 걸려 잘렸습니다. 다시 생성하면 조금 더 짧게 나옵니다.');
+  if (out.fellBack) notes.push(`${PRIMARY_MODEL} 이 응답하지 않아 ${out.model} 이 대신 작성했습니다.`);
+
+  const data = normBrief(parsed || {}, meta);
+  if (!data.sections.length && !data.title) {
+    return send(res, 200, {
+      ok: false,
+      action,
+      reason: out.finish === 'MAX_TOKENS' ? 'truncated' : 'empty_result',
+      message: '보고서가 비어 왔습니다. 한 번 더 눌러 주세요(자료가 많으면 조금 줄여 보세요).',
+      keyConfigured: true,
+      model: out.model,
+      finishReason: out.finish,
+      notes,
+      tries: out.tries,
+      __raw: parsed ? undefined : out.text.slice(0, 8000),
+    });
+  }
+
+  return send(res, 200, {
+    ok: true,
+    action: 'brief_report',
+    parsed: !!parsed,
+    model: out.model,
+    primaryModel: PRIMARY_MODEL,
+    fellBack: !!out.fellBack,
+    elapsedMs: Date.now() - started,
+    usage: out.usage,
+    finishReason: out.finish,
+    notes,
+    tries: out.tries,
+    data,
+    source: meta,
+    __raw: parsed ? undefined : out.text.slice(0, 20000),
+  });
+}
+
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -6742,6 +7287,15 @@ module.exports = async function handler(req, res) {
           "url(유튜브) | text(문서·자막 붙여넣기) | media:{name,mimeType,data(base64),durationSec} (MP4·WEBM·MP3·M4A, 4MB 이하), focus } " +
           "→ { ok, data:{ title, headline, three[], timeline[], facts[], actions[], blog, shorts, markdown }, source }",
         limits: '본문 ' + SUMMARY_TEXT_MAX.toLocaleString('en-US') + '자 · 영상/음성 4MB · 요청 본문 약 4.2MB',
+      },
+      brief: {
+        actions: ['brief_report', 'brief_chat'],
+        report:
+          "POST { action:'brief_report', sources:[{type:'youtube'|'url'|'pdf'|'image'|'text'|'media', title, content, image?{mimeType,data}, media?{mimeType,data}}], " +
+          "compare:true|false, focus } → { ok, data:{ title, subtitle, densityScore, timeSaved, skipGuide, lenses{executive[],practitioner[],beginner[]}, kpis[], " +
+          "chart{title,type:'bar'|'line',labels[],values[]}, mermaid, sections[], table{title,headers[],rows[][]}, fiveLineBrief[], factChecks[], relatedLinks[], markdown } }",
+        chat: "POST { action:'brief_chat', question, report:{title,lenses,sections,fiveLineBrief,factChecks}, sources:[{title,content}] } → { ok, answer, followups[] }",
+        limits: '소스 ' + BRIEF_SRC_MAX + '개 · 소스당 ' + BRIEF_ITEM_CHARS.toLocaleString('en-US') + '자 · 합계 ' + BRIEF_TOTAL_CHARS.toLocaleString('en-US') + '자 · 이미지 4장 · 영상 1개',
       },
       photos: {
         pixabay: !!(process.env.PIXABAY_API_KEY && String(process.env.PIXABAY_API_KEY).trim()),
@@ -6816,6 +7370,10 @@ module.exports = async function handler(req, res) {
   // 📋 업무 대시보드 — 보고서 문구 정리 · 자연어 분류 · 회의 녹음 전사/요약
   if (action === 'work_polish' || action === 'work_parse' || action === 'work_meeting') {
     return handleWork(res, body, keyConfigured);
+  }
+  // 🧭 BRIEF 리포트(멀티 소스 종합 · 3관점 · 차트 · 다이어그램) · 이어서 묻기 — 전용 핸들러
+  if (action === 'brief_report' || action === 'brief_chat') {
+    return handleBrief(res, body, keyConfigured);
   }
   if (GEN_ACTIONS.indexOf(action) < 0) {
     return send(res, 400, {
