@@ -6858,6 +6858,113 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
   return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
 }
 
+/* ----------------------------------------------------------------
+   🆓 무료 폴백 엔진 — Pollinations (키·결제 없음, IP당 45초에 1장)
+   · 브리프: image.pollinations.ai 를 서버에서 받아 base64 로 내려
+     캔버스 오염(CORS taint)을 막고, seed 로 캐릭터 일관성을 최대한 잡는다.
+   · 402 FREE_LIMIT 이면 retryAfterSec 를 정직하게 올려보내 프론트가 대기 후 재시도한다.
+   ---------------------------------------------------------------- */
+const EMOTICON_POLL_STYLE =
+  'cute flat vector sticker illustration, thick white outline, solid pure white background #FFFFFF, NO text, NO letters, NO watermark';
+const EMOTICON_POLL_BASE_PX = 768;
+
+/* 1:1 은 768×768(브리프 기준), 나머지 비율은 같은 픽셀예산으로 비율 유지 */
+function emoticonPollSize(aspectRatio) {
+  switch (aspectRatio) {
+    case '16:9': return { width: 1024, height: 576 };
+    case '9:16': return { width: 576, height: 1024 };
+    case '4:3': return { width: 896, height: 672 };
+    case '3:4': return { width: 672, height: 896 };
+    default: return { width: EMOTICON_POLL_BASE_PX, height: EMOTICON_POLL_BASE_PX };
+  }
+}
+
+async function emoticonPollinationsImage(prompt, seed, aspectRatio, budgetMs) {
+  const size = emoticonPollSize(aspectRatio);
+  const started = Date.now();
+  /* 스타일 문구를 앞에 둔다 — 무료 모델은 뒷문장을 잘 버리기 때문에 앞에 두어야 조금이라도 붙는다.
+     (참고: 무료 레거시 엔드포인트는 2026-08 브랜딩 변경으로 pollinations.ai 로고가 강제 삽입된다.
+      nologo 는 무시되므로 'NO watermark' 는 모델 프롬프트일 뿐 로고 제거를 보장하지 않는다.) */
+  const fullPrompt = (EMOTICON_POLL_STYLE + '. ' + prompt).slice(0, 1200);
+  const build = (sd) =>
+    'https://image.pollinations.ai/prompt/' + encodeURIComponent(fullPrompt) +
+    '?width=' + size.width + '&height=' + size.height + '&seed=' + sd +
+    '&nologo=true&enhance=false&private=true';
+  const tries = [];
+  let got = null;
+  let retryAfterSec = 0;
+  let lastMsg = '';
+
+  for (let i = 0; i < 3 && !got; i++) {
+    const left = Math.min(budgetMs || 40000, 40000) - (Date.now() - started);
+    if (left < 6000) break;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, Math.min(left, 30000));
+    try {
+      const r = await fetch(build(seed + i * 13), {
+        signal: ctrl.signal,
+        headers: { 'User-Agent': PHOTO_UA, Accept: 'image/*' },
+      });
+      if (!r.ok) {
+        const raw = await r.text().catch(() => '');
+        lastMsg = 'HTTP ' + r.status;
+        let freeLimit = r.status === 402;
+        try {
+          const j = JSON.parse(raw);
+          const msg = (j && j.error && j.error.message) || '';
+          if (/FREE_LIMIT/i.test(String((j && j.error && j.error.code) || raw))) freeLimit = true;
+          if (msg) lastMsg = String(msg).slice(0, 160);
+          const m = /retry after\s+(\d+)\s*s/i.exec(String(msg));
+          if (m) retryAfterSec = Math.min(90, Math.max(5, parseInt(m[1], 10)));
+        } catch (_) {}
+        if (freeLimit || r.status === 429) {
+          if (!retryAfterSec) retryAfterSec = 45;
+          tries.push({ status: r.status, reason: 'free_limit', message: lastMsg });
+          break;                                    // 대기 없이 정직하게 돌려준다
+        }
+        tries.push({ status: r.status, message: lastMsg });
+        if (i === 0) await sleep(400);
+        continue;
+      }
+      const ab = await r.arrayBuffer();
+      const mime = String(r.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+      if (ab.byteLength < 1500) { lastMsg = 'image_too_small'; tries.push({ reason: lastMsg }); continue; }
+      if (ab.byteLength > IDEA_IMAGE_MAX_BYTES) { lastMsg = 'image_too_large'; tries.push({ reason: lastMsg }); break; }
+      got = {
+        mime: /^image\/(jpeg|jpg|png|webp)$/.test(mime) ? mime : 'image/jpeg',
+        buf: Buffer.from(ab),
+      };
+    } catch (e) {
+      const aborted = e && e.name === 'AbortError';
+      lastMsg = aborted ? '응답 시간 초과' : String((e && e.message) || e).slice(0, 140);
+      tries.push({ reason: aborted ? 'timeout' : lastMsg });
+      if (i === 0) await sleep(400);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  if (got) {
+    return {
+      ok: true, engine: 'pollinations', mime: got.mime, data: got.buf.toString('base64'),
+      bytes: got.buf.length, width: size.width, height: size.height, seed,
+      ms: Date.now() - started, tries,
+    };
+  }
+  if (retryAfterSec) {
+    return {
+      ok: false, engine: 'pollinations', reason: 'free_limit', retryAfterSec,
+      message: '무료 이미지 서버는 IP당 45초에 1장만 그립니다. 약 ' + retryAfterSec + '초 뒤에 자동으로 다시 시도합니다.',
+      detail: lastMsg, tries,
+    };
+  }
+  return {
+    ok: false, engine: 'pollinations', reason: 'pollinations_unavailable',
+    message: '무료 이미지 서버(Pollinations)가 응답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.',
+    detail: lastMsg, tries,
+  };
+}
+
 async function handleEmoticonImage(res, body) {
   const prompt = s(body.prompt, 1600);
   if (!prompt) {
@@ -6870,19 +6977,72 @@ async function handleEmoticonImage(res, body) {
     ? { data: String(src.data).slice(0, 3.6 * 1024 * 1024), mimeType: s(src.mimeType, 40) || 'image/png' }
     : null;
 
-  const out = await emoticonGeminiImage(prompt, reference, aspect, mode);
-  if (!out.ok) {
+  /* engine: 'auto'(기본) | 'gemini'(고정) | 'pollinations'(무료 고정)
+     · 'edit'(부분 수정)은 기준 이미지 위에 다시 그리는 작업이라 Gemini 전용이다 —
+       무료 엔진이 그림을 새로 그려 엉뚱한 컷으로 덮어쓰는 사고를 막는다. */
+  const engineRaw = s(body.engine, 20);
+  let engineReq = ['auto', 'gemini', 'pollinations'].indexOf(engineRaw) >= 0 ? engineRaw : 'auto';
+  const editMode = mode === 'edit';
+  if (editMode && engineReq === 'auto') engineReq = 'gemini';
+
+  /* seed — 프론트가 캐릭터마다 같은 값을 보내면 24컷 인상이 최대한 붙는다 */
+  const seedNum = Math.trunc(num(body.seed, 0));
+  const seed = seedNum > 0 ? Math.max(1, Math.min(999999, seedNum)) : (4200 + (prompt.length * 37) % 5000);
+
+  const started = Date.now();
+  const DEADLINE_MS = 52000;                 // Vercel maxDuration 60s — 폴백까지 들어갈 여유
+  let fallbackReason = '';
+  let geminiErr = null;
+
+  if (engineReq !== 'pollinations') {
+    const out = await emoticonGeminiImage(prompt, reference, aspect, mode);
+    if (out.ok) {
+      return send(res, 200, {
+        ok: true, action: 'emoticon_image', engine: 'gemini', usedEngine: 'gemini',
+        fallbackReason: '', mode, model: out.model, mime: out.mime, aspectRatio: aspect,
+        bytes: out.bytes, ms: out.ms, data: out.data,
+      });
+    }
+    geminiErr = out;
+    if (engineReq === 'gemini') {
+      return send(res, 200, {
+        ok: false, action: 'emoticon_image', engine: 'gemini', usedEngine: 'gemini', mode,
+        reason: out.reason || 'gemini_image_failed',
+        message: editMode
+          ? '부분 수정은 Gemini 전용입니다. ' + (out.message || 'Gemini 이미지 생성에 실패했습니다.')
+          : (out.message || 'Gemini 이미지 생성에 실패했습니다.'),
+        detail: out.detail || undefined,
+      });
+    }
+    fallbackReason = out.reason || 'gemini_image_failed';
+  }
+
+  const left = DEADLINE_MS - (Date.now() - started);
+  if (left < 12000) {
     return send(res, 200, {
-      ok: false, action: 'emoticon_image', engine: 'gemini', mode,
-      reason: out.reason || 'gemini_image_failed',
-      message: out.message || 'Gemini 이미지 생성에 실패했습니다.',
-      detail: out.detail || undefined,
+      ok: false, action: 'emoticon_image', engine: 'pollinations', usedEngine: null, mode,
+      fallbackReason, reason: 'time_budget', retryAfterSec: 5,
+      message: 'Gemini 응답이 늦어 무료 엔진으로 넘어갈 시간이 모자랐습니다. 잠시 뒤 다시 시도해 주세요.',
+      detail: (geminiErr && geminiErr.detail) || undefined,
+    });
+  }
+
+  const poll = await emoticonPollinationsImage(prompt, seed, aspect, left);
+  if (!poll.ok) {
+    return send(res, 200, {
+      ok: false, action: 'emoticon_image', engine: 'pollinations', usedEngine: 'pollinations', mode,
+      fallbackReason, reason: poll.reason || 'pollinations_unavailable',
+      retryAfterSec: poll.retryAfterSec || undefined,
+      message: poll.message || '무료 엔진 이미지 생성에 실패했습니다.',
+      detail: poll.detail || (geminiErr && geminiErr.detail) || undefined,
+      tries: poll.tries || undefined,
     });
   }
   return send(res, 200, {
-    ok: true, action: 'emoticon_image', engine: 'gemini', mode,
-    model: out.model, mime: out.mime, aspectRatio: aspect,
-    bytes: out.bytes, ms: out.ms, data: out.data,
+    ok: true, action: 'emoticon_image', engine: 'pollinations', usedEngine: 'pollinations',
+    fallbackReason, mode, model: 'pollinations/flux', mime: poll.mime, aspectRatio: aspect,
+    width: poll.width, height: poll.height, seed, bytes: poll.bytes, ms: Date.now() - started,
+    data: poll.data,
   });
 }
 
@@ -7494,7 +7654,7 @@ module.exports = async function handler(req, res) {
         actions: ['emoticon_plan', 'emoticon_image'],
         plan: "POST { action:'emoticon_plan', charName, concept, visualPrompt, anthro, artStyle, preset:'basic'|'blogger'|'worker'|'couple', photo:{data,mimeType}(선택) } → { ok, data:{ charName, worldview, visualPrompt, ogqTitle, ogqTags[], slots[24]{text,desc,prompt,category} } }",
         seo: "POST { action:'emoticon_plan', mode:'seo', charName, concept } → { ok, data:{ kr, en, jp, tw } }",
-        image: "POST { action:'emoticon_image', prompt, mode:'sticker'|'sheet'|'edit', aspectRatio:'1:1'|'16:9', reference:{data,mimeType} | image:{data,mimeType} } → { ok, model, mime, data(base64) } — 기준 캐릭터를 함께 넘기고 'NO text · pure white background' 를 강제한다.",
+        image: "POST { action:'emoticon_image', prompt, mode:'sticker'|'sheet'|'edit', aspectRatio:'1:1'|'16:9', engine:'auto'|'gemini'|'pollinations', seed, reference:{data,mimeType} | image:{data,mimeType} } → { ok, usedEngine:'gemini'|'pollinations', fallbackReason, reason:'gemini_image_quota'|'free_limit', retryAfterSec, model, mime, data(base64) } — 기준 캐릭터를 함께 넘기고 'NO text · pure white background' 를 강제한다. auto 는 Gemini 우선 → 실패 시 무료 Pollinations 폴백.",
       },
       shorts_editor: {
         page: '/shorts-editor.html',
