@@ -6932,7 +6932,6 @@ module.exports = async function handler(req, res) {
     tvBucketsPromise,
     new Promise((resolve) => setTimeout(() => resolve(null), 1200)),
   ]);
-  mark('tvBuckets');
 
   /* 🌙 선물 실시간 — 위에서 띄운 KIS 호출을 최대 2.5초만 기다린다. */
   let futuresKis = null;
