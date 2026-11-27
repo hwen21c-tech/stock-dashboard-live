@@ -766,21 +766,29 @@ async function pollQuotes(codes) {
   const chunks = [];
   for (let i = 0; i < unique.length; i += POLL_MAX_CODES) chunks.push(unique.slice(i, i + POLL_MAX_CODES));
   const tPoll = Date.now();
-  /* ⚡ 청크(최대 60종목)는 병렬로 받는다 — 순차 대기하면 144종목일 때 3번의 왕복(약 0.9초)이
-   *    그대로 응답 시간에 붙는다(2026-11-27 콜드 응답 단축). 네이버 polling 은 여러 요청을 동시에 받는다. */
+  /* ⚡ 청크(최대 160종목)는 병렬로 받는다 — 순차 대기하면 3번의 왕복이 그대로 응답 시간에 붙는다
+   *    (2026-11-27 콜드 응답 단축). 네이버 polling 은 여러 요청을 동시에 받는다.
+   *  한 청크가 실패해도 나머지 청크의 시세는 살린다(전부 실패했을 때만 오류로 올린다) —
+   *  한 번의 타임아웃으로 테마 탭 전체가 비는 것을 막는다. */
+  const chunkErrors = [];
   await Promise.all(
     chunks.map(async (chunk) => {
       const url =
         'https://polling.finance.naver.com/api/realtime/domestic/stock/' + chunk.join(',') + '?_=' + Date.now();
-      const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
-      const rows = (data && data.datas) || [];
-      rows.forEach((d) => {
-        const q = normalizeQuote(d);
-        if (q && q.code) map[q.code] = q;
-      });
+      try {
+        const data = await fetchJson(url, { headers: NAVER_HEADERS, timeout: NAVER_TIMEOUT });
+        const rows = (data && data.datas) || [];
+        rows.forEach((d) => {
+          const q = normalizeQuote(d);
+          if (q && q.code) map[q.code] = q;
+        });
+      } catch (e) {
+        chunkErrors.push(String((e && e.message) || e));
+      }
     }),
   );
   prof('pollQuotes(' + unique.length + ' codes / ' + chunks.length + ' chunks)', tPoll);
+  if (!Object.keys(map).length && chunkErrors.length) throw new Error(chunkErrors[0]);
   return map;
 }
 
