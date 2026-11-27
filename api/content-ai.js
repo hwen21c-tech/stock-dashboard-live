@@ -5995,29 +5995,37 @@ async function handleIdeaStory(res, body, keyConfigured) {
     user: variant === 0 ? base : base + compactExtra,
     schema: SCHEMA_IDEA_STORY,
     temperature: variant === 0 ? 0.65 : 0.4,
-    maxTokens: variant === 0 ? 6000 : 3400,
+    maxTokens: variant === 0 ? 3000 : 2500,
     fastFirst: true,
   });
+  // 모델마다 무료 쿼터·컨디션이 달라서, 실패하면 다음 모델로 넘어간다.
+  const plans = [
+    { kind: 'generate', variant: 0 },
+    { kind: 'direct', model: 'gemini-3.1-flash-lite', variant: 1 },
+    { kind: 'direct', model: 'gemini-3-flash-preview', variant: 1 },
+    { kind: 'generate', variant: 1 },
+  ];
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let pi = 0; pi < plans.length; pi++) {
+    const plan = plans[pi];
+    const remaining = deadline - Date.now();
+    if (remaining < 9000) break;
     try {
       let out = null;
-      if (attempt < 2) {
-        out = await generate(promptOf(attempt), deadline);
+      if (plan.kind === 'generate') {
+        out = await generate(promptOf(plan.variant), deadline);
       } else {
-        // 마지막 시도는 다른 모델(3 Flash)로 직접 — Lite 가 반복 문자로 깨질 때 우회
-        out = await callModel('gemini-3-flash-preview', promptOf(1),
-          Date.now() + Math.min(30000, Math.max(12000, deadline - Date.now())), true);
+        out = await callModel(plan.model, promptOf(plan.variant), Date.now() + Math.min(30000, remaining), true);
       }
       lastOut = out;
       lastRaw = String(out.text || '');
-      if (out.finish === 'MAX_TOKENS') { tries.push({ attempt: attempt + 1, model: out.model, reason: 'max_tokens' }); continue; }
-      if (ideaTextBroken(lastRaw)) { tries.push({ attempt: attempt + 1, model: out.model, reason: 'broken_text' }); continue; }
+      if (out.finish === 'MAX_TOKENS') { tries.push({ step: pi + 1, model: out.model, reason: 'max_tokens' }); continue; }
+      if (ideaTextBroken(lastRaw)) { tries.push({ step: pi + 1, model: out.model, reason: 'broken_text' }); continue; }
       let parsed = null;
       try { parsed = JSON.parse(lastRaw); } catch (_) { parsed = null; }
-      if (!parsed || typeof parsed !== 'object') { tries.push({ attempt: attempt + 1, model: out.model, reason: 'parse' }); continue; }
+      if (!parsed || typeof parsed !== 'object') { tries.push({ step: pi + 1, model: out.model, reason: 'parse' }); continue; }
       const story = normIdeaStory(parsed, idea || source.slice(0, 120));
-      if (story.scenes.length < 3) { tries.push({ attempt: attempt + 1, model: out.model, reason: 'few_scenes' }); continue; }
+      if (story.scenes.length < 3) { tries.push({ step: pi + 1, model: out.model, reason: 'few_scenes' }); continue; }
 
       // 2단계: 영어 그림 프롬프트 (실패해도 대사로 대신 그린다)
       const needPrompts = story.scenes.some((sc2) => !sc2.visualPrompt || sc2.visualPrompt.length < 10);
@@ -6033,7 +6041,7 @@ async function handleIdeaStory(res, body, keyConfigured) {
         ok: true, action: 'idea_story', model: out.model,
         artStyle: IDEA_STYLE_PROMPT[artStyle] ? artStyle : 'webtoon',
         story,
-        attempts: attempt + 1,
+        attempts: pi + 1,
         chars: lastRaw.length,
         finish: out.finish || '',
         tokens: (out.usage && out.usage.candidatesTokenCount) || null,
@@ -6042,19 +6050,16 @@ async function handleIdeaStory(res, body, keyConfigured) {
     } catch (err) {
       const code = (err && err.code) || 'gemini_unavailable';
       if (code === 'quota_exceeded') {
-        return send(res, 429, {
-          ok: false, action: 'idea_story', reason: 'quota_exceeded',
-          message: 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 눌러 주세요.',
-          tries: (err && err.tries) || tries,
-        });
+        tries.push({ step: pi + 1, model: plan.model || 'auto', reason: code });
+        continue;
       }
-      tries.push({ attempt: attempt + 1, reason: code, message: String((err && err.message) || '').slice(0, 120) });
+      tries.push({ step: pi + 1, model: plan.model || 'auto', reason: code, message: String((err && err.message) || '').slice(0, 100) });
       lastRaw = String((err && err.message) || '').slice(0, 300);
     }
   }
   return send(res, 200, {
     ok: false, action: 'idea_story', reason: 'parse_failed',
-    message: 'Gemini 응답을 읽지 못했습니다(세 번 시도). 잠시 뒤 한 번 더 눌러 주세요.',
+    message: 'AI가 응답을 완성하지 못했습니다(여러 모델로 시도). 잠시 뒤 다시 눌러 주세요.',
     model: lastOut && lastOut.model,
     chars: lastRaw.length,
     tries,
