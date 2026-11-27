@@ -173,6 +173,57 @@
     html.light .guide-step kbd { background: #eef2f7; border-color: #cbd5e1; color: #0f172a; }
     html.light #duckingStatusText { color: #047857; }
     html.light .seg-active { border-color: #2563eb !important; background: #e0e7ff !important; }
+
+    /* ===== 💡 상단 2탭 (내 클립 편집 · 아이디어로 제작) ===== */
+    .mode-tabs-wrap { background: rgba(2, 6, 23, .92); }
+    .mode-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: rgba(15, 23, 42, .9); border: 1px solid rgba(148, 163, 184, .22); }
+    .mode-tab {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 9px;
+      font-size: 12.5px; font-weight: 700; color: #94a3b8; background: transparent; border: 1px solid transparent;
+      transition: background .15s ease, color .15s ease, border-color .15s ease; white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mode-tab:active { transform: scale(.98); }
+    .mode-tab.is-active { color: #fff; background: linear-gradient(135deg, #2563eb, #6366f1); border-color: rgba(129, 140, 248, .7); box-shadow: 0 8px 18px -12px rgba(59, 130, 246, .9); }
+    .mode-tab.is-active.is-idea { background: linear-gradient(135deg, #d97706, #db2777); border-color: rgba(251, 191, 36, .6); box-shadow: 0 8px 18px -12px rgba(217, 119, 6, .9); }
+    html.light .mode-tabs-wrap { background: rgba(255, 255, 255, .96); }
+    html.light .mode-tabs { background: #eef2f7; border-color: #cbd5e1; }
+    html.light .mode-tab { color: #475569; }
+    html.light .mode-tab.is-active { color: #fff; }
+
+    /* ===== 💡 아이디어 카드 · 칩 ===== */
+    .idea-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 9px;
+      font-size: 11px; font-weight: 600; background: rgba(30, 41, 59, .85); border: 1px solid rgba(148, 163, 184, .28); color: #e2e8f0;
+    }
+    .idea-chip.is-on { border-color: rgba(245, 158, 11, .8); background: rgba(120, 53, 15, .35); color: #fcd34d; }
+    .idea-topic {
+      width: 100%; text-align: left; padding: 8px 10px; border-radius: 10px;
+      background: rgba(2, 6, 23, .55); border: 1px solid rgba(148, 163, 184, .22); color: #e2e8f0;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    .idea-topic:hover { border-color: rgba(251, 191, 36, .7); background: rgba(120, 53, 15, .25); }
+    .idea-thumb { width: 54px; height: 96px; border-radius: 8px; object-fit: cover; background: #0f172a; border: 1px solid rgba(148, 163, 184, .3); flex-shrink: 0; }
+    .idea-num { font-variant-numeric: tabular-nums; }
+    .idea-badge { font-size: 9.5px; font-weight: 700; padding: 1.5px 5px; border-radius: 6px; white-space: nowrap; }
+    html.light .idea-chip { background: #fff; border-color: #cbd5e1; color: #0f172a; }
+    html.light .idea-chip.is-on { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+    html.light .idea-topic { background: #f8fafc; border-color: #e2e8f0; color: #0f172a; }
+    html.light .idea-topic:hover { background: #fffbeb; border-color: #f59e0b; }
+
+    /* ===== 📱 실제 UI 겹침 미리보기 (프리뷰 위에만, 녹화에는 안 들어감) ===== */
+    #realUiOverlay { display: none; }
+    #realUiOverlay.show { display: block; }
+    .real-ui-right { position: absolute; right: 7px; bottom: 74px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+    .real-ui-icon {
+      width: 30px; height: 30px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+      background: rgba(15, 23, 42, .55); color: #f8fafc; font-size: 14px; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+    }
+    .real-ui-count { font-size: 8.5px; color: #fff; margin-top: 1px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.9); }
+    .real-ui-bottom { position: absolute; left: 8px; right: 46px; bottom: 8px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+    .real-ui-bottom .ch { font-size: 9.5px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+    .real-ui-bottom .ttl { font-size: 8.5px; opacity: .92; margin-top: 2px; line-height: 1.35; }
+    .real-ui-dots { width: 14px; height: 14px; border-radius: 9999px; background: linear-gradient(135deg,#f59e0b,#ef4444); }
   </style>
   <script>
     /* PIN 0623 잠금 — 첫 진입 시 화면만 가린다. 저장소를 못 쓰는 환경이면 잠그지 않는다(잠김 사고 방지). */
@@ -187,6 +238,7 @@
   </script>
 </head>
 <body class="min-h-screen flex flex-col">
+
 
   <!-- ===== 독립 도메인 이전 안내 (2026-11-27 · short-studio-pro 분리) ===== -->
   <div id="standaloneNotice" style="position:relative;z-index:50;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;padding:8px 12px;background:linear-gradient(90deg,#1d4ed8,#4f46e5);color:#f8fafc;font-size:11.5px;font-weight:700;line-height:1.45;">
@@ -383,11 +435,22 @@
     </div>
   </header>
 
+  <!-- ===== 💡 상단 2탭 — 내 클립 편집 / 아이디어로 제작 ===== -->
+  <div class="mode-tabs-wrap z-20 border-b border-slate-800/80 backdrop-blur-md">
+    <div class="max-w-[1480px] w-full mx-auto px-3 sm:px-6 py-2 flex items-center gap-2">
+      <div class="mode-tabs" role="tablist" aria-label="제작 방식">
+        <button id="modeTabEdit" type="button" role="tab" aria-selected="true" class="mode-tab is-active">🎬 내 클립 편집</button>
+        <button id="modeTabIdea" type="button" role="tab" aria-selected="false" class="mode-tab">💡 아이디어로 제작</button>
+      </div>
+      <span id="modeHint" class="hidden sm:inline text-[10.5px] text-slate-500 truncate">영상·사진을 올려 컷을 직접 편집합니다</span>
+    </div>
+  </div>
+
   <!-- Main Workspace -->
   <main class="flex-1 max-w-[1480px] w-full mx-auto px-4 sm:px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
 
     <!-- Left Column: Clips + AI Story & Sound Controls (3 cols) -->
-    <section class="lg:col-span-3 flex flex-col gap-4">
+    <section id="panelLeftEdit" class="lg:col-span-3 flex flex-col gap-4">
       <!-- Upload Clips Card -->
       <div class="glass-panel rounded-2xl p-4">
         <div class="flex items-center justify-between mb-2.5">
@@ -593,7 +656,198 @@
       </div>
     </section>
 
-    <!-- Center Column: 9:16 Live Canvas Preview + Visual Multi-Track Strip (4 cols) -->
+    <!-- ===== 💡 아이디어로 제작 — 왼쪽 패널 (아이디어·엔진·시리즈/프로젝트) ===== -->
+    <section id="panelLeftIdea" class="lg:col-span-3 flex flex-col gap-4" style="display: none;">
+      <!-- 1) 아이디어 입력 -->
+      <div class="glass-panel rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+            <span class="text-base leading-none">💡</span> 아이디어 입력
+          </h2>
+          <span id="ideaCostBadge" class="idea-badge bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">무료 0원 모드</span>
+        </div>
+
+        <textarea id="ideaInput" rows="3" placeholder="예: 직장인이 월요일 아침마다 커피를 끊지 못하는 진짜 이유" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 leading-relaxed"></textarea>
+
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button id="ideaTopicBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 transition flex items-center gap-1">
+            <span>⚡</span><span>주제 추천</span>
+          </button>
+          <span class="text-[10px] text-slate-500">"오늘 뭐 찍지?" 싫으면 눌러 보세요</span>
+        </div>
+        <div id="ideaTopicWrap" class="hidden rounded-xl bg-slate-950/70 border border-amber-500/25 p-2 space-y-1.5"></div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="ideaGenreSelect" class="block text-[10.5px] text-slate-400 mb-1">장르 / 전개 톤</label>
+            <select id="ideaGenreSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="psychology">심리·뇌과학 팩트</option>
+              <option value="story">흥미진진 썰·반전</option>
+              <option value="history">미스터리·역사 비화</option>
+              <option value="finance">재테크·생활 꿀팁</option>
+            </select>
+          </div>
+          <div>
+            <label for="ideaArtStyleSelect" class="block text-[10.5px] text-slate-400 mb-1">화풍 고정 (Style Lock)</label>
+            <select id="ideaArtStyleSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="webtoon">한국 웹툰 일러스트</option>
+              <option value="cinematic">시네마틱 3D 실사</option>
+              <option value="anime">감성 지브리풍 애니</option>
+              <option value="noir">다크 미스터리 느와르</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1 gap-2">
+            <label for="ideaCharacterInput" class="block text-[10.5px] text-slate-400">주인공 외형 고정 (모든 컷 동일)</label>
+            <button id="ideaSeedBtn" type="button" class="text-[10px] text-amber-300 hover:text-amber-200 font-mono shrink-0">시드 #<span id="ideaSeedLabel">4200</span> ↻</button>
+          </div>
+          <input id="ideaCharacterInput" type="text" placeholder="예: 안경 쓴 30대 한국인 직장인, 남색 후드티" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-[11px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+        </div>
+
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer" title="질문자(A)와 전문가(B)가 번갈아 말하는 티키타카 대화형">
+            <input id="ideaDialogueToggle" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-amber-500" />
+            <span>2인 티키타카 대화</span>
+          </label>
+          <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer" title="마지막 컷이 첫 컷으로 이어지는 무한 루프 구조">
+            <input id="ideaLoopToggle" type="checkbox" checked class="rounded border-slate-600 bg-slate-900 text-amber-500" />
+            <span>무한 루프 구조</span>
+          </label>
+        </div>
+
+        <button id="ideaGenBtn" type="button" class="w-full py-2.5 px-3 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white shadow-lg shadow-orange-600/25 transition flex items-center justify-center gap-2">
+          <span>🧠</span><span>1. 아이디어 분석 &amp; 5컷 스토리보드</span>
+        </button>
+
+        <div class="rounded-xl bg-slate-900/70 border border-slate-800 p-2.5 space-y-1.5">
+          <div class="text-[11px] font-semibold text-slate-200 flex items-center gap-1">🔗 뉴스·블로그·유튜브 링크 → 5컷</div>
+          <input id="ideaSourceInput" type="text" placeholder="링크 또는 글을 붙여넣기" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-[11px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+          <div class="flex items-center gap-1.5">
+            <button id="ideaSourceBtn" type="button" class="flex-1 px-2 py-1.5 rounded-lg text-[10.5px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">내용 읽어오기</button>
+            <button id="ideaSourceClear" type="button" class="px-2 py-1.5 rounded-lg text-[10.5px] text-slate-400 border border-slate-700 hover:bg-slate-800 transition">비우기</button>
+          </div>
+          <div id="ideaSourceNote" class="text-[10px] text-slate-500 leading-relaxed">유튜브는 자막, 블로그는 본문을 읽어 아이디어에 참고 자료로 넣습니다.</div>
+        </div>
+      </div>
+
+      <!-- 2) 비주얼 · 사운드 -->
+      <div class="glass-panel rounded-2xl p-4 space-y-2.5">
+        <h2 class="text-sm font-bold text-white flex items-center gap-1.5"><span>🎨</span> 비주얼 · 사운드 연출</h2>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="ideaEngineSelect" class="block text-[10.5px] text-slate-400 mb-1">이미지 엔진</label>
+            <select id="ideaEngineSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="pollinations">Pollinations (무료)</option>
+              <option value="gemini_image">Gemini Image (내 키)</option>
+              <option value="canvas_art">내장 모션그래픽</option>
+            </select>
+          </div>
+          <div>
+            <label for="ideaParticleSelect" class="block text-[10.5px] text-slate-400 mb-1">파티클 · 텍스처</label>
+            <select id="ideaParticleSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="none">없음</option>
+              <option value="dust">빛 먼지 (보케)</option>
+              <option value="grain">필름 그레인</option>
+              <option value="rain">감성 빗줄기</option>
+              <option value="snow">눈송이</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="ideaCaptionStyle" class="block text-[10.5px] text-slate-400 mb-1">자막 스타일</label>
+            <select id="ideaCaptionStyle" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="capcut">캡컷 볼드 (노랑)</option>
+              <option value="neon">네온 박스 (시안)</option>
+              <option value="pop">팝업 배지 (핑크)</option>
+              <option value="minimal">미니멀 화이트</option>
+            </select>
+          </div>
+          <div>
+            <label for="ideaBgmSelect" class="block text-[10.5px] text-slate-400 mb-1">BGM 분위기</label>
+            <select id="ideaBgmSelect" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500">
+              <option value="upbeat">경쾌한 Lo-fi Beat</option>
+              <option value="chill">감성 피아노</option>
+              <option value="tense">신스 펄스</option>
+              <option value="custom">내 MP3</option>
+              <option value="none">BGM 끄기</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10.5px] text-slate-400">자막 높이</span>
+          <input id="ideaCaptionY" type="range" min="15" max="92" value="75" class="se-range w-28" />
+          <span id="ideaCaptionYVal" class="text-[10px] font-mono text-amber-300 tabular-nums w-8 text-right">75%</span>
+        </div>
+
+        <div class="rounded-xl bg-slate-900/70 border border-slate-800 p-2.5 space-y-1.5">
+          <label class="flex items-center justify-between gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <span>무음 자동 제거 <span class="text-[9.5px] text-slate-500">성우 앞뒤 공백 컷</span></span>
+            <input id="ideaAutoTrim" type="checkbox" checked class="rounded border-slate-600 bg-slate-900 text-amber-500" />
+          </label>
+          <label class="flex items-center justify-between gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <span>강조 단어 효과음 <span class="text-[9.5px] text-slate-500">Pop/Ding 자동</span></span>
+            <input id="ideaKeywordSfx" type="checkbox" checked class="rounded border-slate-600 bg-slate-900 text-amber-500" />
+          </label>
+          <label class="flex items-center justify-between gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <span>끝나면 처음으로 (무한 반복 재생)</span>
+            <input id="ideaLoopPlay" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-amber-500" />
+          </label>
+        </div>
+
+        <div class="space-y-2 pt-0.5">
+          <button id="ideaVisualBtn" type="button" class="w-full py-2 px-3 rounded-xl text-[11.5px] font-bold bg-pink-600/20 hover:bg-pink-600/30 text-pink-200 border border-pink-500/35 transition flex items-center justify-center gap-2">
+            <span>🖼️</span><span>2. 전체 컷 그림 생성 (9:16)</span>
+          </button>
+          <button id="ideaTtsBtn" type="button" class="w-full py-2 px-3 rounded-xl text-[11.5px] font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/35 transition flex items-center justify-center gap-2">
+            <span>🎙️</span><span>3. 성우(남·여 교차) + 컷 길이 동기화</span>
+          </button>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="ideaSeamBtn" type="button" class="py-2 px-2 rounded-xl text-[11px] font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/35 transition">🔁 루프 연결 1초</button>
+            <button id="ideaSendBtn" type="button" class="py-2 px-2 rounded-xl text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white transition">➡️ 편집기로</button>
+          </div>
+          <div id="ideaStatus" class="text-[10.5px] text-slate-500 leading-relaxed min-h-[14px]"></div>
+        </div>
+      </div>
+
+      <!-- 3) 시리즈 템플릿 · 프로젝트 저장 -->
+      <div class="glass-panel rounded-2xl p-4 space-y-2.5">
+        <h2 class="text-sm font-bold text-white flex items-center gap-1.5"><span>📌</span> 시리즈 · 프로젝트</h2>
+
+        <div>
+          <label for="ideaSeriesSelect" class="block text-[10.5px] text-slate-400 mb-1">내 시리즈 템플릿 (장르·화풍·연출 고정)</label>
+          <div class="flex items-center gap-1">
+            <select id="ideaSeriesSelect" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500"></select>
+            <button id="ideaSeriesApply" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] font-semibold bg-amber-600/25 hover:bg-amber-600/35 text-amber-200 border border-amber-500/35 transition">불러오기</button>
+          </div>
+          <div class="flex items-center gap-1 mt-1">
+            <input id="ideaSeriesName" type="text" placeholder="시리즈 이름 (예: 폭스 뇌과학 30초)" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+            <button id="ideaSeriesSave" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">저장</button>
+            <button id="ideaSeriesDel" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition" title="선택한 시리즈 삭제">🗑</button>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-800 pt-2">
+          <label for="ideaProjectSelect" class="block text-[10.5px] text-slate-400 mb-1">내 프로젝트 (여러 개 저장·불러오기)</label>
+          <div class="flex items-center gap-1">
+            <select id="ideaProjectSelect" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 focus:outline-none focus:border-amber-500"></select>
+            <button id="ideaProjectLoad" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] font-semibold bg-blue-600/25 hover:bg-blue-600/35 text-blue-200 border border-blue-500/35 transition">열기</button>
+          </div>
+          <div class="flex items-center gap-1 mt-1">
+            <input id="ideaProjectName" type="text" placeholder="프로젝트 이름 (비우면 자동)" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-[11px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500" />
+            <button id="ideaProjectSave" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">저장</button>
+            <button id="ideaProjectDel" type="button" class="px-1.5 py-1.5 rounded-lg text-[10.5px] bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition" title="선택한 프로젝트 삭제">🗑</button>
+          </div>
+          <div id="ideaStoreNote" class="text-[10px] text-slate-500 mt-1 leading-relaxed">저장은 이 브라우저(localStorage)에만 됩니다.</div>
+        </div>
+      </div>
+    </section>
+
     <section class="lg:col-span-4 flex flex-col gap-4 items-center">
       <div class="glass-panel rounded-2xl p-4 w-full flex flex-col items-center">
         <div class="w-full flex items-center justify-between mb-2.5">
@@ -615,6 +869,32 @@
             </div>
             <div class="absolute left-3 right-14 bottom-4 h-16 border border-dashed border-amber-400/70 rounded bg-amber-500/10 flex items-center justify-center">
               <span class="text-[10px] text-amber-200">채널명·설명 영역</span>
+            </div>
+          </div>
+
+          <!-- 📱 실제 유튜브·릴스 UI 겹침 미리보기 (프리뷰 전용) -->
+          <div id="realUiOverlay" class="pointer-events-none absolute inset-0">
+            <div class="real-ui-right">
+              <div style="text-align:center;">
+                <div class="real-ui-icon">❤️</div>
+                <div class="real-ui-count">12.4만</div>
+              </div>
+              <div style="text-align:center;">
+                <div class="real-ui-icon">💬</div>
+                <div class="real-ui-count">1,208</div>
+              </div>
+              <div style="text-align:center;">
+                <div class="real-ui-icon">↗</div>
+                <div class="real-ui-count">3,402</div>
+              </div>
+              <div style="text-align:center;">
+                <div class="real-ui-icon">🎵</div>
+                <div class="real-ui-count">원본 오디오</div>
+              </div>
+            </div>
+            <div class="real-ui-bottom">
+              <div class="ch"><span class="real-ui-dots"></span><span id="realUiChannel">@폭스시그널</span></div>
+              <div class="ttl" id="realUiTitle">쇼츠 제목이 여기에 표시됩니다 #쇼츠</div>
             </div>
           </div>
 
@@ -649,6 +929,10 @@
                 <i data-lucide="smartphone" class="w-3.5 h-3.5 text-amber-400"></i>
                 <span>세이프존</span>
               </button>
+              <button id="btnToggleRealUi" type="button" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] flex items-center gap-1 transition" title="유튜브·릴스 버튼이 자막을 가리는지 미리보기 (녹화에는 안 들어감)">
+                <span>📱</span>
+                <span>실제 UI</span>
+              </button>
             </div>
           </div>
         </div>
@@ -671,11 +955,66 @@
           <div id="visualTrackVideo" class="w-full h-6 rounded-md bg-slate-950 border border-slate-800 flex overflow-hidden p-0.5 gap-0.5"></div>
           <div id="visualTrackAudio" class="w-full h-4 rounded-md bg-slate-950 border border-slate-800 flex overflow-hidden p-0.5 gap-0.5"></div>
         </div>
+
+        <!-- 🩹 원본 자막 가리기 (영상에 박힌 자막 위에 새 자막을 읽히게) -->
+        <div class="w-full mt-3 pt-3 border-t border-slate-800/90 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+              <span>🩹</span> 원본 자막 가리기 <span class="text-[9.5px] font-normal text-slate-500">(전체 적용)</span>
+            </span>
+            <span id="maskModeStatus" class="text-[10px] text-slate-400">꺼짐</span>
+          </div>
+
+          <div class="grid grid-cols-4 gap-1.5">
+            <button type="button" data-mask-btn="none" class="py-1.5 rounded-lg text-[11px] font-semibold bg-blue-600 text-white border border-blue-500 transition">끄기</button>
+            <button type="button" data-mask-btn="blur" class="py-1.5 rounded-lg text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition">블러</button>
+            <button type="button" data-mask-btn="band" class="py-1.5 rounded-lg text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition">다크 밴드</button>
+            <button type="button" data-mask-btn="zoom_shift" class="py-1.5 rounded-lg text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition">확대 밀기</button>
+          </div>
+
+          <div id="maskBoxControls" class="hidden grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                <span>가림막 위치(Y)</span>
+                <span id="maskYVal" class="font-mono text-slate-200">76%</span>
+              </div>
+              <input id="maskYSlider" type="range" min="10" max="90" value="76" class="se-range w-full" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                <span>가림막 두께</span>
+                <span id="maskHVal" class="font-mono text-slate-200">18%</span>
+              </div>
+              <input id="maskHSlider" type="range" min="8" max="36" value="18" class="se-range w-full" />
+            </div>
+          </div>
+
+          <div id="maskZoomControls" class="hidden grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                <span>확대 배율</span>
+                <span id="maskZoomVal" class="font-mono text-slate-200">1.22x</span>
+              </div>
+              <input id="maskZoomSlider" type="range" min="110" max="145" value="122" class="se-range w-full" />
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                <span>위/아래 밀기</span>
+                <span id="maskShiftVal" class="font-mono text-slate-200">+10%</span>
+              </div>
+              <input id="maskShiftSlider" type="range" min="-25" max="25" value="10" class="se-range w-full" />
+            </div>
+          </div>
+
+          <p class="text-[9.5px] leading-relaxed text-slate-500">
+            영상에 이미 박힌 자막을 지우는 기능입니다. 새 자막 자체 배경은 왼쪽 <b class="text-slate-400">자막 배경 가림막</b>에서 따로 고르세요.
+          </p>
+        </div>
       </div>
     </section>
 
     <!-- Right Column: Tabs (Timeline Editor / YouTube Metadata & Story Arc) (5 cols) -->
-    <section class="lg:col-span-5 flex flex-col gap-4">
+    <section id="panelRightEdit" class="lg:col-span-5 flex flex-col gap-4">
       <!-- Story Arc & YouTube Metadata Panel with Tabs -->
       <div class="glass-panel rounded-2xl p-4">
         <div class="flex items-center justify-between gap-2 mb-3">
@@ -747,6 +1086,63 @@
         </div>
 
         <div id="segmentsContainer" class="space-y-3 overflow-y-auto max-h-[520px] pr-1"></div>
+      </div>
+    </section>
+
+    <!-- ===== 💡 아이디어로 제작 — 오른쪽 패널 (스토리·컷 스토리보드) ===== -->
+    <section id="panelRightIdea" class="lg:col-span-5 flex flex-col gap-4" style="display: none;">
+      <div class="glass-panel rounded-2xl p-4 space-y-2.5">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5"><span>🎬</span> 스토리 아크 · 후킹</h2>
+          <span id="ideaTotalBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-300">총 0.0초 · 0컷</span>
+        </div>
+
+        <div>
+          <label for="ideaTitleInput" class="block text-[10px] text-slate-400 mb-0.5">유튜브 제목 (상단 타이틀에도 사용)</label>
+          <input id="ideaTitleInput" type="text" placeholder="쇼츠 제목을 생성하면 자동으로 채워집니다" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-semibold" />
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-xs">
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2">
+            <div class="text-[9.5px] font-semibold text-rose-400 mb-0.5">초반 3초 후킹</div>
+            <div id="ideaArcHook" class="text-[11px] text-slate-200 line-clamp-2 leading-snug">-</div>
+          </div>
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2">
+            <div class="text-[9.5px] font-semibold text-blue-400 mb-0.5">핵심 전개</div>
+            <div id="ideaArcClimax" class="text-[11px] text-slate-200 line-clamp-2 leading-snug">-</div>
+          </div>
+          <div class="rounded-lg bg-slate-900/80 border border-slate-800 p-2">
+            <div class="text-[9.5px] font-semibold text-emerald-400 mb-0.5">반전·마무리</div>
+            <div id="ideaArcOutro" class="text-[11px] text-slate-200 line-clamp-2 leading-snug">-</div>
+          </div>
+        </div>
+
+        <div id="ideaHookWrap" class="hidden rounded-xl bg-slate-900/70 border border-slate-800 p-2 space-y-1">
+          <div class="text-[10px] font-semibold text-amber-300">🎯 AI 추천 후킹 3안 — 누르면 상단 타이틀에 적용</div>
+          <div id="ideaHookList" class="space-y-1"></div>
+        </div>
+
+        <div>
+          <label for="ideaHashtagInput" class="block text-[10px] text-slate-400 mb-0.5">해시태그 · 설명 (업로드 세트에 반영)</label>
+          <textarea id="ideaHashtagInput" rows="2" placeholder="#쇼츠 #꿀팁 …" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-[11px] text-slate-300"></textarea>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl p-4 flex-1 flex flex-col">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+            <span>🎞️</span> 컷 스토리보드
+          </h2>
+          <div class="flex items-center gap-1">
+            <button id="ideaAddCutBtn" type="button" class="px-2 py-1 rounded-lg text-[10.5px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition">+ 컷 추가</button>
+          </div>
+        </div>
+
+        <div id="ideaScenesContainer" class="space-y-3 overflow-y-auto max-h-[580px] pr-1">
+          <div class="text-center py-10 text-xs text-slate-500 leading-relaxed">
+            왼쪽에 아이디어를 적고<br /><b class="text-amber-300">1. 스토리보드</b> → <b class="text-pink-300">2. 그림</b> → <b class="text-emerald-300">3. 성우</b> 순서로 누르면 5컷 쇼츠가 완성됩니다.
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -960,6 +1356,7 @@
             <li><b>✨ AI 다시쓰기</b>: 마음에 안 드는 한 컷의 대본·자막만 다시 씁니다.</li>
             <li><b>성우 속도</b>: 1.0x ~ 1.3x. 왼쪽 <b>채널 프리셋 · 볼륨</b> 카드에서 전역으로, 컷 카드에서 컷별로 바꿀 수 있고, 컷 길이도 음성 길이에 맞춰 자동 조정됩니다.</li>
             <li><b>성우 생성</b>을 누르면 무료 서버 성우(MP3)가 입혀지고 단어별 강조 타이밍이 맞춰집니다.</li>
+            <li><b>🩹 원본 자막 가리기</b>(프리뷰 아래): 영상에 이미 박힌 자막을 <b>블러 / 다크 밴드 / 확대 밀기</b>로 덮습니다. 컷 카드의 <b>원본 자막 가리기</b> 드롭다운으로 컷마다 예외를 두고, 내가 얹는 새 자막 배경은 옆의 <b>자막 배경 가림막</b>에서 따로 고르면 됩니다.</li>
           </ul>
         </div>
 
@@ -970,6 +1367,25 @@
             <li><b>방법 1 · 바로 녹화</b>: 영상 길이만큼 실시간으로 그려서 저장합니다(진행률 % 표시). MP4가 되면 <b>.mp4</b>, 안 되면 <b>.webm</b>으로 저장됩니다.</li>
             <li><b>방법 3 · .srt 자막</b>: 컷 타임라인 기준 자막 파일을 받아 캡컷·유튜브 스튜디오에 올리면 자막을 다시 손볼 수 있습니다.</li>
             <li><b>📋 유튜브 업로드 세트 복사</b>: 오른쪽 <b>유튜브 제목·태그</b> 탭에서 제목·설명·해시태그·고정 댓글을 한 번에 복사합니다.</li>
+          </ul>
+        </div>
+
+        <div class="guide-step" style="border-color: rgba(245,158,11,.45); background: rgba(120,53,15,.14);">
+          <h4>💡 아이디어로 제작 탭 — 글만 주면 5컷 쇼츠</h4>
+          <p>상단 탭에서 <b>💡 아이디어로 제작</b>을 누르면 왼쪽이 아이디어 전용 화면으로 바뀝니다. 오른쪽 9:16 프리뷰·자막·성우·BGM·내보내기는 그대로 함께 씁니다.</p>
+          <ul class="list-disc pl-4 mt-1 space-y-0.5">
+            <li><b>1. 스토리보드</b> — 아이디어 한 줄(예: “월요일마다 커피가 간절한 이유”)을 적고 장르·화풍·주인공 외형을 고른 뒤 버튼을 누르면 5컷 대사·자막·그림 프롬프트가 깔립니다.</li>
+            <li><b>⚡ 주제 추천</b> — “오늘 뭐 찍지?” 싶으면 누르세요. 조회수가 나올 만한 주제 3안을 눌러 바로 넣을 수 있습니다.</li>
+            <li><b>🔗 링크 → 5컷</b> — 뉴스·블로그 링크는 본문, 유튜브 링크는 자막을 읽어 참고 자료로 씁니다.</li>
+            <li><b>2. 그림 생성</b> — 무료 Pollinations가 기본입니다. 실패하면 같은 컷을 내장 모션그래픽으로 보여 줍니다(빈 화면 없음).</li>
+            <li><b>3. 성우</b> — 대화 모드(A 여성 · B 남성)로 자동 교차되고, 무음 자동 제거로 컷 길이가 말소리에 맞춰집니다.</li>
+            <li><b>🎨 다시 그리기</b> — 컷 카드의 수정 요청칸에 “더 밝게”, “비 오는 밤”처럼 쓰고 누르면 그 컷만 다시 그립니다.</li>
+            <li><b>📊 카드 컷</b> — 숫자·비교 컷은 그림 대신 선명한 인포그래픽 카드로 그립니다(체크로 직접 바꿀 수 있음).</li>
+            <li><b>🎥 카메라 모션</b> — 줌인·줌아웃·좌우 패닝·임팩트 흔들림을 컷마다 고를 수 있습니다.</li>
+            <li><b>➡️ 편집기로</b> — 아이디어 컷을 그대로 타임라인에 두고 내 사진·영상을 추가하면 뒤에 이어 붙습니다.</li>
+            <li><b>🔁 루프 연결 1초</b> — 마지막 1초 → 첫 1초를 이어 재생해 무한 루프가 자연스러운지 확인합니다.</li>
+            <li><b>📌 시리즈 · 💾 프로젝트</b> — 시리즈는 장르·화풍·연출 설정을, 프로젝트는 대본·그림까지 여러 개 저장·불러오기합니다.</li>
+            <li><b>📱 실제 UI</b> — 프리뷰 위에 유튜브·릴스 버튼과 제목을 엎어 보여 줍니다. 자막이 버튼에 가리는지 확인용이고, 녹화 파일에는 들어가지 않습니다.</li>
           </ul>
         </div>
 
@@ -1070,6 +1486,32 @@
       isRecording: false,
       currentTime: 0,
       showSafeZone: false,
+      mode: 'edit',              // 'edit' = 내 클립 편집 · 'idea' = 아이디어로 제작
+      showRealUi: false,
+      globalMask: {
+        mode: 'none',        // 'none' | 'blur' | 'band' | 'zoom_shift' — 원본에 박힌 자막 가리기
+        yPct: 76,
+        hPct: 18,
+        zoom: 1.22,
+        shiftPct: 10,
+      },
+      idea: {
+        seed: 4200,
+        engine: 'pollinations',    // pollinations | gemini_image | canvas_art
+        particle: 'none',
+        autoTrim: true,
+        keywordSfx: true,
+        sourceText: '',
+        sourceTitle: '',
+        particles: Array.from({ length: 36 }, (_, i) => ({
+          x: (i * 73) % 540,
+          y: (i * 131) % 960,
+          r: 1.5 + (i % 4) * 1.4,
+          speed: 18 + (i % 5) * 12,
+          phase: i * 0.7,
+        })),
+      },
+      ideaSfxDone: new Set(),
       rafId: null,
       lastTickMs: 0,
       audioCtx: null,
@@ -1282,6 +1724,9 @@
           topHook: state.topHook,
           pinnedComment: state.pinnedComment,
           hookOptions: state.hookOptions,
+          mask: { ...state.globalMask },
+          mode: state.mode,
+          idea: captureIdeaCfg(),
           segments: state.segments.map(({ ttsAudioBuffer, ttsAudioUrl, ...rest }) => rest),
           styles: {
             tone: document.getElementById('toneSelect').value,
@@ -1316,9 +1761,10 @@
         if (!raw) return false;
         const parsed = JSON.parse(raw);
         if (!parsed || !Array.isArray(parsed.segments) || parsed.segments.length === 0) return false;
-        // Restore into demo clip context if clipIds match demo clips
+        // Restore into demo clip context if clipIds match demo clips, or idea clips(canvas 그림·대사만 복원)
         const allDemo = parsed.segments.every((seg) => String(seg.clipId || '').startsWith('demo_'));
-        if (!allDemo) return false;
+        const allIdea = parsed.segments.every((seg) => String(seg.clipId || '').startsWith('idea_'));
+        if (!allDemo && !allIdea) return false;
         state.storyArc = parsed.storyArc || state.storyArc;
         state.ytMeta = parsed.ytMeta || state.ytMeta;
         state.topHook = typeof parsed.topHook === 'string' ? parsed.topHook : '';
@@ -1348,6 +1794,20 @@
           if (parsed.styles.watermarkPos) state.settings.watermarkPos = parsed.styles.watermarkPos;
           if (parsed.styles.endFade != null) state.settings.endFade = parsed.styles.endFade !== false;
           syncSettingsUI();
+        }
+        if (parsed.idea && (allIdea || parsed.mode === 'idea')) applyIdeaCfg(parsed.idea);
+        if (parsed.mask && typeof parsed.mask === 'object') Object.assign(state.globalMask, parsed.mask);
+        syncMaskUI();
+        if (parsed.mode === 'idea' || allIdea) {
+          state.mode = 'idea';
+          switchMode('idea');
+          rebuildIdeaClipsFromSegments().then(() => {
+            renderClips();
+            renderIdeaAll();
+            renderPreviewFrame(0);
+          });
+        } else if (parsed.mode === 'edit') {
+          switchMode('edit');
         }
         return true;
       } catch (_) {
@@ -1495,13 +1955,16 @@
         state.segments = [];
       }
 
-      const available = 5 - state.clips.length;
+      // 업로드 5개 한도는 내 사진·영상만 센다(AI 컷은 따로)
+      const usedUploads = state.clips.filter((c) => !c.isIdea).length;
+      const available = 5 - usedUploads;
       if (available <= 0) {
         showToast('최대 5개(영상+사진)까지 올릴 수 있습니다.', 'warn');
         return;
       }
 
       const toProcess = incoming.slice(0, available);
+      const added = [];
       for (const file of toProcess) {
         const url = URL.createObjectURL(file);
 
@@ -1525,6 +1988,7 @@
             isImage: true,
             isDemo: false,
           });
+          added.push(state.clips[state.clips.length - 1]);
           continue;
         }
 
@@ -1550,6 +2014,7 @@
           videoEl,
           isDemo: false,
         });
+        added.push(state.clips[state.clips.length - 1]);
       }
 
       if (state.segments.length === 0 && state.clips.length > 0) {
@@ -1570,6 +2035,27 @@
           ttsStatus: 'idle',
         }));
         state.selectedSegmentId = state.segments[0].id;
+      } else if (added.length) {
+        // 💡 아이디어 컷 뒤에 내 사진·영상을 섞어 붙인다
+        const baseIdx = state.segments.length;
+        added.forEach((c, i) => {
+          state.segments.push({
+            id: 'seg_' + Math.random().toString(36).slice(2, 8),
+            clipId: c.id,
+            startSec: 0,
+            durationSec: c.isImage ? 5.0 : Math.min(4.0, Math.max(2.0, Number(c.duration.toFixed(1)))),
+            speed: 1.0,
+            cropFocus: 'center',
+            cropX: 50,
+            narration: `${baseIdx + i + 1}번째 장면입니다. 대사를 적거나 AI 다시쓰기를 눌러 보세요.`,
+            subtitle: `장면 #${baseIdx + i + 1}`,
+            muteOrig: true,
+            ttsAudioUrl: null,
+            ttsAudioBuffer: null,
+            wordTimings: null,
+            ttsStatus: 'idle',
+          });
+        });
       }
 
       renderClips();
@@ -2010,7 +2496,12 @@ ${clipMetaLines.join('\n')}
 
     /* 서버 무료 성우(/api/tts · Edge 신경망) — API 키 불필요 */
     async function generateServerTts(seg) {
-      const voice = state.settings.serverVoice || 'ko-KR-SunHiNeural';
+      // 🎙️ 2인 티키타카 — 화자 A 여성 / B 남성 교차
+      const voice = seg && seg.voice === 'male'
+        ? 'ko-KR-InJoonNeural'
+        : seg && seg.voice === 'female'
+          ? 'ko-KR-SunHiNeural'
+          : (state.settings.serverVoice || 'ko-KR-SunHiNeural');
       const ratePct = Math.round((voiceRateForSegment(seg) - 1) * 100);
       const rateStr = (ratePct >= 0 ? '+' : '') + ratePct + '%';
       const q = new URLSearchParams({ text: seg.narration, voice: voice, rate: rateStr });
@@ -2027,7 +2518,15 @@ ${clipMetaLines.join('\n')}
       const buf = await res.arrayBuffer();
       if (!buf.byteLength) throw new Error('서버 성우 음성이 비어 왔습니다.');
       const ctx = getAudioContext();
-      const decoded = await ctx.decodeAudioData(buf.slice(0));
+      let decoded = await ctx.decodeAudioData(buf.slice(0));
+      // 🔇 무음 자동 컷 — 아이디어 탭이 켜 두었을 때만 앞뒤 공백을 잘라낸다
+      const trimBox = document.getElementById('ideaAutoTrim');
+      if (trimBox && trimBox.checked && (seg.speaker || seg.voice)) {
+        try {
+          const trimmed = trimSilenceAudioBuffer(decoded);
+          if (trimmed && trimmed.duration > 0.35) decoded = trimmed;
+        } catch (_) {}
+      }
       seg.ttsAudioBuffer = decoded;
       seg.ttsAudioUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
       seg.wordTimings = estimateWordTimings(seg.narration, decoded.duration);
@@ -2402,7 +2901,7 @@ ${clipMetaLines.join('\n')}
     }
 
     /* 원본 비율을 유지한 채 9:16 을 꽉 채우는 크롭(좌우 위치 반영) */
-    function drawCoverFrame(ctx, el, vw, vh, seg, W, H, zoom, panX) {
+    function drawCoverFrame(ctx, el, vw, vh, seg, W, H, zoom, panX, panY) {
       const targetRatio = W / H;
       const srcRatio = vw / vh;
       let sx = 0, sy = 0, sw = vw, sh = vh;
@@ -2415,7 +2914,7 @@ ${clipMetaLines.join('\n')}
       }
       ctx.translate(W / 2, H / 2);
       ctx.scale(zoom, zoom);
-      ctx.drawImage(el, sx, sy, sw, sh, -W / 2 + (panX || 0), -H / 2, W, H);
+      ctx.drawImage(el, sx, sy, sw, sh, -W / 2 + (panX || 0), -H / 2 + (panY || 0), W, H);
     }
 
     function drawWatermark(ctx, W, H) {
@@ -2609,34 +3108,105 @@ ${clipMetaLines.join('\n')}
       const useZoom = document.getElementById('toggleKenBurns').checked;
       const trans = document.getElementById('transitionSelect').value;
 
+      // 🎥 컷별 카메라 모션 (아이디어 탭) — 줌인/줌아웃/좌우패닝/임팩트 흔들림
+      const motion = seg.cameraMotion || '';
       let zoom = useZoom ? 1 + progress * 0.07 : 1;
+      let panX = 0;
+      let panY = 0;
+      if (motion === 'zoom_in') {
+        zoom = 1 + progress * 0.12;
+      } else if (motion === 'zoom_out') {
+        zoom = 1.14 - progress * 0.10;
+      } else if (motion === 'pan_lr') {
+        zoom = 1.12;
+        panX = (progress - 0.5) * W * 0.09;
+      } else if (motion === 'shake') {
+        zoom = 1.06;
+        if (localTime < 0.45) {
+          panX = Math.sin(localTime * 55) * 9 * (1 - localTime / 0.45);
+          panY = Math.cos(localTime * 48) * 7 * (1 - localTime / 0.45);
+        }
+      }
       if (trans === 'zoom' && hit.index > 0 && localTime < 0.2) {
         zoom += (1 - localTime / 0.2) * 0.16;
       }
 
-      ctx.save();
-      ctx.filter = getLutFilterString();
-      if (clip && clip.isDemo) {
-        drawDemoBackground(ctx, W, H, clip, zoom, localTime);
-      } else if (clip && clip.isImage && clip.imgEl && clip.imgEl.complete && clip.imgEl.naturalWidth) {
-        // 사진 컷 — 켄번스(미세 줌인 + 좌우 패닝)
-        const iw = clip.imgEl.naturalWidth || clip.width || 1080;
-        const ih = clip.imgEl.naturalHeight || clip.height || 1920;
-        const panX = useZoom ? (progress - 0.5) * W * 0.035 : 0;
-        drawCoverFrame(ctx, clip.imgEl, iw, ih, seg, W, H, zoom, panX);
-      } else if (clip && clip.videoEl && clip.videoEl.readyState >= 2) {
-        const v = clip.videoEl;
-        const speed = Number(seg.speed) || 1.0;
-        const targetVTime = seg.startSec + localTime * speed;
-        if (!state.isPlaying && Math.abs(v.currentTime - targetVTime) > 0.15) {
-          v.currentTime = Math.min(clip.duration - 0.05, targetVTime);
-        }
+      const isCardScene = seg.cardType === 'card' && seg.cardData;
 
-        const vw = v.videoWidth || 1080;
-        const vh = v.videoHeight || 1920;
-        drawCoverFrame(ctx, v, vw, vh, seg, W, H, zoom, 0);
+      // 🩹 원본 자막 가리기 — 컷별 예외(maskOverride)가 있으면 그것을 따라간다
+      const maskMode = (seg.maskOverride && seg.maskOverride !== 'inherit')
+        ? seg.maskOverride
+        : (state.globalMask.mode || 'none');
+      let maskShiftY = 0;
+      if (maskMode === 'zoom_shift') {
+        zoom *= Number(state.globalMask.zoom) || 1.22;
+        maskShiftY = ((Number(state.globalMask.shiftPct) || 0) / 100) * H;
       }
-      ctx.restore();
+
+      const drawSceneLayer = (extraFilter) => {
+        ctx.save();
+        const lut = getLutFilterString();
+        ctx.filter = [lut === 'none' ? '' : lut, extraFilter || ''].filter(Boolean).join(' ') || 'none';
+        if (maskShiftY) ctx.translate(0, maskShiftY);
+        if (clip && clip.isDemo) {
+          drawDemoBackground(ctx, W, H, clip, zoom, localTime);
+        } else if (clip && clip.isIdea && !(clip.imgEl && clip.imgEl.complete && clip.imgEl.naturalWidth)) {
+          // AI 그림이 없거나 실패한 아이디어 컷 → 내장 모션 그래픽
+          drawIdeaCanvasArt(ctx, W, H, seg, clip, zoom, panX, panY, localTime, hit.index);
+        } else if (clip && clip.isImage && clip.imgEl && clip.imgEl.complete && clip.imgEl.naturalWidth) {
+          // 사진 컷 — 켄번스(미세 줌인 + 좌우 패닝) 또는 컷별 카메라 모션
+          const iw = clip.imgEl.naturalWidth || clip.width || 1080;
+          const ih = clip.imgEl.naturalHeight || clip.height || 1920;
+          const imgPan = motion ? panX : (useZoom ? (progress - 0.5) * W * 0.035 : 0);
+          drawCoverFrame(ctx, clip.imgEl, iw, ih, seg, W, H, zoom, imgPan, panY);
+        } else if (clip && clip.videoEl && clip.videoEl.readyState >= 2) {
+          const v = clip.videoEl;
+          const speed = Number(seg.speed) || 1.0;
+          const targetVTime = seg.startSec + localTime * speed;
+          if (!state.isPlaying && Math.abs(v.currentTime - targetVTime) > 0.15) {
+            v.currentTime = Math.min(clip.duration - 0.05, targetVTime);
+          }
+
+          const vw = v.videoWidth || 1080;
+          const vh = v.videoHeight || 1920;
+          drawCoverFrame(ctx, v, vw, vh, seg, W, H, zoom, panX, panY);
+        }
+        ctx.restore();
+      };
+
+      if (isCardScene) {
+        drawCardScene(ctx, W, H, seg, progress);
+      } else {
+        drawSceneLayer('');
+
+        // 원본 자막 영역을 블러·다크 밴드로 덮는다 (새 자막보다 먼저)
+        if (maskMode === 'blur' || maskMode === 'band') {
+          const bandH = ((Number(state.globalMask.hPct) || 18) / 100) * H;
+          const bandY = ((Number(state.globalMask.yPct) || 76) / 100) * H - bandH / 2;
+          if (maskMode === 'blur') {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, bandY, W, bandH);
+            ctx.clip();
+            drawSceneLayer('blur(20px) brightness(0.85)');
+            ctx.restore();
+            const edgeGrad = ctx.createLinearGradient(0, bandY, 0, bandY + bandH);
+            edgeGrad.addColorStop(0, 'rgba(9,13,22,0.10)');
+            edgeGrad.addColorStop(0.5, 'rgba(9,13,22,0.32)');
+            edgeGrad.addColorStop(1, 'rgba(9,13,22,0.10)');
+            ctx.fillStyle = edgeGrad;
+            ctx.fillRect(0, bandY, W, bandH);
+          } else {
+            const bandGrad = ctx.createLinearGradient(0, bandY - 24, 0, bandY + bandH + 24);
+            bandGrad.addColorStop(0, 'rgba(9,13,22,0)');
+            bandGrad.addColorStop(0.18, 'rgba(9,13,22,0.92)');
+            bandGrad.addColorStop(0.82, 'rgba(9,13,22,0.92)');
+            bandGrad.addColorStop(1, 'rgba(9,13,22,0)');
+            ctx.fillStyle = bandGrad;
+            ctx.fillRect(0, bandY - 24, W, bandH + 48);
+          }
+        }
+      }
 
       // Transition overlay between cuts
       if ((trans === 'fade' || trans === 'flash') && hit.index > 0 && localTime < 0.22) {
@@ -2653,6 +3223,9 @@ ${clipMetaLines.join('\n')}
       vig.addColorStop(1, 'rgba(0,0,0,0.68)');
       ctx.fillStyle = vig;
       ctx.fillRect(0, H * 0.62, W, H * 0.38);
+
+      // ✨ 파티클·텍스처 (아이디어 탭에서 고른 경우)
+      if (state.mode === 'idea') drawParticles(ctx, W, H, timeSec);
 
       drawTopTitleBanner(ctx, W);
       drawWordHighlightCaption(ctx, W, H, seg, localTime, progress);
@@ -2680,6 +3253,7 @@ ${clipMetaLines.join('\n')}
       state.isPlaying = true;
       state.lastTickMs = performance.now();
       state.lastPlayedSegId = null;
+      state.ideaSfxDone = new Set();
       document.getElementById('playBtnLabel').textContent = '일시정지';
 
       startBgm(destNode);
@@ -2692,11 +3266,19 @@ ${clipMetaLines.join('\n')}
 
         const totalDur = getTotalDuration();
         if (state.currentTime >= totalDur) {
-          state.currentTime = totalDur;
-          renderPreviewFrame(state.currentTime);
-          stopPlayback();
-          if (typeof onEndedCallback === 'function') onEndedCallback();
-          return;
+          const loopPlay = state.mode === 'idea' && document.getElementById('ideaLoopPlay') && document.getElementById('ideaLoopPlay').checked;
+          if (loopPlay && totalDur > 0.5) {
+            // 무한 반복 재생 — 끝에서 처음으로 이어 붙임
+            state.currentTime = 0;
+            state.lastPlayedSegId = null;
+            state.ideaSfxDone = new Set();
+          } else {
+            state.currentTime = totalDur;
+            renderPreviewFrame(state.currentTime);
+            stopPlayback();
+            if (typeof onEndedCallback === 'function') onEndedCallback();
+            return;
+          }
         }
 
         const hit = findSegmentAtTime(state.currentTime);
@@ -2722,6 +3304,19 @@ ${clipMetaLines.join('\n')}
           }
 
           playSegmentVoice(hit.seg, destNode);
+        }
+
+        // 🔔 강조 단어 발화 시점에 Pop/Ding 효과음 자동 트리거
+        if (hit && hit.seg && hit.seg.emphasizeWord) {
+          const sfxBox = document.getElementById('ideaKeywordSfx');
+          if (sfxBox && sfxBox.checked) {
+            const et = emphasisTimeInSeg(hit.seg);
+            const key = hit.seg.id + '@' + Math.round(hit.segStart * 10);
+            if (et != null && hit.localTime >= et && !state.ideaSfxDone.has(key)) {
+              state.ideaSfxDone.add(key);
+              playEmphasisSfx(hit.seg.speaker === 'B' ? 'ding' : 'pop', destNode);
+            }
+          }
         }
 
         renderPreviewFrame(state.currentTime);
@@ -2997,6 +3592,18 @@ ${clipMetaLines.join('\n')}
         const cropExpr = `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-1080)*${cx}:(ih-1920)/2`;
         const zoomFilter = useZoom ? `,zoompan=z='min(zoom+0.0008,1.07)':d=1:s=1080x1920:fps=30` : '';
         const safeSub = (seg.subtitle || '').replace(/[:'\\]/g, '');
+        // 🩹 원본 자막 가리기 (컷별 예외 우선)
+        const effMask = (seg.maskOverride && seg.maskOverride !== 'inherit') ? seg.maskOverride : state.globalMask.mode;
+        const mH = Math.round(((Number(state.globalMask.hPct) || 18) / 100) * 1920);
+        const mY = Math.max(0, Math.round(((Number(state.globalMask.yPct) || 76) / 100) * 1920 - mH / 2));
+        const mShift = Math.max(0, Math.min(0.4, (Number(state.globalMask.shiftPct) || 0) / 100));
+        const maskFilter = effMask === 'band'
+          ? `,drawbox=x=0:y=${mY}:w=1080:h=${mH}:color=black@0.9:t=fill`
+          : effMask === 'blur'
+            ? `,delogo=x=20:y=${Math.max(1, mY)}:w=1040:h=${mH}`
+            : effMask === 'zoom_shift' && mShift > 0
+              ? `,crop=iw:ih*(1-${mShift.toFixed(2)}):0:0,scale=1080:1920`
+              : '';
         // 사진 컷은 정지 이미지를 길이만큼 돌린다
         const inputArgs = clip && clip.isImage
           ? `-loop 1 -t ${(seg.durationSec * speed).toFixed(2)} -i "${fileName}"`
@@ -3004,7 +3611,7 @@ ${clipMetaLines.join('\n')}
 
         lines.push(
           `ffmpeg -y ${inputArgs} -i "tts_${i}.mp3" \\`,
-          `  -vf "${ptsExpr}${cropExpr}${zoomFilter},drawtext=fontfile=NotoSansKR-Bold.ttf:text='${safeSub}':fontcolor=yellow:fontsize=58:borderw=5:bordercolor=black:x=(w-text_w)/2:y=h*${yRatio}${boxExpr}" \\`,
+          `  -vf "${ptsExpr}${cropExpr}${zoomFilter}${maskFilter},drawtext=fontfile=NotoSansKR-Bold.ttf:text='${safeSub}':fontcolor=yellow:fontsize=58:borderw=5:bordercolor=black:x=(w-text_w)/2:y=h*${yRatio}${boxExpr}" \\`,
           `  -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 20 -c:a aac -shortest "seg_${i}.mp4"`
         );
       });
@@ -3028,7 +3635,7 @@ ${clipMetaLines.join('\n')}
     // =========================================================================
     function renderClips() {
       const container = document.getElementById('clipList');
-      document.getElementById('clipCountBadge').textContent = `${state.clips.length} / 5`;
+      document.getElementById('clipCountBadge').textContent = `${state.clips.filter((c) => !c.isIdea).length} / 5`;
 
       if (!state.clips.length) {
         container.innerHTML = `<div class="text-center py-4 text-xs text-slate-500">아직 업로드된 클립이 없습니다.</div>`;
@@ -3205,6 +3812,22 @@ ${clipMetaLines.join('\n')}
               </div>
             </div>
 
+            <div class="grid grid-cols-2 gap-1.5">
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-0.5">원본 자막 가리기</label>
+                <select data-field="maskOverride" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1 py-1 text-[10.5px] text-slate-200">
+                  <option value="inherit" ${(!seg.maskOverride || seg.maskOverride === 'inherit') ? 'selected' : ''}>전체 따름</option>
+                  <option value="none" ${seg.maskOverride === 'none' ? 'selected' : ''}>이 컷 끄기</option>
+                  <option value="blur" ${seg.maskOverride === 'blur' ? 'selected' : ''}>이 컷 블러</option>
+                  <option value="band" ${seg.maskOverride === 'band' ? 'selected' : ''}>이 컷 다크 밴드</option>
+                  <option value="zoom_shift" ${seg.maskOverride === 'zoom_shift' ? 'selected' : ''}>확대 밀기</option>
+                </select>
+              </div>
+              <div class="flex items-end">
+                <span class="text-[9.5px] leading-tight text-slate-500">기본은 프리뷰 아래 <b class="text-slate-400">원본 자막 가리기</b>를 따릅니다</span>
+              </div>
+            </div>
+
             <div>
               <label class="block text-[10px] text-slate-400 mb-0.5">화면 자막 (단어별 강조)</label>
               <input type="text" data-field="subtitle" data-id="${seg.id}" value="${esc(seg.subtitle)}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-amber-200 font-medium" />
@@ -3351,6 +3974,1336 @@ ${clipMetaLines.join('\n')}
       });
 
       lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 💡 아이디어로 제작 (Idea2Shorts) — 공용 프리뷰·자막·성우·BGM·내보내기 재사용
+    // =========================================================================
+    const IDEA_STYLE_PROMPT = {
+      webtoon: 'Korean webtoon digital illustration style, clean sharp lineart, vibrant cinematic lighting, vertical 9:16 composition, no text',
+      cinematic: 'Photorealistic cinematic film still, 35mm lens, shallow depth of field, dramatic lighting, vertical 9:16 composition, no text',
+      anime: 'Warm Studio Ghibli inspired anime art style, painterly background, soft sunlight, expressive mood, vertical 9:16 composition, no text',
+      noir: 'Dark mystery neo-noir aesthetic, high contrast shadows, moody neon rim light, vertical 9:16 composition, no text',
+    };
+    const IDEA_VOICE_LABEL = { A: 'A · 여성(질문)', B: 'B · 남성(전문가)' };
+    const IDEA_SERIES_KEY = 'shorts_idea_series_v1';
+    const IDEA_PROJECT_KEY = 'shorts_idea_projects_v1';
+    const IDEA_CAMERA_LABEL = { zoom_in: '줌인', zoom_out: '줌아웃', pan_lr: '좌우 패닝', shake: '임팩트 흔들림' };
+
+    function ideaLangIcon(msg) { return msg; }
+
+    function ideaSetStatus(text, tone) {
+      const el = document.getElementById('ideaStatus');
+      if (!el) return;
+      el.textContent = text || '';
+      el.className = 'text-[10.5px] leading-relaxed min-h-[14px] ' +
+        (tone === 'error' ? 'text-rose-400' : tone === 'ok' ? 'text-emerald-400' : tone === 'busy' ? 'text-amber-300' : 'text-slate-500');
+    }
+
+    async function ideaApi(action, payload) {
+      const res = await fetch('/api/content-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action }, payload || {})),
+      });
+      let json = null;
+      try { json = await res.json(); } catch (_) {}
+      if (!json) throw new Error('AI 서버 응답을 읽지 못했습니다. (' + res.status + ')');
+      return json;
+    }
+
+    function ideaLoadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        if (!/^data:/.test(src)) img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('이미지 로드 실패'));
+        img.src = src;
+      });
+    }
+
+    function ideaClipFor(seg) {
+      let clip = state.clips.find((c) => c.id === seg.clipId);
+      if (!clip) {
+        clip = { id: seg.clipId, name: 'AI 컷', isImage: true, isIdea: true, width: 540, height: 960, imgEl: null, duration: 5 };
+        state.clips.push(clip);
+      }
+      return clip;
+    }
+
+    function ideaEstimateDur(text) {
+      const n = String(text || '').replace(/\s+/g, '').length;
+      return Number(Math.max(2.0, Math.min(7.0, n / 5.0 + 0.5)).toFixed(1));
+    }
+
+    /* ---------- 모드 탭 ---------- */
+    function switchMode(mode) {
+      const m = mode === 'idea' ? 'idea' : 'edit';
+      const prev = state.mode;
+      state.mode = m;
+      const leftEdit = document.getElementById('panelLeftEdit');
+      const leftIdea = document.getElementById('panelLeftIdea');
+      const rightEdit = document.getElementById('panelRightEdit');
+      const rightIdea = document.getElementById('panelRightIdea');
+      if (leftEdit) leftEdit.style.display = m === 'edit' ? 'flex' : 'none';
+      if (leftIdea) leftIdea.style.display = m === 'idea' ? 'flex' : 'none';
+      if (rightEdit) rightEdit.style.display = m === 'edit' ? 'flex' : 'none';
+      if (rightIdea) rightIdea.style.display = m === 'idea' ? 'flex' : 'none';
+      const tabEdit = document.getElementById('modeTabEdit');
+      const tabIdea = document.getElementById('modeTabIdea');
+      if (tabEdit) {
+        tabEdit.classList.toggle('is-active', m === 'edit');
+        tabEdit.setAttribute('aria-selected', m === 'edit' ? 'true' : 'false');
+      }
+      if (tabIdea) {
+        tabIdea.classList.toggle('is-active', m === 'idea');
+        tabIdea.classList.toggle('is-idea', true);
+        tabIdea.setAttribute('aria-selected', m === 'idea' ? 'true' : 'false');
+      }
+      const hint = document.getElementById('modeHint');
+      if (hint) hint.textContent = m === 'idea'
+        ? '아이디어·링크만 주면 5컷 대본·그림·성우까지 자동 생성'
+        : '영상·사진을 올려 컷을 직접 편집합니다';
+      if (m === 'idea') {
+        pullSharedToIdea();
+        renderIdeaAll();
+      } else {
+        if (prev === 'idea') pushIdeaToShared();
+        renderSegments();
+        renderYtMeta();
+        renderStoryArc();
+        renderHookOptions();
+      }
+      renderVisualTracks();
+      renderPreviewFrame(state.currentTime);
+      saveProjectAutosave();
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    /* ---------- 공용 엔진 컨트롤 ↔ 아이디어 탭 미러 ---------- */
+    function setSel(id, value) {
+      const el = document.getElementById(id);
+      if (el && value != null) el.value = value;
+    }
+
+    function pushIdeaToShared() {
+      const capStyle = document.getElementById('ideaCaptionStyle');
+      const capY = document.getElementById('ideaCaptionY');
+      const bgm = document.getElementById('ideaBgmSelect');
+      const particle = document.getElementById('ideaParticleSelect');
+      const engine = document.getElementById('ideaEngineSelect');
+      if (capStyle) setSel('captionStyleSelect', capStyle.value);
+      if (capY) setSel('captionYSlider', capY.value);
+      if (bgm) setSel('bgmMoodSelect', bgm.value);
+      if (particle) state.idea.particle = particle.value;
+      if (engine) state.idea.engine = engine.value;
+      const at = document.getElementById('ideaAutoTrim');
+      const ks = document.getElementById('ideaKeywordSfx');
+      if (at) state.idea.autoTrim = at.checked;
+      if (ks) state.idea.keywordSfx = ks.checked;
+      syncCaptionYValue();
+    }
+
+    function pullSharedToIdea() {
+      setSel('ideaCaptionStyle', valOf('captionStyleSelect'));
+      const capY = document.getElementById('ideaCaptionY');
+      if (capY) {
+        capY.value = valOf('captionYSlider') || '75';
+        const out = document.getElementById('ideaCaptionYVal');
+        if (out) out.textContent = capY.value + '%';
+      }
+      setSel('ideaBgmSelect', valOf('bgmMoodSelect'));
+      setSel('ideaParticleSelect', state.idea.particle || 'none');
+      setSel('ideaEngineSelect', state.idea.engine || 'pollinations');
+      const seedLabel = document.getElementById('ideaSeedLabel');
+      if (seedLabel) seedLabel.textContent = String(state.idea.seed || 4200);
+    }
+
+    /* ---------- 0) ⚡ 주제 추천 ---------- */
+    async function ideaSuggestTopics() {
+      const btn = document.getElementById('ideaTopicBtn');
+      const wrap = document.getElementById('ideaTopicWrap');
+      if (!btn || !wrap) return;
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>…</span><span>주제 찾는 중</span>';
+      ideaSetStatus('조회수가 나오는 주제 3안을 찾고 있습니다…', 'busy');
+      try {
+        const json = await ideaApi('idea_topics', {
+          genre: valOf('ideaGenreSelect'),
+          keyword: (document.getElementById('ideaInput').value || '').trim(),
+        });
+        if (!json.ok) {
+          ideaSetStatus(apiFailureMessage(json, '주제 추천에 실패했습니다.'), 'error');
+          showToast(apiFailureMessage(json, '주제 추천에 실패했습니다.'), 'error');
+          return;
+        }
+        const topics = json.topics || [];
+        wrap.innerHTML = '<div class="text-[10px] font-semibold text-amber-300 mb-0.5">⚡ AI 추천 주제 — 누르면 입력칸에 들어갑니다</div>' +
+          topics.map((t, i) => `
+            <button type="button" data-idea-topic="${i}" class="idea-topic">
+              <div class="text-[11.5px] font-bold text-amber-200">${i + 1}. ${esc(t.title)}</div>
+              <div class="text-[10.5px] text-slate-300 mt-0.5 leading-snug">${esc(t.hook)}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5">${esc(t.angle || '')}</div>
+            </button>`).join('');
+        wrap.classList.remove('hidden');
+        wrap.querySelectorAll('[data-idea-topic]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const t = topics[Number(b.getAttribute('data-idea-topic'))];
+            if (!t) return;
+            const ta = document.getElementById('ideaInput');
+            ta.value = (t.title || '') + ' — ' + (t.hook || '');
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+            wrap.classList.add('hidden');
+            ideaSetStatus('주제를 넣었습니다. 이제 [1. 아이디어 분석]을 눌러 주세요.', 'ok');
+          });
+        });
+        ideaSetStatus('주제 3안을 만들었습니다. 하나를 골라 주세요.', 'ok');
+      } catch (err) {
+        console.error(err);
+        ideaSetStatus(err.message || '주제 추천에 실패했습니다.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
+    }
+
+    /* ---------- 🔗 링크·글 → 참고 자료 ---------- */
+    async function ideaExtractSource() {
+      const input = document.getElementById('ideaSourceInput');
+      const note = document.getElementById('ideaSourceNote');
+      const raw = (input.value || '').trim();
+      if (!raw) {
+        showToast('링크나 글을 먼저 넣어 주세요.', 'warn');
+        return;
+      }
+      if (!/^https?:\/\//i.test(raw)) {
+        state.idea.sourceText = raw.slice(0, 2600);
+        state.idea.sourceTitle = '';
+        if (note) note.textContent = '붙여넣은 글 ' + raw.length.toLocaleString('ko-KR') + '자를 참고 자료로 넣었습니다. 이제 [1. 아이디어 분석]을 누르세요.';
+        ideaSetStatus('글을 참고 자료로 넣었습니다.', 'ok');
+        return;
+      }
+      ideaSetStatus('링크 내용을 읽고 있습니다… (유튜브는 자막, 블로그는 본문)', 'busy');
+      try {
+        const json = await ideaApi('idea_url_extract', { url: raw });
+        if (!json.ok) {
+          if (note) note.textContent = json.message || '이 링크의 내용을 읽지 못했습니다.';
+          ideaSetStatus('링크를 읽지 못했습니다. 글을 직접 붙여넣어 주세요.', 'error');
+          return;
+        }
+        state.idea.sourceText = json.text || '';
+        state.idea.sourceTitle = json.title || '';
+        const ta = document.getElementById('ideaInput');
+        if (ta && !ta.value.trim() && json.title) ta.value = json.title;
+        if (note) {
+          note.textContent = '읽었습니다 — ' + (json.source === 'youtube' ? '유튜브 자막' : '본문') +
+            ' ' + (json.chars || 0).toLocaleString('ko-KR') + '자' +
+            (json.title ? ' · ' + json.title : '');
+        }
+        ideaSetStatus('참고 자료를 넣었습니다. 이제 [1. 아이디어 분석]을 눌러 주세요.', 'ok');
+      } catch (err) {
+        console.error(err);
+        if (note) note.textContent = err.message || '링크를 읽지 못했습니다.';
+      }
+    }
+
+    /* ---------- 1) 스토리보드 생성 ---------- */
+    async function ideaGenerateStory() {
+      const btn = document.getElementById('ideaGenBtn');
+      const orig = btn ? btn.innerHTML : '';
+      const idea = (document.getElementById('ideaInput').value || '').trim();
+      if (!idea && !state.idea.sourceText) {
+        showToast('아이디어를 한 줄만 적어 주세요.', 'warn');
+        document.getElementById('ideaInput').focus();
+        return;
+      }
+      pushHistory();
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>…</span><span>아이디어 분석 · 스토리보드 작성 중</span>';
+      }
+      ideaSetStatus('Gemini가 5컷 대본·자막·그림 프롬프트를 쓰고 있습니다…', 'busy');
+      try {
+        const json = await ideaApi('idea_story', {
+          idea,
+          sourceText: state.idea.sourceText || '',
+          genre: valOf('ideaGenreSelect'),
+          artStyle: valOf('ideaArtStyleSelect'),
+          character: (document.getElementById('ideaCharacterInput').value || '').trim(),
+          dialogue: !!document.getElementById('ideaDialogueToggle').checked,
+          loop: !!document.getElementById('ideaLoopToggle').checked,
+        });
+        if (!json.ok) {
+          // AI 실패 — 기본 4컷 템플릿으로도 화면이 비지 않게 한다(정직하게 알린다)
+          const fb = ideaFallbackStory(idea || state.idea.sourceTitle, !!document.getElementById('ideaDialogueToggle').checked);
+          applyIdeaStory(fb);
+          const why = apiFailureMessage(json, 'AI가 응답하지 않았습니다.');
+          ideaSetStatus(why + ' → 기본 4컷 템플릿으로 만들었습니다.', 'error');
+          showToast(why + ' 기본 템플릿으로 대신 만들었습니다.', 'warn');
+          return;
+        }
+        applyIdeaStory(json.story);
+        ideaSetStatus(json.story.scenes.length + '컷 스토리보드를 만들었습니다. 이제 [2. 그림 생성]을 누르세요.', 'ok');
+        showToast(json.story.scenes.length + '컷 스토리보드 완성 — 2번 그림 생성을 눌러 주세요.', 'success');
+      } catch (err) {
+        console.error(err);
+        const fb = ideaFallbackStory(idea || state.idea.sourceTitle, !!document.getElementById('ideaDialogueToggle').checked);
+        applyIdeaStory(fb);
+        ideaSetStatus((err.message || 'AI 연결 실패') + ' → 기본 4컷 템플릿으로 만들었습니다.', 'error');
+        showToast('AI 연결이 되지 않아 기본 템플릿으로 만들었습니다.', 'warn');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }
+
+    /* AI 가 응답하지 않을 때(한도·장애) — 아이디어만으로 쓰는 기본 4컷 템플릿 */
+    function ideaFallbackStory(idea, dialogue) {
+      const seed = String(idea || '오늘의 이야기').trim();
+      const head = seed.length > 26 ? seed.slice(0, 26) + '…' : seed;
+      const lines = dialogue
+        ? [
+            ['A', `${head}, 들어보셨어요? 대부분은 모르고 지나간다던데요.`, '당신은 알고 있었나요?'],
+            ['B', '핵심은 의외로 단순합니다. 우리가 무심코 지나치는 포인트가 숨어 있습니다.', '핵심은 단순하다'],
+            ['A', '그럼 지금까지 알고 있던 게 틀렸다는 거예요?', '알고 있던 게 틀렸다?'],
+            ['B', '관점만 살짝 바꾸면 결과가 완전히 달라집니다. 저장해 두고 바로 해 보세요.', '관점만 바꿔도'],
+          ]
+        : [
+            ['A', `${head}. 혹시 지금까지 잘못 알고 계셨던 건 아닐까요?`, '잘못 알고 있었다?'],
+            ['A', '핵심은 의외로 단순합니다. 결정적인 포인트가 숨어 있거든요.', '숨겨진 결정적 포인트'],
+            ['A', '관점만 살짝 바꿔도 결과가 완전히 달라집니다.', '관점 하나로 반전'],
+            ['A', '저장해 두시고 오늘 바로 한 번 적용해 보세요.', '저장하고 바로 적용'],
+          ];
+      const palettes = [['#1e1b4b', '#4338ca'], ['#3b0764', '#9333ea'], ['#0f172a', '#0284c7'], ['#7c2d12', '#f97316']];
+      const icons = ['🔥', '🔍', '⚡', '✨'];
+      const motions = ['zoom_in', 'pan_lr', 'zoom_out', 'shake'];
+      return {
+        title: (head + ' — 30초 정리').slice(0, 40),
+        hashtags: ['#쇼츠', '#꿀팁', '#정보', '#이야기'],
+        hookOptions: [
+          { tag: 'curiosity', text: '대부분이 모르는 진실' },
+          { tag: 'direct', text: head.slice(0, 20) },
+          { tag: 'twist', text: '알고 보면 완전히 다릅니다' },
+        ],
+        arc: { hook: '첫 3초 반전 후킹', climax: '핵심 포인트 설명', outro: '저장·적용 유도' },
+        scenes: lines.map((l, i) => ({
+          narration: l[1],
+          subtitle: l[2],
+          speaker: l[0],
+          cameraMotion: motions[i % motions.length],
+          cardType: 'image',
+          cardData: null,
+          emphasizeWord: '',
+          visualPrompt: `Vertical 9:16 cinematic illustration, scene ${i + 1}, dramatic lighting, no text`,
+          palette: palettes[i % palettes.length],
+          icon: icons[i % icons.length],
+        })),
+      };
+    }
+
+    function applyIdeaStory(story) {
+      stopPlayback();
+      state.currentTime = 0;
+      state.clips = state.clips.filter((c) => !c.isIdea);
+      state.segments = state.segments.filter((s) => !String(s.clipId || '').startsWith('idea_'));
+      const scenes = Array.isArray(story.scenes) ? story.scenes : [];
+      scenes.forEach((sc, idx) => {
+        const seg = makeIdeaSegment(sc, idx);
+        state.segments.push(seg);
+      });
+      state.storyArc = {
+        hook: (story.arc && story.arc.hook) || '',
+        climax: (story.arc && story.arc.climax) || '',
+        outro: (story.arc && story.arc.outro) || '',
+      };
+      const hashtags = Array.isArray(story.hashtags) ? story.hashtags.join(' ') : '';
+      state.ytMeta = {
+        title: story.title || '',
+        description: ((story.arc && story.arc.hook) ? story.arc.hook + '\n\n' : '') + hashtags,
+      };
+      state.hookOptions = normalizeHookOptions(story.hookOptions);
+      state.topHook = (state.hookOptions[0] && state.hookOptions[0].text) || state.storyArc.hook || '';
+      const hi = document.getElementById('topHookInput');
+      if (hi) hi.value = state.topHook;
+      state.selectedSegmentId = state.segments.length ? state.segments[0].id : null;
+      renderClips();
+      renderSegments();
+      renderStoryArc();
+      renderYtMeta();
+      renderHookOptions();
+      renderIdeaAll();
+      renderVisualTracks();
+      renderPreviewFrame(0);
+      saveProjectAutosave();
+    }
+
+    function makeIdeaSegment(sc, idx) {
+      const id = 'iseg_' + Math.random().toString(36).slice(2, 8);
+      const clipId = 'idea_' + id;
+      state.clips.push({ id: clipId, name: 'AI 컷 ' + (idx + 1), isImage: true, isIdea: true, imgEl: null, width: 540, height: 960, duration: 5 });
+      return {
+        id,
+        clipId,
+        startSec: 0,
+        durationSec: ideaEstimateDur(sc.narration),
+        speed: 1.0,
+        cropFocus: 'center',
+        cropX: 50,
+        narration: sc.narration || '',
+        subtitle: sc.subtitle || '',
+        muteOrig: true,
+        ttsAudioUrl: null,
+        ttsAudioBuffer: null,
+        wordTimings: null,
+        ttsStatus: 'idle',
+        speaker: sc.speaker === 'B' ? 'B' : 'A',
+        voice: sc.speaker === 'B' ? 'male' : 'female',
+        cameraMotion: IDEA_CAMERA_LABEL[sc.cameraMotion] ? sc.cameraMotion : 'zoom_in',
+        cardType: sc.cardType === 'card' ? 'card' : 'image',
+        cardData: sc.cardData || null,
+        emphasizeWord: sc.emphasizeWord || '',
+        visualPrompt: sc.visualPrompt || '',
+        palette: sc.palette || ['#1e1b4b', '#4338ca'],
+        icon: sc.icon || '✨',
+        imageUrl: null,
+        visualStatus: 'idle',
+        visualEngine: '',
+      };
+    }
+
+    /* ---------- 2) 컷 그림 ---------- */
+    async function ideaGenerateVisual(seg, opts) {
+      const o = opts || {};
+      const clip = ideaClipFor(seg);
+      const engine = o.engine || state.idea.engine || 'pollinations';
+      if (engine === 'canvas_art') {
+        seg.imageUrl = null;
+        clip.imgEl = null;
+        seg.visualStatus = 'canvas';
+        seg.visualEngine = 'canvas_art';
+        return;
+      }
+      const styleKey = valOf('ideaArtStyleSelect') || 'webtoon';
+      const character = (document.getElementById('ideaCharacterInput').value || '').trim();
+      let prompt = String(o.prompt || seg.visualPrompt || seg.subtitle || '').trim();
+      if (character) prompt += ', ' + character;
+      if (o.extraPrompt) prompt += '. Additional direction: ' + o.extraPrompt;
+      if (!prompt) prompt = String(seg.narration || 'cinematic scene').slice(0, 500);
+
+      seg.visualStatus = 'loading';
+      seg.visualEngine = engine;
+      renderIdeaScenes();
+      const seed = (state.idea.seed || 4200) + state.segments.indexOf(seg) * 17 + (o.reseed ? Math.floor(Math.random() * 997) : 0);
+      let json = await ideaApi('idea_image', {
+        engine,
+        prompt,
+        stylePrompt: IDEA_STYLE_PROMPT[styleKey] || '',
+        width: 540,
+        height: 960,
+        seed,
+      });
+      if (!json.ok && engine === 'gemini_image') {
+        showToast(json.message || 'Gemini 이미지를 쓸 수 없어 무료 엔진으로 다시 그립니다.', 'warn');
+        json = await ideaApi('idea_image', {
+          engine: 'pollinations',
+          prompt,
+          stylePrompt: IDEA_STYLE_PROMPT[styleKey] || '',
+          width: 540,
+          height: 960,
+          seed,
+        });
+      }
+      if (!json.ok || !json.data) {
+        seg.visualStatus = 'failed';
+        seg.imageUrl = null;
+        clip.imgEl = null;
+        if (o.quiet !== true) showToast(json.message || '그림을 만들지 못했습니다. 내장 모션그래픽으로 대신 보여 줍니다.', 'warn');
+        return false;
+      }
+      const dataUrl = 'data:' + (json.mime || 'image/jpeg') + ';base64,' + json.data;
+      try {
+        clip.imgEl = await ideaLoadImage(dataUrl);
+      } catch (_) {
+        clip.imgEl = null;
+      }
+      seg.imageUrl = dataUrl;
+      seg.visualStatus = clip.imgEl ? 'ready' : 'failed';
+      seg.visualEngine = json.engine || engine;
+      return seg.visualStatus === 'ready';
+    }
+
+    async function ideaGenerateAllVisuals() {
+      if (!state.segments.length) {
+        showToast('먼저 1번 스토리보드를 만들어 주세요.', 'warn');
+        return;
+      }
+      const btn = document.getElementById('ideaVisualBtn');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span>…</span><span>컷 그림 생성 중</span>'; }
+      let made = 0;
+      let failed = 0;
+      const list = state.segments.slice();
+      for (let i = 0; i < list.length; i++) {
+        const seg = list[i];
+        if (seg.cardType === 'card' && seg.cardData) {
+          seg.visualStatus = 'card';
+          renderIdeaScenes();
+          continue;
+        }
+        ideaSetStatus('컷 ' + (i + 1) + ' / ' + list.length + ' 그림을 그리고 있습니다…', 'busy');
+        if (btn) btn.innerHTML = '<span>…</span><span>' + (i + 1) + ' / ' + list.length + ' 그림 생성 중</span>';
+        try {
+          const ok = await ideaGenerateVisual(seg, { quiet: true });
+          if (ok) made++; else failed++;
+        } catch (err) {
+          console.error(err);
+          seg.visualStatus = 'failed';
+          failed++;
+        }
+        renderIdeaScenes();
+        renderPreviewFrame(state.currentTime);
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      const msg = '컷 그림 ' + made + '장 완성' + (failed ? ' · ' + failed + '장은 실패(모션그래픽 대체)' : '') + ' — 이제 3번 성우를 눌러 주세요.';
+      ideaSetStatus(msg, failed ? 'error' : 'ok');
+      showToast(msg, failed ? 'warn' : 'success');
+      saveProjectAutosave();
+    }
+
+    async function ideaRedrawCut(seg) {
+      const card = document.querySelector('[data-idea-card="' + seg.id + '"]');
+      const repromptEl = card ? card.querySelector('[data-idea-reprompt]') : null;
+      const req = repromptEl ? (repromptEl.value || '').trim() : '';
+      let extra = '';
+      if (req) {
+        ideaSetStatus('수정 요청을 그림 프롬프트로 옮기고 있습니다…', 'busy');
+        try {
+          const json = await ideaApi('idea_prompt_edit', { prompt: seg.visualPrompt || seg.subtitle, request: req });
+          if (json.ok && json.prompt) {
+            seg.visualPrompt = json.prompt;
+            seg.visualStatus = 'idle';
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      ideaSetStatus('컷 ' + (state.segments.indexOf(seg) + 1) + ' 그림을 다시 그리고 있습니다…', 'busy');
+      const ok = await ideaGenerateVisual(seg, { reseed: true, extraPrompt: extra });
+      renderIdeaScenes();
+      renderPreviewFrame(state.currentTime);
+      saveProjectAutosave();
+      ideaSetStatus(ok ? '컷 그림을 다시 그렸습니다.' : '다시 그리기에 실패했습니다.', ok ? 'ok' : 'error');
+    }
+
+    /* ---------- 3) 성우 + 컷 길이 ---------- */
+    async function ideaGenerateAllTts() {
+      if (!state.segments.length) {
+        showToast('먼저 1번 스토리보드를 만들어 주세요.', 'warn');
+        return;
+      }
+      const btn = document.getElementById('ideaTtsBtn');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span>…</span><span>성우 합성 중</span>'; }
+      const list = state.segments.slice();
+      for (let i = 0; i < list.length; i++) {
+        const seg = list[i];
+        if (!seg.narration || !seg.narration.trim()) continue;
+        ideaSetStatus('컷 ' + (i + 1) + ' / ' + list.length + ' 성우(' + (seg.speaker === 'B' ? '남성' : '여성') + ') 합성 중…', 'busy');
+        if (btn) btn.innerHTML = '<span>…</span><span>' + (i + 1) + ' / ' + list.length + ' 성우</span>';
+        await generateTtsForSegment(seg);
+        renderIdeaScenes();
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      renderIdeaAll();
+      renderVisualTracks();
+      renderPreviewFrame(state.currentTime);
+      saveProjectAutosave();
+      const ready = state.segments.filter((s) => s.ttsStatus === 'ready' || s.ttsStatus === 'webspeech').length;
+      ideaSetStatus(ready + '컷 성우·길이 동기화 완료 (' + getTotalDuration().toFixed(1) + '초).', 'ok');
+      showToast('성우 음성과 컷 길이 동기화가 끝났습니다.', 'success');
+    }
+
+    /* ---------- 🔁 무한 루프 연결 1초 ---------- */
+    function ideaPreviewSeam() {
+      const total = getTotalDuration();
+      if (total < 1.2) {
+        showToast('먼저 컷을 만들어 주세요.', 'warn');
+        return;
+      }
+      stopPlayback();
+      state.currentTime = Math.max(0, total - 1);
+      renderPreviewFrame(state.currentTime);
+      showToast('마지막 1초 → 첫 1초를 이어서 재생합니다.', 'info');
+      startPlayback(null, () => {
+        state.currentTime = 0;
+        state.lastPlayedSegId = null;
+        startPlayback(null, null, (cur) => {
+          if (cur >= 1.02) stopPlayback();
+        });
+      });
+    }
+
+    /* ---------- ➡️ 편집기 탭으로 넘기기 ---------- */
+    function ideaSendToEditor() {
+      if (!state.segments.length) {
+        showToast('넘길 컷이 없습니다. 먼저 스토리보드를 만들어 주세요.', 'warn');
+        return;
+      }
+      const n = state.segments.length;
+      switchMode('edit');
+      showToast('아이디어 ' + n + '컷을 편집기 타임라인으로 넘겼습니다. 내 사진·영상을 올리면 뒤에 이어 붙습니다.', 'success');
+      const el = document.getElementById('segmentsContainer');
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /* ---------- 렌더 ---------- */
+    function renderIdeaAll() {
+      renderIdeaMeta();
+      renderIdeaScenes();
+      renderVisualTracks();
+    }
+
+    function renderIdeaMeta() {
+      const badge = document.getElementById('ideaTotalBadge');
+      if (badge) badge.textContent = '총 ' + getTotalDuration().toFixed(1) + '초 · ' + state.segments.length + '컷';
+      const t = document.getElementById('ideaTitleInput');
+      if (t && document.activeElement !== t) t.value = state.ytMeta.title || '';
+      const h = document.getElementById('ideaHashtagInput');
+      if (h && document.activeElement !== h) h.value = state.ytMeta.description || '';
+      const a1 = document.getElementById('ideaArcHook');
+      const a2 = document.getElementById('ideaArcClimax');
+      const a3 = document.getElementById('ideaArcOutro');
+      if (a1) a1.textContent = state.storyArc.hook || '-';
+      if (a2) a2.textContent = state.storyArc.climax || '-';
+      if (a3) a3.textContent = state.storyArc.outro || '-';
+      const wrap = document.getElementById('ideaHookWrap');
+      const list = document.getElementById('ideaHookList');
+      if (wrap && list) {
+        const opts = Array.isArray(state.hookOptions) ? state.hookOptions : [];
+        if (opts.length) {
+          wrap.classList.remove('hidden');
+          list.innerHTML = opts.map((o, i) =>
+            `<button type="button" data-idea-hook="${i}" class="w-full text-left px-2 py-1 rounded-lg bg-slate-950/70 border border-slate-700 hover:border-amber-500 text-[10.5px] text-slate-200 transition">
+              <span class="text-amber-300 font-semibold mr-1">${esc(o.tag || '후킹')}</span>${esc(o.text)}
+            </button>`).join('');
+          list.querySelectorAll('[data-idea-hook]').forEach((b) => {
+            b.addEventListener('click', () => {
+              const o = opts[Number(b.getAttribute('data-idea-hook'))];
+              if (!o) return;
+              setTopHook(o.text);
+              const hi = document.getElementById('topHookInput');
+              if (hi) hi.value = o.text;
+              const titleEl = document.getElementById('toggleTitleBanner');
+              if (titleEl && !titleEl.checked) { titleEl.checked = true; }
+              renderPreviewFrame(state.currentTime);
+              saveProjectAutosave();
+              showToast('상단 후킹을 적용했습니다.', 'success');
+            });
+          });
+        } else {
+          wrap.classList.add('hidden');
+        }
+      }
+      const ch = document.getElementById('realUiChannel');
+      if (ch) ch.textContent = '@폭스시그널';
+      const tt = document.getElementById('realUiTitle');
+      if (tt) tt.textContent = (state.topHook || state.ytMeta.title || '쇼츠 제목').slice(0, 40);
+    }
+
+    function ideaVisualBadge(seg) {
+      const st = seg.visualStatus || 'idle';
+      const map = {
+        ready: ['그림 완료', 'bg-emerald-500/20 text-emerald-300'],
+        loading: ['그리는 중', 'bg-amber-500/20 text-amber-300'],
+        failed: ['실패·모션', 'bg-rose-500/20 text-rose-300'],
+        canvas: ['모션그래픽', 'bg-indigo-500/20 text-indigo-300'],
+        card: ['카드', 'bg-cyan-500/20 text-cyan-300'],
+        idle: ['그림 없음', 'bg-slate-800 text-slate-400'],
+      };
+      const v = map[st] || map.idle;
+      return `<span class="idea-badge ${v[1]}">${v[0]}</span>`;
+    }
+
+    function renderIdeaScenes() {
+      const box = document.getElementById('ideaScenesContainer');
+      if (!box) return;
+      const badge = document.getElementById('ideaTotalBadge');
+      if (badge) badge.textContent = '총 ' + getTotalDuration().toFixed(1) + '초 · ' + state.segments.length + '컷';
+      const segs = state.segments;
+      if (!segs.length) {
+        box.innerHTML = `<div class="text-center py-10 text-xs text-slate-500 leading-relaxed">왼쪽에 아이디어를 적고<br /><b class="text-amber-300">1. 스토리보드</b> → <b class="text-pink-300">2. 그림</b> → <b class="text-emerald-300">3. 성우</b> 순서로 누르면 5컷 쇼츠가 완성됩니다.</div>`;
+        return;
+      }
+      box.innerHTML = segs.map((seg, idx) => {
+        const clip = state.clips.find((c) => c.id === seg.clipId);
+        const thumb = seg.imageUrl
+          ? `<img class="idea-thumb" src="${seg.imageUrl}" alt="컷 ${idx + 1}" />`
+          : `<div class="idea-thumb flex items-center justify-center" style="background:linear-gradient(135deg,${(seg.palette || ['#0f172a', '#1e3a8a'])[0]},${(seg.palette || ['#0f172a', '#1e3a8a'])[1]})"><span style="font-size:22px">${seg.cardType === 'card' ? '📊' : (seg.icon || '✨')}</span></div>`;
+        const camOpts = Object.keys(IDEA_CAMERA_LABEL).map((k) =>
+          `<option value="${k}" ${seg.cameraMotion === k ? 'selected' : ''}>${IDEA_CAMERA_LABEL[k]}</option>`).join('');
+        const spkOpts = ['A', 'B'].map((k) =>
+          `<option value="${k}" ${seg.speaker === k ? 'selected' : ''}>${IDEA_VOICE_LABEL[k]}</option>`).join('');
+        const tts = seg.ttsStatus === 'ready'
+          ? '<span class="idea-badge bg-emerald-500/20 text-emerald-300">음성 ' + Number(seg.durationSec).toFixed(1) + 's</span>'
+          : seg.ttsStatus === 'loading'
+            ? '<span class="idea-badge bg-amber-500/20 text-amber-300">합성 중</span>'
+            : seg.ttsStatus === 'webspeech'
+              ? '<span class="idea-badge bg-blue-500/20 text-blue-300">기기음성</span>'
+              : '<span class="idea-badge bg-slate-800 text-slate-400">음성 대기</span>';
+        const isCard = seg.cardType === 'card';
+        return `
+          <div data-idea-card="${seg.id}" class="rounded-xl bg-slate-900/80 border border-slate-800 p-2.5 space-y-2 transition ${seg.id === state.selectedSegmentId ? 'seg-active' : ''}">
+            <div class="flex items-start gap-2">
+              ${thumb}
+              <div class="flex-1 min-w-0 space-y-1">
+                <div class="flex items-center gap-1 flex-wrap">
+                  <span class="text-xs font-bold text-amber-300 shrink-0">컷 ${idx + 1}</span>
+                  ${ideaVisualBadge(seg)}
+                  ${tts}
+                  <span class="idea-badge bg-slate-800 text-slate-300">${seg.speaker === 'B' ? 'B 남' : 'A 여'}</span>
+                  <span class="idea-badge bg-slate-800 text-slate-300">${IDEA_CAMERA_LABEL[seg.cameraMotion] || '줌인'}</span>
+                </div>
+                <input type="text" data-idea-field="subtitle" data-id="${seg.id}" value="${esc(seg.subtitle)}" placeholder="화면 자막" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-amber-200 font-semibold" />
+                <textarea rows="2" data-idea-field="narration" data-id="${seg.id}" placeholder="성우 대사" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-slate-200">${esc(seg.narration)}</textarea>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1.5">
+              <div>
+                <label class="block text-[9.5px] text-slate-400 mb-0.5">화자 · 성우</label>
+                <select data-idea-field="speaker" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1 py-1 text-[10.5px] text-slate-200">${spkOpts}</select>
+              </div>
+              <div>
+                <label class="block text-[9.5px] text-slate-400 mb-0.5">카메라 모션</label>
+                <select data-idea-field="cameraMotion" data-id="${seg.id}" class="w-full rounded-lg bg-slate-950 border border-slate-700 px-1 py-1 text-[10.5px] text-slate-200">${camOpts}</select>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <label class="flex items-center gap-1.5 text-[10.5px] text-slate-300 cursor-pointer">
+                <input type="checkbox" data-idea-field="cardType" data-id="${seg.id}" ${isCard ? 'checked' : ''} class="rounded border-slate-600 bg-slate-900 text-cyan-500" />
+                <span>📊 숫자·비교 카드로 그리기</span>
+              </label>
+              <div class="flex items-center gap-1">
+                <input type="text" data-idea-field="emphasizeWord" data-id="${seg.id}" value="${esc(seg.emphasizeWord || '')}" placeholder="강조 단어" class="w-20 rounded-lg bg-slate-950 border border-slate-700 px-1.5 py-1 text-[10px] text-slate-200" />
+                <button type="button" data-idea-action="rewrite" data-id="${seg.id}" class="px-1.5 py-1 rounded bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 text-[10px] font-medium transition" title="AI로 이 컷 대사·자막 다듬기 (편집기와 같은 방식)">✨ 다듬기</button>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1 flex-wrap">
+              <input type="text" data-idea-reprompt="${seg.id}" placeholder="수정 요청 (예: 더 밝게, 비 오는 밤)" class="flex-1 min-w-[110px] rounded-lg bg-slate-950 border border-slate-700 px-1.5 py-1 text-[10px] text-slate-200 placeholder-slate-500" />
+              <button type="button" data-idea-action="redraw" data-id="${seg.id}" class="px-1.5 py-1 rounded bg-pink-600/25 hover:bg-pink-600/40 text-pink-200 text-[10px] font-semibold transition whitespace-nowrap">🎨 다시 그리기</button>
+              <button type="button" data-idea-action="tts" data-id="${seg.id}" class="px-1.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 text-[10px] font-medium transition">성우</button>
+              <button type="button" data-idea-action="up" data-id="${seg.id}" class="px-1 py-1 rounded hover:bg-slate-800 text-slate-400" title="위로">↑</button>
+              <button type="button" data-idea-action="down" data-id="${seg.id}" class="px-1 py-1 rounded hover:bg-slate-800 text-slate-400" title="아래로">↓</button>
+              <button type="button" data-idea-action="del" data-id="${seg.id}" class="px-1 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-rose-400" title="삭제">✕</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      box.querySelectorAll('[data-idea-card]').forEach((card) => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('button, input, select, textarea')) return;
+          const id = card.getAttribute('data-idea-card');
+          state.selectedSegmentId = id;
+          highlightSelectedSegment();
+          let acc = 0;
+          for (const s of state.segments) {
+            if (s.id === id) break;
+            acc += Number(s.durationSec) || 0;
+          }
+          state.currentTime = acc;
+          renderPreviewFrame(state.currentTime);
+        });
+      });
+
+      box.querySelectorAll('[data-idea-field]').forEach((el) => {
+        el.addEventListener('input', () => {
+          const seg = state.segments.find((s) => s.id === el.getAttribute('data-id'));
+          if (!seg) return;
+          const f = el.getAttribute('data-idea-field');
+          if (f === 'cardType') {
+            seg.cardType = el.checked ? 'card' : 'image';
+            if (el.checked && !seg.cardData) {
+              seg.cardData = { kind: 'numbers', title: (seg.subtitle || '핵심 수치').slice(0, 20), items: [{ label: '항목 A', value: '1' }, { label: '항목 B', value: '2' }], footnote: '직접 수정할 수 있어요' };
+            }
+            renderIdeaScenes();
+          } else if (f === 'speaker') {
+            seg.speaker = el.value === 'B' ? 'B' : 'A';
+            seg.voice = seg.speaker === 'B' ? 'male' : 'female';
+            if (seg.ttsStatus === 'ready' || seg.ttsStatus === 'webspeech') seg.ttsStatus = 'idle';
+            renderIdeaScenes();
+          } else if (f === 'cameraMotion') {
+            seg.cameraMotion = el.value;
+          } else if (f === 'emphasizeWord') {
+            seg.emphasizeWord = el.value;
+          } else {
+            seg[f] = el.value;
+            if (f === 'narration') seg.ttsStatus = seg.ttsStatus === 'ready' ? 'idle' : seg.ttsStatus;
+          }
+          renderPreviewFrame(state.currentTime);
+          saveProjectAutosave();
+        });
+      });
+
+      box.querySelectorAll('[data-idea-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const idx = state.segments.findIndex((s) => s.id === id);
+          if (idx < 0) return;
+          const seg = state.segments[idx];
+          const action = btn.getAttribute('data-idea-action');
+          if (action === 'redraw') {
+            await ideaRedrawCut(seg);
+          } else if (action === 'tts') {
+            await generateTtsForSegment(seg);
+            renderIdeaScenes();
+          } else if (action === 'rewrite') {
+            await rewriteSingleSegmentWithAI(seg);
+            renderIdeaScenes();
+          } else if (action === 'up' && idx > 0) {
+            pushHistory();
+            [state.segments[idx - 1], state.segments[idx]] = [state.segments[idx], state.segments[idx - 1]];
+            renderIdeaScenes();
+            renderVisualTracks();
+          } else if (action === 'down' && idx < state.segments.length - 1) {
+            pushHistory();
+            [state.segments[idx + 1], state.segments[idx]] = [state.segments[idx], state.segments[idx + 1]];
+            renderIdeaScenes();
+            renderVisualTracks();
+          } else if (action === 'del') {
+            pushHistory();
+            const [removed] = state.segments.splice(idx, 1);
+            if (removed) state.clips = state.clips.filter((c) => c.id !== removed.clipId);
+            if (state.selectedSegmentId === id) state.selectedSegmentId = state.segments[0] ? state.segments[0].id : null;
+            renderClips();
+            renderIdeaScenes();
+            renderVisualTracks();
+            renderPreviewFrame(0);
+            saveProjectAutosave();
+          }
+        });
+      });
+
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    /* ---------- 📌 시리즈 · 💾 프로젝트 저장 ---------- */
+    function readJsonStore(key, fb) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return fb;
+        const v = JSON.parse(raw);
+        return v == null ? fb : v;
+      } catch (_) { return fb; }
+    }
+
+    function writeJsonStore(key, val) {
+      try {
+        localStorage.setItem(key, JSON.stringify(val));
+        return true;
+      } catch (_) { return false; }
+    }
+
+    function captureIdeaCfg() {
+      return {
+        genre: valOf('ideaGenreSelect'),
+        artStyle: valOf('ideaArtStyleSelect'),
+        character: (document.getElementById('ideaCharacterInput').value || '').trim(),
+        seed: state.idea.seed,
+        engine: state.idea.engine,
+        particle: state.idea.particle,
+        captionStyle: valOf('ideaCaptionStyle'),
+        captionY: valOf('ideaCaptionY'),
+        bgm: valOf('ideaBgmSelect'),
+        dialogue: !!document.getElementById('ideaDialogueToggle').checked,
+        loop: !!document.getElementById('ideaLoopToggle').checked,
+        autoTrim: state.idea.autoTrim,
+        keywordSfx: state.idea.keywordSfx,
+        loopPlay: !!document.getElementById('ideaLoopPlay').checked,
+      };
+    }
+
+    function applyIdeaCfg(cfg) {
+      if (!cfg) return;
+      setSel('ideaGenreSelect', cfg.genre);
+      setSel('ideaArtStyleSelect', cfg.artStyle);
+      const ch = document.getElementById('ideaCharacterInput');
+      if (ch && typeof cfg.character === 'string') ch.value = cfg.character;
+      if (cfg.seed) state.idea.seed = Number(cfg.seed) || 4200;
+      if (cfg.engine) state.idea.engine = cfg.engine;
+      if (cfg.particle) state.idea.particle = cfg.particle;
+      setSel('ideaCaptionStyle', cfg.captionStyle);
+      const capY = document.getElementById('ideaCaptionY');
+      if (capY && cfg.captionY) { capY.value = cfg.captionY; const o = document.getElementById('ideaCaptionYVal'); if (o) o.textContent = cfg.captionY + '%'; }
+      setSel('ideaBgmSelect', cfg.bgm);
+      const dg = document.getElementById('ideaDialogueToggle');
+      if (dg && typeof cfg.dialogue === 'boolean') dg.checked = cfg.dialogue;
+      const lp = document.getElementById('ideaLoopToggle');
+      if (lp && typeof cfg.loop === 'boolean') lp.checked = cfg.loop;
+      const at = document.getElementById('ideaAutoTrim');
+      if (at && typeof cfg.autoTrim === 'boolean') at.checked = cfg.autoTrim;
+      const ks = document.getElementById('ideaKeywordSfx');
+      if (ks && typeof cfg.keywordSfx === 'boolean') ks.checked = cfg.keywordSfx;
+      const lpl = document.getElementById('ideaLoopPlay');
+      if (lpl && typeof cfg.loopPlay === 'boolean') lpl.checked = cfg.loopPlay;
+      setSel('ideaEngineSelect', state.idea.engine);
+      setSel('ideaParticleSelect', state.idea.particle);
+      const seedLabel = document.getElementById('ideaSeedLabel');
+      if (seedLabel) seedLabel.textContent = String(state.idea.seed);
+      pushIdeaToShared();
+    }
+
+    function renderIdeaStores() {
+      const series = readJsonStore(IDEA_SERIES_KEY, []);
+      const projects = readJsonStore(IDEA_PROJECT_KEY, []);
+      const ss = document.getElementById('ideaSeriesSelect');
+      const ps = document.getElementById('ideaProjectSelect');
+      if (ss) {
+        ss.innerHTML = series.length
+          ? series.map((s) => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')
+          : '<option value="">저장된 시리즈 없음</option>';
+      }
+      if (ps) {
+        ps.innerHTML = projects.length
+          ? projects.map((p) => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('')
+          : '<option value="">저장된 프로젝트 없음</option>';
+      }
+      const note = document.getElementById('ideaStoreNote');
+      if (note) note.textContent = '저장은 이 브라우저(localStorage)에만 됩니다 · 시리즈 ' + series.length + ' · 프로젝트 ' + projects.length;
+    }
+
+    function ideaSaveSeries() {
+      const nameEl = document.getElementById('ideaSeriesName');
+      const name = (nameEl.value || '').trim() || ('시리즈 ' + new Date().toLocaleDateString('ko-KR'));
+      const list = readJsonStore(IDEA_SERIES_KEY, []);
+      const entry = { name, savedAt: Date.now(), cfg: captureIdeaCfg() };
+      const i = list.findIndex((x) => x.name === name);
+      if (i >= 0) list[i] = entry; else list.unshift(entry);
+      if (!writeJsonStore(IDEA_SERIES_KEY, list.slice(0, 20))) {
+        showToast('저장 공간이 부족해 시리즈를 저장하지 못했습니다.', 'error');
+        return;
+      }
+      renderIdeaStores();
+      setSel('ideaSeriesSelect', name);
+      nameEl.value = '';
+      showToast('시리즈 템플릿 “' + name + '”을 저장했습니다.', 'success');
+    }
+
+    function ideaApplySeries() {
+      const name = valOf('ideaSeriesSelect');
+      const list = readJsonStore(IDEA_SERIES_KEY, []);
+      const hit = list.find((x) => x.name === name);
+      if (!hit) { showToast('불러올 시리즈를 골라 주세요.', 'warn'); return; }
+      applyIdeaCfg(hit.cfg);
+      renderIdeaAll();
+      renderPreviewFrame(state.currentTime);
+      saveProjectAutosave();
+      showToast('시리즈 “' + name + '” 설정을 적용했습니다.', 'success');
+    }
+
+    function ideaDeleteSeries() {
+      const name = valOf('ideaSeriesSelect');
+      const list = readJsonStore(IDEA_SERIES_KEY, []).filter((x) => x.name !== name);
+      writeJsonStore(IDEA_SERIES_KEY, list);
+      renderIdeaStores();
+      showToast('시리즈를 삭제했습니다.', 'info');
+    }
+
+    function ideaSnapshot() {
+      return {
+        cfg: captureIdeaCfg(),
+        storyArc: { ...state.storyArc },
+        ytMeta: { ...state.ytMeta },
+        topHook: state.topHook,
+        pinnedComment: state.pinnedComment,
+        mask: { ...state.globalMask },
+        hookOptions: state.hookOptions.map((o) => ({ ...o })),
+        segments: state.segments.map(({ ttsAudioBuffer, ttsAudioUrl, ...rest }) => ({ ...rest })),
+      };
+    }
+
+    async function ideaRestoreSnapshot(snap) {
+      if (!snap || !Array.isArray(snap.segments)) return false;
+      stopPlayback();
+      state.currentTime = 0;
+      state.clips = state.clips.filter((c) => !c.isIdea);
+      state.segments = snap.segments.map((s) => ({ ...s, ttsAudioBuffer: null, ttsAudioUrl: null }));
+      state.storyArc = snap.storyArc || state.storyArc;
+      state.ytMeta = snap.ytMeta || state.ytMeta;
+      state.topHook = typeof snap.topHook === 'string' ? snap.topHook : '';
+      if (typeof snap.pinnedComment === 'string') state.pinnedComment = snap.pinnedComment;
+      state.hookOptions = normalizeHookOptions(snap.hookOptions);
+      if (snap.mask && typeof snap.mask === 'object') Object.assign(state.globalMask, snap.mask);
+      syncMaskUI();
+      applyIdeaCfg(snap.cfg);
+      await rebuildIdeaClipsFromSegments();
+      state.selectedSegmentId = state.segments[0] ? state.segments[0].id : null;
+      const hi = document.getElementById('topHookInput');
+      if (hi) hi.value = state.topHook || '';
+      renderClips();
+      renderSegments();
+      renderStoryArc();
+      renderYtMeta();
+      renderHookOptions();
+      renderIdeaAll();
+      renderVisualTracks();
+      renderPreviewFrame(0);
+      saveProjectAutosave();
+      return true;
+    }
+
+    async function rebuildIdeaClipsFromSegments() {
+      for (const seg of state.segments) {
+        if (!seg || !String(seg.clipId || '').startsWith('idea_')) continue;
+        if (state.clips.some((c) => c.id === seg.clipId)) continue;
+        const clip = { id: seg.clipId, name: 'AI 컷', isImage: true, isIdea: true, width: 540, height: 960, imgEl: null, duration: 5 };
+        state.clips.push(clip);
+        if (seg.imageUrl) {
+          try { clip.imgEl = await ideaLoadImage(seg.imageUrl); } catch (_) {}
+        }
+      }
+    }
+
+    function ideaSaveProject() {
+      const nameEl = document.getElementById('ideaProjectName');
+      const name = (nameEl.value || '').trim() || (state.ytMeta.title ? state.ytMeta.title.slice(0, 26) : '프로젝트 ' + new Date().toLocaleString('ko-KR'));
+      const list = readJsonStore(IDEA_PROJECT_KEY, []);
+      const entry = { name, savedAt: Date.now(), payload: ideaSnapshot() };
+      const i = list.findIndex((x) => x.name === name);
+      if (i >= 0) list[i] = entry; else list.unshift(entry);
+      let ok = writeJsonStore(IDEA_PROJECT_KEY, list.slice(0, 8));
+      if (!ok) {
+        entry.payload = { ...entry.payload, segments: entry.payload.segments.map((s) => ({ ...s, imageUrl: null })) };
+        ok = writeJsonStore(IDEA_PROJECT_KEY, list.slice(0, 8));
+        if (ok) showToast('저장 공간이 부족해 그림은 빼고 대본·설정만 저장했습니다.', 'warn');
+      }
+      if (!ok) {
+        showToast('저장 공간이 부족합니다. 오래된 프로젝트를 지우고 다시 저장해 주세요.', 'error');
+        return;
+      }
+      renderIdeaStores();
+      setSel('ideaProjectSelect', name);
+      nameEl.value = '';
+      showToast('프로젝트 “' + name + '”을 저장했습니다.', 'success');
+    }
+
+    async function ideaLoadProject() {
+      const name = valOf('ideaProjectSelect');
+      const list = readJsonStore(IDEA_PROJECT_KEY, []);
+      const hit = list.find((x) => x.name === name);
+      if (!hit) { showToast('불러올 프로젝트를 골라 주세요.', 'warn'); return; }
+      const ok = await ideaRestoreSnapshot(hit.payload);
+      showToast(ok ? '프로젝트 “' + name + '”을 불러왔습니다.' : '프로젝트를 불러오지 못했습니다.', ok ? 'success' : 'error');
+    }
+
+    function ideaDeleteProject() {
+      const name = valOf('ideaProjectSelect');
+      const list = readJsonStore(IDEA_PROJECT_KEY, []).filter((x) => x.name !== name);
+      writeJsonStore(IDEA_PROJECT_KEY, list);
+      renderIdeaStores();
+      showToast('프로젝트를 삭제했습니다.', 'info');
+    }
+
+    /* ---------- 캔버스: 카드 · 모션그래픽 · 파티클 · 카메라 모션 ---------- */
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function drawWrapText(ctx, text, x, y, maxWidth, lineH, maxLines) {
+      const chars = String(text || '').split('');
+      let line = '';
+      let lines = [];
+      for (const ch of chars) {
+        const test = line + ch;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          lines.push(line);
+          line = ch;
+          if (maxLines && lines.length >= maxLines) break;
+        } else {
+          line = test;
+        }
+      }
+      if (line && (!maxLines || lines.length < maxLines)) lines.push(line);
+      lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineH));
+      return y + lines.length * lineH;
+    }
+
+    /* 📊 숫자·비교 카드 — AI 그림 대신 선명한 인포그래픽 */
+    function drawCardScene(ctx, W, H, seg, progress) {
+      const cd = seg.cardData || {};
+      const pal = seg.palette || ['#0b1220', '#1e3a8a'];
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, pal[0]);
+      g.addColorStop(1, pal[1]);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      for (let y = 0; y < H; y += 46) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+
+      // 상단 배지
+      ctx.save();
+      ctx.fillStyle = 'rgba(2,6,23,.55)';
+      drawRoundRect(ctx, 40, 120, 168, 38, 19);
+      ctx.fill();
+      ctx.fillStyle = '#FCD34D';
+      ctx.font = '700 19px "Noto Sans KR", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📊 숫자로 보기', 58, 140);
+      ctx.restore();
+
+      // 카드 제목
+      ctx.save();
+      ctx.fillStyle = '#FDE68A';
+      ctx.font = '900 42px "Noto Sans KR", sans-serif';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      drawWrapText(ctx, cd.title || seg.subtitle || '핵심 수치', 40, 196, W - 80, 54, 2);
+      ctx.restore();
+
+      // 항목 박스
+      const items = (cd.items || []).slice(0, 3);
+      const boxH = 112;
+      const gap = 16;
+      let y = 330;
+      items.forEach((it, i) => {
+        const entered = Math.min(1, Math.max(0, (progress * items.length * 1.6) - i));
+        ctx.save();
+        ctx.globalAlpha = 0.25 + entered * 0.75;
+        ctx.fillStyle = 'rgba(2,6,23,.58)';
+        drawRoundRect(ctx, 40, y, W - 80, boxH, 20);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(255,255,255,.86)';
+        ctx.font = '700 27px "Noto Sans KR", sans-serif';
+        ctx.fillText(String(it.label || ''), 64, y + boxH / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = i === 0 ? '#34D399' : '#FBBF24';
+        ctx.font = '900 46px "Noto Sans KR", sans-serif';
+        ctx.fillText(String(it.value || ''), W - 64, y + boxH / 2 + 2);
+        ctx.restore();
+        y += boxH + gap;
+      });
+
+      if (cd.footnote) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,.55)';
+        ctx.font = '500 18px "Noto Sans KR", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        drawWrapText(ctx, cd.footnote, 44, y + 4, W - 88, 24, 2);
+        ctx.restore();
+      }
+
+      // 진행 바
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,.16)';
+      ctx.fillRect(40, H - 60, W - 80, 5);
+      ctx.fillStyle = '#FBBF24';
+      ctx.fillRect(40, H - 60, (W - 80) * Math.min(1, progress), 5);
+      ctx.restore();
+    }
+
+    /* 🎨 AI 그림이 없을 때 — 내장 모션 그래픽 (오프라인 폴백) */
+    function drawIdeaCanvasArt(ctx, W, H, seg, clip, zoom, panX, panY, localTime, index) {
+      const pal = seg.palette || ['#1e1b4b', '#4338ca'];
+      ctx.save();
+      ctx.translate(W / 2 + (panX || 0), H / 2 + (panY || 0));
+      ctx.scale(zoom || 1, zoom || 1);
+      const g = ctx.createLinearGradient(-W / 2, -H / 2, W / 2, H / 2);
+      g.addColorStop(0, pal[0]);
+      g.addColorStop(1, pal[1]);
+      ctx.fillStyle = g;
+      ctx.fillRect(-W / 2, -H / 2, W, H);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.arc(Math.sin(localTime * 1.4) * 45, -140, 150, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-70 + Math.cos(localTime) * 35, 170, 180, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '112px sans-serif';
+      ctx.fillText(seg.icon || '✨', 0, -50);
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.62)';
+      ctx.fillText('AI 컷 ' + (index + 1) + ' · MOTION GRAPHIC', 0, 78);
+      ctx.restore();
+    }
+
+    /* ✨ 파티클(보케·그레인·빗줄기·눈송이) */
+    function drawParticles(ctx, W, H, timeSec) {
+      const type = state.idea.particle || 'none';
+      if (type === 'none') return;
+      const ps = state.idea.particles || [];
+      ctx.save();
+      if (type === 'dust') {
+        ps.forEach((p) => {
+          const px = (p.x + Math.sin(timeSec * 0.7 + p.phase) * 28 + W) % W;
+          const py = (p.y - timeSec * p.speed + H * 10) % H;
+          const a = 0.22 + 0.34 * Math.abs(Math.sin(timeSec * 1.4 + p.phase));
+          ctx.fillStyle = 'rgba(255,245,210,' + a.toFixed(2) + ')';
+          ctx.beginPath();
+          ctx.arc(px, py, p.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      } else if (type === 'rain') {
+        ctx.strokeStyle = 'rgba(186,230,253,0.38)';
+        ctx.lineWidth = 1.5;
+        ps.forEach((p) => {
+          const px = (p.x + timeSec * 40) % W;
+          const py = (p.y + timeSec * (p.speed * 14)) % H;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px - 6, py + 22);
+          ctx.stroke();
+        });
+      } else if (type === 'snow') {
+        ps.forEach((p) => {
+          const px = (p.x + Math.sin(timeSec * 1.1 + p.phase) * 35 + W) % W;
+          const py = (p.y + timeSec * (p.speed * 2.2)) % H;
+          ctx.fillStyle = 'rgba(255,255,255,0.72)';
+          ctx.beginPath();
+          ctx.arc(px, py, p.r * 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      } else if (type === 'grain') {
+        ctx.fillStyle = 'rgba(255,255,255,0.035)';
+        for (let y = 0; y < H; y += 6) {
+          if (((y + Math.floor(timeSec * 30)) % 12) === 0) ctx.fillRect(0, y, W, 2);
+        }
+        const rg = ctx.createRadialGradient(W / 2, H / 2, W * 0.3, W / 2, H / 2, H * 0.65);
+        rg.addColorStop(0, 'rgba(0,0,0,0)');
+        rg.addColorStop(1, 'rgba(0,0,0,0.42)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(0, 0, W, H);
+      }
+      ctx.restore();
+    }
+
+    /* 🔔 강조 단어 발화 시점(초) — 자막 단어 위치 비례 */
+    function emphasisTimeInSeg(seg) {
+      const word = String(seg.emphasizeWord || '').trim();
+      if (!word) return null;
+      const words = String(seg.subtitle || '').trim().split(/\s+/).filter(Boolean);
+      const norm = (t) => String(t || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
+      const idx = words.findIndex((w) => norm(w) === norm(word));
+      if (idx < 0) return null;
+      const ratio = (idx + 0.5) / words.length;
+      return (Number(seg.durationSec) || 2) * ratio * 0.94;
+    }
+
+    /* 무음 트림 — 성우 앞뒤 공백 컷 */
+    function trimSilenceAudioBuffer(buffer, threshold = 0.015) {
+      const ctx = getAudioContext();
+      const ch0 = buffer.getChannelData(0);
+      let start = 0;
+      let end = ch0.length - 1;
+      while (start < end && Math.abs(ch0[start]) < threshold) start++;
+      while (end > start && Math.abs(ch0[end]) < threshold) end--;
+      const pad = Math.floor(buffer.sampleRate * 0.04);
+      start = Math.max(0, start - pad);
+      end = Math.min(ch0.length - 1, end + pad);
+      const newLen = Math.max(1, end - start + 1);
+      const out = ctx.createBuffer(buffer.numberOfChannels, newLen, buffer.sampleRate);
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        out.copyToChannel(buffer.getChannelData(c).subarray(start, end + 1), c);
+      }
+      return out;
+    }
+
+    /* 🔔 Pop/Ding — 강조 단어 효과음 */
+    function playEmphasisSfx(kind, destNode) {
+      const ctx = getAudioContext();
+      const now = ctx.currentTime;
+      if (kind === 'ding') {
+        [880, 1318.5].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          g.gain.setValueAtTime(0.0001, now + i * 0.06);
+          g.gain.exponentialRampToValueAtTime(0.16, now + i * 0.06 + 0.015);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.06 + 0.34);
+          osc.connect(g);
+          g.connect(ctx.destination);
+          if (destNode) g.connect(destNode);
+          osc.start(now + i * 0.06);
+          osc.stop(now + i * 0.06 + 0.36);
+        });
+      } else {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(620, now);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.14);
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.2, now + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        if (destNode) g.connect(destNode);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      }
+    }
+
+    function syncMaskUI() {
+      const g = state.globalMask || { mode: 'none', yPct: 76, hPct: 18, zoom: 1.22, shiftPct: 10 };
+      const labels = { none: '꺼짐', blur: '블러 가림막', band: '다크 밴드', zoom_shift: '확대 밀기' };
+      const st = document.getElementById('maskModeStatus');
+      if (st) st.textContent = labels[g.mode] || '꺼짐';
+      document.querySelectorAll('[data-mask-btn]').forEach((btn) => {
+        const active = btn.getAttribute('data-mask-btn') === g.mode;
+        btn.className = active
+          ? 'py-1.5 rounded-lg text-[11px] font-semibold bg-blue-600 text-white border border-blue-500 transition'
+          : 'py-1.5 rounded-lg text-[11px] font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition';
+      });
+      const box = document.getElementById('maskBoxControls');
+      const zc = document.getElementById('maskZoomControls');
+      if (box) box.classList.toggle('hidden', !(g.mode === 'blur' || g.mode === 'band'));
+      if (zc) zc.classList.toggle('hidden', g.mode !== 'zoom_shift');
+      const y = document.getElementById('maskYSlider');
+      if (y) y.value = String(g.yPct);
+      const yv = document.getElementById('maskYVal');
+      if (yv) yv.textContent = g.yPct + '%';
+      const h = document.getElementById('maskHSlider');
+      if (h) h.value = String(g.hPct);
+      const hv = document.getElementById('maskHVal');
+      if (hv) hv.textContent = g.hPct + '%';
+      const z = document.getElementById('maskZoomSlider');
+      if (z) z.value = String(Math.round((Number(g.zoom) || 1.22) * 100));
+      const zv = document.getElementById('maskZoomVal');
+      if (zv) zv.textContent = (Number(g.zoom) || 1.22).toFixed(2) + 'x';
+      const s = document.getElementById('maskShiftSlider');
+      if (s) s.value = String(g.shiftPct);
+      const sv = document.getElementById('maskShiftVal');
+      if (sv) sv.textContent = (g.shiftPct > 0 ? '+' : '') + g.shiftPct + '%';
     }
 
     // =========================================================================
@@ -3964,6 +5917,31 @@ ${clipMetaLines.join('\n')}
       });
       syncCaptionYValue();
 
+      // 🩹 원본 자막 가리기 (전체 적용) — 미리보기에 즉시 반영
+      document.querySelectorAll('[data-mask-btn]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.globalMask.mode = btn.getAttribute('data-mask-btn');
+          syncMaskUI();
+          renderPreviewFrame(state.currentTime);
+          saveProjectAutosave();
+        });
+      });
+      const maskBind = (id, key) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', () => {
+          state.globalMask[key] = key === 'zoom' ? Number(el.value) / 100 : Number(el.value);
+          syncMaskUI();
+          renderPreviewFrame(state.currentTime);
+        });
+        el.addEventListener('change', () => saveProjectAutosave());
+      };
+      maskBind('maskYSlider', 'yPct');
+      maskBind('maskHSlider', 'hPct');
+      maskBind('maskZoomSlider', 'zoom');
+      maskBind('maskShiftSlider', 'shiftPct');
+      syncMaskUI();
+
       document.getElementById('btnAddSegment').addEventListener('click', () => {
         if (!state.clips.length) {
           showToast('먼저 클립을 올리거나 데모 체험을 불러와 주세요.', 'warn');
@@ -4029,10 +6007,110 @@ ${clipMetaLines.join('\n')}
         }
       });
 
+      // --- 💡 상단 2탭 · 아이디어로 제작 ---
+      document.getElementById('modeTabEdit').addEventListener('click', () => switchMode('edit'));
+      document.getElementById('modeTabIdea').addEventListener('click', () => switchMode('idea'));
+
+      const realUiBtn = document.getElementById('btnToggleRealUi');
+      if (realUiBtn) {
+        realUiBtn.addEventListener('click', () => {
+          state.showRealUi = !state.showRealUi;
+          const ov = document.getElementById('realUiOverlay');
+          if (ov) ov.classList.toggle('show', state.showRealUi);
+          realUiBtn.style.borderColor = state.showRealUi ? 'rgba(251,191,36,.85)' : '';
+          realUiBtn.style.color = state.showRealUi ? '#fcd34d' : '';
+          if (state.showRealUi) showToast('실제 UI 겹침은 미리보기 전용입니다(녹화 파일에는 들어가지 않습니다).', 'info');
+        });
+      }
+
+      const ideaOn = (id, ev, fn) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener(ev, fn);
+      };
+      ideaOn('ideaTopicBtn', 'click', ideaSuggestTopics);
+      ideaOn('ideaSourceBtn', 'click', ideaExtractSource);
+      ideaOn('ideaSourceClear', 'click', () => {
+        document.getElementById('ideaSourceInput').value = '';
+        state.idea.sourceText = '';
+        state.idea.sourceTitle = '';
+        document.getElementById('ideaSourceNote').textContent = '유튜브는 자막, 블로그는 본문을 읽어 아이디어에 참고 자료로 넣습니다.';
+      });
+      ideaOn('ideaGenBtn', 'click', ideaGenerateStory);
+      ideaOn('ideaVisualBtn', 'click', ideaGenerateAllVisuals);
+      ideaOn('ideaTtsBtn', 'click', ideaGenerateAllTts);
+      ideaOn('ideaSeamBtn', 'click', ideaPreviewSeam);
+      ideaOn('ideaSendBtn', 'click', ideaSendToEditor);
+      ideaOn('ideaSeedBtn', 'click', () => {
+        state.idea.seed = 1000 + Math.floor(Math.random() * 8999);
+        document.getElementById('ideaSeedLabel').textContent = String(state.idea.seed);
+        showToast('시드 #' + state.idea.seed + ' 으로 바꿨습니다. 다시 그리면 톤이 조금 달라집니다.', 'info');
+      });
+      ideaOn('ideaAddCutBtn', 'click', () => {
+        const seg = makeIdeaSegment({
+          narration: '새 컷의 대사를 적어 주세요.',
+          subtitle: '새 컷',
+          speaker: 'A',
+          cameraMotion: 'zoom_in',
+          cardType: 'image',
+          visualPrompt: '',
+          icon: '✨',
+        }, state.segments.length);
+        state.segments.push(seg);
+        state.selectedSegmentId = seg.id;
+        renderIdeaAll();
+        renderSegments();
+        renderPreviewFrame(0);
+        saveProjectAutosave();
+      });
+      ideaOn('ideaTitleInput', 'input', (e) => {
+        state.ytMeta.title = e.target.value;
+        const yt = document.getElementById('ytTitleInput');
+        if (yt) yt.value = e.target.value;
+        renderIdeaMeta();
+        renderPreviewFrame(state.currentTime);
+      });
+      ideaOn('ideaTitleInput', 'change', () => saveProjectAutosave());
+      ideaOn('ideaHashtagInput', 'input', (e) => {
+        state.ytMeta.description = e.target.value;
+        const yd = document.getElementById('ytDescInput');
+        if (yd) yd.value = e.target.value;
+      });
+      ideaOn('ideaHashtagInput', 'change', () => saveProjectAutosave());
+
+      ['ideaCaptionStyle', 'ideaBgmSelect', 'ideaEngineSelect', 'ideaParticleSelect'].forEach((id) => {
+        ideaOn(id, 'change', () => {
+          pushIdeaToShared();
+          renderPreviewFrame(state.currentTime);
+          saveProjectAutosave();
+        });
+      });
+      const ideaCapY = document.getElementById('ideaCaptionY');
+      if (ideaCapY) {
+        ideaCapY.addEventListener('input', () => {
+          const out = document.getElementById('ideaCaptionYVal');
+          if (out) out.textContent = ideaCapY.value + '%';
+          pushIdeaToShared();
+          renderPreviewFrame(state.currentTime);
+        });
+        ideaCapY.addEventListener('change', () => saveProjectAutosave());
+      }
+      ['ideaAutoTrim', 'ideaKeywordSfx', 'ideaLoopPlay'].forEach((id) => {
+        ideaOn(id, 'change', () => { pushIdeaToShared(); saveProjectAutosave(); });
+      });
+
+      ideaOn('ideaSeriesSave', 'click', ideaSaveSeries);
+      ideaOn('ideaSeriesApply', 'click', ideaApplySeries);
+      ideaOn('ideaSeriesDel', 'click', ideaDeleteSeries);
+      ideaOn('ideaProjectSave', 'click', ideaSaveProject);
+      ideaOn('ideaProjectLoad', 'click', ideaLoadProject);
+      ideaOn('ideaProjectDel', 'click', ideaDeleteProject);
+
       // 서버 키 상태를 먼저 확인한다(키 입력 없이 바로 쓸 수 있는지 화면에 정직하게 표시).
       pingServerAI();
 
       loadDemoProject();
+      pullSharedToIdea();
+      renderIdeaStores();
       if (restoreAutosaveIfAvailable()) {
         renderStoryArc();
         renderYtMeta();
@@ -4045,6 +6123,8 @@ ${clipMetaLines.join('\n')}
         renderVisualTracks();
         renderPreviewFrame(0);
       }
+      renderIdeaAll();
+      switchMode(state.mode || 'edit');
       updateHistoryButtons();
       lucide.createIcons();
     }
