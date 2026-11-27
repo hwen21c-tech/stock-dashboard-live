@@ -6327,11 +6327,14 @@ module.exports = async function handler(req, res) {
         const code = codes[0];
         const b = await hamburger.getBase(code, { noCache: true });
         const m = await kisLib.fetchMinuteBarsForDate(code, String(q.date), { hour: String(q.hour || '090300') });
+        /* ?prev=1 — 주말·휴장일·장초반 대체값(직전 거래일 09:00~09:02) 검증 */
+        const prev = q.prev === '1' ? await hamburger.prevSessionOpen(code, String(q.date)) : null;
         return sendJson(res, 200, Object.assign(head, {
           ok: true,
           base: b,
           minute: { ok: m.ok, count: m.count, date: m.date, bars: m.bars.slice(0, 8) },
           open3m: m.ok ? hamburger.threeMinute(m.bars, '0900', '0902') : null,
+          prevSession: prev,
         }), 'no-store');
       }
       const inspected = {};
