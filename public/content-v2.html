@@ -25500,21 +25500,27 @@ var CSVoice = (function () {
   if (!modal || !openBtn) return;
   function all(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
   function setTab(name){
+    var keep = null;
     all('.gd-tab').forEach(function(t){
       var on = t.getAttribute('data-gdtab') === name;
       t.classList.toggle('on', on);
       t.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on) keep = t;
     });
     all('.gd-sec').forEach(function(p){
       p.classList.toggle('on', p.getAttribute('data-gdpane') === name);
     });
+    /* 고른 탭이 가로 스크롤 밖에 있으면 보이는 자리로 당긴다(11/27 — 8번째 탭부터는 밖에 있었다) */
+    try { if (keep && keep.scrollIntoView) keep.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) {}
     var body = modal.querySelector('.gd-body');
     if (body) body.scrollTop = 0;
   }
   function openHow(tab){
-    if (tab) setTab(tab);
+    /* 먼저 열어야 탭 줄 scrollIntoView 가 먹는다(숨은 요소는 스크롤되지 않음) */
     modal.hidden = false;
     openBtn.setAttribute('aria-expanded', 'true');
+    if (tab) setTab(tab);
+    else setTab('fox');
   }
   function closeHow(){
     modal.hidden = true;
