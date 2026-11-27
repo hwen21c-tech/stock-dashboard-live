@@ -5987,39 +5987,39 @@ async function handleIdeaStory(res, body, keyConfigured) {
   const deadline = Date.now() + DEADLINE_MS;
   let lastOut = null;
   let lastRaw = '';
-  const promptOf = (attempt) => ({
+  const tries = [];
+  const promptOf = (variant) => ({
     system:
       '당신은 100만 조회수 유튜브 쇼츠 전문 작가·PD입니다. 주어진 아이디어와 참고 자료만 근거로 ' +
-      '짧고 리듬감 있는 스토리보드를 씁니다. 보이지 않는 사실은 만들지 않습니다.',
-    user: attempt === 0 ? base : base + compactExtra,
+      '짧고 리듬감 있는 스토리보드를 씁니다. 보이지 않는 사실은 만들지 않고, 같은 문장을 반복하지 않습니다.',
+    user: variant === 0 ? base : base + compactExtra,
     schema: SCHEMA_IDEA_STORY,
-    temperature: attempt === 0 ? 0.82 : 0.55,
-    maxTokens: attempt === 0 ? 6000 : 4000,
+    temperature: variant === 0 ? 0.65 : 0.4,
+    maxTokens: variant === 0 ? 6000 : 3400,
+    fastFirst: true,
   });
-  for (let attempt = 0; attempt < 2; attempt++) {
+
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       let out = null;
-      if (attempt === 0) {
-        out = await generate(promptOf(0), deadline);
+      if (attempt < 2) {
+        out = await generate(promptOf(attempt), deadline);
       } else {
-        // 2번째는 다른 모델(3 Flash)로 직접 — Lite 가 반복 문자로 깨지는 경우가 있다
-        try {
-          out = await callModel('gemini-3-flash-preview', promptOf(1),
-            Date.now() + Math.min(32000, Math.max(14000, deadline - Date.now())), true);
-        } catch (_e2) {
-          out = await generate(promptOf(1), deadline);
-        }
+        // 마지막 시도는 다른 모델(3 Flash)로 직접 — Lite 가 반복 문자로 깨질 때 우회
+        out = await callModel('gemini-3-flash-preview', promptOf(1),
+          Date.now() + Math.min(30000, Math.max(12000, deadline - Date.now())), true);
       }
       lastOut = out;
       lastRaw = String(out.text || '');
-      if (ideaTextBroken(lastRaw)) continue;
-      if (out.finish === 'MAX_TOKENS') continue;
+      if (out.finish === 'MAX_TOKENS') { tries.push({ attempt: attempt + 1, model: out.model, reason: 'max_tokens' }); continue; }
+      if (ideaTextBroken(lastRaw)) { tries.push({ attempt: attempt + 1, model: out.model, reason: 'broken_text' }); continue; }
       let parsed = null;
       try { parsed = JSON.parse(lastRaw); } catch (_) { parsed = null; }
-      if (!parsed || typeof parsed !== 'object') continue;
+      if (!parsed || typeof parsed !== 'object') { tries.push({ attempt: attempt + 1, model: out.model, reason: 'parse' }); continue; }
       const story = normIdeaStory(parsed, idea || source.slice(0, 120));
-      if (story.scenes.length < 3) continue;
-      // 2단계: 그림 프롬프트 (실패해도 대사로 대신 그린다)
+      if (story.scenes.length < 3) { tries.push({ attempt: attempt + 1, model: out.model, reason: 'few_scenes' }); continue; }
+
+      // 2단계: 영어 그림 프롬프트 (실패해도 대사로 대신 그린다)
       const needPrompts = story.scenes.some((sc2) => !sc2.visualPrompt || sc2.visualPrompt.length < 10);
       if (needPrompts) {
         const prompts = await ideaBuildVisualPrompts(story.scenes, artStyle, character, deadline - 6000);
@@ -6045,18 +6045,20 @@ async function handleIdeaStory(res, body, keyConfigured) {
         return send(res, 429, {
           ok: false, action: 'idea_story', reason: 'quota_exceeded',
           message: 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 눌러 주세요.',
-          tries: (err && err.tries) || [],
+          tries: (err && err.tries) || tries,
         });
       }
+      tries.push({ attempt: attempt + 1, reason: code, message: String((err && err.message) || '').slice(0, 120) });
       lastRaw = String((err && err.message) || '').slice(0, 300);
     }
   }
   return send(res, 200, {
     ok: false, action: 'idea_story', reason: 'parse_failed',
-    message: 'Gemini 응답을 JSON으로 읽지 못했습니다(두 번 시도). 한 번 더 눌러 주세요.',
+    message: 'Gemini 응답을 읽지 못했습니다(세 번 시도). 잠시 뒤 한 번 더 눌러 주세요.',
     model: lastOut && lastOut.model,
     chars: lastRaw.length,
-    __raw: lastRaw.slice(0, 1600),
+    tries,
+    __raw: lastRaw.slice(0, 1200),
   });
 }
 
