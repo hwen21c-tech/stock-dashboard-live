@@ -6336,7 +6336,11 @@ module.exports = async function handler(req, res) {
           ok: true,
           base: b,
           minute: { ok: m.ok, count: m.count, date: m.date, bars: m.bars.slice(0, 8) },
-          open3m: m.ok ? hamburger.threeMinute(m.bars, '0900', '0902') : null,
+          open3m: m.ok
+            ? hamburger.threeMinute(m.bars,
+              String(q.mk || 'J').toUpperCase() === 'NX' ? '0800' : '0900',
+              String(q.mk || 'J').toUpperCase() === 'NX' ? '0802' : '0902')
+            : null,
           prevSession: prev,
         }), 'no-store');
       }
