@@ -1801,6 +1801,7 @@
         syncMaskUI();
         if (parsed.mode === 'idea' || allIdea) {
           state.mode = 'idea';
+          if (allIdea) state.clips = state.clips.filter((c) => !c.isDemo);
           switchMode('idea');
           rebuildIdeaClipsFromSegments().then(() => {
             renderClips();
@@ -1952,8 +1953,9 @@
       }
 
       if (state.clips.some((c) => c.isDemo)) {
-        state.clips = [];
-        state.segments = [];
+        // 데모 클립을 내 파일로 교체할 때도, 아이디어 컷과 내 클립은 지우지 않는다
+        state.clips = state.clips.filter((c) => !c.isDemo);
+        state.segments = state.segments.filter((s) => !String(s.clipId || '').startsWith('demo_'));
       }
 
       // 업로드 5개 한도는 내 사진·영상만 센다(AI 컷은 따로)
