@@ -7267,6 +7267,7 @@ var CSVoice = (function () {
 
   function fillBlogOutput(topic, f, text, badge){
     text = affilAuto(text);
+    text = monEnsureSlots(text);
     outText.textContent = text;
     outEdit.value = text;
     setEditMode(false);
@@ -18314,6 +18315,19 @@ var CSVoice = (function () {
       if (host) host.innerHTML = aiErrBox(err, { hint: '사진은 그대로 있습니다. 잠시 뒤 다시 눌러 주세요.' });
       toast('사진 분석에 실패했습니다 — 꾸며내지 않고 그대로 알립니다.');
     }
+  }
+
+  /* ---------- ✍️ 사람 슬롯 보정 ---------- */
+  function monEnsureSlots(text){
+    var t = String(text || '');
+    var n = (t.match(/✍️ 내 경험 한 줄/g) || []).length;
+    if (!n || n >= 2) return t;
+    var lines = t.split('\n');
+    var heads = [];
+    lines.forEach(function(l, i){ if (/^##\s+/.test(l.trim())) heads.push(i); });
+    var at = heads.length ? Math.max(1, heads[Math.floor(heads.length / 2)]) : Math.ceil(lines.length / 2);
+    lines.splice(at, 0, '> ✍️ 내 경험 한 줄: (여기에 직접 겪은 장면·수치를 한 줄로 넣으세요)', '');
+    return lines.join('\n');
   }
 
   /* ---------- 🖨 모바일 줄바꿈 ---------- */

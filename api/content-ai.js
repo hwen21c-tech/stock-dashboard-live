@@ -2585,12 +2585,22 @@ function blogPhotos(b) {
 /* 🧬 AI 티 빼기 — 말투 DNA · 감각 치환 · 사람 슬롯 · 제휴 정직성 (2026-11-27) */
 const HUMAN_SLOT_LINE = '> ✍️ 내 경험 한 줄: (여기에 직접 겪은 장면·수치를 한 줄로 넣으세요)';
 
+const RHYTHM_HINTS = [
+  ['친근한 구어체', '문장 끝을 "~거든요 / ~죠 / ~더라고요 / ~네요"로 섞는다. "~합니다"체는 쓰지 않는다.'],
+  ['담백한 경험담', '"~더라고요 / ~네요" 위주. 감탄·과장 없이 담백하게 끊는다.'],
+  ['설명체', '"~입니다 / ~합니다"로 단정하게. 구어체·감탄·말줄임 금지.'],
+  ['전문가 톤', '"~로 봅니다 / ~입니다"로 근거·수치를 앞세운다. 감정 표현 금지.'],
+];
+
 function dnaBlock(b) {
   const d = (b && b.dna) || {};
   const lines = [];
   const rhythm = s(d.rhythm, 90);
   const emoji = s(d.emoji, 40);
   if (rhythm) lines.push('- 어미·호흡: ' + rhythm);
+  RHYTHM_HINTS.forEach(function (h) {
+    if (rhythm.indexOf(h[0]) > -1) lines.push('- 실제 문장에 적용: ' + h[1]);
+  });
   if (emoji) lines.push('- 이모지: ' + emoji);
   const sample = s(d.sample, 1500);
   if (sample) lines.push('- 내 말투 샘플(문장 길이·말버릇 참고):\n"""' + sample + '"""');
@@ -2610,7 +2620,7 @@ function blogExtraBlocks(b) {
   if (b && b.slots) {
     out.push(
       '\n[사람 슬롯 — 정확히 2곳]\n' +
-        '- 본문 중간 두 곳에 아래 문구를 "단독 줄"로 정확히 2번 넣는다. 다른 말을 덧붙이지 않는다.\n' +
+        '- 본문 중간 두 곳에 아래 문구를 "단독 줄"로 정확히 2번 넣는다. 1번만 넣거나 3번 넣으면 실패다. 다른 말을 덧붙이지 않는다.\n' +
         HUMAN_SLOT_LINE + '\n' +
         '- 이 줄은 사용자가 자기 경험 한 줄로 직접 바꿔 넣는 자리다. 바로 앞 문단에서 그 자리에 경험이 들어갈 상황·조건을 말해 둔다.'
     );
