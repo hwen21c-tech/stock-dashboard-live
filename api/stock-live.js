@@ -7,7 +7,8 @@
  *      · 값과 함께 '지금이 정규장 중인지(실시간) / 직전 마감 확정값인지'를 basis·basisLabel·updateCycle 로 명시한다.
  *  - 소스: 네이버 금융 polling API (지수·국내종목), 네이버 증권 marketIndex (환율), Yahoo Finance (해외선물·유가·SOX)
  *  - 쿼리: ?codes=005930,000660 (선택) / ?fresh=1 (서버 메모리 캐시 무시)
- *  - 캐시: s-maxage=10, stale-while-revalidate=20
+ *  - 캐시: s-maxage=15, stale-while-revalidate=45 (?fresh=1 → 인메모리·CDN 무시)
+ *  - ?light=1 → 체커용 경량 응답: '시간별 지수 흐름'(buildIndexFlowBundle, 최대 2.4초 대기)을 붙이지 않는다.
  */
 
 const {
@@ -29,7 +30,10 @@ const kis = require('../lib/kis');
 // 📐 1분봉 + F존·K존 계산 (2026-11-26) — 새 함수 파일을 만들지 않고 이 파일 안에서 내부 라우트로 처리한다.
 const fkzone = require('../lib/fkzone');
 
-const CACHE_CONTROL = 'public, s-maxage=10, stale-while-revalidate=20';
+/* ⚡ 반응속도(2026-11-27): 10초는 체커에서 검색 후 다시 누를 때마다 서버까지 내려갔다.
+ *   장중 시세는 15초 안에서 충분히 '지금 값'이고, 그 15초 동안은 Vercel CDN 이 즉시(0.05초) 답한다.
+ *   stale-while-revalidate=45 → 만료 직후에도 옛 값을 먼저 주고 뒤에서 갱신한다(체감 대기 없음). */
+const CACHE_CONTROL = 'public, s-maxage=15, stale-while-revalidate=45';
 
 // 기본 관제탑 종목 (사용자가 자주 보는 축)
 const DEFAULT_STOCKS = [
@@ -1575,8 +1579,8 @@ async function handleStockTheme(res, q, fresh) {
  *  · 값을 만들지 않는다 — 실패한 테마는 목록에서 빼고 errors 에 남긴다.
  *  · Vercel Hobby 함수 12개 한도 때문에 새 api/*.js 를 만들지 않고 이 파일의 mode 로 붙인다.
  * ========================================================================== */
-const THEME_MAP_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=180';
-const THEME_MAP_TTL_MS = 60000;
+const THEME_MAP_CACHE_CONTROL = 'public, s-maxage=120, stale-while-revalidate=300';
+const THEME_MAP_TTL_MS = 120000;
 const themeMapCache = new Map();
 
 /* 오늘의 테마맵에 세울 대표 테마 — 네이버 테마 번호는 scripts/build_theme_membership.py 산출물 기준.
@@ -2923,6 +2927,9 @@ module.exports = async function handler(req, res) {
 
   const q = getQuery(req);
   const fresh = q.fresh === '1' || q.fresh === 'true';
+  /* ?light=1 — 체커의 종목 검색은 지수 흐름을 쓰지 않는다. 그 계산(최대 2.4초 대기)을 건너뛰어
+     시세 응답을 빠르게 한다. 관제탑(기본 14종목 폴링)은 light 를 보내지 않으므로 그대로 흐름을 받는다. */
+  const light = q.light === '1' || q.light === 'true';
 
   // ?mode=alerts — 공식 시장경보 목록 (서버리스 함수 수를 늘리지 않기 위한 내부 라우트)
   if (q.mode === 'alerts') return handleAlerts(res, fresh, q);
@@ -2968,7 +2975,9 @@ module.exports = async function handler(req, res) {
     if (c && !codeList.includes(c)) codeList.push(c);
   }
   const codes = codeList.length ? codeList : DEFAULT_STOCKS.map((s) => s.code);
-  const cacheKey = `live:${codes.join(',')}`;
+  /* ⚡ light 응답에는 지수 흐름이 없다 — 같은 메모리 캐시 키를 쓰면 관제탑 폴링이
+     흐름 빠진 본문을 받을 수 있어 키를 나눈다. */
+  const cacheKey = `live:${codes.join(',')}${light ? ':light' : ''}`;
 
   if (!fresh) {
     const hit = cached(cacheKey);
@@ -3061,16 +3070,18 @@ module.exports = async function handler(req, res) {
      · 계산은 1분 캐시라 매 폴링마다 네이버를 다시 부르지 않는다.
      · 응답이 늦어지지 않게 2.4초를 넘기면 이번 응답은 흐름 없이 내려간다(다음 폴링에 채워진다). */
   let indexFlowBundle = null;
-  try {
-    indexFlowBundle = await Promise.race([
-      buildIndexFlowBundle(req, indices),
-      new Promise((resolve) => setTimeout(() => resolve(null), 2400)),
-    ]);
-  } catch (e) {
-    errors.push(`index-flow: ${String((e && e.message) || e)}`);
-  }
-  if (indexFlowBundle && indexFlowBundle.errors && indexFlowBundle.errors.length) {
-    errors.push(...indexFlowBundle.errors);
+  if (!light) {
+    try {
+      indexFlowBundle = await Promise.race([
+        buildIndexFlowBundle(req, indices),
+        new Promise((resolve) => setTimeout(() => resolve(null), 2400)),
+      ]);
+    } catch (e) {
+      errors.push(`index-flow: ${String((e && e.message) || e)}`);
+    }
+    if (indexFlowBundle && indexFlowBundle.errors && indexFlowBundle.errors.length) {
+      errors.push(...indexFlowBundle.errors);
+    }
   }
 
   const body = {

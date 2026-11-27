@@ -10,8 +10,10 @@
  *  · 키가 없으면 { ok:false, reason:'DART_API_KEY_NOT_SET' } 를 그대로 돌려주고,
  *    화면은 기존 정적 스캔 결과를 그대로 유지한다(없는 값을 지어내지 않는다).
  *  · 키가 있으면 https://opendart.fss.or.kr/api/list.json 을 최근 N일 범위로 조회한다.
- *  · 캐시: 인스턴스 메모리 90초 + CDN public, s-maxage=60, stale-while-revalidate=120
+ *  · 캐시: 인스턴스 메모리 90초 + CDN public, s-maxage=120, stale-while-revalidate=300
  *    (?fresh=1 → 메모리 캐시 무시)
+ *    - 공시는 하루에 몇 건 단위라 2분 캐시로도 '지금 공시'를 놓치지 않고, 체커의 두 번째 조회부터는
+ *      DART 왕복(첫 조회 3~6초) 없이 CDN 이 즉시 답한다.
  *
  * 응답 규칙
  *   - 확인된 공시만 담는다. 접수일·공시명·종목코드는 DART 응답 그대로.
@@ -21,7 +23,7 @@
 
 const { fetchJson, fetchBuffer, sendJson, getQuery, kstLabel } = require('../lib/http');
 
-const CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=120';
+const CACHE_CONTROL = 'public, s-maxage=120, stale-while-revalidate=300';
 const NO_STORE = 'no-store';
 const MEM_TTL_MS = 90 * 1000; // 1.5분 (요구: 1~5분 캐시)
 const LOOKBACK_DAYS = 7; // 조회 범위(오늘 포함 7일)
@@ -327,15 +329,15 @@ async function resolveCorpCode(apiKey, stockCode, name, fresh) {
       cands = [];
     }
     if (nm) cands.sort((a, b) => (a.name === nm ? 0 : 1) - (b.name === nm ? 0 : 1));
-    for (const c of cands.slice(0, CORP_SEARCH_MAX)) {
-      try {
-        const info = await fetchCompanyInfo(apiKey, c.corpCode);
-        if (info && info.stockCode === stockCode) {
-          hit = info;
-          break;
-        }
-      } catch (e) {
-        /* 다음 후보로 */
+    /* 후보 회사 확인은 병렬로 — 예전에는 최대 5번을 차례로 불러 첫 조회가 3~6초 걸렸다.
+       같은 결과(‘stock_code 가 요청 코드와 같은 회사’)를 먼저 얻으면 즉시 끝낸다. */
+    const checks = await Promise.allSettled(
+      cands.slice(0, CORP_SEARCH_MAX).map((c) => fetchCompanyInfo(apiKey, c.corpCode)),
+    );
+    for (const r of checks) {
+      if (r.status === 'fulfilled' && r.value && r.value.stockCode === stockCode) {
+        hit = r.value;
+        break;
       }
     }
     if (hit) break;
