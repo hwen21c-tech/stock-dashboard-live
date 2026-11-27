@@ -492,10 +492,19 @@
               <span id="customBgmLabel" class="truncate max-w-[140px]">내 BGM MP3 올리기</span>
               <input id="bgmFileInput" type="file" accept="audio/*" class="hidden" />
             </label>
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-[10px] text-slate-400">자막 위치</span>
-              <input id="captionYSlider" type="range" min="55" max="85" value="75" class="w-16 accent-blue-500 h-1 bg-slate-800 rounded" />
+              <input id="captionYSlider" type="range" min="15" max="92" value="75" class="w-20 accent-blue-500 h-1 bg-slate-800 rounded" />
+              <span id="captionYVal" class="text-[10px] font-mono text-blue-300 tabular-nums w-7 text-right">75%</span>
             </div>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] text-slate-400">자막 배경 가림막 <span class="text-[9px] text-slate-500">원본 자막 덮기</span></span>
+            <select id="captionBgSelect" class="w-[104px] shrink-0 rounded-lg bg-slate-900 border border-slate-700 px-1.5 py-1 text-[11px] text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="none">없음</option>
+              <option value="soft">반투명 검정</option>
+              <option value="solid">진한 검정 85%</option>
+            </select>
           </div>
           <div class="flex items-center justify-between">
             <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
@@ -1282,6 +1291,7 @@
             bgmMood: document.getElementById('bgmMoodSelect').value,
             sfx: document.getElementById('sfxSelect').value,
             captionY: document.getElementById('captionYSlider').value,
+            captionBg: document.getElementById('captionBgSelect').value,
             ttsProvider: state.settings.ttsProvider || 'server',
             serverVoice: state.settings.serverVoice || 'ko-KR-SunHiNeural',
             voiceRate: Number(state.settings.voiceRate) || 1,
@@ -1328,6 +1338,7 @@
           if (parsed.styles.bgmMood && parsed.styles.bgmMood !== 'custom') document.getElementById('bgmMoodSelect').value = parsed.styles.bgmMood;
           if (parsed.styles.sfx) document.getElementById('sfxSelect').value = parsed.styles.sfx;
           if (parsed.styles.captionY) document.getElementById('captionYSlider').value = parsed.styles.captionY;
+          if (parsed.styles.captionBg) document.getElementById('captionBgSelect').value = parsed.styles.captionBg;
           if (parsed.styles.ttsProvider) state.settings.ttsProvider = parsed.styles.ttsProvider;
           if (parsed.styles.serverVoice) state.settings.serverVoice = parsed.styles.serverVoice;
           if (parsed.styles.voiceRate) state.settings.voiceRate = Math.max(1, Math.min(1.3, Number(parsed.styles.voiceRate)));
@@ -2426,11 +2437,18 @@ ${clipMetaLines.join('\n')}
       ctx.restore();
     }
 
+    function syncCaptionYValue() {
+      const slider = document.getElementById('captionYSlider');
+      const out = document.getElementById('captionYVal');
+      if (slider && out) out.textContent = `${Number(slider.value) || 75}%`;
+    }
+
     function drawWordHighlightCaption(ctx, W, H, seg, localTime, progress) {
       const text = seg.subtitle;
       if (!text || !text.trim()) return;
       const style = document.getElementById('captionStyleSelect').value;
       const yPercent = (Number(document.getElementById('captionYSlider').value) || 75) / 100;
+      const bgMode = (document.getElementById('captionBgSelect') || {}).value || 'none';
       const words = text.trim().split(/\s+/);
 
       // Use exact ElevenLabs word timings if available, else proportional progress
@@ -2443,35 +2461,52 @@ ${clipMetaLines.join('\n')}
       }
 
       ctx.save();
+      const fontPx = style === 'minimal' ? 32 : 38;
       ctx.font = style === 'minimal'
-        ? '700 32px "Noto Sans KR", sans-serif'
-        : '900 38px "Noto Sans KR", sans-serif';
+        ? `700 ${fontPx}px "Noto Sans KR", sans-serif`
+        : `900 ${fontPx}px "Noto Sans KR", sans-serif`;
       ctx.textBaseline = 'middle';
 
       const maxWidth = W - 72;
+      // 단어 간격 — 기본 공백 폭(38px 한글 ≈ 9~10px)만 쓰면 굵은 스트로크와
+      // 활성 단어 배경 박스가 옆 단어를 침범한다. 최소 fontPx*0.28 이상 확보하고
+      // 스타일별 번짐(스트로크/박스 패딩)만큼 더 벌린다.
+      const gapExtra = style === 'capcut' ? 8 : style === 'pop' ? 12 : 3;
+      const wordGap = Math.max(ctx.measureText(' ').width, fontPx * 0.28) + gapExtra;
       const lines = [];
       let currentLine = [];
       let currentW = 0;
-      const spaceW = ctx.measureText(' ').width;
 
       words.forEach((w, idx) => {
         const ww = ctx.measureText(w).width;
-        if (currentLine.length > 0 && currentW + spaceW + ww > maxWidth) {
+        if (currentLine.length > 0 && currentW + wordGap + ww > maxWidth) {
           lines.push(currentLine);
           currentLine = [{ word: w, idx, width: ww }];
           currentW = ww;
         } else {
           currentLine.push({ word: w, idx, width: ww });
-          currentW += (currentLine.length > 1 ? spaceW : 0) + ww;
+          currentW += (currentLine.length > 1 ? wordGap : 0) + ww;
         }
       });
       if (currentLine.length) lines.push(currentLine);
 
       const lineH = 52;
-      const baseY = H * yPercent - ((lines.length - 1) * lineH) / 2;
+      const blockH = lines.length * lineH;
+      const padY = 15;
+      // 여러 줄일 때 블록이 화면 밖으로 잘리지 않도록 중심을 안쪽으로 당긴다
+      const centerY = Math.max(blockH / 2 + padY, Math.min(H - blockH / 2 - padY, H * yPercent));
+      const baseY = centerY - ((lines.length - 1) * lineH) / 2;
+
+      // 자막 배경 가림막 — 원본 영상에 이미 박힌 자막을 전체 폭 반투명/진한 검정 밴드로 덮는다
+      if (bgMode !== 'none') {
+        const bandTop = Math.max(0, centerY - blockH / 2 - padY);
+        const bandH = Math.min(H - bandTop, blockH + padY * 2);
+        ctx.fillStyle = bgMode === 'solid' ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.48)';
+        ctx.fillRect(0, bandTop, W, bandH);
+      }
 
       lines.forEach((line, lineIdx) => {
-        const totalLineW = line.reduce((s, item) => s + item.width, 0) + spaceW * Math.max(0, line.length - 1);
+        const totalLineW = line.reduce((s, item) => s + item.width, 0) + wordGap * Math.max(0, line.length - 1);
         let curX = (W - totalLineW) / 2;
         const y = baseY + lineIdx * lineH;
 
@@ -2514,7 +2549,7 @@ ${clipMetaLines.join('\n')}
             ctx.fillStyle = isActive ? '#FFFFFF' : 'rgba(255,255,255,0.75)';
             ctx.fillText(item.word, curX, y);
           }
-          curX += item.width + spaceW;
+          curX += item.width + wordGap;
         });
       });
 
@@ -2949,6 +2984,8 @@ ${clipMetaLines.join('\n')}
       const useZoom = document.getElementById('toggleKenBurns').checked;
       const ducking = document.getElementById('toggleAudioDucking').checked;
       const yRatio = ((Number(document.getElementById('captionYSlider').value) || 75) / 100).toFixed(2);
+      const veil = document.getElementById('captionBgSelect').value;
+      const boxExpr = veil === 'none' ? '' : (veil === 'solid' ? ':box=1:boxcolor=black@0.85:boxborderw=18' : ':box=1:boxcolor=black@0.48:boxborderw=18');
       const lines = ['# ShortsAI Studio Pro 자동 생성 FFmpeg 1080x1920 스크립트'];
 
       state.segments.forEach((seg, i) => {
@@ -2967,7 +3004,7 @@ ${clipMetaLines.join('\n')}
 
         lines.push(
           `ffmpeg -y ${inputArgs} -i "tts_${i}.mp3" \\`,
-          `  -vf "${ptsExpr}${cropExpr}${zoomFilter},drawtext=fontfile=NotoSansKR-Bold.ttf:text='${safeSub}':fontcolor=yellow:fontsize=58:borderw=5:bordercolor=black:x=(w-text_w)/2:y=h*${yRatio}" \\`,
+          `  -vf "${ptsExpr}${cropExpr}${zoomFilter},drawtext=fontfile=NotoSansKR-Bold.ttf:text='${safeSub}':fontcolor=yellow:fontsize=58:borderw=5:bordercolor=black:x=(w-text_w)/2:y=h*${yRatio}${boxExpr}" \\`,
           `  -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 20 -c:a aac -shortest "seg_${i}.mp4"`
         );
       });
@@ -3520,6 +3557,7 @@ ${clipMetaLines.join('\n')}
         bgmMood: valOf('bgmMoodSelect'),
         sfx: valOf('sfxSelect'),
         captionY: Number(valOf('captionYSlider')) || 75,
+        captionBg: valOf('captionBgSelect') || 'none',
         ttsProvider: state.settings.ttsProvider || 'server',
         serverVoice: state.settings.serverVoice || 'ko-KR-SunHiNeural',
         voiceRate: Number(state.settings.voiceRate) || 1,
@@ -3542,6 +3580,7 @@ ${clipMetaLines.join('\n')}
       if (p.bgmMood && p.bgmMood !== 'custom') setIf('bgmMoodSelect', p.bgmMood);
       if (p.sfx) setIf('sfxSelect', p.sfx);
       if (p.captionY) setIf('captionYSlider', p.captionY);
+      if (p.captionBg) setIf('captionBgSelect', p.captionBg);
       if (p.ttsProvider) state.settings.ttsProvider = p.ttsProvider;
       if (p.serverVoice) state.settings.serverVoice = p.serverVoice;
       if (p.voiceRate) state.settings.voiceRate = Math.max(1, Math.min(1.3, Number(p.voiceRate)));
@@ -3551,6 +3590,7 @@ ${clipMetaLines.join('\n')}
       state.settings.watermarkPos = p.watermarkPos || (p.watermark ? 'br' : 'none');
       state.settings.endFade = p.endFade !== false;
       saveSettings();
+      syncCaptionYValue();
       renderPreviewFrame(state.currentTime);
       saveProjectAutosave();
       showToast(`🏷️ '${name}' 프리셋을 불러왔습니다. (자막·색감·성우·볼륨·워터마크)`, 'success');
@@ -3912,10 +3952,17 @@ ${clipMetaLines.join('\n')}
         document.getElementById('duckingStatusText').textContent = e.target.checked ? 'BGM 더킹 활성' : 'BGM 더킹 꺼짐';
       });
 
-      ['captionStyleSelect', 'lutSelect', 'transitionSelect', 'toggleKenBurns', 'toggleTitleBanner', 'captionYSlider'].forEach((id) => {
-        document.getElementById(id).addEventListener('input', () => renderPreviewFrame(state.currentTime));
-        document.getElementById(id).addEventListener('change', () => renderPreviewFrame(state.currentTime));
+      ['captionStyleSelect', 'lutSelect', 'transitionSelect', 'toggleKenBurns', 'toggleTitleBanner', 'captionYSlider', 'captionBgSelect'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', () => {
+          if (id === 'captionYSlider') syncCaptionYValue();
+          renderPreviewFrame(state.currentTime);
+        });
+        document.getElementById(id).addEventListener('change', () => {
+          if (id === 'captionYSlider') syncCaptionYValue();
+          renderPreviewFrame(state.currentTime);
+        });
       });
+      syncCaptionYValue();
 
       document.getElementById('btnAddSegment').addEventListener('click', () => {
         if (!state.clips.length) {
