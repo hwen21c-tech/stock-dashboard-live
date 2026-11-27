@@ -6362,6 +6362,7 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
   const models = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
   const started = Date.now();
   let lastMsg = '';
+  let quotaHit = false;
 
   for (const model of models) {
     const parts = [];
@@ -6405,10 +6406,10 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
       }
       if (!r.ok) {
         if (r.status === 429) {
-          return {
-            ok: false, reason: 'gemini_image_quota',
-            message: 'Gemini 이미지 무료 한도를 다 썼습니다(429). 잠시 뒤 다시 시도해 주세요.',
-          };
+          // 모델별 한도일 수 있으니 다음 이미지 모델도 시도한다(전부 429면 quota 로 반환).
+          quotaHit = true;
+          lastMsg = 'Gemini 이미지 무료 한도(429): ' + String((j && j.error && j.error.message) || '').slice(0, 160);
+          continue;
         }
         lastMsg = String((j && j.error && j.error.message) || ('HTTP ' + r.status)).slice(0, 220);
         continue;
@@ -6435,6 +6436,12 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
     } finally {
       clearTimeout(timer);
     }
+  }
+  if (quotaHit) {
+    return {
+      ok: false, reason: 'gemini_image_quota',
+      message: 'Gemini 이미지 무료 한도를 다 썼습니다(429). 오늘은 내장 샘플로 UI를 확인하고, 한도가 풀리면 다시 시도해 주세요.',
+    };
   }
   return { ok: false, reason: 'gemini_image_failed', message: lastMsg || 'Gemini 이미지 생성에 실패했습니다.' };
 }
