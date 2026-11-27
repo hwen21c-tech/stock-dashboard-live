@@ -2646,13 +2646,80 @@ function timelineSlotSupply(tl, t, todayIso) {
         if (out[k] === null || out[k] === undefined) out[k] = numField(frow, k);
       });
       if (!at && frow.m) at = frow.m;
+      /* ⏱️ 시간별 흐름 통합 박스(2026-11-27) — 슬롯에 함께 저장된 1줄 코멘트·수급 3종 */
+      if (typeof frow.comment === 'string' && frow.comment) out.comment = frow.comment;
+      if (frow.supply && typeof frow.supply === 'object') {
+        out.supply = {
+          foreign: numField(frow.supply, 'foreign'),
+          organ: numField(frow.supply, 'organ'),
+          futures: numField(frow.supply, 'futures'),
+        };
+      }
     }
   }
   const any = SUPPLY_SLOT_KEYS.some((k) => typeof out[k] === 'number');
-  if (!any) return null;
+  if (!any && !out.comment) return null;
   out.at = at;
   return out;
 }
+
+/** 타임라인 슬롯에서 그 시각까지 완료된 마지막 슬롯의 1위 테마 → {name, chg} */
+function timelineThemeHint(tl, t) {
+  const slots = Array.isArray(tl && tl.slots) ? tl.slots : [];
+  let pick = null;
+  for (const s of slots) {
+    if (!s || s.state !== 'done' || !s.t) continue;
+    if (String(s.t) <= String(t)) pick = s;
+  }
+  if (!pick) pick = slots.filter((s) => s && s.state === 'done').pop() || null;
+  const themes = ((pick && pick.themes) || []).filter((x) => x && x.name);
+  if (!themes.length) return null;
+  const top = themes[0];
+  return { name: String(top.name), chg: typeof top.chg === 'number' ? top.chg : null };
+}
+
+/**
+ * ⏱️ 시간별 흐름 1줄 코멘트 — 실측 숫자만으로 만든다(추측 문구 없음).
+ *  python 쪽 idxflow_comment / hourly_flow_comment 와 같은 규칙·같은 문장을 쓴다.
+ */
+function hourlyComment(t, kp, qp, f, o, ff, theme) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const K = n(kp), Q = n(qp), F = n(f), O = n(o), FF = n(ff);
+  const sign = (v, d) => (v > 0 ? '+' : '') + v.toFixed(d);
+  const bits = [];
+  if (K !== null) bits.push(`코스피 ${sign(K, 2)}%`);
+  if (Q !== null) bits.push(`코스닥 ${sign(Q, 2)}%`);
+  let txt = `${String(t).slice(0, 2)}시` + (bits.length ? ` · ${bits.join(', ')}` : '');
+
+  let sup = '';
+  if (F !== null && O !== null) {
+    if (F > 0 && O > 0) sup = '외인·기관 매수';
+    else if (F < 0 && O < 0) sup = '외인·기관 매도';
+    else if (F > 0) sup = '외인 매수·기관 매도';
+    else if (O > 0) sup = '외인 매도·기관 매수';
+    else sup = '외인·기관 중립';
+  } else if (F !== null) sup = `외인 ${F > 0 ? '매수' : F < 0 ? '매도' : '중립'}`;
+  else if (O !== null) sup = `기관 ${O > 0 ? '매수' : O < 0 ? '매도' : '중립'}`;
+  if (FF !== null) sup += ` · 선물 ${FF > 0 ? '+' : ''}${Math.round(FF)}계약`;
+
+  let th = '';
+  if (theme && theme.name) {
+    th = theme.chg === null || theme.chg === undefined
+      ? theme.name
+      : `${theme.name} ${theme.chg > 0 ? '강세' : theme.chg < 0 ? '약세' : '보합'}`;
+  }
+
+  const body = [sup, th].filter(Boolean).join(' + ');
+  if (body) txt += ` · ${body}`;
+
+  if (K !== null && K >= 1.5 && F !== null && O !== null && F > 0 && O > 0) txt += ' → 상단 돌파 여부 관찰';
+  else if (K !== null && K >= 0 && F !== null && F > 0) txt += ' → 눌림 분할 대응';
+  else if (K !== null && K < 0 && ((F !== null && F < 0) || (O !== null && O < 0))) txt += ' → 지지선 이탈 주의';
+  else if (K !== null && K < 0 && F !== null && F > 0) txt += ' → 저점 매수 유입 확인';
+  else if (K !== null) txt += ' → 방향 확인 후 대응';
+  return txt.trim();
+}
+
 
 function mdLabel(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
@@ -2767,11 +2834,15 @@ async function buildIndexFlowBundle(req, indices) {
     const row = {
       t, m: null, k: null, q: null, kp: null, qp: null, dk: null, dq: null,
       kv: null, qv: null, f: null, o: null, qf: null, qo: null, ff: null, fo: null, n: '',
+      /* ⏱️ 시간별 흐름 통합 박스(2026-11-27) — 수급 3종·1줄 코멘트를 빈 칸과 구분해 둔다 */
+      supply: { foreign: null, organ: null, futures: null }, comment: '',
     };
     const carry = timelineSlotSupply(tl, t, p.date);
     if (carry) {
       SUPPLY_SLOT_KEYS.forEach((k) => { row[k] = typeof carry[k] === 'number' ? carry[k] : null; });
       if (carry.at && carry.at !== t) row.n = '수급 ' + carry.at;
+      if (typeof carry.comment === 'string' && carry.comment) row.comment = carry.comment;
+      if (carry.supply) row.supply = carry.supply;
     }
     if (tmin <= p.minutes) {
       /* 슬롯 HH:00 의 값 = 그 시간대(HH:00분) 봉의 종가.
@@ -2795,6 +2866,16 @@ async function buildIndexFlowBundle(req, indices) {
         if (prevQ) row.qp = r2(((qb.price - prevQ) / prevQ) * 100);
         if (lastQ !== null) row.dq = r2(qb.price - lastQ);
         lastQ = qb.price;
+      }
+      /* 수급 3종 — 저장된 값이 없어도 현재 슬롯 값으로 대체하지 않는다(그 시각 값이 아님) */
+      row.supply = {
+        foreign: typeof row.f === 'number' ? row.f : null,
+        organ: typeof row.o === 'number' ? row.o : null,
+        futures: typeof row.ff === 'number' ? row.ff : null,
+      };
+      /* 1줄 코멘트 — 저장된 문구가 없으면 같은 규칙으로 지금 만든다(숫자가 있을 때만) */
+      if (!row.comment && (row.k !== null || row.q !== null)) {
+        row.comment = hourlyComment(t, row.kp, row.qp, row.f, row.o, row.ff, timelineThemeHint(tl, t));
       }
     }
     slots.push(row);

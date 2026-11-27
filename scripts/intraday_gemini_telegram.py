@@ -2524,6 +2524,84 @@ def _bar_after(series, minute):
     return None
 
 
+def hourly_flow_comment(slot_t, kp, qp, f, o, ff, theme_name='', theme_chg=None):
+    """⏱️ 시간별 흐름 1줄 코멘트 — 실측 숫자만으로 만든다(추측 문구 없음).
+
+    auto_update_all_tabs.py 의 idxflow_comment 와 같은 규칙·같은 문장을 쓴다
+    (두 경로가 서로 다른 코멘트를 남기지 않게 문구를 맞춘다).
+    예) '10시 · 코스피 +1.95%, 코스닥 +5.81% · 외인·기관 매수 + 로봇 강세 → 상단 돌파 여부 관찰'
+    """
+    def _n(v):
+        return v if isinstance(v, (int, float)) else None
+
+    kp, qp, f, o, ff = _n(kp), _n(qp), _n(f), _n(o), _n(ff)
+    hh = str(slot_t or '')[:2]
+    bits = []
+    if kp is not None:
+        bits.append('코스피 %+.2f%%' % kp)
+    if qp is not None:
+        bits.append('코스닥 %+.2f%%' % qp)
+    txt = ('%s시' % hh if hh else '') + (' · ' + ', '.join(bits) if bits else '')
+
+    sup = ''
+    if f is not None and o is not None:
+        if f > 0 and o > 0:
+            sup = '외인·기관 매수'
+        elif f < 0 and o < 0:
+            sup = '외인·기관 매도'
+        elif f > 0:
+            sup = '외인 매수·기관 매도'
+        elif o > 0:
+            sup = '외인 매도·기관 매수'
+        else:
+            sup = '외인·기관 중립'
+    elif f is not None:
+        sup = '외인 ' + ('매수' if f > 0 else '매도' if f < 0 else '중립')
+    elif o is not None:
+        sup = '기관 ' + ('매수' if o > 0 else '매도' if o < 0 else '중립')
+    if ff is not None:
+        sup += (' · 선물 %+d계약' % int(ff))
+
+    th = ''
+    if theme_name:
+        if theme_chg is not None:
+            th = '%s %s' % (theme_name, '강세' if theme_chg > 0 else '약세' if theme_chg < 0 else '보합')
+        else:
+            th = theme_name
+
+    body = ' + '.join([x for x in (sup, th) if x])
+    if body:
+        txt += ' · ' + body
+
+    if kp is not None and kp >= 1.5 and f is not None and o is not None and f > 0 and o > 0:
+        txt += ' → 상단 돌파 여부 관찰'
+    elif kp is not None and kp >= 0 and f is not None and f > 0:
+        txt += ' → 눌림 분할 대응'
+    elif kp is not None and kp < 0 and ((f is not None and f < 0) or (o is not None and o < 0)):
+        txt += ' → 지지선 이탈 주의'
+    elif kp is not None and kp < 0 and f is not None and f > 0:
+        txt += ' → 저점 매수 유입 확인'
+    elif kp is not None:
+        txt += ' → 방향 확인 후 대응'
+    return txt.strip()
+
+
+def _timeline_theme_hint(done_slots, slot_t):
+    """슬롯 시각(=그 시각까지 완료된 것 중 마지막)의 1위 테마 → (이름, 등락률)."""
+    pick = None
+    for k, s in (done_slots or {}).items():
+        if str(k) <= str(slot_t):
+            pick = s
+    if pick is None and done_slots:
+        pick = done_slots[sorted(done_slots)[-1]]
+    themes = [x for x in ((pick or {}).get('themes') or []) if x and x.get('name')]
+    if not themes:
+        return '', None
+    top = themes[0]
+    chg = top.get('chg')
+    return str(top.get('name') or ''), (float(chg) if isinstance(chg, (int, float)) else None)
+
+
 def merge_index_hourly_flow(data, timeline_slots, now):
     """data['index_hourly_flow'] 를 오늘 실측으로 다시 만든다. 실패하면 아무것도 바꾸지 않는다."""
     today = now.strftime("%Y-%m-%d")
@@ -2579,7 +2657,8 @@ def merge_index_hourly_flow(data, timeline_slots, now):
         tmin = hh * 60 + mm
         row = {"t": t, "m": None, "k": None, "q": None, "kp": None, "qp": None,
                "dk": None, "dq": None, "kv": None, "qv": None,
-               "f": None, "o": None, "qf": None, "qo": None, "ff": None, "fo": None, "n": ""}
+               "f": None, "o": None, "qf": None, "qo": None, "ff": None, "fo": None, "n": "",
+               "supply": {"foreign": None, "organ": None, "futures": None}, "comment": ""}
         old = old_slots.get(t) or {}
         for k in ("kv", "qv", "f", "o", "qf", "qo", "ff", "fo"):
             if isinstance(old.get(k), (int, float)):
@@ -2617,6 +2696,14 @@ def merge_index_hourly_flow(data, timeline_slots, now):
                 if last_q is not None:
                     row["dq"] = round(qb[1] - last_q, 2)
                 last_q = qb[1]
+        # ⏱️ 시간별 흐름 통합 박스용 — 수급 3종 + 1줄 코멘트(실측값만)
+        row["supply"] = {"foreign": row.get("f"), "organ": row.get("o"),
+                         "futures": row.get("ff")}
+        _nm, _cg = _timeline_theme_hint(done_slots, t)
+        _cm = hourly_flow_comment(t, row.get("kp"), row.get("qp"),
+                                  row.get("f"), row.get("o"), row.get("ff"), _nm, _cg)
+        _old_cm = (old.get("comment") or "") if isinstance(old, dict) else ""
+        row["comment"] = _cm or _old_cm
         rows.append(row)
 
     data["index_hourly_flow"] = {"date": today, "updated": now.strftime("%H:%M"),
@@ -2639,6 +2726,20 @@ def write_timeline(root, slot_t, slot, now, patch_html=True):
         slots[idx] = slot
     data["updated"] = now.strftime("%H:%M")
     data.setdefault("day", WEEKDAY_KO[now.weekday()])
+    # 🕳️ 지나간 슬롯이 '대기(wait)'로 남지 않게 한다(2026-11-27)
+    #    자동동기화(auto_update_all_tabs)가 멈춰 있으면 09:30·12:00 이 영원히 wait 로 남아
+    #    "아직 올 시각"으로 읽힌다. 슬롯 시각+30분이 지난 wait 는 '미집계(miss)'로 돌린다
+    #    — 값은 만들지 않고, 상태만 사실대로 적는다.
+    for s in slots:
+        if s.get("state") != "wait" or not s.get("t"):
+            continue
+        try:
+            hh, mm = [int(x) for x in str(s["t"]).split(":")[:2]]
+        except (TypeError, ValueError):
+            continue
+        if now.hour * 60 + now.minute >= hh * 60 + mm + 30:
+            s["state"] = "miss"
+            s.setdefault("waitLabel", "미집계 — 그 시각 기록 없음(추측값 없음)")
     merge_index_hourly_flow(data, slots, now)
 
     changed = []
