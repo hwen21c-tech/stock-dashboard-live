@@ -6841,6 +6841,12 @@ const EMOTICON_SHEET_STYLE_LOCK =
   'absolutely NO text, NO letters, NO numbers, NO speech bubbles, NO watermark, NO brand logo. ' +
   'Pure solid flat white (#FFFFFF) background in every cell for easy cutout. Clean bold sticker outline.';
 
+/* 턴어라운드(정면·측면·뒷면+표정) 시트 전용 락 — '한 명' / '3×3 그리드' 락과 모두 다르다. */
+const EMOTICON_TURNAROUND_STYLE_LOCK =
+  'STRICT REQUIREMENTS: ONE character turnaround reference sheet on a pure solid flat white (#FFFFFF) background: front view, three-quarter side view, back view, and 4 facial expressions in a single row. ' +
+  'The SAME single character from different angles — never different characters. Consistent face shape, eye style, proportions, palette and line weight across every view. ' +
+  'Absolutely NO text, NO letters, NO numbers, NO speech bubbles, NO watermark, NO brand logo. Clean bold sticker outline, evenly spaced views with margin.';
+
 const SCHEMA_EMOTICON_PLAN = {
   type: 'OBJECT',
   properties: {
@@ -7051,11 +7057,15 @@ async function emoticonGeminiImage(prompt, reference, aspectRatio, mode) {
           ? 'This is the sticker image to edit. Keep the same character, same art style and the same composition.'
           : (mode === 'sheet'
             ? 'REFERENCE CHARACTER — the SAME character must appear 9 times inside a 3x3 grid sheet with identical face shape, eye style, proportions, colors and line weight.'
-            : 'REFERENCE CHARACTER — the SAME character must appear in the new image with identical face shape, eye style, proportions, colors and line weight.'),
+            : mode === 'turnaround'
+              ? 'REFERENCE CHARACTER — the SAME character, shown from front, side and back in one turnaround sheet with identical face shape, eye style, proportions, colors and line weight.'
+              : 'REFERENCE CHARACTER — the SAME character must appear in the new image with identical face shape, eye style, proportions, colors and line weight.'),
       });
       parts.push({ inlineData: { mimeType: String(reference.mimeType || 'image/jpeg'), data: String(reference.data) } });
     }
-    parts.push({ text: prompt + '\n\n' + (mode === 'sheet' ? EMOTICON_SHEET_STYLE_LOCK : EMOTICON_STYLE_LOCK) });
+    parts.push({ text: prompt + '\n\n' + (mode === 'sheet' ? EMOTICON_SHEET_STYLE_LOCK
+      : mode === 'turnaround' ? EMOTICON_TURNAROUND_STYLE_LOCK
+      : EMOTICON_STYLE_LOCK) });
 
     const bodyBase = {
       contents: [{ role: 'user', parts }],
