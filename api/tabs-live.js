@@ -3135,9 +3135,9 @@ async function buildHamburger(ctx) {
         ' · 실패 패턴 ' + out.counts.blocked + ' · 기준 없음/미달 ' + out.counts.noBase +
         (out.counts.wait ? ' · 오늘 분봉 대기 ' + out.counts.wait : '') + ')'
       : '') + '. ' +
-    '기준은 <b>윗꼬리 짧은 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
-    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 날의 09:00~09:02 3분봉 대금 ' +
-    hamburger.HAM.minBase3mEok + '억↑</b>이고, 오늘 장초반 3분봉 대금이 그 기준을 넘고 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다 — 자세한 기준은 📖 매매원칙 보기.';
+    '기준은 <b>가장 최근 윗꼬리 짧은 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
+    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 1일만 보고 그날 09:00~09:02 3분봉 대금 ' +
+    hamburger.HAM.minBase3mEok + '억↑</b>일 때만 기준으로 인정하며(20억 미만이면 과거 날로 거슬러 올라가지 않고 제외), 오늘 장초반 3분봉 대금이 그 기준을 넘고 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다 — 자세한 기준은 📖 매매원칙 보기.';
 
   if (!out.errors.length) HAM_CACHE = { at: Date.now(), value: out };
   return out;
