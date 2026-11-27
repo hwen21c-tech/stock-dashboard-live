@@ -3129,17 +3129,15 @@ async function buildHamburger(ctx) {
   out.counts.excluded = out.items.length - out.counts.pass;
   out.counts.shown = out.counts.pass;
   out.note =
-    '<b>성립 종목만</b> 올립니다. 후보 ' + out.counts.candidates + '종목 중 <b>' + out.counts.pass + '종목 성립</b>' +
+    '후보 ' + out.counts.candidates + '종목 중 <b>' + out.counts.pass + '종목 성립</b>' +
     (out.counts.excluded
       ? ' (나머지 ' + out.counts.excluded + '종목 제외: 대금 미달 ' + out.counts.valueShort +
         ' · 실패 패턴 ' + out.counts.blocked + ' · 기준 없음/미달 ' + out.counts.noBase +
         (out.counts.wait ? ' · 오늘 분봉 대기 ' + out.counts.wait : '') + ')'
       : '') + '. ' +
-    '기준은 <b>최근 ' + hamburger.HAM.lookbackDays + '거래일 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
-    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 날의 09:00~09:02 3분봉 거래대금 ' +
-    hamburger.HAM.minBase3mEok + '억↑</b>이고(날 시/고/저/종은 네이버 정규장 일봉으로 교차 검증), ' +
-    '오늘 장초반 3분봉 대금이 그 기준을 넘고 · 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다. ' +
-    '기준 미계산 종목은 요청마다 ' + HAM_RULES.lazyBaseCodes + '종목까지 즉석 계산해 채웁니다.';
+    '기준은 <b>윗꼬리 짧은 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
+    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 날의 09:00~09:02 3분봉 대금 ' +
+    hamburger.HAM.minBase3mEok + '억↑</b>이고, 오늘 장초반 3분봉 대금이 그 기준을 넘고 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다 — 자세한 기준은 📖 매매원칙 보기.';
 
   if (!out.errors.length) HAM_CACHE = { at: Date.now(), value: out };
   return out;
