@@ -2462,18 +2462,27 @@ function hongSupplyBadge(supply, code) {
  *
  *  후보
  *   ① 전일 강세주 : 직전 거래일 관제탑 강세 테마 스냅샷(public/data/last-dynamic-themes.json)
- *                   의 볼만했던 테마(평균 등락률 +1%↑) 상위 3개 → 테마당 대장·부대장
+ *                   의 볼만했던 테마(평균 등락률 +1%↑) 중 서로 다른 실질 테마 상위 4개 → 테마당 대장·부대장
  *   ② 오늘 강세주 : 오늘 실시간 테마 구성종목(fetchClosingThemeMembers · 상위 10테마 전체 구성)
- *                   중 상승률 +2%↑ 종목 → 테마당 대장(상승률 1위)·부대장(대금 1위)
+ *                   중 상승률 +5%↑ 종목 → 테마당 대장(상승률 1위)·부대장(대금 1위)
  *  같은 종목이 여러 테마에 있으면 가장 강한 테마 카드에만 한 번 싣는다(중복 카드 금지).
+ *
+ *  ⚡ 2026-11-27 사용자 승인(#68248) — '전일강세주가 안 맞다(미래에셋벤처투자·스피어가 없다)' 수정
+ *   ① 중복 테마 건너뛰기 : 테마 1순위 대장주(상승률 1위)가 앞 테마에서 이미 뽑혔으면 그 테마는
+ *                          유사 중복 테마로 보고 건너뛴다(자리도 쓰지 않고 다음 테마로 넘어간다).
+ *                          → 코로나19(치료제/진단)·백신/방역이 대장 아리바이오랩 하나로 3자리를 독식하지 않는다.
+ *   ② 실질 주도 테마 우선 : 테마 평균 등락률만으로 자르면 소형 테마가 상위를 차지한다.
+ *                          대금 300억↑ 종목이 있는 테마 먼저 → 테마 거래대금 합 → 평균 등락률 순으로 정렬해
+ *                          어제 실제 주도주(미래에셋벤처투자 1,863억·스피어 1,129억)가 앞 순위에 잡히게 한다.
  *  기준은 아래 FK_RULES 하나로 고정하고 화면 각주에도 같은 숫자를 적는다 — 조용히 완화하지 않는다.
  */
 const FK_RULES = {
-  themeTop: 3,        // 볼만했던 강세 테마 상위 3개
+  themeTop: 4,        // 서로 다른 실질 테마 상위 4개 (대장주가 겹치는 유사 테마는 건너뛴다)
   minThemePct: 1.0,   // 테마 평균 등락률 +1%↑만 '강했던 테마'(전일 섹션)
   minStockPct: 5.0,   // 대장·부대장 최소 상승률 +5% (홍인기 D+0와 같은 '강세' 기준)
   maxPct: 100,        // ±100% 이상 이상치(신규상장 첫날 등) 제외
-  maxCodes: 12,       // 두 섹션 합계 최대 종목(분봉 조회 예산)
+  bigValueEok: 300,   // 실질 주도주 기준 — 이만큼 거래된 종목이 있는 테마를 먼저 본다
+  maxCodes: 14,       // 두 섹션 합계 최대 종목(분봉 조회 예산 · 14종목 병렬 실측 ≈0.6초)
   minuteBudgetMs: 5000,
   ttlMs: 60000,
 };
@@ -2493,9 +2502,40 @@ function readPrevThemeDoc() {
   return value;
 }
 
+/** 건너뛴 유사 중복 테마를 화면 각주용 한 문장으로 — 없으면 빈 문자열 */
+function fkSkippedLine(skipped, sectionLabel) {
+  const list = (skipped || []).filter((s) => s && s.reason === 'leader_taken');
+  if (!list.length) return '';
+  const brief = (n) => String(n || '').split('(')[0].trim();
+  return (
+    sectionLabel + ' ' + list.length + '개 테마(' +
+    list.map((s) => brief(s.name) + ' — 대장 ' + s.leader + ' 중복').join(' · ') +
+    ')는 대장주가 겹치는 유사 테마라 건너뛰었습니다. '
+  );
+}
+
+/**
+ * 테마 주도력 정렬 — 2026-11-27 사용자 승인
+ *   ① 대금 FK_RULES.bigValueEok(300억)↑ 종목이 있는 테마를 먼저 (실질 주도 테마)
+ *   ② 테마 거래대금 합이 큰 테마
+ *   ③ 테마 평균 등락률이 높은 테마
+ *   ④ 스냅샷 순위(원래 순서)
+ * 단순 등락률 순이면 소형 테마가 상위를 차지해 거래대금이 큰 진짜 주도주가 밀린다.
+ */
+function fkThemeStrength(a, b) {
+  const ab = a.bigMoney ? 1 : 0;
+  const bb = b.bigMoney ? 1 : 0;
+  if (ab !== bb) return bb - ab;
+  if (b.valueSumEok !== a.valueSumEok) return b.valueSumEok - a.valueSumEok;
+  if (b.themePct !== a.themePct) return b.themePct - a.themePct;
+  return (a.rank || 99) - (b.rank || 99);
+}
+
 /** 테마 구성종목 rows → 테마당 대장(상승률)·부대장(대금) — used 로 중복 종목을 막는다 */
-function fkPickLeaders(rows, used) {
+function fkPickLeaders(rows, used, opts) {
+  const o = opts || {};
   const taken = used || new Set();
+  const themeLimit = Math.max(1, Math.min(FK_RULES.themeTop, numOrNull(o.themeLimit) || FK_RULES.themeTop));
   const byTheme = new Map();
   (rows || []).forEach((r) => {
     if (!r || !r.code || !r.themeName) return;
@@ -2513,22 +2553,41 @@ function fkPickLeaders(rows, used) {
       /* 테마 등락률은 테마 자체 값(스냅샷 avgPct 등)이 있으면 그것을, 없으면 노출 종목 최고 상승률을 쓴다 */
       const ownPct = items.map((x) => numOrNull(x.themePct)).filter((v) => v !== null)[0];
       const themePct = ownPct !== undefined ? ownPct : (numOrNull(items[0].changePct) || 0);
+      const valueSumEok = Math.round(items.reduce((s, x) => s + (numOrNull(x.value) || 0), 0) / 1e8);
+      const maxValueEok = items.reduce((m, x) => Math.max(m, Math.round((numOrNull(x.value) || 0) / 1e8)), 0);
       return {
         name,
         rank: numOrNull(items[0].themeRank),
         themePct,
-        valueSumEok: Math.round(items.reduce((s, x) => s + (numOrNull(x.value) || 0), 0) / 1e8),
+        valueSumEok,
+        maxValueEok,
+        /* 대장(상승률 1위) 또는 부대장(대금 1위)이 300억↑ — 실질 주도 테마 판별 */
+        bigMoney: maxValueEok >= FK_RULES.bigValueEok,
         themePctRaw: ownPct !== undefined ? ownPct : null,
         items,
       };
     })
     .filter((t) => t.items.length >= 1)
-    .sort((a, b) => (a.rank || 99) - (b.rank || 99) || b.themePct - a.themePct);
+    .sort(fkThemeStrength);
 
   const picked = [];
-  themes.slice(0, FK_RULES.themeTop).forEach((t) => {
+  const pickedThemes = [];
+  const skipped = [];
+  for (let i = 0; i < themes.length && pickedThemes.length < themeLimit; i += 1) {
+    const t = themes[i];
+    const headline = t.items[0];   // 테마 1순위 대장주(상승률 1위)
+    if (!headline) continue;
+    /* ① 유사 중복 테마 — 1순위 대장주가 이미 앞 테마에서 뽑혔으면 이 테마는 자리도 쓰지 않고 건너뛴다.
+       코로나19(치료제)·코로나19(진단)·백신/방역이 대장 아리바이오랩 하나로 3자리를 독식하던 문제(2026-11-27). */
+    if (taken.has(headline.code)) {
+      skipped.push({ name: t.name, leader: headline.name, leaderCode: headline.code, reason: 'leader_taken' });
+      continue;
+    }
     const pool = t.items.filter((x) => !taken.has(x.code));
-    if (!pool.length) return;
+    if (!pool.length) {
+      skipped.push({ name: t.name, leader: headline.name, leaderCode: headline.code, reason: 'no_stock_left' });
+      continue;
+    }
     const leader = pool[0];
     const rest = pool.slice(1);
     const deputy = rest.slice().sort((a, b) => (numOrNull(b.value) || 0) - (numOrNull(a.value) || 0))[0] || null;
@@ -2542,6 +2601,7 @@ function fkPickLeaders(rows, used) {
         themeRank: t.rank,
         themePct: round2(t.themePct),
         themeValueSumEok: t.valueSumEok,
+        themeBigMoney: t.bigMoney,
         pct: round2(numOrNull(r.changePct)),
         valueEok: r.value ? Math.round(r.value / 1e8) : null,
         valueText: r.valueText || null,
@@ -2550,8 +2610,21 @@ function fkPickLeaders(rows, used) {
     };
     add(leader, '대장');
     if (deputy) add(deputy, '부대장');
-  });
-  return { themes: themes.slice(0, FK_RULES.themeTop).map((t) => ({ name: t.name, rank: t.rank, themePct: round2(t.themePct), valueSumEok: t.valueSumEok })), items: picked };
+    pickedThemes.push(t);
+  }
+  return {
+    themes: pickedThemes.map((t) => ({
+      name: t.name,
+      rank: t.rank,
+      themePct: round2(t.themePct),
+      valueSumEok: t.valueSumEok,
+      maxValueEok: t.maxValueEok,
+      bigMoney: t.bigMoney,
+    })),
+    items: picked,
+    skipped,
+    themeLimit,
+  };
 }
 
 /** 1분봉 → F/K존 계산 (실패는 null 로 남기고 사유만 적는다) */
@@ -2585,7 +2658,9 @@ async function buildFkZone(ctx) {
     rules: {
       b1: '-8%', b2: '-10%', b3: '-12%', rebound: '+4%',
       themeTop: FK_RULES.themeTop, minStockPct: FK_RULES.minStockPct, maxPct: FK_RULES.maxPct,
+      bigValueEok: FK_RULES.bigValueEok,
       basis: '오늘(당일) 고가 기준',
+      themeRule: '대금 ' + FK_RULES.bigValueEok + '억↑ 주도 테마 우선 · 대장주가 겹치는 유사 테마는 건너뜀',
     },
     prev: { label: '전일 강세주', asOf: null, asOfLabel: null, isToday: false, themes: [], count: 0 },
     today: { label: '오늘 강세주', asOf: todayKey, themes: [], count: 0 },
@@ -2636,6 +2711,7 @@ async function buildFkZone(ctx) {
     });
     const prevPick = fkPickLeaders(rows, used);
     out.prev.themes = prevPick.themes;
+    out.prev.skippedThemes = prevPick.skipped;
     prevItems = prevPick.items.map((x) => Object.assign({}, x, { section: 'prev', prevClose: x.quotePrice }));
   } else {
     out.errors.push('prev: 직전 거래일 강세 테마 스냅샷을 읽지 못했습니다');
@@ -2661,8 +2737,11 @@ async function buildFkZone(ctx) {
       themeName: r.themeName,
       themeRank: numOrNull(r.themeRank),
     }));
-    const todayPick = fkPickLeaders(rows, used);
+    /* 오늘 섹션은 전일 후보가 쓴 종목·테마를 피하고, 남은 분봉 조회 예산 안에서만 테마를 잡는다 */
+    const todayThemeLimit = Math.max(1, Math.min(FK_RULES.themeTop, Math.floor(Math.max(2, FK_RULES.maxCodes - prevItems.length) / 2)));
+    const todayPick = fkPickLeaders(rows, used, { themeLimit: todayThemeLimit });
     out.today.themes = todayPick.themes;
+    out.today.skippedThemes = todayPick.skipped;
     todayItems = todayPick.items.map((x) => {
       const q = x.quotePrice;
       const pc = q !== null && x.pct !== null && x.pct > -100 ? round2(q / (1 + x.pct / 100)) : null;
@@ -2713,7 +2792,9 @@ async function buildFkZone(ctx) {
   out.note =
     '고가 기준은 전일·오늘 모두 <b>오늘(당일) 고가</b>입니다 — B1 -8% · B2 -10% · B3 -12%. ' +
     'F존 진입(1분봉 저가 ≤ B1) 뒤 실제 저점(L) 대비 +4% 반등이 나오면 반등 파동으로 보고, 그 뒤 새 고점(H1) 대비 같은 -8/-10/-12%를 K존으로 표시합니다. ' +
-    '후보는 강세 테마(평균 +1%↑) 상위 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다. ' +
+    '후보는 강세 테마(평균 +1%↑) 중 <b>대금 ' + FK_RULES.bigValueEok + '억↑ 실질 주도주가 있는 테마를 먼저</b>, 그 다음 테마 거래대금 합·평균 등락률 순으로 서로 다른 테마 ' + FK_RULES.themeTop + '개의 대장(상승률)·부대장(대금)이고, 종목은 상승률 +' + FK_RULES.minStockPct + '%↑만 넣습니다. ' +
+    '대장주가 이미 뽑힌 테마(코로나19 진단·백신/방역 등)는 유사 중복 테마로 보고 자리를 양보합니다. ' +
+    fkSkippedLine(out.prev.skippedThemes, '전일') + fkSkippedLine(out.today.skippedThemes, '오늘') +
     (out.droppedToday && out.droppedToday.length
       ? '오늘 강세주 중 1분봉 실측 등락률이 +' + FK_RULES.minStockPct + '% 아래로 내려온 ' + out.droppedToday.length + '종목(' + out.droppedToday.map((d) => d.name).join('·') + ')은 뺐습니다.'
       : '');
@@ -6621,6 +6702,9 @@ module.exports.mapPrevDayThemes = mapPrevDayThemes;
 module.exports.buildClosingPicks = buildClosingPicks;
 module.exports.buildFkZone = buildFkZone;
 module.exports.FK_RULES = FK_RULES;
+/* 2026-11-27 — 중복 테마 건너뛰기·실질 주도 테마 정렬 단위 검증용(오프라인 테스트) */
+module.exports.fkPickLeaders = fkPickLeaders;
+module.exports.fkThemeStrength = fkThemeStrength;
 module.exports.CP_RULES = CP_RULES;
 // 🌙 배너 야간선물 한 줄(장전·주말 전용) — 문구·생략 규칙을 테스트에서 검증한다.
 module.exports.chimNightFutures = chimNightFutures;
