@@ -329,15 +329,25 @@ async function resolveCorpCode(apiKey, stockCode, name, fresh) {
       cands = [];
     }
     if (nm) cands.sort((a, b) => (a.name === nm ? 0 : 1) - (b.name === nm ? 0 : 1));
-    /* 후보 회사 확인은 병렬로 — 예전에는 최대 5번을 차례로 불러 첫 조회가 3~6초 걸렸다.
-       같은 결과(‘stock_code 가 요청 코드와 같은 회사’)를 먼저 얻으면 즉시 끝낸다. */
-    const checks = await Promise.allSettled(
-      cands.slice(0, CORP_SEARCH_MAX).map((c) => fetchCompanyInfo(apiKey, c.corpCode)),
-    );
-    for (const r of checks) {
-      if (r.status === 'fulfilled' && r.value && r.value.stockCode === stockCode) {
-        hit = r.value;
-        break;
+    /* 후보 회사 확인 — ① 첫 후보만 먼저 확인하고(대부분 첫 후보가 정답), 틀리면 ② 나머지를 병렬로.
+       예전에는 최대 5번을 차례로 불러 첫 조회가 3~6초 걸렸는데, 정답이 첫 후보일 때 호출 수는 그대로 두고
+       아닐 때만 병렬로 돌린다(DART 일일 호출 한도를 불필요하게 쓰지 않는다). */
+    const cand = cands.slice(0, CORP_SEARCH_MAX);
+    if (cand.length) {
+      try {
+        const first = await fetchCompanyInfo(apiKey, cand[0].corpCode);
+        if (first && first.stockCode === stockCode) hit = first;
+      } catch (e) {
+        /* 아래 병렬 확인으로 */
+      }
+      if (!hit && cand.length > 1) {
+        const rest = await Promise.allSettled(cand.slice(1).map((c) => fetchCompanyInfo(apiKey, c.corpCode)));
+        for (const r of rest) {
+          if (r.status === 'fulfilled' && r.value && r.value.stockCode === stockCode) {
+            hit = r.value;
+            break;
+          }
+        }
       }
     }
     if (hit) break;
