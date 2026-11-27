@@ -45,12 +45,18 @@ function collect() {
   var cards = root.querySelectorAll('.timeline-card');
   Array.prototype.forEach.call(cards, function (c) {
     var oc = c.getAttribute('onclick') || '';
-    var m = oc.match(/openBriefingModal\('(\d{1,2}:\d{2})'\)/);
+    var m = oc.match(/openBriefingModal\('([0-9:]{3,5})'\)/);
     if (!m) return;
-    var t = m[1];
+    var t = norm(m[1]);          /* '0730' 카드도 '07:30' 으로 정규화해 칩과 연결한다 */
     if (!map[t]) map[t] = c;    /* 오늘 카드가 먼저 나오므로 첫 번째를 쓴다 */
   });
   return map;
+}
+
+function norm(v) {
+  var s = String(v || '');
+  if (s.indexOf(':') < 0 && s.length === 4) s = s.slice(0, 2) + ':' + s.slice(2);
+  return pad(s);
 }
 
 function pad(t) {
