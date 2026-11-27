@@ -6466,6 +6466,7 @@ async function handleEmoticonImage(res, body) {
       ok: false, action: 'emoticon_image', engine: 'gemini', mode,
       reason: out.reason || 'gemini_image_failed',
       message: out.message || 'Gemini 이미지 생성에 실패했습니다.',
+      detail: out.detail || undefined,
     });
   }
   return send(res, 200, {
