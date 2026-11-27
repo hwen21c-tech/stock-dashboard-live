@@ -5919,9 +5919,9 @@ async function handleIdeaStory(res, body, keyConfigured) {
     '1. 첫 컷은 3초 안에 손가락을 멈추게 하는 후킹. 마지막 컷은 저장·팔로우를 부르는 마무리(루프 모드면 첫 컷과 이어지게).',
     '2. narration 은 성우가 3~4초에 읽을 한국어 구어체. 숫자를 그대로 낭독하지 말고 의미로 말하세요.',
     '3. subtitle 은 14자 이내 임팩트 자막. narration 문장을 그대로 옮기지 마세요.',
-    '4. visualPrompt 는 반드시 영어. 주인공 외형·의상·배경이 모든 컷에서 일관되게 유지되도록 구체적으로 쓰세요.',
+    '4. visualPrompt 는 반드시 영어. 주인공 외형·의상·배경이 모든 컷에서 일관되게 유지되도록 구체적으로 쓰되, 한 컷당 200자 안으로 짧게 쓰세요.',
     '5. cameraMotion 은 zoom_in / zoom_out / pan_lr / shake 중 장면에 맞게 다양하게.',
-    '6. 숫자·비교가 핵심인 컷은 cardType 을 card 로 하고 cardData 에 숫자 2~3개를 채우세요. 다섯 컷 중 최소 한 컷은 card 로 만들어 주세요. 근거 없는 통계를 지어내지 말고 "3가지", "2배", "절반"처럼 안전한 수치만 쓰세요. 나머지는 image.',
+    '6. 숫자·비교가 핵심인 컷(예: 금액·개수·비교)은 반드시 cardType 을 card 로 하고 cardData 에 항목 2~3개를 채우세요. 다섯 컷 중 최소 한 컷은 card 로 만들어야 합니다. 근거 없는 통계를 지어내지 말고 자막·대사에 실제로 나온 숫자만 쓰세요. 나머지는 image.',
     '7. emphasizeWord 는 그 컷 subtitle 안에 실제로 들어 있는 단어 하나.',
     '8. 확인되지 않은 수치·가격·고유명사·연구 결과를 만들지 마세요. 모르면 일반화된 표현으로.',
     '9. JSON 만 돌려주세요.',
@@ -5936,7 +5936,7 @@ async function handleIdeaStory(res, body, keyConfigured) {
       user,
       schema: SCHEMA_IDEA_STORY,
       temperature: 0.82,
-      maxTokens: 2400,
+      maxTokens: 3400,
     }, deadline);
     let parsed = null;
     try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
