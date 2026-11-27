@@ -2582,6 +2582,74 @@ function blogPhotos(b) {
   return out;
 }
 
+/* 🧬 AI 티 빼기 — 말투 DNA · 감각 치환 · 사람 슬롯 · 제휴 정직성 (2026-11-27) */
+const HUMAN_SLOT_LINE = '> ✍️ 내 경험 한 줄: (여기에 직접 겪은 장면·수치를 한 줄로 넣으세요)';
+
+function dnaBlock(b) {
+  const d = (b && b.dna) || {};
+  const lines = [];
+  const rhythm = s(d.rhythm, 90);
+  const emoji = s(d.emoji, 40);
+  if (rhythm) lines.push('- 어미·호흡: ' + rhythm);
+  if (emoji) lines.push('- 이모지: ' + emoji);
+  const sample = s(d.sample, 1500);
+  if (sample) lines.push('- 내 말투 샘플(문장 길이·말버릇 참고):\n"""' + sample + '"""');
+  if (!lines.length) return '';
+  return '\n[내 말투 DNA — 문장마다 이 리듬을 지킨다]\n' + lines.join('\n');
+}
+
+function blogExtraBlocks(b) {
+  const out = [];
+  if (b && b.sensory) {
+    out.push(
+      '\n[감각·장면 치환 — 어기면 실패다]\n' +
+        '- "좋아요/편해요/따뜻해요/만족스러워요/편리해요" 같은 추상어를 쓰지 않는다. 눈에 보이는 장면·행동·수치로 바꾼다. (예: "바닥 온도가 3분 만에 24도에서 29도로 올랐다", "한 손으로 12초 만에 펼쳤다")\n' +
+        '- 소리·냄새·온도·무게 같은 감각은 [내 경험 메모]·사진·[참고 자료]에서 확인된 것만 쓴다. 지어내지 않는다.'
+    );
+  }
+  if (b && b.slots) {
+    out.push(
+      '\n[사람 슬롯 — 정확히 2곳]\n' +
+        '- 본문 중간 두 곳에 아래 문구를 "단독 줄"로 정확히 2번 넣는다. 다른 말을 덧붙이지 않는다.\n' +
+        HUMAN_SLOT_LINE + '\n' +
+        '- 이 줄은 사용자가 자기 경험 한 줄로 직접 바꿔 넣는 자리다. 바로 앞 문단에서 그 자리에 경험이 들어갈 상황·조건을 말해 둔다.'
+    );
+  }
+  const af = (b && b.affiliate) || null;
+  if (af && Array.isArray(af.items) && af.items.length) {
+    const list = af.items
+      .slice(0, 3)
+      .map((p, i) => `${i + 1}) ${s(p.name, 60) || '추천템'} (장점:${s(p.pro, 80) || '-'} / 단점:${s(p.con, 80) || '-'} / 비추천:${s(p.notfor, 80) || '-'})`)
+      .join(' | ');
+    out.push(
+      '\n[제휴 상품 — 솔직하게]\n' +
+        '- 이 글에는 사용자가 실제로 붙일 상품이 있다: ' + list + '\n' +
+        (af.cons ? '- 본문 끝에 "## 솔직히 아쉬웠던 점 & 비추천 대상" 섹션을 반드시 넣고 위 단점·비추천 대상을 그대로 쓴다.\n' : '') +
+        '- 상품 링크·가격·수수료 문구는 쓰지 않는다(뒤에서 자동으로 붙는다). 확인하지 않은 성능·수치를 만들지 않는다.\n' +
+        '- "무조건 추천", "역대급", "인생템" 같은 과장 표현을 쓰지 않는다.'
+    );
+  }
+  const angle = s(b && b.angle, 40);
+  if (angle) {
+    const map = {
+      '실패담→해결기':
+        '실패·시행착오를 먼저 꺼내고, 왜 그랬는지 → 어떻게 해결했는지 순서로 전개한다. 실패는 [내 경험 메모]에 있을 때만 1인칭으로 쓰고, 없으면 "많이 하는 실수는" 으로 일반화한다.',
+      '단점 먼저 까기':
+        '도입에서 단점·후회 포인트를 먼저 말해 신뢰를 얻고, 그 다음 어떤 조건이면 괜찮은지 뒤집는다.',
+      'A vs B 냉정 비교':
+        '두 선택지를 같은 기준(가격·시간·관리·수명)으로 나란히 놓고, 결론은 "상황별로 다르다"로 냉정하게 닫는다.',
+      '현실 수다·일기형':
+        '정리된 보고서가 아니라 그날 있었던 일을 이야기하듯 쓴다. 문장을 짧게 끊고, 중간에 생각이 바뀌는 지점을 남긴다.',
+      '체크리스트 직설형':
+        '인사·서론 없이 체크리스트로 바로 시작한다. 항목마다 "왜 이걸 확인해야 하는지" 한 줄씩 붙인다.',
+      '비추천 가이드':
+        '이 상품·장소·방법을 권하지 않는 사람을 먼저 정의하고, 그 다음 어떤 조건이면 괜찮은지 좁혀 준다.',
+    };
+    out.push('\n[전개 앵글 — 이 순서로 쓴다]\n- ' + angle + ': ' + (map[angle] || '이 앵글에 맞는 순서로 전개한다.'));
+  }
+  return out.join('');
+}
+
 function promptBlog(b) {
   const form = b.form || {};
   const sections = arr(form.sections, 8).map((x, i) => `${i + 1}) ${s(x, 80)}`).join('\n');
@@ -2615,6 +2683,8 @@ function promptBlog(b) {
     gaps ? `\n[경쟁 글 빈틈 메모 — 본문에서 실제로 메꿔라]\n${gaps}` : '',
     photos.length ? `\n[내 사진 — 이 메시지에 실제로 첨부된 사진 ${photos.length}장. 위에서부터 1번]\n${photoList}` : '',
     b.theme ? `\n참고 카테고리: ${s(b.theme, 40)}` : '',
+    dnaBlock(b),
+    blogExtraBlocks(b),
     banLine(b.banPhrases),
     `${photoRule}
 [경험·사실 규칙 — 이걸 어기면 실패다]
@@ -2659,6 +2729,180 @@ function promptBlog(b) {
     maxTokens: 3600,
     temperature: 0.95,
     images: photos.map((p) => ({ mimeType: p.mime, data: p.data })),
+  };
+}
+
+/* 👁️ 사진 관찰 메모 — 사진에 실제로 보이는 것만. 없는 경험·감정을 지어내지 않는다. */
+const SCHEMA_VISION = {
+  type: 'object',
+  properties: {
+    memo: { type: 'string', description: '사진에서 실제로 보이는 것만 3줄 (줄바꿈으로 구분, 줄마다 40자 내외)' },
+    details: { type: 'array', items: { type: 'string' }, description: '사진별로 확인된 디테일 1줄씩 (최대 4개)' },
+    warnings: { type: 'array', items: { type: 'string' }, description: '사진만으로 알 수 없어 비워 둔 것' },
+  },
+  required: ['memo'],
+};
+
+function promptVision(b) {
+  const photos = blogPhotos(b);
+  const topic = s(b.topic, 120) || '제품·현장';
+  const list = photos.map((p) => `${p.n}) ${p.name}${p.memo ? ' — 사용자 메모: ' + p.memo : ''}`).join('\n');
+  const user = [
+    `사진 주제: ${topic}`,
+    `\n[첨부 사진 ${photos.length}장 — 위에서부터 1번]\n${list}`,
+    `\n[해야 할 일 — 사진 관찰 메모]
+1) 사진에 "실제로 보이는 것"만 적는다: 색·재질·형태·배치·주변 환경·글자(간판·라벨)처럼 눈으로 확인되는 요소.
+2) 3줄로 쓴다. 줄마다 하나의 관찰(각 40자 내외). 줄바꿈으로 구분한다.
+3) 보이지 않는 것은 쓰지 않는다: 가격·성능·사용 기간·만족도·효과·냄새·소리·맛. 사람의 감정도 추측하지 않는다.
+4) 브랜드명·상호는 사진에서 읽히는 경우에만 쓰고, 아니면 "제품"·"매장"처럼 중립적으로 쓴다.
+5) 사용자가 이 메모를 자기 글의 1인칭 경험으로 고쳐 쓴다. 그래서 "보인다 / 자리해 있다" 같은 관찰 어조로 쓴다. ("써봤다 / 가봤다" 금지)
+6) warnings 에는 사진만으로 알 수 없어 비워 둔 것을 적는다.
+[출력] memo · details · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: '너는 사진을 읽는 관찰자다. 사진에 실제로 보이는 것만 한국어로 적는다. 보이지 않는 경험·감정·성능을 지어내지 않는다.',
+    user,
+    schema: SCHEMA_VISION,
+    maxTokens: 700,
+    temperature: 0.5,
+    images: photos.map((p) => ({ mimeType: p.mime, data: p.data })),
+  };
+}
+
+function normVision(data) {
+  return {
+    memo: s(data && data.memo, 700),
+    details: arr(data && data.details, 4).map((x) => s(x, 120)).filter(Boolean),
+    warnings: arr(data && data.warnings, 4).map((x) => s(x, 120)).filter(Boolean),
+  };
+}
+
+/* 🧵 스레드 — 본문 500자 · 링크는 첫 댓글로 분리 */
+const SCHEMA_THREAD = {
+  type: 'object',
+  properties: {
+    hook: { type: 'string', description: '첫 줄 — 45자 이내, 스크롤을 멈추는 한 문장' },
+    body: { type: 'string', description: '스레드 본문 전체 — 공백 포함 480자 이내, 외부 링크 없음, 줄바꿈 포함' },
+    comment: { type: 'string', description: '첫 번째 댓글 — 상품 링크와 대가성 고지' },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['body'],
+};
+
+function promptThread(b) {
+  const ftc = s(b.ftc, 240) || '이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.';
+  const items = arr(b.items, 3)
+    .map((p) => `${s(p.name, 60) || '추천템'} | 링크: ${s(p.url, 300) || '[링크 없음]'} | 장점:${s(p.pro, 80) || '-'} | 단점:${s(p.con, 80) || '-'}`)
+    .join('\n');
+  const cur = s(b.current, 1400);
+  const boost = !!(b && b.boost);
+  const user = [
+    b.topic ? `주제: ${s(b.topic, 160)}` : '',
+    b.title ? `블로그 제목: ${s(b.title, 120)}` : '',
+    boost && cur ? `\n[지금 스레드 초안 — 첫 문장만 훅으로 바꿔 전체를 다시 출력한다]\n"""${cur}"""` : '',
+    !boost && b.body ? `\n[블로그 본문 — 여기 있는 사실만 쓴다]\n"""${s(b.body, 7000)}"""` : '',
+    items ? `\n[붙일 상품 — 링크는 comment 에만]\n${items}` : '',
+    dnaBlock(b),
+    `\n[해야 할 일 — 스레드 1편]
+1) body: 스레드에 그대로 붙여넣는 본문. 공백 포함 480자 이내(500자 제한). 짧은 문단 3~5개로 줄바꿈.
+2) hook: 첫 줄. 45자 이내. 결론·숫자·반전으로 바로 시작하고 "안녕하세요" 같은 인사는 쓰지 않는다. body 첫 줄과 같아도 된다.
+3) body 안에 외부 링크(https)를 넣지 않는다. 링크는 comment 에만.
+4) 본문에 없는 수치·경험을 만들지 않는다. 확인 못 한 값은 "[확인 필요]"로 남긴다.
+5) comment: 첫 번째 댓글. 상품이 있으면 "👇 본문에서 정리한 아이템 정보입니다." + 상품명·링크 목록, 마지막 줄에 "${ftc}" 를 분리해 넣는다. 상품이 없으면 링크·고지 없이 질문 한 줄만.
+6) 이모지는 0~2개.
+[출력] hook · body · comment · warnings JSON.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    system: '너는 한국 스레드(Threads)에서 반응을 얻는 짧은 글을 쓰는 사람이다. 본문에 있는 사실만 쓴다. 광고 문구를 본문에 넣지 않는다. 수치·경험을 새로 만들지 않는다.',
+    user,
+    schema: SCHEMA_THREAD,
+    maxTokens: 900,
+    temperature: 0.9,
+  };
+}
+
+function normThread(data) {
+  return {
+    hook: s(data && data.hook, 120),
+    body: s(data && data.body, 1400),
+    comment: s(data && data.comment, 900),
+    warnings: arr(data && data.warnings, 4).map((x) => s(x, 120)).filter(Boolean),
+  };
+}
+
+/* 💡 4대 수익 소재 엔진 — 시즌 선행 · 5-포맷 변주 · 크로스오버 · 롱테일 */
+const SCHEMA_IDEA_SOURCES = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: '이번 발굴 제목 (예: 12월 캠핑 선행 소재 6종)' },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          tag: { type: 'string', description: '유형 (10자 내외)' },
+          title: { type: 'string', description: '블로그 제목 후보 (32자 내외)' },
+          keyword: { type: 'string', description: '핵심 검색어 (2~4단어)' },
+          why: { type: 'string', description: '왜 지금 이 소재인지 (20자 내외)' },
+        },
+        required: ['title', 'keyword'],
+      },
+    },
+    warnings: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['items'],
+};
+
+function promptIdeaSources(b) {
+  const tool = s(b.tool, 20) || 'season';
+  const common = `\n[공통 규칙 — 어기면 실패다]
+1) 실제로 네이버에 칠 법한 한국어 검색어를 쓴다. 브랜드·업체·가격·연도를 지어내지 않는다.
+2) 확인되지 않은 통계·수상·판매량을 사실처럼 쓰지 않는다. 필요한 표현은 "많이 찾는", "요즘 눈에 띄는" 정도로.
+3) title 은 32자 내외 한 줄. keyword 는 2~4단어.
+4) 서로 각도가 겹치지 않게 만든다.
+[출력] title · items[{tag,title,keyword,why}] · warnings JSON.`;
+  let task = '';
+  if (tool === 'season') {
+    const m = Math.trunc(num(b.month, 0));
+    const month = m >= 1 && m <= 12 ? m : 0;
+    const cat = s(b.category, 40) || '생활·살림';
+    task = `분야 '${cat}'에서 ${month ? month + '월' : '지금부터 2~4주 뒤'}에 검색이 늘어날 수익화 소재 6개를 뽑아라.
+- 태그는 시즌 포인트(예: 시즌 선점 / 품절 주의 / 실수 방지 / 가성비 / 재구매 / 안전·관리)로 다양하게.
+- "미리 준비", "지금 사면 vs 나중에 사면" 같은 선행 수요 각도를 섞는다.`;
+  } else if (tool === 'matrix') {
+    const item = s(b.item, 60) || '생활 아이템';
+    task = `아이템 '${item}'을(를) 다섯 포맷으로 변주해 5개를 뽑아라.
+- 포맷: 구매 기준형 / 실패 방지형 / 문제 해결·관리형 / 대체품 대결형 / 상황 특화형. 태그에 포맷명을 그대로 쓴다.`;
+  } else if (tool === 'crossover') {
+    const a = s(b.a, 30) || '캠핑';
+    const bb = s(b.b, 30) || '육아';
+    task = `'${a}'와 '${bb}'를 교차해 저경쟁 블루오션 소재 5개를 뽑아라.
+- 태그는 교차 포인트(예: ${a}×${bb} / 틈새 장비 / 겸용 절약 / 불편 해결 / 고수 세팅)로.`;
+  } else {
+    const kw = s(b.keyword, 60) || '대형 키워드';
+    task = `대형 키워드 '${kw}'를 구매 직전에 검색하는 롱테일 6개로 분해하라.
+- 태그는 의도 유형(호환/규격 / 수치/유지비 / 사이즈 고민 / 소음·냄새 / 가성비 비교 / 안전 세팅)으로.`;
+  }
+  return {
+    system: '너는 한국 블로그·쇼츠 수익화 소재를 발굴하는 기획자다. 실제 검색 수요가 있는 소재만 제안하고, 확인되지 않은 수치·브랜드를 만들지 않는다.',
+    user: task + common,
+    schema: SCHEMA_IDEA_SOURCES,
+    maxTokens: 1600,
+    temperature: 0.9,
+  };
+}
+
+function normIdeaSources(data) {
+  return {
+    title: s(data && data.title, 80) || '수익 소재',
+    items: arr(data && data.items, 8)
+      .map((x) => ({ tag: s(x && x.tag, 20), title: s(x && x.title, 80), keyword: s(x && x.keyword, 60), why: s(x && x.why, 60) }))
+      .filter((x) => x.title && x.keyword),
+    warnings: arr(data && data.warnings, 4).map((x) => s(x, 120)).filter(Boolean),
   };
 }
 
@@ -2895,6 +3139,7 @@ function promptHumanize(b) {
     b.topic ? `글 주제: ${s(b.topic, 200)}` : '',
     `\n[현재 초안]\n"""${s(b.body, 14000)}"""`,
     banLine(b.banPhrases),
+    dnaBlock(b),
     `
 [해야 할 일 — AI 티 빼기]
 위 초안에서 기계적인 상투어를 걷어내고 사람이 쓴 것처럼 다시 쓴다.
@@ -4166,6 +4411,9 @@ const GEN_ACTIONS = [
   'shorts_script',
   'cut_rewrite',
   'live_briefing',
+  'vision_experience',
+  'thread',
+  'idea_sources',
 ];
 
 /* ✨ 컷 1개 다시 쓰기 — 전체 대본을 다시 뽑지 않고, 그 컷의 자막·나레이션만 다듬는다. */
@@ -7437,6 +7685,357 @@ async function handleIdeaPromptEdit(res, body, keyConfigured) {
   }
 }
 
+/* 📊 바이럴 점수 진단 — 3초 후킹·전개 리듬·CTA·사운드를 점수와 수정 카드로 */
+const SCHEMA_IDEA_VIRAL = {
+  type: 'OBJECT',
+  properties: {
+    score: { type: 'INTEGER', description: '0~100 정수 (종합 점수)' },
+    grade: { type: 'STRING', description: 'A+ / A / B / C / D 중 하나' },
+    summary: { type: 'STRING', description: '한 줄 총평 (40자 이내)' },
+    metrics: {
+      type: 'ARRAY',
+      description: '3~4개 항목 점수',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          label: { type: 'STRING', description: '3초 후킹 / 전개 리듬 / CTA / 사운드 중' },
+          score: { type: 'INTEGER', description: '0~100' },
+          note: { type: 'STRING', description: '20자 이내 근거' },
+        },
+        required: ['label', 'score'],
+      },
+    },
+    fixes: {
+      type: 'ARRAY',
+      description: '개선 포인트 2~3개 (바로 실행할 수정)',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          area: { type: 'STRING', description: '3초 후킹 / 전개 리듬 / CTA / 사운드' },
+          target: { type: 'STRING', description: '수정할 컷 번호나 요소 (예: 1번 컷)' },
+          action: { type: 'STRING', description: '구체적인 수정 한 줄 (40자 이내)' },
+        },
+        required: ['area', 'action'],
+      },
+    },
+    strengths: { type: 'ARRAY', description: '잘된 점 1~2개 (20자 이내)', items: { type: 'STRING' } },
+  },
+  required: ['score', 'summary', 'fixes'],
+};
+
+async function handleIdeaViralScore(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const scenes = arr(body.scenes, 8)
+    .map((sc, i) => ({
+      n: i + 1,
+      subtitle: s(sc && sc.subtitle, 60),
+      narration: s(sc && sc.narration, 160),
+      duration: Number(sc && sc.duration) || 0,
+      speaker: String((sc && sc.speaker) || 'A').toUpperCase() === 'B' ? 'B' : 'A',
+      card: String((sc && sc.card) || '') === 'card' ? 'card' : 'image',
+    }))
+    .filter((sc) => sc.subtitle || sc.narration);
+  if (!scenes.length) {
+    return send(res, 400, {
+      ok: false, action: 'idea_viral_score', reason: 'missing_scenes',
+      message: '진단할 컷 대본이 없습니다. 먼저 스토리보드를 만들어 주세요.',
+    });
+  }
+
+  const idea = s(body.idea, 300);
+  const title = s(body.title, 120);
+  const hook = s(body.hook, 80);
+  const genre = s(body.genre, 30);
+  const bgm = s(body.bgm, 20);
+  const ambience = s(body.ambience, 20);
+  const dialogue = body.dialogue === true || body.dialogue === 'true';
+  const totalSec = Number(body.totalSec) || scenes.reduce((a, sc) => a + sc.duration, 0);
+  const lines = scenes.map((sc) =>
+    '#' + sc.n + ' [' + sc.duration.toFixed(1) + 's' + (sc.card === 'card' ? ' · 카드컷' : '') + '] 자막: "' +
+    (sc.subtitle || '(없음)') + '" / 대사: ' + (sc.narration || '(없음)'));
+
+  const user = [
+    '아래 유튜브 쇼츠 대본을 "첫 3초 이탈" 관점에서 진단해 주세요.',
+    '',
+    '[아이디어] ' + (idea || '(없음)'),
+    title ? '[제목] ' + title : '',
+    hook ? '[상단 후킹 문구] ' + hook : '',
+    '[형식] ' + (dialogue ? '2인 대화' : '1인 내레이션') + ' · 총 ' + Number(totalSec).toFixed(1) + '초 · ' + scenes.length + '컷',
+    '[사운드] BGM ' + (bgm || '없음') + ' · 환경음 ' + (ambience || '없음'),
+    genre ? '[장르] ' + genre : '',
+    '',
+    '[대본]',
+    lines.join('\n'),
+    '',
+    '[평가 기준]',
+    '1. 3초 후킹: 1번 컷 자막 길이(짧을수록 유리)·의문/숫자 여부·첫 대사가 손가락을 멈추게 하는가.',
+    '2. 전개 리듬: 컷 길이(4~5초 초과는 이탈 위험)·컷 수·대사 길이·정보 밀도.',
+    '3. CTA: 마지막 컷이 저장·구독·댓글 같은 다음 행동을 부르는가.',
+    '4. 사운드: 강조 단어·효과음·환경음 등 청각 장치가 있는가.',
+    '',
+    '[출력 규칙]',
+    '1. score 는 위 4개를 종합한 0~100 정수. 근거 없는 후한 점수 금지.',
+    '2. fixes 의 action 은 실제 대본을 인용해 "무엇을 어떻게 바꿀지" 한 줄로. target 에 컷 번호를 붙이세요.',
+    '3. 대본에 없는 수치·고유명사·연구 결과를 만들지 마세요.',
+    '4. 짧은 한국어 존댓말. JSON 만 돌려주세요.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system:
+        '당신은 유튜브 쇼츠 유지율(리텐션) 코치입니다. 대본에 있는 것만 근거로 냉정하게 채점하고, ' +
+        '바로 실행할 수 있는 수정 한 줄을 줍니다. 확인되지 않은 사실은 만들지 않습니다.',
+      user,
+      schema: SCHEMA_IDEA_VIRAL,
+      temperature: 0.35,
+      maxTokens: 1000,
+      fastFirst: true,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    if (!parsed || parsed.score == null) {
+      return send(res, 200, {
+        ok: false, action: 'idea_viral_score', reason: 'empty_result',
+        message: '점수를 만들지 못했습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+    const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+    const score = clamp(parsed.score);
+    const metrics = arr(parsed.metrics, 4)
+      .map((m) => ({ label: s(m && m.label, 10), score: clamp(m && m.score), note: s(m && m.note, 24) }))
+      .filter((m) => m.label);
+    const fixes = arr(parsed.fixes, 3)
+      .map((f) => ({ area: s(f && f.area, 12), target: s(f && f.target, 18), action: s(f && (f.action || f.fix), 90) }))
+      .filter((f) => f.action);
+    const strengths = arr(parsed.strengths, 2).map((v) => s(v, 30)).filter(Boolean);
+    return send(res, 200, {
+      ok: true,
+      action: 'idea_viral_score',
+      model: out.model,
+      score,
+      grade: s(parsed.grade, 2) || (score >= 90 ? 'A+' : score >= 82 ? 'A' : score >= 72 ? 'B' : score >= 62 ? 'C' : 'D'),
+      summary: s(parsed.summary, 90) || '진단을 마쳤습니다.',
+      metrics,
+      fixes,
+      strengths,
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_viral_score', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 기기 안 규칙 점수로 보여 드립니다.'
+        : 'Gemini가 응답하지 않았습니다. 기기 안 규칙 점수로 보여 드립니다.',
+    });
+  }
+}
+
+/* 🎯 A/B 오프닝 후킹 3안 — 서로 다른 톤으로 1번 컷을 갈아 끼울 수 있게 */
+const SCHEMA_IDEA_HOOKS = {
+  type: 'OBJECT',
+  properties: {
+    hooks: {
+      type: 'ARRAY',
+      description: '서로 다른 톤의 오프닝 3안',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          tone: { type: 'STRING', description: 'curiosity / number / twist / question / shock 중' },
+          tag: { type: 'STRING', description: '한국어 톤 이름 (5자 이내, 예: 궁금증)' },
+          subtitle: { type: 'STRING', description: '1번 컷 자막 — 14자 이내' },
+          narration: { type: 'STRING', description: '1번 컷 성우 대사 — 3초에 읽히는 구어체, 55자 이내' },
+          why: { type: 'STRING', description: '왜 3초를 붙잡는지 20자 이내' },
+        },
+        required: ['tone', 'tag', 'subtitle', 'narration'],
+      },
+    },
+  },
+  required: ['hooks'],
+};
+
+async function handleIdeaHooks(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const idea = s(body.idea, 300);
+  const title = s(body.title, 120);
+  const genre = s(body.genre, 30);
+  const hook = s(body.hook, 80);
+  const dialogue = body.dialogue === true || body.dialogue === 'true';
+  const scenes = arr(body.scenes, 3)
+    .map((sc) => ({ subtitle: s(sc && sc.subtitle, 60), narration: s(sc && sc.narration, 160) }))
+    .filter((sc) => sc.subtitle || sc.narration);
+  if (!idea && !scenes.length) {
+    return send(res, 400, {
+      ok: false, action: 'idea_hooks', reason: 'missing_input',
+      message: '아이디어나 1번 컷 대본이 있어야 후킹을 뽑을 수 있습니다.',
+    });
+  }
+
+  const user = [
+    '아래 쇼츠의 첫 3초를 붙잡는 오프닝 3안을 서로 다른 톤으로 써 주세요.',
+    '',
+    '[아이디어] ' + (idea || '(제목 참조)'),
+    title ? '[제목] ' + title : '',
+    hook ? '[지금 상단 후킹] ' + hook : '',
+    genre ? '[장르] ' + genre : '',
+    '[형식] ' + (dialogue ? '2인 대화(A 질문 · B 전문가)' : '1인 내레이션'),
+    '',
+    '[지금 1번 컷]',
+    scenes.length ? scenes.map((sc, i) => '#' + (i + 1) + ' 자막: "' + sc.subtitle + '" / 대사: ' + sc.narration).join('\n') : '(아직 없음)',
+    '',
+    '[규칙]',
+    '1. 3안은 톤이 확실히 달라야 합니다(예: 궁금증 · 숫자/사실 · 반전 경고).',
+    '2. subtitle 은 1번 컷 자막을 그대로 갈아 끼울 수 있는 14자 이내 한 줄.',
+    '3. narration 은 성우가 3초에 읽는 구어체 한 문장(55자 이내). 대본에 없는 수치·고유명사 금지.',
+    '4. 낚시성 거짓말 금지 — 대본 내용으로 실제 설명할 수 있는 약속만.',
+    '5. JSON 만 돌려주세요.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system: '당신은 쇼츠 오프닝 카피라이터입니다. 같은 내용을 서로 다른 톤 3가지로 짧게 씁니다. 사실을 꾸며내지 않습니다.',
+      user,
+      schema: SCHEMA_IDEA_HOOKS,
+      temperature: 0.9,
+      maxTokens: 900,
+      fastFirst: true,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    const hooks = arr(parsed && parsed.hooks, 3)
+      .map((h) => ({
+        tone: s(h && h.tone, 20),
+        tag: s(h && h.tag, 6),
+        subtitle: s(h && h.subtitle, 20),
+        narration: s(h && h.narration, 90),
+        why: s(h && h.why, 30),
+      }))
+      .filter((h) => h.subtitle);
+    if (!hooks.length) {
+      return send(res, 200, {
+        ok: false, action: 'idea_hooks', reason: 'empty_hooks',
+        message: '후킹 문구를 만들지 못했습니다. 한 번 더 눌러 주세요.', model: out.model,
+      });
+    }
+    return send(res, 200, { ok: true, action: 'idea_hooks', model: out.model, hooks });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_hooks', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 기본 3안으로 보여 드립니다.'
+        : 'Gemini가 응답하지 않았습니다. 기본 3안으로 보여 드립니다.',
+    });
+  }
+}
+
+/* 🌐 1클릭 다국어 복제 — 같은 쇼츠를 다른 언어 대본으로 갈아 끼운다 */
+const SCHEMA_IDEA_TRANSLATE = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING', description: '번역한 쇼츠 제목 (60자 이내)' },
+    scenes: {
+      type: 'ARRAY',
+      description: '컷 순서 그대로 (입력 컷 수와 동일)',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          subtitle: { type: 'STRING', description: '화면 자막 — 원문처럼 짧고 강하게' },
+          narration: { type: 'STRING', description: '성우 대사 — 자연스러운 구어체 한 문장' },
+        },
+        required: ['subtitle', 'narration'],
+      },
+    },
+  },
+  required: ['scenes'],
+};
+
+const IDEA_LANG_LABEL = { en: 'English (US)', ja: '日本語', es: 'Español', zh: '中文(简体)', ko: '한국어' };
+const IDEA_LANG_RULE = {
+  en: '영어 자막은 38자(공백 포함) 이내, 대사는 130자 이내. 짧은 구어체.',
+  ja: '일본어 자막은 18자 이내, 대사는 60자 이내. 자연스러운 구어체(です・ます 조정 가능).',
+  es: '스페인어 자막은 40자 이내, 대사는 130자 이내. 자연스러운 구어체.',
+  zh: '중국어(간체) 자막은 16자 이내, 대사는 60자 이내. 자연스러운 구어체.',
+  ko: '한국어 자막은 14자 이내, 대사는 55자 이내. 자연스러운 구어체.',
+};
+
+async function handleIdeaTranslate(res, body, keyConfigured) {
+  if (!keyConfigured) return send(res, 503, noKeyBody());
+  const lang = s(body.lang, 5) || 'en';
+  if (!IDEA_LANG_LABEL[lang]) {
+    return send(res, 400, {
+      ok: false, action: 'idea_translate', reason: 'bad_lang',
+      message: '지원하지 않는 언어입니다. (en · ja · es · zh · ko)',
+    });
+  }
+  const scenes = arr(body.scenes, 8)
+    .map((sc) => ({ subtitle: s(sc && sc.subtitle, 80), narration: s(sc && sc.narration, 200) }))
+    .filter((sc) => sc.subtitle || sc.narration);
+  if (!scenes.length) {
+    return send(res, 400, {
+      ok: false, action: 'idea_translate', reason: 'missing_scenes',
+      message: '번역할 대본이 없습니다. 먼저 스토리보드를 만들어 주세요.',
+    });
+  }
+  const title = s(body.title, 120);
+  const idea = s(body.idea, 200);
+
+  const user = [
+    '아래 유튜브 쇼츠 대본을 ' + IDEA_LANG_LABEL[lang] + '로 번역해 주세요. 글로벌 쇼츠로 바로 올릴 수 있게 자연스럽게.',
+    '',
+    title ? '[제목] ' + title : '',
+    idea ? '[주제] ' + idea : '',
+    '',
+    '[컷]',
+    scenes.map((sc, i) => '#' + (i + 1) + ' 자막: "' + sc.subtitle + '" / 대사: ' + sc.narration).join('\n'),
+    '',
+    '[규칙]',
+    '1. ' + (IDEA_LANG_RULE[lang] || IDEA_LANG_RULE.en),
+    '2. 컷 수와 순서를 그대로 유지하고, 자막과 대사는 서로 다른 문장으로(자막은 요약・임팩트).',
+    '3. 원문에 없는 수치·고유명사·약속을 추가하지 마세요.',
+    '4. 첫 컷은 3초 후킹이 유지되게, 마지막 컷은 저장·구독 유도가 남게.',
+    '5. JSON 만 돌려주세요.',
+  ].filter(Boolean).join('\n');
+
+  const deadline = Date.now() + DEADLINE_MS;
+  try {
+    const out = await generate({
+      system: '당신은 유튜브 쇼츠 전문 번역가입니다. 짧은 자막 리듬과 구어체를 살려 번역하고, 원문에 없는 정보를 만들지 않습니다.',
+      user,
+      schema: SCHEMA_IDEA_TRANSLATE,
+      temperature: 0.5,
+      maxTokens: 1800,
+      fastFirst: true,
+    }, deadline);
+    let parsed = null;
+    try { parsed = JSON.parse(out.text); } catch (_) { parsed = extractJson(out.text); }
+    const outScenes = arr(parsed && parsed.scenes, 8)
+      .map((sc) => ({ subtitle: s(sc && sc.subtitle, 80), narration: s(sc && sc.narration, 200) }))
+      .filter((sc) => sc.subtitle || sc.narration);
+    if (outScenes.length < scenes.length) {
+      return send(res, 200, {
+        ok: false, action: 'idea_translate', reason: 'short_result',
+        message: '번역 컷 수가 모자랍니다(' + outScenes.length + '/' + scenes.length + '). 한 번 더 눌러 주세요.',
+        model: out.model,
+      });
+    }
+    return send(res, 200, {
+      ok: true, action: 'idea_translate', model: out.model, lang,
+      title: s(parsed && parsed.title, 120) || title,
+      scenes: outScenes.slice(0, scenes.length),
+    });
+  } catch (err) {
+    const code = (err && err.code) || 'gemini_unavailable';
+    return send(res, code === 'quota_exceeded' ? 429 : 503, {
+      ok: false, action: 'idea_translate', reason: code,
+      message: code === 'quota_exceeded'
+        ? 'Gemini 무료 하루 한도를 다 썼습니다. 잠시 뒤 다시 시도해 주세요.'
+        : 'Gemini가 응답하지 않았습니다. 잠시 후 다시 시도해 주세요.',
+    });
+  }
+}
+
 /* 🧭 BRIEF 리포트 · 이어서 묻기 — 멀티 소스 종합 보고서 전용 핸들러 */
 function sendBriefGeminiError(res, err, action) {
   const status = err && err.status === 400 ? 400 : 200;
@@ -7756,6 +8355,9 @@ module.exports = async function handler(req, res) {
   if (action === 'idea_prompt_edit') return handleIdeaPromptEdit(res, body, keyConfigured);
   if (action === 'idea_image' || action === 'idea_image_proxy') return handleIdeaImage(res, body);
   if (action === 'idea_url_extract') return handleIdeaUrlExtract(res, body);
+  if (action === 'idea_viral_score') return handleIdeaViralScore(res, body, keyConfigured);
+  if (action === 'idea_hooks') return handleIdeaHooks(res, body, keyConfigured);
+  if (action === 'idea_translate') return handleIdeaTranslate(res, body, keyConfigured);
   // 🎨 이모티콘 스튜디오 AI Pro — 24종 기획 · 기준 캐릭터 고정 이미지(레퍼런스+글씨금지)
   if (action === 'emoticon_plan') return handleEmoticonPlan(res, body, keyConfigured);
   if (action === 'emoticon_image') return handleEmoticonImage(res, body);
@@ -7834,6 +8436,18 @@ module.exports = async function handler(req, res) {
       return send(res, 400, { ok: false, reason: 'missing_body', message: '1타 3피로 바꿀 완성 본문이 필요합니다(120자 이상).' });
     }
     prompt = promptMulti({ ...body, banPhrases, body: draft });
+  } else if (action === 'vision_experience') {
+    if (!arr(body.photos, 4).length) {
+      return send(res, 400, { ok: false, reason: 'missing_photos', message: '사진이 필요합니다 — [📷 내 사진 올리기]로 1~4장 올려 주세요.' });
+    }
+    prompt = promptVision(body);
+  } else if (action === 'thread') {
+    if (!s(body.body, 8000) && !s(body.current, 1400)) {
+      return send(res, 400, { ok: false, reason: 'missing_body', message: '스레드로 바꿀 본문이 필요합니다.' });
+    }
+    prompt = promptThread(body);
+  } else if (action === 'idea_sources') {
+    prompt = promptIdeaSources(body);
   } else if (action === 'seo_tags') {
     if (!s(body.body, 200) && !s(body.title, 120)) {
       return send(res, 400, { ok: false, reason: 'missing_body', message: '태그를 뽑을 본문이나 제목이 필요합니다.' });
@@ -8153,6 +8767,9 @@ module.exports = async function handler(req, res) {
   else if (action === 'humanize') result = normHumanize(data, banPhrases);
   else if (action === 'multi_use') result = normMulti(data, banPhrases);
   else if (action === 'seo_tags') result = normSeo(data);
+  else if (action === 'vision_experience') result = normVision(data);
+  else if (action === 'thread') result = normThread(data);
+  else if (action === 'idea_sources') result = normIdeaSources(data);
   else if (action === 'closing_box') result = normClosing(data);
   else if (action === 'proofread_draft') result = normProof(data, banPhrases);
   else if (action === 'analyze_blogger_style') result = normStyle(data);
