@@ -1501,6 +1501,7 @@
         particle: 'none',
         autoTrim: true,
         keywordSfx: true,
+        lastImageAt: 0,
         sourceText: '',
         sourceTitle: '',
         particles: Array.from({ length: 36 }, (_, i) => ({
@@ -4012,6 +4013,17 @@ ${clipMetaLines.join('\n')}
       return json;
     }
 
+    /* 무료 이미지 서버(Pollinations)는 IP당 45초에 1장 — 컷 사이에 자동으로 맞춰 기다린다 */
+    const IDEA_IMG_GAP_MS = 46000;
+    async function ideaWaitForImageSlot(onTick) {
+      const left = IDEA_IMG_GAP_MS - (Date.now() - (state.idea.lastImageAt || 0));
+      if (left <= 600) return;
+      for (let t = Math.ceil(left / 1000); t > 0; t--) {
+        if (typeof onTick === 'function') onTick(t);
+        await new Promise((res2) => setTimeout(res2, 1000));
+      }
+    }
+
     function ideaLoadImage(src) {
       return new Promise((resolve, reject) => {
         const img = new Image();
@@ -4395,14 +4407,26 @@ ${clipMetaLines.join('\n')}
       seg.visualEngine = engine;
       renderIdeaScenes();
       const seed = (state.idea.seed || 4200) + state.segments.indexOf(seg) * 17 + (o.reseed ? Math.floor(Math.random() * 997) : 0);
-      let json = await ideaApi('idea_image', {
+      const payload = {
         engine,
         prompt,
         stylePrompt: IDEA_STYLE_PROMPT[styleKey] || '',
         width: 540,
         height: 960,
         seed,
-      });
+      };
+      await ideaWaitForImageSlot((t) => ideaSetStatus('무료 이미지 서버는 45초에 1장 — 다음 컷까지 ' + t + '초…', 'busy'));
+      state.idea.lastImageAt = Date.now();
+      let json = await ideaApi('idea_image', payload);
+      if (!json.ok && json.reason === 'free_limit') {
+        const wait = Math.max(5, Math.min(90, Number(json.retryAfterSec) || 45));
+        for (let t = wait; t > 0; t--) {
+          ideaSetStatus('무료 한도 — ' + t + '초 뒤에 자동으로 다시 그립니다…', 'busy');
+          await new Promise((res2) => setTimeout(res2, 1000));
+        }
+        state.idea.lastImageAt = Date.now();
+        json = await ideaApi('idea_image', payload);
+      }
       if (!json.ok && engine === 'gemini_image') {
         showToast(json.message || 'Gemini 이미지를 쓸 수 없어 무료 엔진으로 다시 그립니다.', 'warn');
         json = await ideaApi('idea_image', {
@@ -4444,6 +4468,11 @@ ${clipMetaLines.join('\n')}
       let made = 0;
       let failed = 0;
       const list = state.segments.slice();
+      const pending = list.filter((s) => !(s.cardType === 'card' && s.cardData)).length;
+      if (pending > 1) {
+        const mins = Math.ceil(((pending - 1) * IDEA_IMG_GAP_MS) / 60000);
+        ideaSetStatus('무료 엔진은 45초에 1장입니다 — ' + pending + '컷이면 약 ' + mins + '분 걸립니다. (내 Gemini 키를 쓰면 더 빠릅니다)', 'busy');
+      }
       for (let i = 0; i < list.length; i++) {
         const seg = list[i];
         if (seg.cardType === 'card' && seg.cardData) {
