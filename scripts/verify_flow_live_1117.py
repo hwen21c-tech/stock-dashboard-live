@@ -12,7 +12,7 @@ from playwright.sync_api import sync_playwright
 
 CHROME = "/workspace/.cache/puppeteer/chrome-headless-shell/linux-131.0.6778.204/chrome-headless-shell-linux64/chrome-headless-shell"
 OUT = "/workspace/screenshots/flow_1117"
-URLS = sys.argv[1:] or ["https://stock-dashboard-live-6frm.vercel.app/",
+URLS = sys.argv[1:] or ["https://stock-dashboard-live-bice.vercel.app/",
                         "https://hwen21c-tech.github.io/stock-dashboard/"]
 
 fails, oks = [], []

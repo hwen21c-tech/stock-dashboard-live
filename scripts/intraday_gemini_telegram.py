@@ -53,11 +53,11 @@
   python3 scripts/intraday_gemini_telegram.py --print-facts
 
 데이터 소스
-  · https://stock-dashboard-live-6frm.vercel.app/api/tabs-live
+  · https://stock-dashboard-live-bice.vercel.app/api/tabs-live
       주도 테마·구성종목·300억↑ 대장주·선물(KIS·베이시스)·뉴스·상한가·수급 참고
   · https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI,KOSDAQ
       코스피·코스닥 지수/등락/시고저/거래대금
-  · https://stock-dashboard-live-6frm.vercel.app/api/live-briefing
+  · https://stock-dashboard-live-bice.vercel.app/api/live-briefing
       (네이버 폴링이 막힌 경우 지수 대체용)
   · https://m.stock.naver.com/api/index/{KOSPI,KOSDAQ}/integration
       전일 종가 · 상승/하락 종목수 · 프로그램 매매
@@ -111,7 +111,7 @@ KST = timezone(timedelta(hours=9))
 WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
 
 TABS_LIVE_URL = os.environ.get(
-    "TABS_LIVE_URL", "https://stock-dashboard-live-6frm.vercel.app/api/tabs-live"
+    "TABS_LIVE_URL", "https://stock-dashboard-live-bice.vercel.app/api/tabs-live"
 )
 NAVER_POLL_URL = "https://polling.finance.naver.com/api/realtime?query="
 NAVER_MOBILE = "https://m.stock.naver.com/api/index/"
@@ -122,7 +122,7 @@ NAVER_FX_URL = (
     "?category=exchange&reutersCode=FX_USDKRW"
 )
 LIVE_BRIEFING_URL = os.environ.get(
-    "LIVE_BRIEFING_URL", "https://stock-dashboard-live-6frm.vercel.app/api/live-briefing"
+    "LIVE_BRIEFING_URL", "https://stock-dashboard-live-bice.vercel.app/api/live-briefing"
 )
 
 CHECKER_URL = "https://hwen21c-tech.github.io/foxsignal-checker/"

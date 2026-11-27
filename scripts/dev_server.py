@@ -19,7 +19,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PUB = os.path.join(os.path.dirname(HERE), "public")
-UPSTREAM = os.environ.get("API_UPSTREAM", "https://stock-dashboard-live-6frm.vercel.app")
+UPSTREAM = os.environ.get("API_UPSTREAM", "https://stock-dashboard-live-bice.vercel.app")
 
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",

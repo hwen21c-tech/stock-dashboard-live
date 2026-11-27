@@ -19,7 +19,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # sd_live
 WS = os.path.dirname(ROOT)
 SHOTS = os.path.join(ROOT, "screenshots", "strat_modal")
-UPSTREAM = "https://stock-dashboard-live-6frm.vercel.app"
+UPSTREAM = "https://stock-dashboard-live-bice.vercel.app"
 
 ROW1 = ["⚡ 실시간 브리핑", "🎯 홍인기", "📊 비중법사", "📈 깡토", "🎯 만쥬",
         "🏆 신정재", "🎯 RN", "💾 오늘 저장", "📁 보관함"]

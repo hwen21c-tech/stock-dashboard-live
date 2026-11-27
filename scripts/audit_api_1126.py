@@ -3,7 +3,7 @@
 """관제탑 API 12개 실측 점검 — 상태코드·JSON 유효성·응답시간·본문 요약
 
 사용: python3 sd_live/scripts/audit_api_1126.py [base_url]
-기본 base: https://stock-dashboard-live-6frm.vercel.app
+기본 base: https://stock-dashboard-live-bice.vercel.app
 """
 import json
 import sys
@@ -11,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "https://stock-dashboard-live-6frm.vercel.app").rstrip("/")
+BASE = (sys.argv[1] if len(sys.argv) > 1 else "https://stock-dashboard-live-bice.vercel.app").rstrip("/")
 
 CASES = [
     ("tabs-live", "/api/tabs-live", None),

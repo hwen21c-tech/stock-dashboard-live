@@ -3776,7 +3776,7 @@ html[data-theme="light"] .gd-step .t{color:#27364a}
    ══════════════════════════════════════════════════════════════════ */
 var CSVoice = (function () {
   'use strict';
-  var ORIGIN = 'https://stock-dashboard-live-6frm.vercel.app';
+  var ORIGIN = 'https://stock-dashboard-live-bice.vercel.app';
   /* 정적(GitHub Pages)은 동적 서버 /api/tts 를 부르고, 동적(content-v2)은 같은 도메인을 쓴다 */
   var HAS_SERVER = !(window.CSAI && typeof window.CSAI.run === 'function');
   var EL_KEY = 'cs_elevenlabs_api_key';
@@ -11484,7 +11484,7 @@ var CSVoice = (function () {
   var SLOT_EXT = { at: 0, livebrief: null, macro: null, econ: null, alerts: null, err: [] };
   function slotExtra(force){
     if (!force && SLOT_EXT.at && (Date.now() - SLOT_EXT.at) < 60000) return Promise.resolve(SLOT_EXT);
-    var base = (typeof MKT_BASE === 'string' && MKT_BASE) ? MKT_BASE : 'https://stock-dashboard-live-6frm.vercel.app';
+    var base = (typeof MKT_BASE === 'string' && MKT_BASE) ? MKT_BASE : 'https://stock-dashboard-live-bice.vercel.app';
     var jobs = [
       ['livebrief', base + '/api/live-briefing'],
       ['macro', base + '/api/macro-live'],
@@ -16254,7 +16254,7 @@ var CSVoice = (function () {
     WM: 'cs_chart_watermark',
     OPT: 'cs_v3_options',
     WM_DEF: '연오랑의 3분 시황',
-    ORIGIN: 'https://stock-dashboard-live-6frm.vercel.app',
+    ORIGIN: 'https://stock-dashboard-live-bice.vercel.app',
     voices: [
       { a: 'charlie', id: 'IKne3meq5aSn9XLyUdCD', n: 'Charlie · 깊고 자신감 있는 남성 (추천)' },
       { a: 'liam', id: 'TX3LPaxmHKxFdv7VOQHJ', n: 'Liam · 에너지 넘치는 크리에이터' },
@@ -17876,7 +17876,7 @@ var CSVoice = (function () {
   var IDX_LABEL = { kospi: '코스피', kosdaq: '코스닥' };
   function idxBase() {
     try { if (/(^|\.)vercel\.app$/.test(location.hostname)) return ''; } catch (e) {}
-    return 'https://stock-dashboard-live-6frm.vercel.app';
+    return 'https://stock-dashboard-live-bice.vercel.app';
   }
   function idxPickKey() {
     var t = String(((S.spec && S.spec.title) || '') + ' ' + ((S.spec && S.spec.hookTitle) || ''));
@@ -19683,7 +19683,7 @@ var CSVoice = (function () {
   var MAC = { at: 0, pend: null, live: null, macro: null, brief: null, sup: null, err: [] };
   function macBase() {
     try { if (/(^|\.)vercel\.app$/.test(location.hostname)) return ''; } catch (e) {}
-    return 'https://stock-dashboard-live-6frm.vercel.app';
+    return 'https://stock-dashboard-live-bice.vercel.app';
   }
   function macFetch(url, ms) {
     var ctrl = null, timer = null;

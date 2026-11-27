@@ -147,7 +147,7 @@ TXT 파일을 책처럼 넘겨 읽고, 대사와 지문을 구분해 장면 효�
 | 설치 이름 | 연오랑 eBook 오디오북 / eBook |
 
 호스트 이름에 `ebook` 이 들어가면(운영·프리뷰·커스텀 도메인 모두) eBook 이 첫 화면이 되고,
-관제탑 주소(`stock-dashboard-live-6frm.vercel.app`)에서는 분기가 동작하지 않아 PIN 잠금·9대 탭이 그대로다.
+관제탑 주소(`stock-dashboard-live-bice.vercel.app`)에서는 분기가 동작하지 않아 PIN 잠금·9대 탭이 그대로다.
 
 - **TXT 열기**: 드래그&드롭 · 파일 선택. `TextDecoder('utf-8',{fatal:true})` 실패 시 `euc-kr` 로 자동 폴백.
   올린 책은 IndexedDB(`ebook-library`), 읽던 위치·책갈피·형광펜·설정은 `localStorage` 에만 저장(서버 전송 없음).

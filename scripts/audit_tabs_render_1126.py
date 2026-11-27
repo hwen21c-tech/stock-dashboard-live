@@ -25,7 +25,7 @@ from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # sd_live
 WS = os.path.dirname(ROOT)
 SHOTS = os.path.join(ROOT, "screenshots", "audit_1126")
-UPSTREAM = "https://stock-dashboard-live-6frm.vercel.app"
+UPSTREAM = "https://stock-dashboard-live-bice.vercel.app"
 
 VIEWS = ["main", "honginki", "bijoong", "kkangto", "manju", "jongbe", "rnzone",
          "supply", "aftermarket", "analysis", "news", "calendar", "ipo"]
