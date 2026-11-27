@@ -29,6 +29,8 @@ const kis = require('../lib/kis');
 
 // 📐 1분봉 + F존·K존 계산 (2026-11-26) — 새 함수 파일을 만들지 않고 이 파일 안에서 내부 라우트로 처리한다.
 const fkzone = require('../lib/fkzone');
+// 🍔 불개미 햄버거 (2026-11-27) — 팝업에서 이전 장대양봉 날 3분봉 대금과 오늘 장초반 3분봉을 나란히 보여준다.
+const hamburgerLib = require('../lib/hamburger');
 
 /* ⚡ 반응속도(2026-11-27): 10초는 체커에서 검색 후 다시 누를 때마다 서버까지 내려갔다.
  *   장중 시세는 15초 안에서 충분히 '지금 값'이고, 그 15초 동안은 Vercel CDN 이 즉시(0.05초) 답한다.
@@ -1111,6 +1113,19 @@ async function handleMinuteCandles(res, q, fresh) {
     generatedAtKst,
     cached: Boolean(got.cached),
   };
+  /* 🍔 불개미 햄버거 — ?ham=1 로 물을 때만 (기준 대금 계산이 KIS 조회를 쓰므로 기본은 생략)
+   *   · 기준: 과거 장대양봉 날 09:00~09:02 3분봉 대금 (메모리·Supabase·번들 캐시 우선)
+   *   · 오늘: 09:00~09:02 (장전은 NXT 08:00~08:02) 3분봉 대금
+   *   · 3분봉 20선은 이미 받은 오늘 1분봉으로 계산한다 */
+  if (q.ham === '1') {
+    try {
+      const info = await hamburgerLib.inspect(code, { pctNow: null });
+      info.ma20 = hamburgerLib.threeMinMA20(bars);
+      body.hamburger = info;
+    } catch (e) {
+      body.hamburger = { ok: false, code, reason: 'ham_error', message: String((e && e.message) || e) };
+    }
+  }
   return sendJson(res, 200, body, MINUTE_CACHE_CONTROL);
 }
 

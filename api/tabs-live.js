@@ -61,6 +61,8 @@ const prof = (name, t0) => {
 };
 /* 📐 F존·K존 — 1분봉 조회와 파동 계산을 모달(stock-live)과 같은 함수로 쓴다(2026-11-26). */
 const fkzone = require('../lib/fkzone');
+/* 🍔 불개미 햄버거 — 과거 장대양봉 날의 시동 3분봉 대금과 오늘 장초반 3분봉을 대조한다(2026-11-27). */
+const hamburger = require('../lib/hamburger');
 /* KIS 공식 API — ?mode=supply_live(장중 기관·외국인 가집계) 에서만 쓴다. 없으면 null 로 두고 503 안내. */
 let kisLib = null;
 try {
@@ -2948,6 +2950,175 @@ async function buildFkZone(ctx) {
   const body = Object.assign({}, out, { cacheKey });
   if (!out.errors.length) FK_CACHE = { at: Date.now(), value: out };
   return body;
+}
+
+/* 🍔 1번 탭 '장중매매 후보 (불개미 · 햄버거)' — 2026-11-27 신설
+ *
+ *  원전: 부자회사원 채널 「불개미님 햄버거 기법」 2편
+ *   · 과거 그 종목이 장대양봉을 냈던 날의 **시동 3분봉 대금**을 기준으로 기억하고,
+ *     오늘 그 종목이 속한 테마가 주도 섹터로 살아 있을 때 **장초반 3분봉 대금이
+ *     기준을 압도**하면 햄버거 완성으로 본다.
+ *   · 대금이 터져도 **긴 위꼬리 · 도지 · 음봉 · 역배열** 자리는 상승 확률이 낮아 뺀다.
+ *
+ *  후보 — '오늘 강한 테마의 대장주·부대장주'(사용자 확정 #70211)
+ *   오늘 실시간 테마 구성종목(fetchClosingThemeMembers 상위 10테마 전체)에서
+ *   테마당 대장(상승률 1위)·부대장(대금 1위)을 뽑고, 조건(테마 +1%↑ · 종목 +5%↑)은
+ *   F존·K존과 같은 잣대를 쓴다. 대장주가 겹치는 유사 테마는 건너뛴다.
+ *
+ *  계산 예산
+ *   · 기준(과거 3분봉): 저장소 JSON → Supabase 공용 행 → 없으면 이번 요청에서 계산.
+ *     계산은 일봉 1회 + 그날 분봉 1회라 비싸므로 **요청당 3종목까지만** 즉석 계산한다.
+ *     계산한 값은 Supabase 에 합쳐 둔다(다른 인스턴스·다음 날도 재사용).
+ *   · 오늘 장초반 3분봉: 종목당 1회, 30초(장마감 뒤엔 값이 변하지 않는다) 캐시.
+ */
+const HAM_RULES = {
+  themeTop: 4,
+  minThemePct: 1.0,
+  minStockPct: 5.0,
+  maxCodes: 8,          // 기준·오늘 분봉 조회 예산(8종목 ≈ 1~2초)
+  lazyBaseCodes: 3,     // 요청당 즉석 계산할 기준 수
+  budgetMs: 6500,
+  ttlMs: 60000,
+};
+let HAM_CACHE = null;
+
+/** 오늘 강한 테마의 대장·부대장 — F존과 같은 fkPickLeaders 를 그대로 쓴다(잣대 통일) */
+function hamCandidates(memberRows) {
+  const rows = (memberRows || []).map((r) => ({
+    code: r.code,
+    name: r.name,
+    changePct: numOrNull(r.changePct),
+    value: numOrNull(r.value),
+    valueText: null,
+    price: numOrNull(r.price),
+    themeName: r.themeName,
+    themeRank: numOrNull(r.themeRank),
+  }));
+  const picked = fkPickLeaders(rows, new Set(), { themeLimit: HAM_RULES.themeTop });
+  return {
+    items: picked.items.slice(0, HAM_RULES.maxCodes).map((x) => Object.assign({}, x, {
+      pctNow: x.pct,
+      quotePrice: numOrNull(x.quotePrice),
+    })),
+    themes: picked.themes,
+    skipped: picked.skipped,
+  };
+}
+
+/** 한 후보의 기준·오늘 3분봉·판정 — 실패는 사유만 남기고 카드는 유지 */
+async function hamItem(cand, opts) {
+  const o = opts || {};
+  const [base, today] = await Promise.all([
+    o.allowCompute
+      ? hamburger.getBase(cand.code).catch((e) => ({ ok: false, code: cand.code, reason: 'base_error', message: String((e && e.message) || e) }))
+      : hamburger.getBase(cand.code, { cacheOnly: true }).catch(() => ({ ok: false, code: cand.code, reason: 'base_missing', message: '기준 미계산' })),
+    hamburger.getTodayOpen(cand.code).catch((e) => ({ ok: false, code: cand.code, reason: 'today_error', message: String((e && e.message) || e) })),
+  ]);
+  const verdict = hamburger.judge(base, today, { pctNow: cand.pctNow });
+  return Object.assign({}, cand, {
+    base: base && base.ok
+      ? {
+        ok: true,
+        date: base.bigYang.date,
+        dateLabel: base.bigYang.dateLabel,
+        pct: base.bigYang.pct,
+        dayValueEok: base.bigYang.valueEok,
+        open3mEok: base.bigYang.open3m ? base.bigYang.open3m.valueEok : null,
+        open3m: base.bigYang.open3m || null,
+        others: base.others || [],
+        reversal: base.reversal || null,
+      }
+      : { ok: false, reason: (base && base.reason) || 'not_ready', message: (base && base.message) || '기준 대금 미계산' },
+    today: today && today.ok
+      ? {
+        ok: true,
+        date: today.date,
+        dateLabel: today.dateLabel,
+        market: today.market,
+        marketLabel: today.marketLabel,
+        open3mEok: today.open3m.valueEok,
+        open3m: today.open3m,
+      }
+      : { ok: false, reason: (today && today.reason) || 'not_ready', message: (today && today.message) || '오늘 장초반 3분봉 미수신', market: today && today.market },
+    verdict,
+  });
+}
+
+async function buildHamburger(ctx) {
+  const c = ctx || {};
+  const p0 = kstParts(new Date());
+  const out = {
+    ok: true,
+    generatedAtKst: `${pad2(p0.hh)}:${pad2(p0.mi)}`,
+    rules: Object.assign({}, hamburger.publicRules(), {
+      themeTop: HAM_RULES.themeTop,
+      minThemePct: HAM_RULES.minThemePct,
+      minStockPct: HAM_RULES.minStockPct,
+      maxCodes: HAM_RULES.maxCodes,
+      candidateRule: '오늘 강한 테마(평균 +' + HAM_RULES.minThemePct + '%↑)의 대장(상승률)·부대장(대금) · 종목 +' + HAM_RULES.minStockPct + '%↑',
+    }),
+    themes: [],
+    items: [],
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    errors: [],
+    note: '',
+    sourceLabel: '/api/tabs-live hamburger (테마 대장·부대장 + KIS 일봉·과거 분봉·오늘 분봉 실측)',
+  };
+
+  if (HAM_CACHE && Date.now() - HAM_CACHE.at < HAM_RULES.ttlMs) {
+    return Object.assign({}, HAM_CACHE.value, { cached: true });
+  }
+
+  let members = [];
+  try {
+    const raw = c.memberRows ? await c.memberRows : [];
+    members = (raw && raw.rows) || raw || [];
+  } catch (e) {
+    out.errors.push('테마 구성종목 조회 실패');
+  }
+  if (!members.length) {
+    out.errors.push('테마 구성종목이 비어 있습니다');
+    out.note = '오늘 테마 구성종목을 받지 못해 후보를 만들지 않았습니다 — 값을 지어내지 않습니다.';
+    return out;
+  }
+
+  const pick = hamCandidates(members);
+  out.themes = pick.themes;
+  if (!pick.items.length) {
+    out.note = '오늘 테마에서 조건(테마 +' + HAM_RULES.minThemePct + '%↑ · 종목 +' + HAM_RULES.minStockPct + '%↑)을 채운 대장·부대장이 없습니다 — 기준을 임의로 완화하지 않습니다.';
+    return out;
+  }
+
+  const work = pick.items.map((cand, i) => hamItem(cand, { allowCompute: i < HAM_RULES.lazyBaseCodes }));
+  const raced = await Promise.race([
+    Promise.all(work),
+    new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), HAM_RULES.budgetMs)),
+  ]);
+  if (raced === 'TIMEOUT') {
+    out.errors.push('분봉·기준 조회가 ' + Math.round(HAM_RULES.budgetMs / 1000) + '초 예산을 넘었습니다 — 다음 폴링에서 이어집니다');
+    out.items = pick.items.map((x) => Object.assign({}, x, {
+      base: { ok: false, reason: 'timeout', message: '기준 조회 예산 초과' },
+      today: { ok: false, reason: 'timeout', message: '오늘 분봉 조회 예산 초과' },
+      verdict: { pass: false, tag: '조회 지연', tagKind: 'wait', reasons: ['다음 폴링에서 다시 계산합니다'], blocks: [] },
+    }));
+  } else {
+    out.items = raced;
+  }
+
+  out.items.forEach((x) => {
+    if (x.verdict && x.verdict.pass) out.counts.pass += 1;
+    else if (x.verdict && x.verdict.tagKind === 'dn') out.counts.blocked += 1;
+    else out.counts.wait += 1;
+  });
+  out.counts.candidates = out.items.length;
+  out.note =
+    '기준은 <b>최근 ' + hamburger.HAM.lookbackDays + '거래일 안 가장 최근 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑) 날의 09:00~09:02 3분봉 거래대금</b>입니다. ' +
+    '오늘 장초반 3분봉 대금이 그 기준 이상이면 햄버거 성립, 미만이면 <b>대금 미달</b>로 둡니다. ' +
+    '긴 위꼬리·도지·음봉·일봉 역배열은 대금이 넘어도 <b>실패 패턴</b>으로 뺍니다. ' +
+    '후보는 오늘 강한 테마의 대장·부대장이고, 기준 미계산 종목은 요청마다 ' + HAM_RULES.lazyBaseCodes + '종목까지 즉석 계산해 채웁니다.';
+
+  if (!out.errors.length) HAM_CACHE = { at: Date.now(), value: out };
+  return out;
 }
 
 async function buildIntradayHong(ctx) {
@@ -6124,6 +6295,58 @@ module.exports = async function handler(req, res) {
   const q = getQuery(req);
 
   /* ------------------------------------------------------------------
+   * ?mode=ham_test — 🍔 햄버거 기준·오늘 3분봉 실측 진단 (2026-11-27)
+   *   · Vercel 실전 서버에서만 KIS 분봉을 부를 수 있어(로컬은 9443 차단) 여기서 확인한다.
+   *   · ?code=000660&date=20261127 — 그 종목의 일봉 장대양봉 날·그날 3분봉·오늘 3분봉·판정
+   *   · ?codes=000660,005930&build=1 — 여러 종목의 기준을 계산해 rows 로 돌려준다(번들 캐시 생성용)
+   *   · 비밀값은 담지 않는다(종목·수치·사유만).
+   */
+  if (q.mode === 'ham_test') {
+    const head = { mode: 'ham_test', ok: false, generatedAtKst: kstParts(new Date()) && `${pad2(kstParts(new Date()).hh)}:${pad2(kstParts(new Date()).mi)}` };
+    if (!kisLib || !kisLib.isConfigured || !kisLib.isConfigured()) {
+      return sendJson(res, 200, Object.assign(head, { ok: false, reason: 'kis_not_configured' }), 'no-store');
+    }
+    const codes = String(q.codes || q.code || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => /^\d{6}$/.test(s));
+    if (!codes.length) {
+      return sendJson(res, 200, Object.assign(head, { ok: false, reason: 'code_required', message: '?code=6자리(또는 ?codes=a,b,c)' }), 'no-store');
+    }
+    try {
+      if (q.build === '1') {
+        const rows = {};
+        for (const code of codes) {
+          // eslint-disable-next-line no-await-in-loop
+          rows[code] = await hamburger.getBase(code, { noCache: true });
+        }
+        return sendJson(res, 200, Object.assign(head, { ok: true, rows }), 'no-store');
+      }
+      if (q.date && /^\d{8}$/.test(String(q.date))) {
+        const code = codes[0];
+        const b = await hamburger.getBase(code, { noCache: true });
+        const m = await kisLib.fetchMinuteBarsForDate(code, String(q.date), { hour: String(q.hour || '090300') });
+        return sendJson(res, 200, Object.assign(head, {
+          ok: true,
+          base: b,
+          minute: { ok: m.ok, count: m.count, date: m.date, bars: m.bars.slice(0, 8) },
+          open3m: m.ok ? hamburger.threeMinute(m.bars, '0900', '0902') : null,
+        }), 'no-store');
+      }
+      const inspected = {};
+      for (const code of codes) {
+        // eslint-disable-next-line no-await-in-loop
+        inspected[code] = await hamburger.inspect(code, { noCache: true });
+      }
+      return sendJson(res, 200, Object.assign(head, { ok: true, items: inspected }), 'no-store');
+    } catch (e) {
+      return sendJson(res, 200, Object.assign(head, {
+        ok: false, reason: 'ham_test_failed', message: String((e && e.message) || e), code: e && e.code, msgCd: e && e.msgCd, msg1: e && e.msg1,
+      }), 'no-store');
+    }
+  }
+
+  /* ------------------------------------------------------------------
    * ?mode=futures_test — KIS 국내선물옵션(주간 F · 야간 CM) 실측 진단
    * ------------------------------------------------------------------
    *  · 로컬에 KIS 키가 없으므로 실제 코드 표기(5자리/6자리/8자리)와 F·CM 조합이
@@ -6544,6 +6767,13 @@ module.exports = async function handler(req, res) {
     today: { label: '오늘 강세주', themes: [], count: 0 },
     errors: [String((e && e.message) || e)], note: 'F존 후보를 만들지 못했습니다.',
   })), 'fkZone');
+  /* 🍔 불개미 햄버거 — 같은 테마 풀에서 대장·부대장을 뽑고 기준 대금과 오늘 장초반 3분봉을 대조한다.
+   *   F존과 같은 테마 풀 Promise 를 공유해 네이버 요청은 늘리지 않는다. */
+  const hamPromise = markWhen(buildHamburger({ memberRows: cpMembersPromise }).catch((e) => ({
+    ok: false, items: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`, themes: [],
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    errors: [String((e && e.message) || e)], note: '햄버거 후보를 만들지 못했습니다.',
+  })), 'hamburger');
 
   /* 목록·뉴스 요청을 '변수'로 먼저 받아 둔다 — 배치와 ‘미리 polling 할 코드’ 계산이 같은 Promise 를
      두 번 때리지 않게 쓰기 위해서다(중복 네이버 요청 0). */
@@ -6843,13 +7073,17 @@ module.exports = async function handler(req, res) {
   const aftermarket = buildAftermarket(knownMap, overSession, liveUniverse);
 
   /* 세 개를 기다리는 동안 위의 독립 작업도 같이 돌아간다 */
-  const [strategyRes, closingRes, fkZoneRes] = await Promise.all([
+  const [strategyRes, closingRes, fkZoneRes, hamRes] = await Promise.all([
     strategyPromise,
     closingPicksPromise.catch((e) => {
       errors.push('closingPicks: ' + String((e && e.message) || e));
       return { ok: false, themeTrack: [], supplyTrack: [], error: String((e && e.message) || e), rules: CP_RULES };
     }),
     fkZonePromise,
+    Promise.race([
+      hamPromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), HAM_RULES.budgetMs + 1500)),
+    ]),
   ]);
   strategyLive = strategyRes;
   closingPicks = closingRes;
@@ -6859,6 +7093,13 @@ module.exports = async function handler(req, res) {
 
   /* ⚡ 장중매매 후보 (F존·K존) — 위에서 이미 출발시켰다(테마 대장·부대장 + 1분봉 파동, 60초 캐시) */
   const fkZone = fkZoneRes;
+  /* 🍔 장중매매 후보 (불개미·햄버거) — 예산을 넘기면 null 로 두고 다음 폴링에서 받는다 */
+  const hamburgerSec = hamRes || {
+    ok: false, items: [], themes: [], generatedAtKst: `${pad2(p.hh)}:${pad2(p.mi)}`,
+    counts: { candidates: 0, pass: 0, blocked: 0, wait: 0 },
+    errors: ['hamburger: 조회 예산 초과'],
+    note: '기준·분봉 조회가 늦어 이번 응답에서 비웠습니다 — 다음 폴링에서 받습니다(값을 지어내지 않습니다).',
+  };
 
   const nxtLeaders = {
     ok: nxt.ok,
@@ -7005,6 +7246,7 @@ module.exports = async function handler(req, res) {
     closingPicks,
     intradayHong: (strategyLive && strategyLive.intradayHong) || null,
     fkZone,
+    hamburger: hamburgerSec,
     high52,
     upperLimit,
     aftermarket,
@@ -7055,6 +7297,10 @@ module.exports.mapPrevDayThemes = mapPrevDayThemes;
 module.exports.buildClosingPicks = buildClosingPicks;
 module.exports.buildFkZone = buildFkZone;
 module.exports.FK_RULES = FK_RULES;
+/* 🍔 불개미 햄버거 — 테마 대장·부대장 추출과 규칙을 테스트에서 직접 검증한다. */
+module.exports.buildHamburger = buildHamburger;
+module.exports.hamCandidates = hamCandidates;
+module.exports.HAM_RULES = HAM_RULES;
 /* 2026-11-27 — 중복 테마 건너뛰기·실질 주도 테마 정렬 단위 검증용(오프라인 테스트) */
 module.exports.fkPickLeaders = fkPickLeaders;
 module.exports.fkThemeStrength = fkThemeStrength;
