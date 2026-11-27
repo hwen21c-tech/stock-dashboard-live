@@ -123,7 +123,14 @@ def _get(url, timeout=4.0, headers=None, encoding="utf-8"):
         h.update(headers)
     req = urllib.request.Request(url, headers=h)
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode(encoding if encoding != "auto" else "utf-8", "replace")
+        raw = r.read()
+    if encoding in (None, "utf-8"):
+        # DART 공시검색은 페이지에 따라 euc-kr 로 내려온다 — 깨진 제목을 붙이지 않게 한 번 더 시도
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw.decode("euc-kr", "replace")
+    return raw.decode(encoding, "replace")
 
 
 def _getj(url, timeout=4.0, headers=None):
