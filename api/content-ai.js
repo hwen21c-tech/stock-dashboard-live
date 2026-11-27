@@ -3769,8 +3769,64 @@ const GEN_ACTIONS = [
   'proofread_draft',
   'analyze_shorts_style',
   'shorts_script',
+  'cut_rewrite',
   'live_briefing',
 ];
+
+/* ✨ 컷 1개 다시 쓰기 — 전체 대본을 다시 뽑지 않고, 그 컷의 자막·나레이션만 다듬는다. */
+const SCHEMA_CUT_REWRITE = {
+  type: 'object',
+  properties: {
+    subtitle: { type: 'string', description: '화면 자막 — 공백 포함 14~22자. 숫자는 원문 그대로 둔다' },
+    narration: { type: 'string', description: '성우가 3~5초에 읽는 한국어 구어체 1~2문장 (45~80자)' },
+    why: { type: 'string', description: '무엇을 왜 바꿨는지 한 줄 (20자 내외, 없으면 빈 문자열)' },
+  },
+  required: ['subtitle', 'narration'],
+};
+
+function promptCutRewrite(b) {
+  const nar = s(b.narration, 600);
+  const sub = s(b.subtitle, 300);
+  const prev = s(b.prevText, 300);
+  const next = s(b.nextText, 300);
+  const title = s(b.title, 120);
+  const tone = s(b.tone, 40) || '정보 전달 · 담백한 구어체';
+  const facts = (String(nar + ' ' + sub).match(/\d[\d,.]*\s*(?:%|퍼센트|억|조|계약|pt|원|배|개)?/g) || []).slice(0, 12);
+  const user = [
+    title ? `영상 제목: ${title}` : '',
+    `지금 컷: ${Number(b.index || 0) + 1} / ${Number(b.total || 1) || 1}`,
+    `현재 자막: "${sub}"`,
+    `현재 나레이션: "${nar}"`,
+    prev ? `앞 컷 자막(참고): "${prev}"` : '',
+    next ? `뒤 컷 자막(참고): "${next}"` : '',
+    facts.length
+      ? `이 컷에 이미 있는 수치(그대로 둔다): ${facts.join(' · ')}`
+      : '이 컷에는 수치가 없다 — 수치를 새로 만들지 않는다.',
+    `
+[해야 할 일 — 이 한 컷만 다시 쓰기]
+1) subtitle: 화면에서 1초에 읽히는 임팩트 자막. 공백 포함 14~22자, 앞 컷과 같은 말을 반복하지 않는다.
+2) narration: 성우가 3~5초에 읽는 자연스러운 한국어 구어체 1~2문장(45~80자). "~했죠 / ~인데요"처럼 말을 거는 톤.
+3) 톤: ${tone}
+4) 위 수치·고유명사 밖의 새 숫자·가격·날짜·이름을 만들지 않는다. 확인한 내용만 쓴다.
+5) why: 무엇을 왜 바꿨는지 한 줄. 없으면 빈 문자열.
+[출력] subtitle · narration · why JSON.`,
+  ].filter(Boolean).join('\n');
+  return {
+    system: `너는 한국어 유튜브 쇼츠 대본 작가다. 한 컷의 자막과 나레이션만 다시 쓴다. 확인한 내용만 쓴다. ${HONESTY}`,
+    user,
+    schema: SCHEMA_CUT_REWRITE,
+    maxTokens: 500,
+    temperature: 0.85,
+  };
+}
+
+function normCutRewrite(data) {
+  return {
+    subtitle: s(data && data.subtitle, 60),
+    narration: s(data && data.narration, 220),
+    why: s(data && data.why, 60),
+  };
+}
 
 /* ====================== ⚡ 실시간 즉석 브리핑 (live_briefing) ======================
  * POST /api/content-ai  { mode:'live_briefing' | action:'live_briefing', facts:{...} }
@@ -5856,6 +5912,11 @@ module.exports = async function handler(req, res) {
   } else if (action === 'shorts_script') {
     if (!s(body.topic, 200)) return send(res, 400, { ok: false, reason: 'missing_topic', message: '쇼츠 주제(topic)가 필요합니다.' });
     prompt = promptShortsScript({ ...body, banPhrases });
+  } else if (action === 'cut_rewrite') {
+    if (!s(body.narration, 2) && !s(body.subtitle, 2)) {
+      return send(res, 400, { ok: false, reason: 'missing_cut', message: '다시 쓸 컷의 자막이나 나레이션이 필요합니다.' });
+    }
+    prompt = promptCutRewrite({ ...body, banPhrases });
   } else if (action === 'summarize') {
     const kind = ['youtube', 'doc', 'media'].indexOf(s(body.kind, 12)) >= 0 ? s(body.kind, 12) : 'doc';
     const mode = SUMMARY_MODES.indexOf(s(body.mode, 12)) >= 0 ? s(body.mode, 12) : 'three';
@@ -6054,6 +6115,7 @@ module.exports = async function handler(req, res) {
   else if (action === 'analyze_blogger_style') result = normStyle(data);
   else if (action === 'analyze_shorts_style') result = normShortsStyle(data);
   else if (action === 'shorts_script') result = normShortsScript(data);
+  else if (action === 'cut_rewrite') result = normCutRewrite(data);
   else if (action === 'summarize') result = normSummary(data, srcMeta || {});
   else result = normShorts(data);
 
@@ -6076,6 +6138,7 @@ module.exports = async function handler(req, res) {
     (action === 'proofread_draft' && !s(result.body, 10)) ||
     (action === 'analyze_shorts_style' && !s(result.hook, 3)) ||
     (action === 'shorts_script' && !(result.beats || []).length) ||
+    (action === 'cut_rewrite' && !s(result.narration, 3)) ||
     (action === 'analyze_blogger_style' && !(result.structure || []).length) ||
     (action === 'summarize' && !((result.three || []).length || s(result.headline, 3)));
   if (truncated || emptyMain) {
