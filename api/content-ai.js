@@ -5903,10 +5903,14 @@ const SHORTS_MAX_ONE_B64 = 900 * 1024;      // 키프레임 1장(약 640KB JPEG 
 const SHORTS_MAX_TOTAL_B64 = 3300 * 1024;   // 요청 본문 한도(4.2MB) 안쪽
 const SHORTS_BGMS = ['upbeat', 'chill', 'tense', 'none'];
 const SHORTS_TONES = {
-  energetic: '유쾌한 예능·후킹 (빠른 템포, 감탄사 활용)',
-  vlog: '감성 브이로그 (차분하고 따뜻한 구어체)',
-  info: '빠른 정보 요약 (숫자·포인트 먼저)',
-  dramatic: '반전·긴장감 (짧은 문장, 궁금증 유발)',
+  energetic: '유쾌한 예능·후킹 (빠른 템포, 감탄사 활용, 1컷은 3초 안에 시선을 잡는 문장)',
+  docu: '다큐멘터리·차분한 해설 ("~입니다/~습니다" 담담한 설명체, 과장·감탄 금지, 화면에 보이는 것 → 의미 순서)',
+  touching: '감동·따뜻한 스토리 (사람과 순간에 초점, 서두르지 않고 마지막 컷에 여운)',
+  sad: '슬픔·아린한 감성 (짧은 문장과 여백, 감정을 직접 말하기보다 장면·사물로 스미게)',
+  happy: '기쁨·밝고 경쾌한 브이로그 (리듬 있는 구어체, 웃음·설렘·들뜬 표정)',
+  vlog: '담백한 일상 브이로그 (1인칭으로 편하게, 과장 없이 그 순간을 담담하게)',
+  info: '빠른 정보·핵심 요약 (숫자·포인트를 앞세운 간결한 설명체)',
+  dramatic: '반전·긴장감 스릴러 (짧은 문장으로 궁금증을 쌓고 마지막에 뒤집기)',
 };
 
 const SHORTS_SCHEMA = {
@@ -5962,7 +5966,7 @@ function shortsClipLines(body) {
   let totalB64 = 0;
   let dropped = 0;
   clips.forEach((c, i) => {
-    const frames = arr(c && c.frames, 6);
+    const frames = arr(c && c.frames, 8);
     lines.push(
       'Clip ' + i + ': 파일명="' + s(c && c.name, 80) + '", 길이=' + round1(num(c && c.duration, 0)) +
       '초, 해상도=' + Math.trunc(num(c && c.width, 1080)) + 'x' + Math.trunc(num(c && c.height, 1920)) +
@@ -6019,7 +6023,7 @@ async function handleShortsAnalyze(res, body, keyConfigured) {
   }
   const toneKey = s(body.tone, 30) || 'energetic';
   const tone = SHORTS_TONES[toneKey] || SHORTS_TONES.energetic;
-  const hint = s(body.hint, 400);
+  const hint = s(body.hint, 800);
   const n = pack.clips.length;
 
   const user = [
@@ -6034,6 +6038,7 @@ async function handleShortsAnalyze(res, body, keyConfigured) {
     '[규칙]',
     '1. clipIndex 는 0 ~ ' + (n - 1) + ' 사이의 정수. 실제로 없는 클립 번호를 쓰지 마세요.',
     '2. startSec 은 그 클립 길이 안쪽, durationSec 은 1.5~5.0초, speed 는 1.0~1.3 사이.',
+    '2-1. 클립이 1개뿐이거나 긴 클립(15초 이상)이 있으면 1컷으로 뭉개지 마세요 — 그 영상의 앞→뒤 흐름에서 가장 재미있고 핵심적인 3~5개 구간을 골라 startSec·durationSec 이 서로 다른 기승전결 컷으로 쪼개세요. startSec 은 위에 적힌 키프레임 시각 근처에서 고르고, 같은 클립 안에서 구간이 겹치지 않게 하세요. 컷마다 서로 다른 키프레임(다른 장면)을 근거로 쓰세요.',
     '3. cropFocus 는 화면에서 중요한 피사체 위치 — center / left / right 중 하나.',
     '4. narration 은 성우가 3~4초에 읽을 자연스러운 한국어 구어체 한 문장(20자 안팎).',
     '5. subtitle 은 14자 이내 임팩트 자막. 같은 문장을 그대로 옮기지 말고 핵심만 남기세요.',
@@ -6043,7 +6048,8 @@ async function handleShortsAnalyze(res, body, keyConfigured) {
     '9. hookOptions 는 화면 상단에 띄울 후킹 문구 3안 — type 은 curiosity(호기심형) / direct(직설형) / twist(반전형), ' +
       'text 는 24자 이내 한 줄. 서로 말투가 확실히 달라야 하고, 같은 문장을 복사하지 마세요.',
     '10. 화면에 실제로 보이는 것만 근거로 쓰세요. 확인되지 않은 가게 이름·가격·수치를 지어내지 마세요.',
-    '11. 마지막에 JSON 만 돌려주세요.',
+    '11. 말투·자막 분위기는 [원하는 톤]을 따르세요 — 같은 영상이라도 톤이 다르면 대사가 완전히 달라져야 합니다.',
+    '12. 마지막에 JSON 만 돌려주세요.',
   ].join('\n');
 
   const deadline = Date.now() + DEADLINE_MS;
@@ -8336,7 +8342,7 @@ module.exports = async function handler(req, res) {
       shorts_editor: {
         page: '/shorts-editor.html',
         actions: ['shorts_analyze', 'shorts_rewrite', 'shorts_tts'],
-        analyze: "POST { action:'shorts_analyze', tone:'energetic'|'vlog'|'info'|'dramatic', hint:'방향', clips:[{name,duration,width,height,frames:[{tSec,data(base64 jpeg)}]}] } → { ok, data:{ storyArc, youtubeTitle, youtubeDescription, bgmMood, hookOptions[{type,text}], segments[] } } — 키프레임 최대 15장·후킹 3안(curiosity/direct/twist)",
+        analyze: "POST { action:'shorts_analyze', tone:'energetic'|'docu'|'touching'|'sad'|'happy'|'vlog'|'info'|'dramatic', hint:'방향', clips:[{name,duration,width,height,frames:[{tSec,data(base64 jpeg)}]}] } → { ok, data:{ storyArc, youtubeTitle, youtubeDescription, bgmMood, hookOptions[{type,text}], segments[] } } — 키프레임 최대 15장·후킹 3안(curiosity/direct/twist)",
         rewrite: "POST { action:'shorts_rewrite', narration, subtitle, tone } → { ok, data:{ narration, subtitle } }",
         tts: "POST { action:'shorts_tts', text, voiceId?, key? } → { ok, audio(base64), alignment } / 키 없으면 reason:'no_eleven_key' → /api/tts 무료 성우 사용",
       },
