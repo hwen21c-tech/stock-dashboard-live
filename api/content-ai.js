@@ -6893,6 +6893,39 @@ const EMOTICON_PRESET_HINT = {
   couple: '가족·연인용 — 사랑해·보고싶어·고마워·잘자·놀자 같은 다정한 리액션',
 };
 
+/* 의인화 스타일 12종 · 화풍 프리셋 14종 — 화면 라벨 → 영문 프롬프트 (emoticon-studio-pro 와 1:1) */
+const EMOTICON_ANTHRO_PROMPT = {
+  'SD 2등신 (팔·다리 추가)': 'super-deformed 2-head-tall chibi body, tiny stubby arms and legs, big round head',
+  '심플 페이스 (사물 형태 유지 + 표정만)': 'keep the original object silhouette intact and add only a simple cute face (expressive eyes, small mouth), no limbs',
+  '말랑 젤리·인형화': 'soft squishy translucent jelly-plush body, gummy texture, rounded plush seams',
+  '치비 1.5등신 (왕머리 꼬마)': 'chibi 1.5-head-tall proportions, oversized head, small toddler body',
+  '뚱뚠이 찹쌀떡 체형': 'round chubby rice-cake body, plump cheeks, squishy belly',
+  '동글이 무표정 짤방형': 'perfectly round body with a blank deadpan poker face, meme reaction style',
+  '오피스 직장인 (명찰·커피 소품)': 'office worker version wearing a shirt and a neck-strap ID badge, holding a paper coffee cup',
+  '수인·동물 귀 꼬리화': 'kemono anthro version with animal ears and a fluffy tail on the object body',
+  '3등신 하이틴 소년/소녀': '3-head-tall teen boy/girl body with youthful slim proportions and a trendy casual outfit',
+  '롱다리·길쭉이 B급 개그 체형': 'long spindly comic limbs and a stretched tall body, intentionally goofy B-grade gag proportions',
+  '후드·모자 쓴 꾸러기': 'wearing an oversized hoodie and a beanie/cap, playful little rascal look',
+  '미니 도트 마스코트': 'tiny pixel-dot mascot body with minimal dot eyes and a small compact silhouette',
+};
+
+const EMOTICON_ARTSTYLE_PROMPT = {
+  '몽글 손그림': 'warm hand-drawn crayon and colored-pencil texture with soft rounded strokes',
+  '깔끔 플랫 벡터': 'clean flat vector illustration with crisp bold outlines and flat color fills',
+  'B급 병맛 낙서': 'goofy B-grade doodle scribble, intentionally messy kitsch humor',
+  '파스텔 수채화': 'soft pastel watercolor wash, gentle paper grain, cozy mood',
+  '3D 클레이': 'glossy 3D clay render, soft squishy figurine, studio lighting',
+  '인스타툰': 'Korean Instagram webtoon style, thick black outlines, simple flat cel shading',
+  '레트로 90년대 애니풍': '1990s retro anime cel style, slightly grainy film colors, vintage line art',
+  '연필 스케치·낙서장': 'pencil sketch on notebook paper, rough graphite hatching, doodle margin notes',
+  '유광 에나멜 스티커': 'glossy enamel pin sticker finish, sharp highlight shine, thick die-cut white border',
+  '네온 팝아트': 'neon pop-art poster style, high-contrast saturated colors, bold graphic shapes',
+  '한국 수묵·민화풍': 'Korean ink-and-wash sumukhwa with minhwa folk-painting motifs, visible brush strokes',
+  '양모 펠트 인형 질감': 'needle-felted wool texture, fuzzy fibers, handmade plush look',
+  '종이 오리기 (페이퍼 컷)': 'layered paper-cut collage, cut-paper edges, subtle drop shadows',
+  '픽셀 도트 8비트': '8-bit pixel art with a limited palette and crisp pixel dithering',
+};
+
 function emoticonDefaultSlot(i) {
   const cat = EMOTICON_CATEGORIES[i] || '리액션/웃음';
   return {
@@ -6911,6 +6944,8 @@ async function handleEmoticonPlan(res, body, keyConfigured) {
   const visualPrompt = s(body.visualPrompt, 600);
   const anthro = s(body.anthro, 60);
   const artStyle = s(body.artStyle, 60);
+  const anthroPrompt = s(body.anthroPrompt, 220) || EMOTICON_ANTHRO_PROMPT[anthro] || '';
+  const artStylePrompt = s(body.artStylePrompt, 220) || EMOTICON_ARTSTYLE_PROMPT[artStyle] || '';
   const preset = s(body.preset, 20) || 'basic';
   const platform = s(body.platform, 20) || 'ogq';
   const cleanup = body.cleanup !== false;
@@ -6967,8 +7002,9 @@ async function handleEmoticonPlan(res, body, keyConfigured) {
     '[캐릭터 이름] ' + (charName || '(사진에서 새로 지어 주세요)'),
     '[세계관/한 줄 컨셉] ' + (concept || '(사진을 보고 정해 주세요)'),
     '[비주얼 DNA] ' + (visualPrompt || '(사진을 보고 영문 1~2문장으로 정리해 주세요)'),
-    '[의인화 스타일] ' + (anthro || 'SD 2등장신 (팔·다리 추가)'),
-    '[화풍] ' + (artStyle || '몽글 손그림'),
+    '[의인화 스타일] ' + (anthro || 'SD 2등신 (팔·다리 추가)') + (anthroPrompt ? ' → ' + anthroPrompt : ''),
+    '[화풍] ' + (artStyle || '몽글 손그림') + (artStylePrompt ? ' → ' + artStylePrompt : ''),
+    '[스타일 고정] 24개 prompt 는 위 의인화·화풍 지시를 전제로 쓴다. 다른 체형·화풍으로 바꾸지 말 것.',
     '[기획 프리셋] ' + (EMOTICON_PRESET_HINT[preset] || preset),
     preset !== 'basic' ? '[중요] 24개 문구는 반드시 위 프리셋의 사용 상황(예: 리뷰 글에 끼워 넣는 말)에 맞춰야 합니다. 일반 인사말로 채우지 마세요.' : '',
     '[플랫폼] ' + platform,
@@ -8287,7 +8323,7 @@ module.exports = async function handler(req, res) {
       emoticon_studio: {
         page: 'https://emoticon-studio-pro.vercel.app',
         actions: ['emoticon_plan', 'emoticon_image'],
-        plan: "POST { action:'emoticon_plan', charName, concept, visualPrompt, anthro, artStyle, preset:'basic'|'blogger'|'worker'|'couple', photo:{data,mimeType}(선택) } → { ok, data:{ charName, worldview, visualPrompt, ogqTitle, ogqTags[], slots[24]{text,desc,prompt,category} } }",
+        plan: "POST { action:'emoticon_plan', charName, concept, visualPrompt, anthro, artStyle, anthroPrompt, artStylePrompt, preset:'basic'|'blogger'|'worker'|'couple', photo:{data,mimeType}(선택) } → { ok, data:{ charName, worldview, visualPrompt, ogqTitle, ogqTags[], slots[24]{text,desc,prompt,category} } }",
         seo: "POST { action:'emoticon_plan', mode:'seo', charName, concept } → { ok, data:{ kr, en, jp, tw } }",
         image: "POST { action:'emoticon_image', prompt, mode:'sticker'|'sheet'|'edit', aspectRatio:'1:1'|'16:9', engine:'auto'|'gemini'|'pollinations', seed, reference:{data,mimeType} | image:{data,mimeType} } → { ok, usedEngine:'gemini'|'pollinations', fallbackReason, reason:'gemini_image_quota'|'free_limit', retryAfterSec, model, mime, data(base64) } — 기준 캐릭터를 함께 넘기고 'NO text · pure white background' 를 강제한다. auto 는 Gemini 우선 → 실패 시 무료 Pollinations 폴백.",
       },
