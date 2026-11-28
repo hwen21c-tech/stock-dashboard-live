@@ -96,6 +96,7 @@
   ],
   "rewrites": [
     { "source": "/api/breadth", "destination": "/api/macro-live?mode=breadth" },
+    { "source": "/api/youtube-search", "destination": "/api/content-ai?mode=youtube-search" },
     { "source": "/pokemon", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/", "destination": "/pokemon-battle.html" },
     { "source": "/pokemon/:path*", "destination": "/:path*" },

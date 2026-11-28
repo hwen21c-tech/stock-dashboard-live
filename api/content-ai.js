@@ -8295,6 +8295,12 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     const u = new URL(req.url || '/', 'http://localhost');
     const act = s(u.searchParams.get('action'), 40);
+    /* 🔍 유튜브 실제 검색 — vercel.json rewrite 로 /api/youtube-search 가
+       /api/content-ai?mode=youtube-search 로 들어온다.
+       (Vercel Hobby 서버리스 함수 12개 한도 때문에 api/ 파일을 늘리지 않고 여기로 합쳤다.) */
+    if (u.searchParams.get('mode') === 'youtube-search' || act === 'youtube_search') {
+      return require('../lib/youtube-search')(req, res);
+    }
     // 📸 사진 검색 — 블로그 생성과 별개로 GET 으로 쓴다(키 없이도 Wikimedia Commons 로 동작).
     if (act === 'photos') return handlePhotos(res, u);
     if (act === 'photo-dl') return handlePhotoDownload(res, u);
@@ -8390,6 +8396,11 @@ module.exports = async function handler(req, res) {
 
   const action = s(body.action, 30);
   const reqMode = s(body.mode, 30);
+  /* 🔍 유튜브 실제 검색 POST — /api/youtube-search 로 들어온 JSON body 를 그대로 넘긴다. */
+  if (reqMode === 'youtube-search' || reqMode === 'youtube_search') {
+    req.body = body; // 이미 읽은 본문을 그대로 넘긴다(스트림 재독 방지)
+    return require('../lib/youtube-search')(req, res);
+  }
   // ⚡ 실시간 즉석 브리핑 — 프론트가 방금 받은 실측 JSON(facts)으로 그 시각 브리핑을 만든다.
   //    Gemini 가 죽어도 실측 조립 요약을 200 으로 돌려준다(빈 화면 금지).
   if (reqMode === 'live_briefing' || action === 'live_briefing') {
