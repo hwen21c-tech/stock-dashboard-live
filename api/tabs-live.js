@@ -2983,7 +2983,7 @@ const HAM_RULES = {
   minStockPct: 5.0,
   maxCodes: 8,          // 기준·오늘 분봉 조회 예산(8종목 ≈ 2~3초)
   lazyBaseCodes: 8,     // 요청당 즉석 계산할 기준 수 — 계산값은 Supabase·메모리에 남아 다음부터는 즉시
-  budgetMs: 9000,       // v4 부터 09:15 이후 전 구간 분봉(120봉/페이지)을 이어 붙이므로 여유를 둔다
+  budgetMs: 12000,      // v4 부터 09:15 이후 전 구간 분봉(120봉/페이지)을 이어 붙이므로 여유를 둔다
   ttlMs: 60000,
 };
 let HAM_CACHE = null;
@@ -3122,7 +3122,10 @@ async function buildHamburger(ctx) {
   }
 
   const done = new Array(pick.items.length).fill(null);
-  const work = pick.items.map((cand, i) => hamItem(cand, { allowCompute: i < HAM_RULES.lazyBaseCodes })
+  /* 종목마다 180ms 씩 시작을 늦춘다 — 8종목 × (기준+오늘) 분봉 페이지가 한꺼번에 나가면
+     KIS 초당 한도(EGW00201)에 걸려 페이지가 비고, 그 종목만 값이 작아진다(2026-11-28). */
+  const work = pick.items.map((cand, i) => new Promise((resolve) => setTimeout(resolve, i * 180))
+    .then(() => hamItem(cand, { allowCompute: i < HAM_RULES.lazyBaseCodes }))
     .then((row) => { done[i] = row; return row; })
     .catch(() => null));
   const raced = await Promise.race([
@@ -6386,7 +6389,7 @@ module.exports = async function handler(req, res) {
             date: String(q.date),
             max: mx && mx.ok ? { ok: true, label: mx.label, valueEok: mx.valueEok, count: mx.count, minutes: mx.minutes, top3: mx.top3, sumValueEok: mx.sumValueEok } : { ok: false, reason: (mx && mx.reason) || 'no_3m' },
             open3m: open ? { label: open.label, valueEok: open.valueEok, kind: open.kind } : null,
-            window: { ok: win.ok, pages: win.pages, count: win.count, first: win.first, last: win.last, reason: win.reason },
+            window: { ok: win.ok, complete: win.complete, partial: win.partial, pages: win.pages, retries: win.retries, count: win.count, first: win.first, last: win.last, reason: win.reason },
             top: buckets.slice().sort((a, c) => c.value - a.value).slice(0, 8)
               .map((x) => ({ label: x.label, valueEok: x.valueEok, minutes: x.minutes, kind: x.kind })),
             base: {
