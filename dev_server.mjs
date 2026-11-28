@@ -31,6 +31,7 @@ const api = {
   '/api/tts': require('./api/tts.js'),
   '/api/content-ai': require('./api/content-ai.js'),
   '/api/picks-search': require('./api/picks-search.js'),
+  '/api/youtube-search': require('./api/youtube-search.js'),
 };
 
 const MIME = {
