@@ -2952,13 +2952,19 @@ async function buildFkZone(ctx) {
   return body;
 }
 
-/* 🍔 1번 탭 '장중매매 후보 (불개미 · 햄버거)' — 2026-11-27 신설
+/* 🍔 1번 탭 '장중매매 후보 (불개미 · 햄버거)' — 2026-11-27 신설 · 2026-11-28 v4
  *
  *  원전: 부자회사원 채널 「불개미님 햄버거 기법」 2편
  *   · 과거 그 종목이 장대양봉을 냈던 날의 **시동 3분봉 대금**을 기준으로 기억하고,
- *     오늘 그 종목이 속한 테마가 주도 섹터로 살아 있을 때 **장초반 3분봉 대금이
+ *     오늘 그 종목이 속한 테마가 주도 섹터로 살아 있을 때 **3분봉 대금이
  *     기준을 압도**하면 햄버거 완성으로 본다.
  *   · 대금이 터져도 **긴 위꼬리 · 도지 · 음봉 · 역배열** 자리는 상승 확률이 낮아 뺀다.
+ *
+ *  v4 (2026-11-28 사용자 확정) — 기준·오늘 모두 **09:15 이후(09:15~15:20) 최대 3분봉 대금**
+ *   · 장 초반 혼란 구간(09:00~09:14)을 빼고, 09:15 이후 그날 형성된 3분봉 중 가장 크게 터진
+ *     한 봉(시각 포함)이 '연료통'이다. 최소 20억↑은 그대로(미달 시 소급 없이 제외).
+ *   · 09:00~09:29 는 후보만 보이고 `⏳ 09:30 이전 관망` 배지 — 판단은 09:30 이후(원전).
+ *   · 낮은 구간은 🚀 돌파 타점, 높은 구간은 🧲 눌림 타점(3분봉 5선).
  *
  *  후보 — '오늘 강한 테마의 대장주·부대장주'(사용자 확정 #70211)
  *   오늘 실시간 테마 구성종목(fetchClosingThemeMembers 상위 10테마 전체)에서
@@ -2967,17 +2973,17 @@ async function buildFkZone(ctx) {
  *
  *  계산 예산
  *   · 기준(과거 3분봉): 저장소 JSON → Supabase 공용 행 → 없으면 이번 요청에서 계산.
- *     계산은 일봉 1회 + 그날 분봉 1회라 비싸므로 **요청당 3종목까지만** 즉석 계산한다.
+ *     계산은 일봉 1회 + 그날 분봉 4~5페이지(120봉씩)라 비싸므로 **요청당 8종목까지만** 즉석 계산한다.
  *     계산한 값은 Supabase 에 합쳐 둔다(다른 인스턴스·다음 날도 재사용).
- *   · 오늘 장초반 3분봉: 종목당 1회, 30초(장마감 뒤엔 값이 변하지 않는다) 캐시.
+ *   · 오늘 3분봉 최대값: 종목당 1회, 55초(장마감 뒤엔 값이 변하지 않는다) 캐시.
  */
 const HAM_RULES = {
   themeTop: 4,
   minThemePct: 1.0,
   minStockPct: 5.0,
-  maxCodes: 8,          // 기준·오늘 분봉 조회 예산(8종목 ≈ 1~2초)
+  maxCodes: 8,          // 기준·오늘 분봉 조회 예산(8종목 ≈ 2~3초)
   lazyBaseCodes: 8,     // 요청당 즉석 계산할 기준 수 — 계산값은 Supabase·메모리에 남아 다음부터는 즉시
-  budgetMs: 6500,
+  budgetMs: 9000,       // v4 부터 09:15 이후 전 구간 분봉(120봉/페이지)을 이어 붙이므로 여유를 둔다
   ttlMs: 60000,
 };
 let HAM_CACHE = null;
@@ -3027,8 +3033,10 @@ async function hamItem(cand, opts) {
         upperWickPct: base.bigYang.upperWickPct,
         bodyPct: base.bigYang.bodyPct,
         ohlcSrc: base.bigYang.ohlcSrc || null,
-        open3mEok: base.bigYang.open3m ? base.bigYang.open3m.valueEok : null,
+        /* 🍔 v4 — 값은 '그날 09:15 이후 최대 3분봉'. open3m 은 하위호환 이름이다 */
+        open3mEok: base.bigYang.max3m ? base.bigYang.max3m.valueEok : (base.bigYang.open3m ? base.bigYang.open3m.valueEok : null),
         open3m: base.bigYang.open3m || null,
+        max3m: base.bigYang.max3m || null,
         others: base.others || [],
         skippedBases: base.skippedBases || [],
         reversal: base.reversal || null,
@@ -3047,10 +3055,21 @@ async function hamItem(cand, opts) {
         dateLabel: today.dateLabel,
         market: today.market,
         marketLabel: today.marketLabel,
-        open3mEok: today.open3m.valueEok,
+        fallback: Boolean(today.fallback),
+        open3mEok: today.max3m ? today.max3m.valueEok : today.open3m.valueEok,
         open3m: today.open3m,
+        max3m: today.max3m || null,
+        window: today.window || null,
+        watch: Boolean(today.watch),
       }
-      : { ok: false, reason: (today && today.reason) || 'not_ready', message: (today && today.message) || '오늘 장초반 3분봉 미수신', market: today && today.market },
+      : {
+        ok: false,
+        reason: (today && today.reason) || 'not_ready',
+        message: (today && today.message) || '오늘 09:15 이후 3분봉 미수신',
+        market: today && today.market,
+        window: (today && today.window) || null,
+        watch: Boolean(today && today.watch),
+      },
     verdict,
   });
 }
@@ -3072,6 +3091,7 @@ async function buildHamburger(ctx) {
     themes: [],
     items: [],
     counts: { candidates: 0, pass: 0, blocked: 0, wait: 0, noBase: 0, valueShort: 0, excluded: 0, shown: 0 },
+    watchLabel: '',
     errors: [],
     note: '',
     sourceLabel: '/api/tabs-live hamburger (테마 대장·부대장 + KIS 일봉·과거 분봉·오늘 분봉 실측)',
@@ -3101,20 +3121,26 @@ async function buildHamburger(ctx) {
     return out;
   }
 
-  const work = pick.items.map((cand, i) => hamItem(cand, { allowCompute: i < HAM_RULES.lazyBaseCodes }));
+  const done = new Array(pick.items.length).fill(null);
+  const work = pick.items.map((cand, i) => hamItem(cand, { allowCompute: i < HAM_RULES.lazyBaseCodes })
+    .then((row) => { done[i] = row; return row; })
+    .catch(() => null));
   const raced = await Promise.race([
     Promise.all(work),
     new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), HAM_RULES.budgetMs)),
   ]);
   if (raced === 'TIMEOUT') {
-    out.errors.push('분봉·기준 조회가 ' + Math.round(HAM_RULES.budgetMs / 1000) + '초 예산을 넘었습니다 — 다음 폴링에서 이어집니다');
-    out.items = pick.items.map((x) => Object.assign({}, x, {
+    /* v4 — 분봉 페이지가 늘어난 만큼 예산 초과가 날 수 있다. 이미 받은 종목은 버리지 않고 그린다. */
+    const filled = done.filter(Boolean).length;
+    out.errors.push('기준·분봉 조회가 ' + Math.round(HAM_RULES.budgetMs / 1000) + '초 예산을 넘었습니다 — 받은 종목으로 먼저 그리고 다음 폴링에서 이어집니다'
+      + (filled ? ' (' + filled + '종목 완료)' : ''));
+    out.items = pick.items.map((x, i) => done[i] || Object.assign({}, x, {
       base: { ok: false, reason: 'timeout', message: '기준 조회 예산 초과' },
       today: { ok: false, reason: 'timeout', message: '오늘 분봉 조회 예산 초과' },
       verdict: { pass: false, tag: '조회 지연', tagKind: 'wait', reasons: ['다음 폴링에서 다시 계산합니다'], blocks: [] },
     }));
   } else {
-    out.items = raced;
+    out.items = raced.map((row, i) => row || pick.items[i]);
   }
 
   out.items.forEach((x) => {
@@ -3132,10 +3158,15 @@ async function buildHamburger(ctx) {
      counts 는 응답에 남겨 두되 note 문장에는 개수를 넣지 않는다. */
   out.note =
     '기준은 <b>가장 최근 윗꼬리 짧은 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
-    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 1일만 보고 그날 09:00~09:02 3분봉 대금 ' +
-    hamburger.HAM.minBase3mEok + '억↑</b>일 때만 기준으로 인정하며(20억 미만이면 과거 날로 거슬러 올라가지 않고 제외), 오늘 장초반 3분봉 대금이 그 기준을 넘고 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다 — 자세한 기준은 📖 매매원칙 보기.';
+    Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 1일만 보고, ' +
+    '장 초반 혼란(09:00~09:14)을 뺀 <b>09:15 이후(09:15~15:20) 3분봉 중 최대 거래대금 ' + hamburger.HAM.minBase3mEok + '억↑</b>일 때만 기준으로 인정하며' +
+    '(20억 미만이면 과거 날로 거슬러 올라가지 않고 제외), 오늘도 <b>09:15 이후(장중이면 현재까지) 최대 3분봉 대금</b>이 그 기준을 넘고 ' +
+    '긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다. 낮은 구간은 🚀 돌파, 높은 구간은 🧲 3분봉 5선 눌림 타점으로 봅니다 — 자세한 기준은 📖 매매원칙 보기.';
+  /* 09:00~09:29 — 후보는 보여 주고 '⏳ 09:30 이전 관망' 배지(원전: 30분을 지켜본 뒤 매매) */
+  out.watchLabel = (p0.wd !== 'Sat' && p0.wd !== 'Sun' && p0.minutes >= hamburger.HAM.watchFrom && p0.minutes < hamburger.HAM.watchTo)
+    ? hamburger.publicRules().watchLabel : '';
 
-  if (!out.errors.length) HAM_CACHE = { at: Date.now(), value: out };
+  if (out.items && out.items.length) HAM_CACHE = { at: Date.now(), value: out };
   return out;
 }
 
@@ -6343,11 +6374,33 @@ module.exports = async function handler(req, res) {
       if (q.date && /^\d{8}$/.test(String(q.date))) {
         const code = codes[0];
         const b = await hamburger.getBase(code, { noCache: true });
+        /* ?max=1 — 🍔 v4 '09:15 이후 최대 3분봉' 진단: 페이지·구간·상위 3분봉·09:00~09:02 대조 */
+        if (q.max === '1') {
+          const win = await hamburger.fetchMinuteWindow(code, String(q.date), { from: String(q.from || '0914'), to: String(q.to || '1520'), noCache: true });
+          const mx = win && win.ok ? hamburger.maxThreeMinute(win.bars, String(q.from || '0915'), String(q.to || '1520')) : null;
+          const buckets = win && win.ok ? hamburger.bucket3m(win.bars, String(q.from || '0915'), String(q.to || '1520')) : [];
+          const open = win && win.ok ? hamburger.threeMinute(win.bars, '0900', '0902') : null;
+          return sendJson(res, 200, Object.assign(head, {
+            ok: true,
+            code,
+            date: String(q.date),
+            max: mx && mx.ok ? { ok: true, label: mx.label, valueEok: mx.valueEok, count: mx.count, minutes: mx.minutes, top3: mx.top3, sumValueEok: mx.sumValueEok } : { ok: false, reason: (mx && mx.reason) || 'no_3m' },
+            open3m: open ? { label: open.label, valueEok: open.valueEok, kind: open.kind } : null,
+            window: { ok: win.ok, pages: win.pages, count: win.count, first: win.first, last: win.last, reason: win.reason },
+            top: buckets.slice().sort((a, c) => c.value - a.value).slice(0, 8)
+              .map((x) => ({ label: x.label, valueEok: x.valueEok, minutes: x.minutes, kind: x.kind })),
+            base: {
+              ok: b.ok, reason: b.reason, minuteBars: b.minuteBars, minutePages: b.minutePages,
+              bigYang: b.bigYang ? { dateLabel: b.bigYang.dateLabel, pct: b.bigYang.pct, max3m: b.bigYang.max3m || null } : null,
+              skippedBases: b.skippedBases || [],
+            },
+          }), 'no-store');
+        }
         const m = await kisLib.fetchMinuteBarsForDate(code, String(q.date), {
           hour: String(q.hour || '090300'),
           marketDiv: String(q.mk || 'J').toUpperCase(),
         });
-        /* ?prev=1 — 주말·휴장일·장초반 대체값(직전 거래일 09:00~09:02) 검증 */
+        /* ?prev=1 — 주말·휴장일·장초반 대체값(직전 거래일 09:15 이후 최대 3분봉) 검증 */
         const prev = q.prev === '1' ? await hamburger.prevSessionOpen(code, String(q.date)) : null;
         return sendJson(res, 200, Object.assign(head, {
           ok: true,
