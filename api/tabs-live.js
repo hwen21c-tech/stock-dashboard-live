@@ -3128,13 +3128,9 @@ async function buildHamburger(ctx) {
   out.counts.candidates = out.items.length;
   out.counts.excluded = out.items.length - out.counts.pass;
   out.counts.shown = out.counts.pass;
+  /* 2026-11-28 사용자 확정 — 화면에 후보·제외 개수를 쓰지 않는다(성립 종목만 표시).
+     counts 는 응답에 남겨 두되 note 문장에는 개수를 넣지 않는다. */
   out.note =
-    '후보 ' + out.counts.candidates + '종목 중 <b>' + out.counts.pass + '종목 성립</b>' +
-    (out.counts.excluded
-      ? ' (나머지 ' + out.counts.excluded + '종목 제외: 대금 미달 ' + out.counts.valueShort +
-        ' · 실패 패턴 ' + out.counts.blocked + ' · 기준 없음/미달 ' + out.counts.noBase +
-        (out.counts.wait ? ' · 오늘 분봉 대기 ' + out.counts.wait : '') + ')'
-      : '') + '. ' +
     '기준은 <b>가장 최근 윗꼬리 짧은 장대양봉(+' + hamburger.HAM.yangPct + '%↑ · 대금 ' + hamburger.HAM.yangValueEok + '억↑ · 몸통 ' +
     Math.round(hamburger.HAM.baseBodyMin * 100) + '%↑ · 윗꼬리 ' + Math.round(hamburger.HAM.baseUpperWickMax * 100) + '%↓) 1일만 보고 그날 09:00~09:02 3분봉 대금 ' +
     hamburger.HAM.minBase3mEok + '억↑</b>일 때만 기준으로 인정하며(20억 미만이면 과거 날로 거슬러 올라가지 않고 제외), 오늘 장초반 3분봉 대금이 그 기준을 넘고 긴 위꼬리·도지·음봉·일봉 역배열이 없을 때만 성립입니다 — 자세한 기준은 📖 매매원칙 보기.';
