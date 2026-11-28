@@ -8396,8 +8396,10 @@ module.exports = async function handler(req, res) {
 
   const action = s(body.action, 30);
   const reqMode = s(body.mode, 30);
-  /* 🔍 유튜브 실제 검색 POST — /api/youtube-search 로 들어온 JSON body 를 그대로 넘긴다. */
-  if (reqMode === 'youtube-search' || reqMode === 'youtube_search') {
+  /* 🔍 유튜브 실제 검색 POST — /api/youtube-search 로 들어온 JSON body 를 그대로 넘긴다.
+     rewrite 목적지의 ?mode=youtube-search 는 URL 로 오므로 body.mode 와 함께 확인한다. */
+  if (reqMode === 'youtube-search' || reqMode === 'youtube_search' ||
+      new URL(req.url || '/', 'http://localhost').searchParams.get('mode') === 'youtube-search') {
     req.body = body; // 이미 읽은 본문을 그대로 넘긴다(스트림 재독 방지)
     return require('../lib/youtube-search')(req, res);
   }
